@@ -6,7 +6,7 @@ import json as json_mod
 
 from fastapi import APIRouter
 
-from schemas import TranslationRequest, TranslationOut
+from backend.schemas import TranslationRequest, TranslationOut
 
 router = APIRouter(prefix="/api/translate", tags=["translation"])
 

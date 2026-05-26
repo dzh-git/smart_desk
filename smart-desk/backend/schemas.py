@@ -5,15 +5,13 @@ from pydantic import BaseModel, Field
 
 # ── Meeting ──
 class MeetingCreate(BaseModel):
-    title: str
+    title: str = Field(..., max_length=200)
     description: str = ""
-
 
 class MeetingUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     status: str | None = None
-
 
 class MeetingOut(BaseModel):
     id: int
@@ -21,15 +19,16 @@ class MeetingOut(BaseModel):
     description: str
     status: str
     created_at: datetime
+    attendee_count: int = 0
+    checked_in_count: int = 0
 
     model_config = {"from_attributes": True}
 
 
 # ── Agenda ──
 class AgendaCreate(BaseModel):
-    title: str
+    title: str = Field(..., max_length=500)
     sort_order: int = 0
-
 
 class AgendaOut(BaseModel):
     id: int
@@ -42,43 +41,38 @@ class AgendaOut(BaseModel):
 
 # ── Attendee ──
 class AttendeeCreate(BaseModel):
-    name: str
+    name: str = Field(..., max_length=100)
     title: str = ""
-    rfid_card: str = ""
-    seat_id: int = 0
-
+    seat_id: int = Field(default=0, ge=0, le=8)
 
 class AttendeeOut(BaseModel):
     id: int
     meeting_id: int
     name: str
     title: str
-    rfid_card: str
     checked_in: bool
     seat_id: int
 
     model_config = {"from_attributes": True}
 
 
+# ── Check-in (UI确认签到, no RFID) ──
 class CheckInRequest(BaseModel):
-    rfid_card: str
+    seat_id: int = Field(..., ge=1, le=8)
 
 
 # ── Vote ──
 class VoteCreate(BaseModel):
-    title: str
-    options: list[str]
-
+    title: str = Field(..., max_length=500)
+    options: list[str] = Field(..., min_length=2)
 
 class VoteCast(BaseModel):
     attendee_id: int
     option: str
 
-
 class VoteResult(BaseModel):
     option: str
     count: int
-
 
 class VoteOut(BaseModel):
     id: int
@@ -91,11 +85,13 @@ class VoteOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Service ──
+# ── Service Call ──
 class ServiceCallCreate(BaseModel):
-    seat_id: int = 1
-    service_type: str  # coffee / tea / water
+    seat_id: int = Field(..., ge=1, le=8)
+    service_type: str = Field(..., pattern="^(coffee|tea|water|other)$")
 
+class ServiceCallUpdate(BaseModel):
+    status: str = Field(..., pattern="^(acknowledged|completed)$")
 
 class ServiceCallOut(BaseModel):
     id: int
@@ -108,12 +104,11 @@ class ServiceCallOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Translation ──
+# ── Translation (C-tier, keep stubbed) ──
 class TranslationRequest(BaseModel):
     text: str
     source_lang: str = "zh"
     target_lang: str = "en"
-
 
 class TranslationOut(BaseModel):
     original: str
@@ -122,7 +117,15 @@ class TranslationOut(BaseModel):
     target_lang: str
 
 
-# ── WebSocket message ──
+# ── WebSocket messages ──
 class WSMessage(BaseModel):
     type: str
-    data: dict = {}
+    payload: dict = {}
+
+
+# ── Seat state ──
+class SeatState(BaseModel):
+    seat_id: int
+    occupied: bool = False
+    checked_in: bool = False
+    attendee_name: str = ""

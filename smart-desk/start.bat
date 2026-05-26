@@ -16,7 +16,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5173 ^| findstr LISTENING 2^
 :: --- Backend ---
 echo.
 echo [1/2] Starting backend...
-start "SD-Backend" cmd /k "cd /d %~dp0backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+start "SD-Backend" cmd /k "cd /d %~dp0 && uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000"
 timeout /t 3 /nobreak >nul
 
 :: --- Frontend ---

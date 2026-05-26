@@ -1,12 +1,10 @@
 const BASE = '/api'
 
 async function request(method, path, body) {
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-  }
+  const opts = { method, headers: { 'Content-Type': 'application/json' } }
   if (body) opts.body = JSON.stringify(body)
   const res = await fetch(`${BASE}${path}`, opts)
+  if (res.status === 204) return null
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || res.statusText)
@@ -19,7 +17,7 @@ export const api = {
   listMeetings: () => request('GET', '/meetings'),
   createMeeting: (data) => request('POST', '/meetings', data),
   getMeeting: (id) => request('GET', `/meetings/${id}`),
-  updateMeeting: (id, data) => request('PUT', `/meetings/${id}`, data),
+  updateMeeting: (id, data) => request('PATCH', `/meetings/${id}`, data),
   deleteMeeting: (id) => request('DELETE', `/meetings/${id}`),
 
   // agendas
@@ -31,19 +29,21 @@ export const api = {
   listAttendees: (mid) => request('GET', `/meetings/${mid}/attendees`),
   addAttendee: (mid, data) => request('POST', `/meetings/${mid}/attendees`, data),
   removeAttendee: (mid, aid) => request('DELETE', `/meetings/${mid}/attendees/${aid}`),
-  checkin: (mid, data) => request('POST', `/meetings/${mid}/checkin`, data),
+
+  // checkin (seat-based, no RFID)
+  checkin: (mid, seatId) => request('POST', `/checkin/${mid}`, { seat_id: seatId }),
 
   // votes
-  listVotes: (mid) => request('GET', `/votes/meeting/${mid}`),
-  createVote: (mid, data) => request('POST', `/votes?meeting_id=${mid}`, data),
-  getVote: (vid) => request('GET', `/votes/${vid}`),
-  castVote: (vid, data) => request('POST', `/votes/${vid}/cast`, data),
-  closeVote: (vid) => request('POST', `/votes/${vid}/close`),
+  listVotes: (mid) => request('GET', `/votes/${mid}`),
+  createVote: (mid, data) => request('POST', `/votes/${mid}`, data),
+  getVote: (mid, vid) => request('GET', `/votes/${mid}/${vid}`),
+  castVote: (mid, vid, data) => request('POST', `/votes/${mid}/${vid}/cast`, data),
+  closeVote: (mid, vid) => request('POST', `/votes/${mid}/${vid}/close`),
 
-  // services
-  listServiceCalls: (mid) => request('GET', `/services/meeting/${mid}`),
-  createServiceCall: (mid, data) => request('POST', `/services?meeting_id=${mid}`, data),
-  updateCallStatus: (cid, status) => request('PUT', `/services/${cid}/status?status=${status}`),
+  // service calls
+  listServiceCalls: (mid) => request('GET', `/service-calls/${mid}`),
+  createServiceCall: (mid, data) => request('POST', `/service-calls/${mid}`, data),
+  updateCallStatus: (mid, cid, data) => request('PATCH', `/service-calls/${mid}/${cid}`, data),
 
   // translation
   translate: (data) => request('POST', '/translate', data),

@@ -3,131 +3,121 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import get_db
-from models import Meeting, Agenda, Attendee
-from schemas import (
+from backend.database import get_db
+from backend.models import Meeting, Agenda, Attendee
+from backend.schemas import (
     MeetingCreate, MeetingUpdate, MeetingOut,
     AgendaCreate, AgendaOut,
-    AttendeeCreate, AttendeeOut, CheckInRequest,
+    AttendeeCreate, AttendeeOut,
 )
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
 
-# ── Meeting CRUD ──
+def _meeting_out(m: Meeting, db: Session) -> MeetingOut:
+    total = db.query(Attendee).filter(Attendee.meeting_id == m.id).count()
+    checked = db.query(Attendee).filter(
+        Attendee.meeting_id == m.id, Attendee.checked_in == True
+    ).count()
+    return MeetingOut(
+        id=m.id, title=m.title, description=m.description,
+        status=m.status, created_at=m.created_at,
+        attendee_count=total, checked_in_count=checked,
+    )
+
+
 @router.get("", response_model=List[MeetingOut])
 def list_meetings(db: Session = Depends(get_db)):
-    return db.query(Meeting).order_by(Meeting.created_at.desc()).all()
+    return [_meeting_out(m, db) for m in db.query(Meeting).order_by(Meeting.created_at.desc()).all()]
 
 
-@router.post("", response_model=MeetingOut)
+@router.post("", response_model=MeetingOut, status_code=201)
 def create_meeting(data: MeetingCreate, db: Session = Depends(get_db)):
-    meeting = Meeting(title=data.title, description=data.description)
-    db.add(meeting)
+    m = Meeting(title=data.title, description=data.description)
+    db.add(m)
     db.commit()
-    db.refresh(meeting)
-    return meeting
+    db.refresh(m)
+    return _meeting_out(m, db)
 
 
 @router.get("/{meeting_id}", response_model=MeetingOut)
 def get_meeting(meeting_id: int, db: Session = Depends(get_db)):
-    meeting = db.query(Meeting).get(meeting_id)
-    if not meeting:
-        raise HTTPException(404, "会议不存在")
-    return meeting
+    m = db.query(Meeting).get(meeting_id)
+    if not m:
+        raise HTTPException(404, "Meeting not found")
+    return _meeting_out(m, db)
 
 
-@router.put("/{meeting_id}", response_model=MeetingOut)
+@router.patch("/{meeting_id}", response_model=MeetingOut)
 def update_meeting(meeting_id: int, data: MeetingUpdate, db: Session = Depends(get_db)):
-    meeting = db.query(Meeting).get(meeting_id)
-    if not meeting:
-        raise HTTPException(404, "会议不存在")
+    m = db.query(Meeting).get(meeting_id)
+    if not m:
+        raise HTTPException(404, "Meeting not found")
     if data.title is not None:
-        meeting.title = data.title
+        m.title = data.title
     if data.description is not None:
-        meeting.description = data.description
+        m.description = data.description
     if data.status is not None:
-        meeting.status = data.status
+        m.status = data.status
     db.commit()
-    db.refresh(meeting)
-    return meeting
+    db.refresh(m)
+    return _meeting_out(m, db)
 
 
-@router.delete("/{meeting_id}")
+@router.delete("/{meeting_id}", status_code=204)
 def delete_meeting(meeting_id: int, db: Session = Depends(get_db)):
-    meeting = db.query(Meeting).get(meeting_id)
-    if not meeting:
-        raise HTTPException(404, "会议不存在")
-    db.delete(meeting)
+    m = db.query(Meeting).get(meeting_id)
+    if not m:
+        raise HTTPException(404, "Meeting not found")
+    db.delete(m)
     db.commit()
-    return {"ok": True}
 
 
 # ── Agendas ──
+
 @router.get("/{meeting_id}/agendas", response_model=List[AgendaOut])
 def list_agendas(meeting_id: int, db: Session = Depends(get_db)):
     return db.query(Agenda).filter(Agenda.meeting_id == meeting_id).order_by(Agenda.sort_order).all()
 
 
-@router.post("/{meeting_id}/agendas", response_model=AgendaOut)
+@router.post("/{meeting_id}/agendas", response_model=AgendaOut, status_code=201)
 def add_agenda(meeting_id: int, data: AgendaCreate, db: Session = Depends(get_db)):
-    agenda = Agenda(meeting_id=meeting_id, title=data.title, sort_order=data.sort_order)
-    db.add(agenda)
+    a = Agenda(meeting_id=meeting_id, title=data.title, sort_order=data.sort_order)
+    db.add(a)
     db.commit()
-    db.refresh(agenda)
-    return agenda
+    db.refresh(a)
+    return a
 
 
-@router.delete("/{meeting_id}/agendas/{agenda_id}")
+@router.delete("/{meeting_id}/agendas/{agenda_id}", status_code=204)
 def remove_agenda(meeting_id: int, agenda_id: int, db: Session = Depends(get_db)):
-    agenda = db.query(Agenda).filter(Agenda.id == agenda_id, Agenda.meeting_id == meeting_id).first()
-    if not agenda:
-        raise HTTPException(404, "议程不存在")
-    db.delete(agenda)
+    a = db.query(Agenda).filter(Agenda.id == agenda_id, Agenda.meeting_id == meeting_id).first()
+    if not a:
+        raise HTTPException(404, "Agenda not found")
+    db.delete(a)
     db.commit()
-    return {"ok": True}
 
 
 # ── Attendees ──
+
 @router.get("/{meeting_id}/attendees", response_model=List[AttendeeOut])
 def list_attendees(meeting_id: int, db: Session = Depends(get_db)):
     return db.query(Attendee).filter(Attendee.meeting_id == meeting_id).all()
 
 
-@router.post("/{meeting_id}/attendees", response_model=AttendeeOut)
+@router.post("/{meeting_id}/attendees", response_model=AttendeeOut, status_code=201)
 def add_attendee(meeting_id: int, data: AttendeeCreate, db: Session = Depends(get_db)):
-    attendee = Attendee(
-        meeting_id=meeting_id,
-        name=data.name,
-        title=data.title,
-        rfid_card=data.rfid_card,
-        seat_id=data.seat_id,
-    )
-    db.add(attendee)
+    a = Attendee(meeting_id=meeting_id, name=data.name, title=data.title, seat_id=data.seat_id)
+    db.add(a)
     db.commit()
-    db.refresh(attendee)
-    return attendee
+    db.refresh(a)
+    return a
 
 
-@router.delete("/{meeting_id}/attendees/{attendee_id}")
+@router.delete("/{meeting_id}/attendees/{attendee_id}", status_code=204)
 def remove_attendee(meeting_id: int, attendee_id: int, db: Session = Depends(get_db)):
-    attendee = db.query(Attendee).filter(Attendee.id == attendee_id, Attendee.meeting_id == meeting_id).first()
-    if not attendee:
-        raise HTTPException(404, "参会者不存在")
-    db.delete(attendee)
+    a = db.query(Attendee).filter(Attendee.id == attendee_id, Attendee.meeting_id == meeting_id).first()
+    if not a:
+        raise HTTPException(404, "Attendee not found")
+    db.delete(a)
     db.commit()
-    return {"ok": True}
-
-
-@router.post("/{meeting_id}/checkin", response_model=AttendeeOut)
-def checkin(meeting_id: int, data: CheckInRequest, db: Session = Depends(get_db)):
-    attendee = db.query(Attendee).filter(
-        Attendee.meeting_id == meeting_id,
-        Attendee.rfid_card == data.rfid_card,
-    ).first()
-    if not attendee:
-        raise HTTPException(404, "未找到匹配的参会者")
-    attendee.checked_in = True
-    db.commit()
-    db.refresh(attendee)
-    return attendee

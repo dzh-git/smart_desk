@@ -2,7 +2,10 @@
   <div class="panel">
     <div class="section-head">
       <h3>投票表决</h3>
-      <button v-if="isAdmin" class="btn-gold btn-sm" @click="showCreate = true">+ 发起投票</button>
+      <div style="display:flex;gap:8px">
+        <button v-if="isAdmin" class="btn-gold btn-sm" @click="showCreate = true">+ 发起投票</button>
+        <button class="btn-ghost btn-sm" @click="$emit('close')">✕</button>
+      </div>
     </div>
 
     <div v-if="!votes.length" class="empty-sm">暂无投票</div>
@@ -163,13 +166,13 @@ async function doCreate() {
 async function doCast(v) {
   const opt = selected.value[v.id]
   if (!opt) return
-  await api.castVote(v.id, { attendee_id: seatId.value, option: opt })
+  await api.castVote(props.meetingId, v.id, { attendee_id: seatId.value, option: opt })
   selected.value[v.id] = null
   await load()
 }
 
 async function doClose(v) {
-  await api.closeVote(v.id)
+  await api.closeVote(props.meetingId, v.id)
   await load()
 }
 

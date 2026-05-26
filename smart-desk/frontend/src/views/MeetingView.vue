@@ -1,57 +1,65 @@
 <template>
-  <div class="meeting-detail" v-if="meeting">
-    <!-- Header -->
-    <div class="detail-header">
+  <div class="meeting-view" v-if="meeting">
+    <!-- Top bar -->
+    <div class="top-row">
       <button class="btn-ghost btn-sm" @click="$router.push('/')">← 返回</button>
-      <div class="header-info">
+      <div class="meeting-title">
         <h1>{{ meeting.title }}</h1>
         <span class="badge" :class="statusClass(meeting.status)">{{ statusLabel(meeting.status) }}</span>
+        <span class="ws-dot" :class="{ on: wsConnected }">{{ wsConnected ? '●' : '○' }}</span>
       </div>
-      <div class="header-actions">
-        <button
-          class="btn-ghost btn-sm"
-          @click="toggleStatus"
-        >
-          {{ meeting.status === 'active' ? '结束会议' : '开始会议' }}
+      <div class="top-actions">
+        <button class="btn-ghost btn-sm" @click="toggleStatus">
+          {{ meeting.status === 'active' ? '结束' : '开始' }}
         </button>
+        <span class="checkin-count">已签到 {{ checkedCount }}/8</span>
       </div>
     </div>
 
-    <!-- WS indicator -->
-    <div class="ws-indicator" :class="{ connected: wsConnected }">
-      {{ wsConnected ? '● 实时连接' : '○ 连接中…' }}
+    <!-- 8-seat grid -->
+    <div class="grid-area">
+      <SeatGrid
+        :meeting-id="meetingId"
+        :ws-msg="lastWsMsg"
+        @seat-click="onSeatClick"
+      />
     </div>
 
-    <!-- Tabs -->
-    <div class="tabs">
-      <button v-for="t in tabs" :key="t.key" class="tab-btn" :class="{ active: activeTab === t.key }" @click="activeTab = t.key">
-        {{ t.label }}
+    <!-- Bottom action bar -->
+    <div class="action-bar">
+      <button class="action-btn" :class="{ active: showVoting }" @click="showVoting = !showVoting">
+        <span class="action-icon">◈</span> 投票
+      </button>
+      <button class="action-btn" :class="{ active: showServices }" @click="showServices = !showServices">
+        <span class="action-icon">☕</span> 服务
+      </button>
+      <button class="action-btn" :class="{ active: showAgendas }" @click="showAgendas = !showAgendas">
+        <span class="action-icon">☰</span> 议程
+      </button>
+      <button class="action-btn" :class="{ active: showAttendees }" @click="showAttendees = !showAttendees">
+        <span class="action-icon">👥</span> 参会者 {{ attendeeCount }}/8
       </button>
     </div>
 
-    <!-- Tab content -->
-    <transition name="fade" mode="out-in">
-      <AttendeePanel v-if="activeTab === 'attendees'" :meeting-id="meeting.id" :ws-msg="lastWsMsg" key="a" />
-      <VotingPanel v-else-if="activeTab === 'voting'" :meeting-id="meeting.id" :ws-msg="lastWsMsg" key="v" />
-      <TranslationPanel v-else-if="activeTab === 'translation'" key="t" />
-      <ServicePanel v-else-if="activeTab === 'services'" :meeting-id="meeting.id" :ws-msg="lastWsMsg" key="s" />
-      <div v-else key="agenda" class="agenda-tab">
-        <div class="section-head">
-          <h3>会议议程</h3>
-          <button class="btn-primary btn-sm" @click="showAddAgenda = true">+ 添加</button>
-        </div>
-        <div v-if="!agendas.length" class="empty-sm">暂无议程</div>
-        <div v-else class="agenda-list">
-          <div v-for="a in agendas" :key="a.id" class="agenda-item card">
-            <span>{{ a.title }}</span>
-            <button class="btn-ghost btn-sm" @click="removeAgenda(a.id)">删除</button>
-          </div>
-        </div>
-        <div v-if="showAddAgenda" class="inline-form">
-          <input v-model="newAgendaTitle" placeholder="议程内容" @keyup.enter="addAgenda" />
-          <button class="btn-primary btn-sm" @click="addAgenda">确认</button>
-          <button class="btn-ghost btn-sm" @click="showAddAgenda = false">取消</button>
-        </div>
+    <!-- Overlay panels -->
+    <transition name="slide-up">
+      <div v-if="showVoting" class="overlay-panel">
+        <VotingPanel :meeting-id="meetingId" :ws-msg="lastWsMsg" @close="showVoting = false" />
+      </div>
+    </transition>
+    <transition name="slide-up">
+      <div v-if="showServices" class="overlay-panel">
+        <ServicePanel :meeting-id="meetingId" :ws-msg="lastWsMsg" @close="showServices = false" :seat-id="activeSeat" />
+      </div>
+    </transition>
+    <transition name="slide-up">
+      <div v-if="showAgendas" class="overlay-panel">
+        <AgendaPanel :meeting-id="meetingId" @close="showAgendas = false" />
+      </div>
+    </transition>
+    <transition name="slide-up">
+      <div v-if="showAttendees" class="overlay-panel">
+        <AttendeePanel :meeting-id="meetingId" :ws-msg="lastWsMsg" @close="showAttendees = false" />
       </div>
     </transition>
   </div>
@@ -59,101 +67,136 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/index.js'
 import { useWebSocket } from '../composables/useWebSocket.js'
-import AttendeePanel from '../components/AttendeePanel.vue'
+import SeatGrid from '../components/SeatGrid.vue'
 import VotingPanel from '../components/VotingPanel.vue'
-import TranslationPanel from '../components/TranslationPanel.vue'
 import ServicePanel from '../components/ServicePanel.vue'
+import AttendeePanel from '../components/AttendeePanel.vue'
+import AgendaPanel from '../components/AgendaPanel.vue'
 import { statusClass, statusLabel } from '../utils/status.js'
 
 const route = useRoute()
 const meetingId = Number(route.params.id)
 
 const meeting = ref(null)
-const agendas = ref([])
-const activeTab = ref('agenda')
-const showAddAgenda = ref(false)
-const newAgendaTitle = ref('')
 const lastWsMsg = ref(null)
+const activeSeat = ref(1)
+const showVoting = ref(false)
+const showServices = ref(false)
+const showAgendas = ref(false)
+const showAttendees = ref(false)
+const attendeeCount = ref(0)
+const checkedCount = ref(0)
 
-const tabs = [
-  { key: 'agenda', label: '议程' },
-  { key: 'attendees', label: '参会者' },
-  { key: 'voting', label: '投票' },
-  { key: 'translation', label: '翻译' },
-  { key: 'services', label: '服务' },
-]
-
-// WebSocket
 const { connected: wsConnected, connect, onMessage } = useWebSocket(meetingId)
 onMessage((msg) => { lastWsMsg.value = msg })
 connect()
 
-// Load
 async function load() {
-  const [m, a] = await Promise.all([
-    api.getMeeting(meetingId),
-    api.listAgendas(meetingId),
-  ])
-  meeting.value = m
-  agendas.value = a
+  meeting.value = await api.getMeeting(meetingId)
+  attendeeCount.value = meeting.value.attendee_count
+  checkedCount.value = meeting.value.checked_in_count
 }
 onMounted(load)
+
+watch(lastWsMsg, (msg) => {
+  if (msg?.type === 'check_in') checkedCount.value++
+})
+
+function onSeatClick(seatId) {
+  activeSeat.value = seatId
+}
 
 async function toggleStatus() {
   const newStatus = meeting.value.status === 'active' ? 'finished' : 'active'
   meeting.value = await api.updateMeeting(meetingId, { status: newStatus })
 }
-
-async function addAgenda() {
-  if (!newAgendaTitle.value.trim()) return
-  const a = await api.addAgenda(meetingId, { title: newAgendaTitle.value, sort_order: agendas.value.length })
-  agendas.value.push(a)
-  newAgendaTitle.value = ''
-  showAddAgenda.value = false
-}
-
-async function removeAgenda(id) {
-  await api.removeAgenda(meetingId, id)
-  agendas.value = agendas.value.filter(a => a.id !== id)
-}
-
 </script>
 
 <style scoped>
-.meeting-detail { max-width: 1100px; margin: 0 auto; }
+.meeting-view {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px - 56px); /* minus topbar + padding */
+}
 
-.detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
-.header-info { display: flex; align-items: center; gap: 12px; flex: 1; }
-.header-info h1 { font-size: var(--font-xl); font-weight: 600; }
+.top-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+.meeting-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+.meeting-title h1 {
+  font-size: var(--font-xl);
+  font-weight: 600;
+}
+.ws-dot { font-size: 12px; color: var(--text-dim); transition: color 0.3s; }
+.ws-dot.on { color: var(--success); }
+.top-actions { display: flex; align-items: center; gap: 12px; }
+.checkin-count { font-size: var(--font-sm); color: var(--text-secondary); }
 
-.ws-indicator { font-size: var(--font-sm); color: var(--text-dim); margin-bottom: 12px; transition: color 0.3s; }
-.ws-indicator.connected { color: var(--success); }
+.grid-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 10px 0;
+}
 
-.tabs { display: flex; gap: 6px; margin-bottom: 24px; }
-.tab-btn {
-  background: transparent;
+.action-bar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 16px 0 0;
+  flex-shrink: 0;
+}
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-secondary);
   color: var(--text-secondary);
-  padding: 8px 20px;
-  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 10px 20px;
+  border-radius: var(--radius);
   font-size: var(--font-sm);
-  border: 1px solid transparent;
   transition: all 0.25s;
 }
-.tab-btn:hover { color: var(--text-primary); border-color: var(--text-dim); }
-.tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.action-btn:hover { border-color: var(--text-dim); color: var(--text-primary); }
+.action-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow); }
+.action-icon { font-size: 16px; }
 
-.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.section-head h3 { font-size: var(--font-lg); }
+.overlay-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 55vh;
+  background: var(--bg-secondary);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 28px 32px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 -4px 30px rgba(0,0,0,0.5);
+}
 
-.agenda-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 14px 20px; }
-
-.inline-form { display: flex; gap: 8px; margin-top: 12px; }
-.inline-form input { flex: 1; }
-
-.empty-sm { text-align: center; padding: 40px 0; color: var(--text-dim); }
-.loading { text-align: center; padding: 80px 0; color: var(--text-dim); }
+.loading {
+  text-align: center;
+  padding: 80px 0;
+  color: var(--text-dim);
+}
 </style>

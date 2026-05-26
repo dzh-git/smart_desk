@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 
-from database import Base
+from backend.database import Base
 
 
 class Meeting(Base):
@@ -39,7 +39,6 @@ class Attendee(Base):
     meeting_id = Column(Integer, ForeignKey("meetings.id"), nullable=False)
     name = Column(String(100), nullable=False)
     title = Column(String(100), default="")
-    rfid_card = Column(String(50), default="")
     checked_in = Column(Boolean, default=False)
     seat_id = Column(Integer, default=0)
 

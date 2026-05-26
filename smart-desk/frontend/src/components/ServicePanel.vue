@@ -2,6 +2,7 @@
   <div class="panel">
     <div class="section-head">
       <h3>服务呼叫</h3>
+      <button class="btn-ghost btn-sm" @click="$emit('close')">✕</button>
     </div>
 
     <div class="service-grid">
