@@ -124,10 +124,13 @@ function updateEntry(zh, en, isFinal) {
     if (_accumZh) { _accumZh += '\n'; _accumEn += '\n' }
     _accumZh += meaningful.text
     _accumEn += en
+    entryText.zh = _accumZh
+    entryText.en = _accumEn
+  } else {
+    // Interim: show STT output directly (sliding window already has context)
+    entryText.zh = meaningful.text
+    entryText.en = en
   }
-  // Show accumulated + current line
-  entryText.zh = _accumZh ? _accumZh + '\n' + meaningful.text : meaningful.text
-  entryText.en = _accumZh ? _accumEn + '\n' + en : en
   entryText.isFinal = isFinal && meaningful.isComplete
 }
 
