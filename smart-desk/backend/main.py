@@ -13,6 +13,10 @@ from backend.services.serial_service import serial_svc
 from backend.services.ws_service import ws_svc
 from backend.services.desk_coordinator import desk
 
+# Helpers imported for WS handler delegation
+from backend.routers.votes import persist_vote_cast
+from backend.routers.service_calls import persist_service_call
+
 
 def _seed_demo():
     db = SessionLocal()
@@ -129,51 +133,20 @@ async def ws_endpoint(ws: WebSocket, meeting_id: int, seat: int = Query(0)):
                 serial_svc.stub_seat_vacant(seat)
 
             elif msg_type == "vote_cast":
-                # Persist vote to DB + broadcast
-                db = SessionLocal()
-                try:
-                    payload = msg.get("payload", {})
-                    vid = payload.get("vote_id")
-                    opt = payload.get("option")
-                    if vid and opt:
-                        vote = db.query(Vote).filter(
-                            Vote.id == vid, Vote.meeting_id == meeting_id
-                        ).first()
-                        if vote and vote.status == "open" and opt in vote.options:
-                            att = db.query(Attendee).filter(
-                                Attendee.meeting_id == meeting_id,
-                                Attendee.seat_id == seat,
-                            ).first()
-                            aid = att.id if att else seat
-                            existing = db.query(VoteRecord).filter(
-                                VoteRecord.vote_id == vid,
-                                VoteRecord.attendee_id == aid,
-                            ).first()
-                            if existing:
-                                existing.option = opt
-                            else:
-                                db.add(VoteRecord(vote_id=vid, attendee_id=aid, option=opt))
-                            db.commit()
-                finally:
-                    db.close()
+                payload = msg.get("payload", {})
+                vid = payload.get("vote_id")
+                opt = payload.get("option")
+                if vid and opt:
+                    persist_vote_cast(meeting_id, vid, seat, opt)
                 await room.broadcast({
                     "type": "vote_update",
-                    "payload": {"vote_id": payload.get("vote_id")},
+                    "payload": {"vote_id": vid},
                 })
 
             elif msg_type == "service_call":
-                # Persist service call to DB + broadcast
-                db = SessionLocal()
-                try:
-                    payload = msg.get("payload", {})
-                    svc_type = payload.get("service_type", "other")
-                    db.add(ServiceCall(
-                        meeting_id=meeting_id, seat_id=seat,
-                        service_type=svc_type, status="pending",
-                    ))
-                    db.commit()
-                finally:
-                    db.close()
+                payload = msg.get("payload", {})
+                svc_type = payload.get("service_type", "other")
+                persist_service_call(meeting_id, seat, svc_type)
                 await room.broadcast({
                     "type": "service_update",
                     "payload": {"seat_id": seat},

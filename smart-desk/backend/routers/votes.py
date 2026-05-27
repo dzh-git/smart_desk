@@ -13,6 +13,31 @@ from backend.services.desk_coordinator import desk
 router = APIRouter(prefix="/api/votes", tags=["votes"])
 
 
+def persist_vote_cast(meeting_id: int, vote_id: int, seat_id: int, option: str):
+    """Cast a vote from WS, identified by seat instead of attendee_id. Returns VoteOut or None."""
+    from backend.database import SessionLocal
+    db = SessionLocal()
+    try:
+        vote = db.query(Vote).filter(Vote.id == vote_id, Vote.meeting_id == meeting_id).first()
+        if not vote or vote.status != "open" or option not in vote.options:
+            return None
+        att = db.query(Attendee).filter(
+            Attendee.meeting_id == meeting_id, Attendee.seat_id == seat_id
+        ).first()
+        aid = att.id if att else seat_id
+        existing = db.query(VoteRecord).filter(
+            VoteRecord.vote_id == vote_id, VoteRecord.attendee_id == aid
+        ).first()
+        if existing:
+            existing.option = option
+        else:
+            db.add(VoteRecord(vote_id=vote_id, attendee_id=aid, option=option))
+        db.commit()
+        return _vote_out(vote, db)
+    finally:
+        db.close()
+
+
 def _vote_out(v: Vote, db: Session) -> VoteOut:
     records = db.query(VoteRecord).filter(VoteRecord.vote_id == v.id).all()
     # Count per option

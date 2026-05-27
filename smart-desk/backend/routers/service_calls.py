@@ -12,6 +12,20 @@ from backend.services.ws_service import ws_svc
 router = APIRouter(prefix="/api/service-calls", tags=["service_calls"])
 
 
+def persist_service_call(meeting_id: int, seat_id: int, service_type: str) -> ServiceCall:
+    """Create a service call from WS. Returns the created ServiceCall."""
+    from backend.database import SessionLocal
+    db = SessionLocal()
+    try:
+        sc = ServiceCall(meeting_id=meeting_id, seat_id=seat_id, service_type=service_type, status="pending")
+        db.add(sc)
+        db.commit()
+        db.refresh(sc)
+        return sc
+    finally:
+        db.close()
+
+
 @router.get("/{meeting_id}", response_model=List[ServiceCallOut])
 def list_service_calls(meeting_id: int, db: Session = Depends(get_db)):
     return db.query(ServiceCall).filter(
