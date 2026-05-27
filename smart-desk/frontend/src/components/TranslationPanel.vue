@@ -61,10 +61,8 @@
 
     <!-- Unified entry display — always shows latest meaningful text -->
     <div v-if="entryText.zh" class="transcript-current" :class="{ interim: !entryText.isFinal }">
-      <div class="transcript-zh">
-        {{ entryText.zh }}<span v-if="!entryText.isFinal" class="cursor-blink">|</span>
-      </div>
-      <div class="transcript-en" v-if="entryText.en">{{ entryText.en }}</div>
+      <div class="transcript-zh" style="white-space: pre-wrap">{{ entryText.zh }}<span v-if="!entryText.isFinal" class="cursor-blink">|</span></div>
+      <div class="transcript-en" v-if="entryText.en" style="white-space: pre-wrap">{{ entryText.en }}</div>
       <div class="transcript-en pending" v-else>
         <span class="dot-flash"></span> 翻译中…
       </div>
@@ -104,6 +102,8 @@ const entryText = reactive({ zh: '', en: '', isFinal: false })
 const historyItems = reactive([])
 const showHistory = ref(false)
 let idCounter = 0
+let _accumZh = ''
+let _accumEn = ''
 
 function extractMeaningful(text) {
   if (!text) return { text: '', isComplete: false }
@@ -119,8 +119,15 @@ function extractMeaningful(text) {
 
 function updateEntry(zh, en, isFinal) {
   const meaningful = extractMeaningful(zh)
-  entryText.zh = meaningful.text
-  entryText.en = en
+  if (isFinal && meaningful.isComplete) {
+    // Complete sentence: append to accumulator with newline
+    if (_accumZh) { _accumZh += '\n'; _accumEn += '\n' }
+    _accumZh += meaningful.text
+    _accumEn += en
+  }
+  // Show accumulated + current line
+  entryText.zh = _accumZh ? _accumZh + '\n' + meaningful.text : meaningful.text
+  entryText.en = _accumZh ? _accumEn + '\n' + en : en
   entryText.isFinal = isFinal && meaningful.isComplete
 }
 
@@ -137,7 +144,7 @@ function addHistory(zh, en, sid) {
 const { isRecording, errorMsg, interimItem, startRecording, stopRecording } = useAudioRecorder({
   meetingId: computed(() => props.meetingId),
   seatId,
-  onSpeechStart: () => { entryText.isFinal = false },
+  onSpeechStart: () => { _accumZh = ''; _accumEn = ''; entryText.zh = ''; entryText.en = ''; entryText.isFinal = false },
   onInterim: (zh, en) => { updateEntry(zh, en, false) },
   onFinal: (zh, en, sid) => { updateEntry(zh, en, true); addHistory(zh, en, sid) },
 })
@@ -155,13 +162,19 @@ onMounted(async () => {
 
 watch(() => props.wsMsg, (msg) => {
   if (!msg) return
-  if (msg.type === 'speaker_seat_set') speakingSeat.value = msg.payload?.seat_id || null
-  if (msg.type === 'speaker_seat_clear') { speakingSeat.value = null; stopRecording() }
+  if (msg.type === 'speaker_seat_set') {
+    speakingSeat.value = msg.payload?.seat_id || null
+    _accumZh = ''; _accumEn = ''; entryText.zh = ''; entryText.en = ''; entryText.isFinal = false
+  }
+  if (msg.type === 'speaker_seat_clear') {
+    speakingSeat.value = null; stopRecording()
+    _accumZh = ''; _accumEn = ''; entryText.zh = ''; entryText.en = ''; entryText.isFinal = false
+  }
   if (msg.type === 'translation_result') {
     const { zh, en, seat_id } = msg.payload
     if (zh === '[无法识别语音]' && en === '[translation unavailable]') return
     if (!zh && !en) return
-    if (entryText.zh === zh && entryText.en === en) return
+    if (_accumZh && zh && _accumZh.includes(zh.trim())) return
     updateEntry(zh, en, true)
     addHistory(zh, en, seat_id)
   }
@@ -272,7 +285,7 @@ onUnmounted(() => {
   padding: 16px 18px; margin-bottom: 10px;
   background: var(--bg-card); border-radius: var(--radius);
   border-left: 3px solid var(--accent); animation: fadeIn 0.25s var(--ease-out);
-  min-height: 80px;
+  min-height: 80px; max-height: 280px; overflow-y: auto;
 }
 .transcript-current.interim { border-left-color: var(--accent-light); background: rgba(91, 156, 230, 0.06); }
 .transcript-empty { text-align: center; padding: 40px 0; color: var(--text-dim); font-size: var(--font-sm); }
