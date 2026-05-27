@@ -12,12 +12,6 @@
       </div>
     </div>
 
-    <!-- Model loading indicator -->
-    <div v-if="!modelReady && showLoading" class="card model-loading">
-      <span class="loading-spinner"></span>
-      <span>模型加载中…</span>
-    </div>
-
     <!-- Admin: designate speaker seat -->
     <div v-if="isAdmin" class="card admin-section">
       <label for="speaker-seat-select">指定发言席</label>
@@ -65,25 +59,19 @@
       等待管理员指定发言席…
     </div>
 
-    <!-- Single current entry display -->
-    <div v-if="currentEntry.zh" class="transcript-current">
-      <div class="transcript-zh">{{ currentEntry.zh }}</div>
-      <div class="transcript-en" v-if="currentEntry.en">{{ currentEntry.en }}</div>
+    <!-- Unified entry display — always shows latest meaningful text -->
+    <div v-if="entryText.zh" class="transcript-current" :class="{ interim: !entryText.isFinal }">
+      <div class="transcript-zh">
+        {{ entryText.zh }}<span v-if="!entryText.isFinal" class="cursor-blink">|</span>
+      </div>
+      <div class="transcript-en" v-if="entryText.en">{{ entryText.en }}</div>
       <div class="transcript-en pending" v-else>
         <span class="dot-flash"></span> 翻译中…
       </div>
     </div>
 
-    <!-- Interim streaming -->
-    <div v-if="interimItem.zh && !currentEntry.zh" class="transcript-current interim">
-      <div class="transcript-zh">{{ interimItem.zh }}</div>
-      <div class="transcript-en interim-pulse">
-        <span class="dot-flash"></span>
-      </div>
-    </div>
-
     <!-- Empty state -->
-    <div v-if="!currentEntry.zh && !interimItem.zh" class="transcript-empty">
+    <div v-if="!entryText.zh" class="transcript-empty">
       发言内容将实时显示在这里
     </div>
 
@@ -112,46 +100,46 @@ defineEmits(['close'])
 
 const selectedSeat = ref(1)
 const speakingSeat = ref(null)
-const currentEntry = reactive({ zh: '', en: '' })
+const entryText = reactive({ zh: '', en: '', isFinal: false })
 const historyItems = reactive([])
-const modelReady = ref(false)
-const showLoading = ref(true)
 const showHistory = ref(false)
 let idCounter = 0
-let _pollTimer = null
-let _pollTimeout = null
 
-function setEntry(zh, en, sid) {
-  currentEntry.zh = zh
-  currentEntry.en = en
-  // Split long text into sentences for cleaner history entries
-  const zhSents = splitSentences(zh)
-  const enSents = splitSentences(en)
-  const maxLen = Math.max(zhSents.length, enSents.length)
-  const ts = Date.now() / 1000
-  for (let i = 0; i < maxLen; i++) {
-    historyItems.push({
-      id: ++idCounter,
-      zh: zhSents[i] || '',
-      en: enSents[i] || '',
-      seat_id: sid || seatId.value,
-      ts,
-    })
+function extractMeaningful(text) {
+  if (!text) return { text: '', isComplete: false }
+  const puncts = ['。', '！', '？', '；', '：']
+  let last = -1
+  for (const p of puncts) {
+    const idx = text.lastIndexOf(p)
+    if (idx > last) last = idx
   }
-  while (historyItems.length > 200) historyItems.shift()
+  if (last >= 0) return { text: text.substring(0, last + 1), isComplete: true }
+  return { text, isComplete: false }
 }
 
-function splitSentences(text) {
-  if (!text) return ['']
-  // Split by Chinese + English punctuation, keep delimiter with preceding text
-  const parts = text.split(/(?<=[。！？，、；：\.!\?,;:])/g)
-  return parts.filter(s => s.trim())
+function updateEntry(zh, en, isFinal) {
+  const meaningful = extractMeaningful(zh)
+  entryText.zh = meaningful.text
+  entryText.en = en
+  entryText.isFinal = isFinal && meaningful.isComplete
+}
+
+function addHistory(zh, en, sid) {
+  historyItems.push({
+    id: ++idCounter,
+    zh, en,
+    seat_id: sid || seatId.value,
+    ts: Date.now() / 1000,
+  })
+  while (historyItems.length > 200) historyItems.shift()
 }
 
 const { isRecording, errorMsg, interimItem, startRecording, stopRecording } = useAudioRecorder({
   meetingId: computed(() => props.meetingId),
   seatId,
-  onFinal: (zh, en, sid) => setEntry(zh, en, sid),
+  onSpeechStart: () => { entryText.isFinal = false },
+  onInterim: (zh, en) => { updateEntry(zh, en, false) },
+  onFinal: (zh, en, sid) => { updateEntry(zh, en, true); addHistory(zh, en, sid) },
 })
 
 const isSpeaker = computed(() => speakingSeat.value && speakingSeat.value === seatId.value)
@@ -161,28 +149,7 @@ onMounted(async () => {
     const data = await api.getSpeakerSeat(props.meetingId)
     speakingSeat.value = data.speaker_seat
   } catch {}
-  checkModelStatus()
 })
-
-async function checkModelStatus() {
-  try {
-    const status = await api.getPreloadStatus()
-    if (status.ready) { modelReady.value = true; showLoading.value = false; return }
-    api.preloadModels().catch(() => {})
-    _pollTimer = setInterval(async () => {
-      try {
-        const s = await api.getPreloadStatus()
-        if (s.ready) { modelReady.value = true; showLoading.value = false; stopPolling() }
-      } catch { stopPolling() }
-    }, 2000)
-    _pollTimeout = setTimeout(() => { showLoading.value = false; stopPolling() }, 30000)
-  } catch { showLoading.value = false }
-}
-
-function stopPolling() {
-  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null }
-  if (_pollTimeout) { clearTimeout(_pollTimeout); _pollTimeout = null }
-}
 
 // ── WS messages ──
 
@@ -194,8 +161,9 @@ watch(() => props.wsMsg, (msg) => {
     const { zh, en, seat_id } = msg.payload
     if (zh === '[无法识别语音]' && en === '[translation unavailable]') return
     if (!zh && !en) return
-    if (currentEntry.zh === zh && currentEntry.en === en) return
-    setEntry(zh, en, seat_id)
+    if (entryText.zh === zh && entryText.en === en) return
+    updateEntry(zh, en, true)
+    addHistory(zh, en, seat_id)
   }
 })
 
@@ -238,15 +206,15 @@ function mergeBackendHistory(backendEntries) {
   historyItems.sort((a, b) => (a.ts || 0) - (b.ts || 0))
   while (historyItems.length > 200) historyItems.shift()
   const latest = historyItems[historyItems.length - 1]
-  if (latest && !currentEntry.zh) {
-    currentEntry.zh = latest.zh
-    currentEntry.en = latest.en
+  if (latest && !entryText.zh) {
+    entryText.zh = latest.zh
+    entryText.en = latest.en
+    entryText.isFinal = true
   }
 }
 
 onUnmounted(() => {
   stopRecording()
-  stopPolling()
 })
 </script>
 
@@ -258,19 +226,6 @@ onUnmounted(() => {
   content: ''; position: absolute; top: 4px; right: 4px;
   width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
 }
-
-/* ── Model loading ── */
-.model-loading {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 16px 24px; margin-bottom: 16px; font-size: var(--font-sm);
-  color: var(--accent-light); border: 1px solid rgba(91, 156, 230, 0.2);
-}
-.loading-spinner {
-  width: 16px; height: 16px;
-  border: 2px solid var(--border-default); border-top-color: var(--accent);
-  border-radius: 50%; animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Admin section ── */
 .admin-section { margin-bottom: 16px; }
@@ -328,6 +283,8 @@ onUnmounted(() => {
 .transcript-en.interim-pulse { display: flex; align-items: center; gap: 8px; color: var(--text-dim); border-top: none; }
 
 .dot-flash { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 0.8s ease-in-out infinite; flex-shrink: 0; }
+.cursor-blink { animation: blink 0.8s step-end infinite; color: var(--accent); }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
 
 /* ── Error ── */
 .error-msg { color: var(--danger); font-size: var(--font-sm); margin-top: 10px; text-align: center; }

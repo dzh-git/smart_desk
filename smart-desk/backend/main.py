@@ -2,6 +2,7 @@
 Smart Desk — NUC backend entry point.
 """
 from __future__ import annotations
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,6 +59,9 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _seed_demo()
     serial_svc.start()
+    # Preload STT+MT models in background — non-blocking
+    from backend.routers.translation import preload_models
+    asyncio.ensure_future(preload_models())
     yield
     serial_svc.stop()
 

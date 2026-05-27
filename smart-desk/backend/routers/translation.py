@@ -317,6 +317,8 @@ async def transcribe_audio(
     audio: UploadFile = File(...),
 ):
     """Receive audio → SenseVoice STT → Opus-MT → broadcast if final."""
+    if _stt_model is None or _mt_zh_en_model is None or _mt_en_zh_model is None:
+        return {"zh": "", "en": "", "final": final, "ready": False}
     suffix = os.path.splitext(audio.filename or "recording.wav")[1] or ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(await audio.read())

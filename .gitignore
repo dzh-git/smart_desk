@@ -29,6 +29,9 @@ Thumbs.db
 *.bin
 ~/.cache/modelscope/
 
+# Test samples
+smart-desk/语音测试样本/
+
 # Temp
 *.tmp
 *.log

@@ -1,18 +1,18 @@
 import { ref, reactive } from 'vue'
 import { api } from '../api/index.js'
 
-const VAD_FRAME_MS = 30  // Silero VAD frame duration at 16kHz
-const MAX_RECORDING_SEC = 25  // force-send if VAD doesn't detect silence within this
-const INTERIM_INTERVAL_MS = 3000  // interim upload interval
+const MAX_RECORDING_SEC = 25
+const INTERIM_INTERVAL_MS = 3000
+const SLIDING_WINDOW_SEC = 12  // interim sends trailing window for STT context
 
 /**
  * VAD-based audio recording + STT/translation upload.
- * Calls onInterim / onFinal callbacks with results.
  *
- * VAD tuned for meeting speech: ~1.8s silence gap to end utterance,
- * max 25s recording before auto-finalize.
+ * Interim: sends trailing 12s sliding window — bounded cost, enough context.
+ * Final: sends VAD-segmented complete utterance.
+ * Force-finalize: sends full accumulated audio (max 25s continuous speech).
  */
-export function useAudioRecorder({ meetingId, seatId, onInterim, onFinal, onError }) {
+export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, onFinal, onError }) {
   const isRecording = ref(false)
   const errorMsg = ref('')
   const interimItem = reactive({ zh: '', en: '' })
@@ -60,11 +60,15 @@ export function useAudioRecorder({ meetingId, seatId, onInterim, onFinal, onErro
   async function sendInterim() {
     if (_vadStopped || _interimPending || !_rawChunks.length) return
     const fullAudio = concatFloat32(_rawChunks)
-    if (fullAudio.length < 16000) return  // at least 1s of audio for interim
+    const winSamples = SLIDING_WINDOW_SEC * 16000
+    const windowStart = Math.max(0, fullAudio.length - winSamples)
+    const windowAudio = fullAudio.slice(windowStart)
+    if (windowAudio.length < 16000) return
     _interimPending = true
     try {
-      const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(fullAudio), false)
-      if (r.zh && r.zh !== '[无法识别语音]') {
+      const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(windowAudio), false)
+      if (r.ready === false) { /* models not ready yet, skip silently */ }
+      else if (r.zh && r.zh !== '[无法识别语音]') {
         interimItem.zh = r.zh
         interimItem.en = r.en || ''
         onInterim && onInterim(r.zh, r.en || '')
@@ -91,7 +95,6 @@ export function useAudioRecorder({ meetingId, seatId, onInterim, onFinal, onErro
     _recordingStartedAt = 0
   }
 
-  /** Force-finalize: concatenate all accumulated raw audio and send as final. */
   async function forceFinalize() {
     if (_vadStopped || !_rawChunks.length) return
     _interimPending = false
@@ -106,7 +109,6 @@ export function useAudioRecorder({ meetingId, seatId, onInterim, onFinal, onErro
       errorMsg.value = '语音识别失败: ' + e.message
       onError && onError(e.message)
     }
-    // Reset accumulated audio but keep recording
     _rawChunks.length = 0
     _recordingStartedAt = Date.now()
     interimItem.zh = ''
@@ -124,16 +126,18 @@ export function useAudioRecorder({ meetingId, seatId, onInterim, onFinal, onErro
       errorMsg.value = ''
 
       _myvad = await vad.MicVAD.new({
-        onSpeechStart: () => {},
+        onSpeechStart: () => {
+          interimItem.zh = ''
+          interimItem.en = ''
+          onSpeechStart && onSpeechStart()
+        },
         onSpeechEnd: (audio) => {
           if (_vadStopped) return
           finalizeUtterance(audio)
         },
         onVADMisfire: () => {},
-        // ~1.8s silence gap to end utterance (60 × 30ms)
         redemptionFrames: 60,
         preSpeechPadFrames: 20,
-        // minimum ~360ms of speech to trigger (12 × 30ms)
         minSpeechFrames: 12,
         positiveSpeechThreshold: 0.55,
         negativeSpeechThreshold: 0.4,
@@ -149,7 +153,6 @@ export function useAudioRecorder({ meetingId, seatId, onInterim, onFinal, onErro
       processor.onaudioprocess = (e) => {
         if (_vadStopped) return
         _rawChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)))
-        // Max recording duration safety: auto-finalize if VAD didn't detect silence
         if (_recordingStartedAt && accumulatedDurationSec() >= MAX_RECORDING_SEC) {
           forceFinalize()
         }
