@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -10,6 +11,8 @@ from backend.schemas import (
     AgendaCreate, AgendaOut,
     AttendeeCreate, AttendeeOut,
 )
+from backend.services.ws_service import ws_svc
+from backend.services.desk_coordinator import desk
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
@@ -49,7 +52,7 @@ def get_meeting(meeting_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{meeting_id}", response_model=MeetingOut)
-def update_meeting(meeting_id: int, data: MeetingUpdate, db: Session = Depends(get_db)):
+async def update_meeting(meeting_id: int, data: MeetingUpdate, db: Session = Depends(get_db)):
     m = db.query(Meeting).get(meeting_id)
     if not m:
         raise HTTPException(404, "Meeting not found")
@@ -57,10 +60,22 @@ def update_meeting(meeting_id: int, data: MeetingUpdate, db: Session = Depends(g
         m.title = data.title
     if data.description is not None:
         m.description = data.description
+    new_status = None
     if data.status is not None:
+        new_status = data.status
         m.status = data.status
     db.commit()
     db.refresh(m)
+    # Broadcast meeting status change
+    if new_status == "finished":
+        await desk.on_meeting_end(meeting_id)
+    elif new_status == "active":
+        # Fire-and-forget model preload for translation
+        from backend.routers.translation import preload_models
+        asyncio.create_task(preload_models())
+        await ws_svc.get_or_create(meeting_id).broadcast(
+            {"type": "meeting_started", "payload": {}}
+        )
     return _meeting_out(m, db)
 
 

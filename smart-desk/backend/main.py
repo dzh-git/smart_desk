@@ -11,6 +11,7 @@ from backend.models import Meeting, Agenda, Attendee, Vote, VoteRecord, ServiceC
 from backend.routers import meetings, votes, service_calls, checkin, translation
 from backend.services.serial_service import serial_svc
 from backend.services.ws_service import ws_svc
+from backend.services.desk_coordinator import desk
 
 
 def _seed_demo():
@@ -57,7 +58,7 @@ async def lifespan(app: FastAPI):
     serial_svc.stop()
 
 
-app = FastAPI(title="Smart Desk API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Smart Desk API", version="0.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,20 +80,108 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/debug/state")
+def debug_state():
+    """Return current desk state machine + serial status."""
+    return {
+        "seats": desk.state.all_seats_state,
+        "vote": {
+            "id": desk.state.active_vote.vote_id if desk.state.active_vote else None,
+            "title": desk.state.active_vote.title if desk.state.active_vote else None,
+            "phase": desk.state.active_vote.phase.value if desk.state.active_vote else "none",
+        } if desk.state.active_vote else None,
+        "serial_stub": serial_svc.stub,
+        "checked_in": desk.state.checked_in_count,
+        "occupied": desk.state.occupied_count,
+    }
+
+
+@app.post("/api/debug/simulate/{seat_id}")
+def debug_simulate(seat_id: int, action: str = Query("occupied")):
+    """Simulate hardware events without Arduino. action: occupied|vacant."""
+    if action == "occupied":
+        serial_svc.stub_seat_occupied(seat_id)
+    elif action == "vacant":
+        serial_svc.stub_seat_vacant(seat_id)
+    return {"ok": True, "seat_id": seat_id, "action": action}
+
+
 @app.websocket("/ws/{meeting_id}")
 async def ws_endpoint(ws: WebSocket, meeting_id: int, seat: int = Query(0)):
-    async for msg in ws_svc.handle(ws, meeting_id, seat):
-        msg_type = msg.get("type", "")
-        room = ws_svc.get_or_create(meeting_id)
+    registered = False
+    try:
+        async for msg in ws_svc.handle(ws, meeting_id, seat):
+            if not registered:
+                desk.register_seat(seat, meeting_id)
+                registered = True
 
-        if msg_type == "ping":
-            await room.send_to_seat(seat, {"type": "pong"})
+            msg_type = msg.get("type", "")
+            room = ws_svc.get_or_create(meeting_id)
 
-        elif msg_type == "seat_occupied":
-            await room.broadcast({"type": "seat_occupied", "payload": {"seat_id": seat}})
+            if msg_type == "ping":
+                await room.send_to_seat(seat, {"type": "pong"})
 
-        elif msg_type == "check_in":
-            await room.broadcast({"type": "check_in", "payload": {"seat_id": seat}})
+            elif msg_type == "seat_occupied":
+                # Dev mode: simulate TOF detection via tablet click
+                serial_svc.stub_seat_occupied(seat)
 
-        elif msg_type in ("vote_cast", "service_call", "seat_vacant", "led_sync"):
-            await room.broadcast(msg, exclude_seat=seat)
+            elif msg_type == "seat_vacant":
+                serial_svc.stub_seat_vacant(seat)
+
+            elif msg_type == "vote_cast":
+                # Persist vote to DB + broadcast
+                db = SessionLocal()
+                try:
+                    payload = msg.get("payload", {})
+                    vid = payload.get("vote_id")
+                    opt = payload.get("option")
+                    if vid and opt:
+                        vote = db.query(Vote).filter(
+                            Vote.id == vid, Vote.meeting_id == meeting_id
+                        ).first()
+                        if vote and vote.status == "open" and opt in vote.options:
+                            att = db.query(Attendee).filter(
+                                Attendee.meeting_id == meeting_id,
+                                Attendee.seat_id == seat,
+                            ).first()
+                            aid = att.id if att else seat
+                            existing = db.query(VoteRecord).filter(
+                                VoteRecord.vote_id == vid,
+                                VoteRecord.attendee_id == aid,
+                            ).first()
+                            if existing:
+                                existing.option = opt
+                            else:
+                                db.add(VoteRecord(vote_id=vid, attendee_id=aid, option=opt))
+                            db.commit()
+                finally:
+                    db.close()
+                await room.broadcast({
+                    "type": "vote_update",
+                    "payload": {"vote_id": payload.get("vote_id")},
+                })
+
+            elif msg_type == "service_call":
+                # Persist service call to DB + broadcast
+                db = SessionLocal()
+                try:
+                    payload = msg.get("payload", {})
+                    svc_type = payload.get("service_type", "other")
+                    db.add(ServiceCall(
+                        meeting_id=meeting_id, seat_id=seat,
+                        service_type=svc_type, status="pending",
+                    ))
+                    db.commit()
+                finally:
+                    db.close()
+                await room.broadcast({
+                    "type": "service_update",
+                    "payload": {"seat_id": seat},
+                })
+
+            elif msg_type in ("led_sync",):
+                await room.broadcast(msg, exclude_seat=seat)
+
+    finally:
+        if registered:
+            desk.unregister_seat(seat)

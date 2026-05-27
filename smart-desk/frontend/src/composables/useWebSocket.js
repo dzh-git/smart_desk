@@ -1,6 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 
-export function useWebSocket(meetingId) {
+export function useWebSocket(meetingId, seatId = 0) {
   const connected = ref(false)
   const lastMessage = ref(null)
   const messageHandler = ref(null)
@@ -11,7 +11,7 @@ export function useWebSocket(meetingId) {
 
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${proto}//${location.host}/ws/${meetingId}`
+    const url = `${proto}//${location.host}/ws/${meetingId}?seat=${seatId}`
 
     ws = new WebSocket(url)
 

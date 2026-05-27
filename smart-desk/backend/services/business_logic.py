@@ -27,23 +27,21 @@ class SeatState:
     # LED state derived from phase
     @property
     def led_pattern(self) -> str:
-        match self.phase:
-            case SeatPhase.EMPTY:
-                return "breathe"   # warm dim standby
-            case SeatPhase.OCCUPIED:
-                return "wave"      # blue wave — someone sat down
-            case SeatPhase.CHECKED_IN:
-                return "solid"     # warm white — confirmed
+        if self.phase == SeatPhase.EMPTY:
+            return "breathe"   # warm dim standby
+        elif self.phase == SeatPhase.OCCUPIED:
+            return "wave"      # blue wave — someone sat down
+        else:
+            return "solid"     # warm white — confirmed
 
     @property
     def led_color(self) -> tuple[int, int, int]:
-        match self.phase:
-            case SeatPhase.EMPTY:
-                return (255, 200, 150)   # warm dim
-            case SeatPhase.OCCUPIED:
-                return (80, 140, 255)    # blue
-            case SeatPhase.CHECKED_IN:
-                return (255, 220, 180)   # warm white
+        if self.phase == SeatPhase.EMPTY:
+            return (255, 200, 150)   # warm dim
+        elif self.phase == SeatPhase.OCCUPIED:
+            return (80, 140, 255)    # blue
+        else:
+            return (255, 220, 180)   # warm white
 
 
 @dataclass

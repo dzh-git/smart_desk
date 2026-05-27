@@ -1,5 +1,5 @@
 <template>
-  <div class="overlay" @click.self="$emit('close')">
+  <div class="overlay" @click.self="$emit('close')" @keydown.escape="$emit('close')">
     <div class="dialog card checkin-dialog">
       <h2>确认加入会议？</h2>
       <p class="sub">座位 {{ seatId }} · 点击确认完成签到</p>

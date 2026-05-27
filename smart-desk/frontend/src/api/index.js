@@ -47,4 +47,22 @@ export const api = {
 
   // translation
   translate: (data) => request('POST', '/translate', data),
+  preloadModels: () => request('POST', '/translate/preload'),
+  getPreloadStatus: () => request('GET', '/translate/preload/status'),
+  setSpeakerSeat: (meetingId, seatId) => request('POST', '/translate/speaker-seat', {
+    meeting_id: meetingId, seat_id: seatId,
+  }),
+  getSpeakerSeat: (meetingId) => request('GET', `/translate/speaker-seat?meeting_id=${meetingId}`),
+  getTranscriptHistory: (meetingId) => request('GET', `/translate/history?meeting_id=${meetingId}`),
+  uploadAudio: (meetingId, seatId, blob, isFinal = true) => {
+    const form = new FormData()
+    form.append('meeting_id', meetingId)
+    form.append('seat_id', seatId)
+    form.append('final', isFinal)
+    form.append('audio', blob, 'recording.wav')
+    return fetch('/api/translate/audio', { method: 'POST', body: form }).then(r => {
+      if (!r.ok) throw new Error('Upload failed')
+      return r.json()
+    })
+  },
 }

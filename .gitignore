@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.env
+*.db
+
+# Node / Vite
+node_modules/
+smart-desk/frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright / test artifacts
+.playwright-mcp/
+
+# Model caches (large binary files)
+*.pt
+*.bin
+~/.cache/modelscope/
+
+# Temp
+*.tmp
+*.log

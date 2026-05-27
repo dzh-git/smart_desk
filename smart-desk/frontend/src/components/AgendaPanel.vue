@@ -4,7 +4,7 @@
       <h3>会议议程</h3>
       <div style="display:flex;gap:8px">
         <button v-if="isAdmin" class="btn-primary btn-sm" @click="showAdd = true">+ 添加</button>
-        <button class="btn-ghost btn-sm" @click="$emit('close')">✕</button>
+        <button class="btn-ghost btn-sm" @click="$emit('close')" aria-label="关闭议程面板">✕</button>
       </div>
     </div>
 

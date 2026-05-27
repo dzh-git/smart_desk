@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -6,6 +7,8 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import Vote, VoteRecord, Attendee
 from backend.schemas import VoteCreate, VoteCast, VoteOut, VoteResult
+from backend.services.ws_service import ws_svc
+from backend.services.desk_coordinator import desk
 
 router = APIRouter(prefix="/api/votes", tags=["votes"])
 
@@ -38,6 +41,9 @@ def create_vote(meeting_id: int, data: VoteCreate, db: Session = Depends(get_db)
     db.add(v)
     db.commit()
     db.refresh(v)
+    asyncio.run(ws_svc.get_or_create(meeting_id).broadcast(
+        {"type": "vote_update", "payload": {"vote_id": v.id}}
+    ))
     return _vote_out(v, db)
 
 
@@ -68,6 +74,9 @@ def cast_vote(meeting_id: int, vote_id: int, data: VoteCast, db: Session = Depen
         db.add(VoteRecord(vote_id=vote_id, attendee_id=data.attendee_id, option=data.option))
 
     db.commit()
+    asyncio.run(ws_svc.get_or_create(meeting_id).broadcast(
+        {"type": "vote_update", "payload": {"vote_id": vote_id}}
+    ))
     return _vote_out(v, db)
 
 
@@ -78,4 +87,7 @@ def close_vote(meeting_id: int, vote_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Vote not found")
     v.status = "closed"
     db.commit()
+    asyncio.run(ws_svc.get_or_create(meeting_id).broadcast(
+        {"type": "vote_update", "payload": {"vote_id": vote_id}}
+    ))
     return _vote_out(v, db)

@@ -2,11 +2,11 @@
   <div class="panel">
     <div class="section-head">
       <h3>服务呼叫</h3>
-      <button class="btn-ghost btn-sm" @click="$emit('close')">✕</button>
+      <button class="btn-ghost btn-sm" @click="$emit('close')" aria-label="关闭服务面板">✕</button>
     </div>
 
     <div class="service-grid">
-      <button v-for="s in serviceTypes" :key="s.type" class="card service-btn" @click="doCall(s.type)">
+      <button v-for="s in serviceTypes" :key="s.type" class="card service-btn" :aria-label="s.label" @click="doCall(s.type)">
         <span class="service-icon">{{ s.icon }}</span>
         <span class="service-label">{{ s.label }}</span>
       </button>

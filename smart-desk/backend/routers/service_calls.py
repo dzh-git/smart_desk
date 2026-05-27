@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import ServiceCall
 from backend.schemas import ServiceCallCreate, ServiceCallUpdate, ServiceCallOut
+from backend.services.ws_service import ws_svc
 
 router = APIRouter(prefix="/api/service-calls", tags=["service_calls"])
 
@@ -23,6 +25,9 @@ def create_service_call(meeting_id: int, data: ServiceCallCreate, db: Session = 
     db.add(sc)
     db.commit()
     db.refresh(sc)
+    asyncio.run(ws_svc.get_or_create(meeting_id).broadcast(
+        {"type": "service_update", "payload": {"seat_id": data.seat_id}}
+    ))
     return sc
 
 

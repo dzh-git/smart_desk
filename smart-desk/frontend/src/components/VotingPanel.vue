@@ -4,7 +4,7 @@
       <h3>投票表决</h3>
       <div style="display:flex;gap:8px">
         <button v-if="isAdmin" class="btn-gold btn-sm" @click="showCreate = true">+ 发起投票</button>
-        <button class="btn-ghost btn-sm" @click="$emit('close')">✕</button>
+        <button class="btn-ghost btn-sm" @click="$emit('close')" aria-label="关闭投票面板">✕</button>
       </div>
     </div>
 
@@ -166,7 +166,14 @@ async function doCreate() {
 async function doCast(v) {
   const opt = selected.value[v.id]
   if (!opt) return
-  await api.castVote(props.meetingId, v.id, { attendee_id: seatId.value, option: opt })
+  // Look up attendee_id by seat_id (they're different)
+  let attendeeId = seatId.value
+  try {
+    const attendees = await api.listAttendees(props.meetingId)
+    const att = attendees.find(a => a.seat_id === seatId.value)
+    if (att) attendeeId = att.id
+  } catch {}
+  await api.castVote(props.meetingId, v.id, { attendee_id: attendeeId, option: opt })
   selected.value[v.id] = null
   await load()
 }

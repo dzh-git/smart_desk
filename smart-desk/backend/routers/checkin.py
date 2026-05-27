@@ -2,7 +2,6 @@
 Check-in router — UI-based seat confirmation (no RFID).
 """
 from __future__ import annotations
-import asyncio
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -10,6 +9,7 @@ from backend.database import get_db
 from backend.models import Attendee
 from backend.schemas import CheckInRequest, AttendeeOut
 from backend.services.ws_service import ws_svc
+from backend.services.desk_coordinator import desk
 
 router = APIRouter(prefix="/api/checkin", tags=["checkin"])
 
@@ -42,5 +42,8 @@ async def check_in(meeting_id: int, data: CheckInRequest, db: Session = Depends(
         "type": "check_in",
         "payload": {"seat_id": data.seat_id, "name": attendee.name},
     })
+
+    # Update state machine + LED
+    await desk.on_checkin(meeting_id, data.seat_id)
 
     return attendee

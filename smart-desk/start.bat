@@ -10,8 +10,9 @@ cd /d "%~dp0"
 
 :: --- Kill old processes ---
 echo [0/2] Cleaning old processes...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8000 ^| findstr LISTENING 2^>nul') do taskkill /PID %%a /F >nul 2>&1
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5173 ^| findstr LISTENING 2^>nul') do taskkill /PID %%a /F >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R ":8000[^0-9]*$" ^| findstr LISTENING 2^>nul') do taskkill /PID %%a /F >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R ":5173[^0-9]*$" ^| findstr LISTENING 2^>nul') do taskkill /PID %%a /F >nul 2>&1
+timeout /t 2 /nobreak >nul
 
 :: --- Backend ---
 echo.
