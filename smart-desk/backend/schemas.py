@@ -43,7 +43,7 @@ class AgendaOut(BaseModel):
 class AttendeeCreate(BaseModel):
     name: str = Field(..., max_length=100)
     title: str = ""
-    seat_id: int = Field(default=0, ge=0, le=8)
+    seat_id: int = Field(default=0, ge=0, le=10)
 
 class AttendeeOut(BaseModel):
     id: int
@@ -58,7 +58,7 @@ class AttendeeOut(BaseModel):
 
 # ── Check-in (UI确认签到, no RFID) ──
 class CheckInRequest(BaseModel):
-    seat_id: int = Field(..., ge=1, le=8)
+    seat_id: int = Field(..., ge=1, le=10)
 
 
 # ── Vote ──
@@ -87,7 +87,7 @@ class VoteOut(BaseModel):
 
 # ── Service Call ──
 class ServiceCallCreate(BaseModel):
-    seat_id: int = Field(..., ge=1, le=8)
+    seat_id: int = Field(..., ge=1, le=10)
     service_type: str = Field(..., pattern="^(coffee|tea|water|other)$")
 
 class ServiceCallUpdate(BaseModel):

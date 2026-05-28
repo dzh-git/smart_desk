@@ -1,16 +1,16 @@
 import { ref, reactive } from 'vue'
 import { api } from '../api/index.js'
 
-const MAX_RECORDING_SEC = 25
-const INTERIM_INTERVAL_MS = 3000
-const SLIDING_WINDOW_SEC = 12  // interim sends trailing window for STT context
+const MAX_RECORDING_SEC = 20
+const INTERIM_INTERVAL_MS = 4000
+const SLIDING_WINDOW_SEC = 6  // interim sends trailing window for STT context
 
 /**
  * VAD-based audio recording + STT/translation upload.
  *
- * Interim: sends trailing 12s sliding window — bounded cost, enough context.
+ * Interim: sends trailing 6s sliding window — bounded cost, enough context.
  * Final: sends VAD-segmented complete utterance.
- * Force-finalize: sends full accumulated audio (max 25s continuous speech).
+ * Force-finalize: sends full accumulated audio (max 20s continuous speech).
  */
 export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, onFinal, onError }) {
   const isRecording = ref(false)
@@ -24,6 +24,7 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
   let _interimPending = false
   let _myvad = null
   let _recordingStartedAt = 0
+  let _utteranceId = 0
 
   function concatFloat32(chunks) {
     const len = chunks.reduce((s, c) => s + c.length, 0)
@@ -67,7 +68,7 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
     _interimPending = true
     try {
       const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(windowAudio), false)
-      if (r.ready === false) { /* models not ready yet, skip silently */ }
+      if (r.ready === false || r.skipped) { /* models not ready or server busy, skip silently */ }
       else if (r.zh && r.zh !== '[无法识别语音]') {
         interimItem.zh = r.zh
         interimItem.en = r.en || ''
@@ -83,7 +84,7 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
     try {
       const r = await api.uploadAudio(meetingId.value, seatId.value, wavBlob, true)
       if (r.zh && r.zh !== '[无法识别语音]') {
-        onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value)
+        onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value, _utteranceId)
       }
     } catch (e) {
       errorMsg.value = '语音识别失败: ' + e.message
@@ -103,7 +104,7 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
     try {
       const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(fullAudio), true)
       if (r.zh && r.zh !== '[无法识别语音]') {
-        onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value)
+        onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value, _utteranceId)
       }
     } catch (e) {
       errorMsg.value = '语音识别失败: ' + e.message
@@ -127,6 +128,7 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
 
       _myvad = await vad.MicVAD.new({
         onSpeechStart: () => {
+          _utteranceId++
           interimItem.zh = ''
           interimItem.en = ''
           onSpeechStart && onSpeechStart()

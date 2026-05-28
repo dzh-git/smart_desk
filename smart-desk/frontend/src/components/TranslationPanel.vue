@@ -17,7 +17,7 @@
       <label for="speaker-seat-select">指定发言席</label>
       <div class="speaker-row">
         <select id="speaker-seat-select" v-model.number="selectedSeat">
-          <option v-for="s in 8" :key="s" :value="s">座位 {{ s }}</option>
+          <option v-for="s in 10" :key="s" :value="s">座位 {{ s }}</option>
         </select>
         <button class="btn-primary btn-sm" @click="setSpeaker">指定发言席</button>
       </div>
@@ -54,22 +54,33 @@
       </div>
     </div>
 
+    <!-- Model loading hint -->
+    <div v-if="isSpeaker && !modelReady" class="card model-loading-hint">
+      <span class="dot-flash"></span> 模型加载中，请稍候…
+    </div>
+
     <!-- No speaker seat yet -->
     <div v-if="!isAdmin && !speakingSeat" class="empty-sm">
       等待管理员指定发言席…
     </div>
 
-    <!-- Unified entry display — always shows latest meaningful text -->
-    <div v-if="entryText.zh" class="transcript-current" :class="{ interim: !entryText.isFinal }">
-      <div class="transcript-zh" style="white-space: pre-wrap">{{ entryText.zh }}<span v-if="!entryText.isFinal" class="cursor-blink">|</span></div>
-      <div class="transcript-en" v-if="entryText.en" style="white-space: pre-wrap">{{ entryText.en }}</div>
-      <div class="transcript-en pending" v-else>
-        <span class="dot-flash"></span> 翻译中…
+    <!-- Two-line display: line1 = complete sentence, line2 = current -->
+    <div v-if="line1.zh || line2.zh" class="transcript-current" :class="{ interim: !_isLine2Final }">
+      <div v-if="line1.zh" class="transcript-line line-prev">
+        <div class="transcript-zh">{{ line1.zh }}</div>
+        <div class="transcript-en" v-if="line1.en">{{ line1.en }}</div>
+      </div>
+      <div class="transcript-line line-curr">
+        <div class="transcript-zh">{{ line2.zh }}<span v-if="!_isLine2Final" class="cursor-blink">|</span></div>
+        <div class="transcript-en" v-if="line2.en">{{ line2.en }}</div>
+        <div class="transcript-en pending" v-else-if="line2.zh && !line2.en">
+          <span class="dot-flash"></span> 翻译中…
+        </div>
       </div>
     </div>
 
     <!-- Empty state -->
-    <div v-if="!entryText.zh" class="transcript-empty">
+    <div v-if="!line1.zh && !line2.zh" class="transcript-empty">
       发言内容将实时显示在这里
     </div>
 
@@ -98,47 +109,95 @@ defineEmits(['close'])
 
 const selectedSeat = ref(1)
 const speakingSeat = ref(null)
-const entryText = reactive({ zh: '', en: '', isFinal: false })
+const modelReady = ref(false)
+const line1 = reactive({ zh: '', en: '' })
+const line2 = reactive({ zh: '', en: '' })
+let _isLine2Final = false
 const historyItems = reactive([])
 const showHistory = ref(false)
 let idCounter = 0
-let _accumZh = ''
-let _accumEn = ''
+let _preloadPollTimer = null
 
-function extractMeaningful(text) {
-  if (!text) return { text: '', isComplete: false }
-  const puncts = ['。', '！', '？', '；', '：']
-  let last = -1
-  for (const p of puncts) {
-    const idx = text.lastIndexOf(p)
-    if (idx > last) last = idx
+function splitByPeriod(text) {
+  if (!text) return []
+  // Primary: sentence-final punctuation
+  const parts = text.split(/(?<=[。！？.!?])/)
+  const result = []
+  for (const part of parts) {
+    const s = part.trim()
+    if (!s) continue
+    // Fallback: long chunk with commas but no period → split on commas
+    // SenseVoice may output ， instead of 。 between sentences in continuous speech
+    if (s.length > 15 && /[，,]/.test(s)) {
+      const sub = s.split(/(?<=[，,])/)
+      for (const ss of sub) {
+        const t = ss.trim()
+        if (t && t.length >= 6) result.push(t)
+      }
+    } else {
+      result.push(s)
+    }
   }
-  if (last >= 0) return { text: text.substring(0, last + 1), isComplete: true }
-  return { text, isComplete: false }
+  return result
 }
 
-function updateEntry(zh, en, isFinal) {
-  const meaningful = extractMeaningful(zh)
-  if (isFinal && meaningful.isComplete) {
-    // Complete sentence: append to accumulator with newline
-    if (_accumZh) { _accumZh += '\n'; _accumEn += '\n' }
-    _accumZh += meaningful.text
-    _accumEn += en
-    entryText.zh = _accumZh
-    entryText.en = _accumEn
-  } else {
-    // Interim: show STT output directly (sliding window already has context)
-    entryText.zh = meaningful.text
-    entryText.en = en
+function textSimilar(a, b) {
+  if (!a || !b) return 0
+  const shorter = a.length < b.length ? a : b
+  const longer = a.length < b.length ? b : a
+  if (shorter.length === 0) return 0
+  let matches = 0
+  for (let i = 0; i < shorter.length; i++) {
+    if (shorter[i] === longer[i]) matches++
   }
-  entryText.isFinal = isFinal && meaningful.isComplete
+  return matches / longer.length
 }
 
-function addHistory(zh, en, sid) {
+let _line1Zh = ''
+let _line1En = ''
+
+function updateLines(zh, en, isFinal) {
+  if (!zh) return
+  const zhSents = splitByPeriod(zh)
+  const enSents = splitByPeriod(en)
+
+  // line1: stable cache of second-to-last complete sentence
+  // Only updates when a genuinely new second-to-last sentence appears
+  if (zhSents.length >= 2) {
+    const candidate = zhSents[zhSents.length - 2]
+    if (candidate !== _line1Zh) {
+      _line1Zh = candidate
+      _line1En = enSents.length >= 2 ? enSents[Math.min(zhSents.length - 2, enSents.length - 1)] : (enSents[0] || '')
+    }
+    line1.zh = _line1Zh
+    line1.en = _line1En
+  }
+  // When < 2 sentences, keep line1 as-is (stable, doesn't disappear)
+
+  line2.zh = zhSents[zhSents.length - 1] || ''
+  line2.en = enSents.length >= 1 ? enSents[enSents.length - 1] : (en || '')
+  _isLine2Final = isFinal && /[。！？.!?，,]$/.test(line2.zh.trim())
+}
+
+function addHistory(zh, en, sid, segId) {
+  // Audio-segment-based dedup: same segment → update, never duplicate
+  if (segId != null) {
+    let existing = null
+    for (let i = historyItems.length - 1; i >= 0; i--) {
+      if (historyItems[i].seg_id === segId) { existing = historyItems[i]; break }
+    }
+    if (existing) {
+      existing.zh = zh
+      existing.en = en
+      existing.ts = Date.now() / 1000
+      return
+    }
+  }
   historyItems.push({
     id: ++idCounter,
     zh, en,
     seat_id: sid || seatId.value,
+    seg_id: segId,
     ts: Date.now() / 1000,
   })
   while (historyItems.length > 200) historyItems.shift()
@@ -147,9 +206,9 @@ function addHistory(zh, en, sid) {
 const { isRecording, errorMsg, interimItem, startRecording, stopRecording } = useAudioRecorder({
   meetingId: computed(() => props.meetingId),
   seatId,
-  onSpeechStart: () => { _accumZh = ''; _accumEn = ''; entryText.zh = ''; entryText.en = ''; entryText.isFinal = false },
-  onInterim: (zh, en) => { updateEntry(zh, en, false) },
-  onFinal: (zh, en, sid) => { updateEntry(zh, en, true); addHistory(zh, en, sid) },
+  onSpeechStart: () => { _line1Zh = ''; _line1En = ''; line1.zh = ''; line1.en = ''; line2.zh = ''; line2.en = ''; _isLine2Final = false },
+  onInterim: (zh, en) => { updateLines(zh, en, false) },
+  onFinal: (zh, en, sid, segId) => { updateLines(zh, en, true); addHistory(zh, en, sid, segId) },
 })
 
 const isSpeaker = computed(() => speakingSeat.value && speakingSeat.value === seatId.value)
@@ -159,6 +218,17 @@ onMounted(async () => {
     const data = await api.getSpeakerSeat(props.meetingId)
     speakingSeat.value = data.speaker_seat
   } catch {}
+  // Poll model ready status — non-blocking
+  _preloadPollTimer = setInterval(async () => {
+    try {
+      const s = await api.getPreloadStatus()
+      if (s.ready) {
+        modelReady.value = true
+        clearInterval(_preloadPollTimer)
+        _preloadPollTimer = null
+      }
+    } catch {}
+  }, 2000)
 })
 
 // ── WS messages ──
@@ -167,19 +237,21 @@ watch(() => props.wsMsg, (msg) => {
   if (!msg) return
   if (msg.type === 'speaker_seat_set') {
     speakingSeat.value = msg.payload?.seat_id || null
-    _accumZh = ''; _accumEn = ''; entryText.zh = ''; entryText.en = ''; entryText.isFinal = false
+    _line1Zh = ''; _line1En = ''; line1.zh = ''; line1.en = ''; line2.zh = ''; line2.en = ''; _isLine2Final = false
   }
   if (msg.type === 'speaker_seat_clear') {
     speakingSeat.value = null; stopRecording()
-    _accumZh = ''; _accumEn = ''; entryText.zh = ''; entryText.en = ''; entryText.isFinal = false
+    _line1Zh = ''; _line1En = ''; line1.zh = ''; line1.en = ''; line2.zh = ''; line2.en = ''; _isLine2Final = false
   }
   if (msg.type === 'translation_result') {
     const { zh, en, seat_id } = msg.payload
     if (zh === '[无法识别语音]' && en === '[translation unavailable]') return
     if (!zh && !en) return
-    if (_accumZh && zh && _accumZh.includes(zh.trim())) return
-    updateEntry(zh, en, true)
-    addHistory(zh, en, seat_id)
+    // WS echo: dedup by timestamp proximity + text similarity
+    const last = historyItems[historyItems.length - 1]
+    if (last && (Date.now() / 1000 - last.ts) < 8 && textSimilar(last.zh, zh) > 0.8) return
+    updateLines(zh, en, true)
+    addHistory(zh, en, seat_id, undefined)
   }
 })
 
@@ -212,25 +284,23 @@ async function openHistory() {
 }
 
 function mergeBackendHistory(backendEntries) {
-  const seen = new Set(historyItems.map((it) => `${it.zh}|${it.seat_id}|${it.ts}`))
   for (const e of backendEntries) {
-    const key = `${e.zh}|${e.seat_id}|${e.ts}`
-    if (seen.has(key)) continue
-    seen.add(key)
+    // Check time proximity (<8s) + text similarity for dedup
+    const last = historyItems[historyItems.length - 1]
+    if (last && Math.abs((last.ts || 0) - (e.ts || 0)) < 8 && textSimilar(last.zh, e.zh) > 0.8) continue
     historyItems.push({ id: ++idCounter, zh: e.zh, en: e.en, seat_id: e.seat_id, ts: e.ts })
   }
   historyItems.sort((a, b) => (a.ts || 0) - (b.ts || 0))
   while (historyItems.length > 200) historyItems.shift()
   const latest = historyItems[historyItems.length - 1]
-  if (latest && !entryText.zh) {
-    entryText.zh = latest.zh
-    entryText.en = latest.en
-    entryText.isFinal = true
+  if (latest && !line1.zh && !line2.zh) {
+    updateLines(latest.zh, latest.en, true)
   }
 }
 
 onUnmounted(() => {
   stopRecording()
+  if (_preloadPollTimer) clearInterval(_preloadPollTimer)
 })
 </script>
 
@@ -292,6 +362,7 @@ onUnmounted(() => {
 }
 .transcript-current.interim { border-left-color: var(--accent-light); background: rgba(91, 156, 230, 0.06); }
 .transcript-empty { text-align: center; padding: 40px 0; color: var(--text-dim); font-size: var(--font-sm); }
+.model-loading-hint { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18px 24px; font-size: var(--font-sm); color: var(--text-secondary); margin-bottom: 20px; }
 
 .transcript-zh { font-size: var(--font-md); color: var(--text-primary); line-height: 1.6; word-break: break-word; margin-bottom: 8px; }
 .transcript-en { font-size: var(--font-sm); color: var(--accent-light); line-height: 1.5; word-break: break-word; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
@@ -301,6 +372,10 @@ onUnmounted(() => {
 .dot-flash { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 0.8s ease-in-out infinite; flex-shrink: 0; }
 .cursor-blink { animation: blink 0.8s step-end infinite; color: var(--accent); }
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+.transcript-line.line-prev { opacity: 0.55; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px dashed var(--border-subtle); }
+.transcript-line.line-prev .transcript-zh { font-size: var(--font-sm); margin-bottom: 2px; }
+.transcript-line.line-prev .transcript-en { font-size: var(--font-xs); padding-top: 2px; border-top: none; }
 
 /* ── Error ── */
 .error-msg { color: var(--danger); font-size: var(--font-sm); margin-top: 10px; text-align: center; }

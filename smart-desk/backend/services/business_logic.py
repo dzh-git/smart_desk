@@ -75,12 +75,12 @@ class VoteState:
 
 
 class DeskStateMachine:
-    """Pure state machine for the 8-seat smart desk.
+    """Pure state machine for the 10-seat smart desk.
 
     No I/O — callers push events in and read state out.
     """
 
-    SEATS = 8
+    SEATS = 10
 
     def __init__(self):
         self.seats: dict[int, SeatState] = {

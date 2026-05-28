@@ -1,5 +1,5 @@
 """
-Serial service — manages 8 USB serial connections to Arduino Nano.
+Serial service — manages 10 USB serial connections to Arduino Nano.
 """
 from __future__ import annotations
 import asyncio
@@ -26,7 +26,7 @@ class SeatConnection:
 
 
 class SerialService:
-    """Manages 8 seat serial connections. Stub mode when no hardware."""
+    """Manages 10 seat serial connections. Stub mode when no hardware."""
 
     BAUD = 115200
     HEARTBEAT_TIMEOUT = 5.0  # seconds
@@ -35,7 +35,7 @@ class SerialService:
     def __init__(self, stub: bool = True):
         self.stub = stub
         self.seats: dict[int, SeatConnection] = {
-            i: SeatConnection(seat_id=i) for i in range(1, 9)
+            i: SeatConnection(seat_id=i) for i in range(1, 11)
         }
         self._on_message: Callable[[int, dict], None] | None = None
         self._running = False
@@ -68,8 +68,8 @@ class SerialService:
                 conn.connected = False
 
     def broadcast(self, msg: dict):
-        """Send to all 8 seats."""
-        for seat_id in range(1, 9):
+        """Send to all 10 seats."""
+        for seat_id in range(1, 11):
             self.send(seat_id, msg)
 
     def set_led(self, seat_id: int, pattern: str, color: tuple[int, int, int] = (255, 255, 255), brightness: int = 80):

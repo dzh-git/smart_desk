@@ -21,7 +21,7 @@
         </button>
         <span class="checkin-count">
           <span class="checkin-icon">✓</span>
-          已签到 {{ checkedCount }}/8
+          已签到 {{ checkedCount }}/10
         </span>
       </div>
     </div>
@@ -73,7 +73,7 @@
         >
           <span class="action-icon">👥</span>
           <span class="action-label">参会者</span>
-          <span class="count-badge">{{ attendeeCount }}/8</span>
+          <span class="count-badge">{{ attendeeCount }}/10</span>
         </button>
         <button
           class="action-btn"

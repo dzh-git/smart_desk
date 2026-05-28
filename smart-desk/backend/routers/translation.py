@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+import threading
 import time
 import warnings
 from collections import defaultdict
@@ -31,7 +32,8 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 router = APIRouter(prefix="/api/translate", tags=["translation"])
 
-_executor = ThreadPoolExecutor(max_workers=2)
+_executor = ThreadPoolExecutor(max_workers=4)
+_pending_sema = threading.Semaphore(4)
 
 # ── Lazy-loaded models ──
 
@@ -166,7 +168,7 @@ def _transcribe_sensevoice(audio_path: str) -> str:
             input=audio_path,
             language="auto",
             use_itn=True,
-            batch_size_s=60,
+            batch_size_s=30,
         )
         if result and len(result) > 0:
             text = result[0].get("text", "").strip()
@@ -179,6 +181,18 @@ def _transcribe_sensevoice(audio_path: str) -> str:
 
 
 # ── Language detection ──
+
+def _is_similar(a: str, b: str, threshold: float = 0.8) -> bool:
+    """Character-level prefix-match ratio. True if >80% chars match from start."""
+    if not a or not b:
+        return False
+    shorter = a if len(a) < len(b) else b
+    longer = b if len(a) < len(b) else a
+    if len(shorter) == 0:
+        return False
+    matches = sum(1 for i, c in enumerate(shorter) if i < len(longer) and c == longer[i])
+    return matches / len(longer) > threshold
+
 
 def _detect_language(text: str) -> str:
     """Detect if text is primarily Chinese or English. Returns 'zh' or 'en'."""
@@ -194,7 +208,10 @@ def _translate_zh_to_en(text: str) -> str:
     try:
         tokenizer, model = _get_mt_zh_en_model()
         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        outputs = model.generate(**inputs, max_length=512, num_beams=4)
+        outputs = model.generate(
+            **inputs, max_length=512, num_beams=4,
+            repetition_penalty=1.2, no_repeat_ngram_size=3, early_stopping=True,
+        )
         return tokenizer.decode(outputs[0], skip_special_tokens=True)
     except Exception as e:
         print(f"[mt] zh→en failed: {e}")
@@ -206,7 +223,10 @@ def _translate_en_to_zh(text: str) -> str:
     try:
         tokenizer, model = _get_mt_en_zh_model()
         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        outputs = model.generate(**inputs, max_length=512, num_beams=4)
+        outputs = model.generate(
+            **inputs, max_length=512, num_beams=4,
+            repetition_penalty=1.2, no_repeat_ngram_size=3, early_stopping=True,
+        )
         return tokenizer.decode(outputs[0], skip_special_tokens=True)
     except Exception as e:
         print(f"[mt] en→zh failed: {e}")
@@ -319,6 +339,12 @@ async def transcribe_audio(
     """Receive audio → SenseVoice STT → Opus-MT → broadcast if final."""
     if _stt_model is None or _mt_zh_en_model is None or _mt_en_zh_model is None:
         return {"zh": "", "en": "", "final": final, "ready": False}
+
+    # Interim: skip if all workers busy, avoid queue buildup
+    acquired = _pending_sema.acquire(blocking=final)
+    if not acquired:
+        return {"zh": "", "en": "", "final": False, "skipped": True}
+
     suffix = os.path.splitext(audio.filename or "recording.wav")[1] or ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(await audio.read())
@@ -332,23 +358,29 @@ async def transcribe_audio(
 
         if final and zh_text and zh_text != "[无法识别语音]":
             global _history_id_counter
-            _history_id_counter += 1
-            entry = {
-                "id": _history_id_counter,
-                "zh": zh_text,
-                "en": en_text,
-                "seat_id": seat_id,
-                "ts": time.time(),
-            }
-            _transcript_history[meeting_id].append(entry)
-            # Cap history per meeting at 200 entries
-            if len(_transcript_history[meeting_id]) > 200:
-                _transcript_history[meeting_id] = _transcript_history[meeting_id][-200:]
+            entries = _transcript_history[meeting_id]
+            if entries and _is_similar(entries[-1]['zh'], zh_text):
+                entries[-1]['zh'] = zh_text
+                entries[-1]['en'] = en_text
+                entries[-1]['ts'] = time.time()
+            else:
+                _history_id_counter += 1
+                entry = {
+                    "id": _history_id_counter,
+                    "zh": zh_text,
+                    "en": en_text,
+                    "seat_id": seat_id,
+                    "ts": time.time(),
+                }
+                entries.append(entry)
+                if len(entries) > 200:
+                    _transcript_history[meeting_id] = entries[-200:]
 
             await desk.on_translation_result(meeting_id, zh_text, en_text, seat_id)
 
         return {"zh": zh_text, "en": en_text, "final": final, "seat_id": seat_id}
     finally:
+        _pending_sema.release()
         try:
             os.unlink(tmp_path)
         except OSError:

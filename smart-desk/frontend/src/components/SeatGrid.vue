@@ -61,7 +61,7 @@ const emit = defineEmits(['seat-click'])
 function makeSeat(i) {
   return { id: i + 1, occupied: false, checkedIn: false, name: '', ledPattern: 'breathe', ledColor: [60, 70, 90] }
 }
-const seats = reactive(Array.from({ length: 8 }, (_, i) => makeSeat(i)))
+const seats = reactive(Array.from({ length: 10 }, (_, i) => makeSeat(i)))
 
 const showCheckin = ref(false)
 const activeSeat = ref(1)
@@ -76,7 +76,7 @@ onMounted(async () => {
   try {
     const attendees = await api.listAttendees(props.meetingId)
     for (const a of attendees) {
-      if (a.seat_id >= 1 && a.seat_id <= 8) {
+      if (a.seat_id >= 1 && a.seat_id <= 10) {
         const s = seats[a.seat_id - 1]
         s.occupied = true
         s.name = a.name

@@ -35,7 +35,7 @@
       <label>职位</label>
       <input v-model="form.title" placeholder="职位（可选）" />
       <label>座位号</label>
-      <input v-model.number="form.seat_id" type="number" placeholder="1" min="1" max="8" />
+      <input v-model.number="form.seat_id" type="number" placeholder="1" min="1" max="10" />
       <template #actions>
         <button class="btn-ghost" @click="showAdd = false">取消</button>
         <button class="btn-primary" @click="doAdd" :disabled="!form.name.trim()">添加</button>
