@@ -1,26 +1,56 @@
 """
 Desk coordinator — central brain wiring serial, WebSocket, and business logic.
-Cross-platform: asyncio.run() bridges serial thread → async WS on both Windows/Linux.
 Hardware-decoupled: all hardware I/O goes through serial_svc (stub when no Arduino).
 """
 from __future__ import annotations
 import asyncio
 import threading
+from backend.services.event_bus import event_bus, BaseEvent
 from backend.services.serial_service import serial_svc
-from backend.services.ws_service import ws_svc
-from backend.services.business_logic import DeskStateMachine
+from backend.services.seat_state_machine import DeskStateMachine
+
+# Reference to the main event loop captured at startup via set_main_loop().
+# Used by _run_async to schedule WebSocket operations from non-asyncio threads
+# (e.g. serial thread, threading.Timer callbacks) via
+# asyncio.run_coroutine_threadsafe() instead of asyncio.run().
+# WebSocket transports are bound to their accepting loop and cannot be
+# used from a different loop — asyncio.run() silently loses messages.
+_main_loop: asyncio.AbstractEventLoop | None = None
+
+
+def set_main_loop():
+    """Capture the main event loop for thread-safe WebSocket operations.
+
+    Must be called from the main asyncio context (e.g. FastAPI lifespan)
+    before any serial/hardware events fire. If no event loop is running,
+    _main_loop stays None and _run_async will raise a RuntimeError when
+    called from a non-asyncio thread.
+    """
+    global _main_loop
+    try:
+        _main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _main_loop = None
 
 
 def _run_async(coro):
-    """Run coroutine from non-async thread. Cross-platform safe."""
+    """Schedule a coroutine for execution, thread-safe.
+
+    - If called from the event loop thread: uses asyncio.ensure_future
+      (fire-and-forget).
+    - If called from another thread: uses asyncio.run_coroutine_threadsafe()
+      with the stored main loop to safely cross the thread boundary.
+    """
     try:
         loop = asyncio.get_running_loop()
-        # Already in async context — shouldn't happen from serial thread,
-        # but handle gracefully by creating a task on the current loop
         asyncio.ensure_future(coro)
     except RuntimeError:
-        # No running loop (serial thread) — create one
-        asyncio.run(coro)
+        if _main_loop is None:
+            raise RuntimeError(
+                "DeskCoordinator not initialized: no main loop stored. "
+                "Call set_main_loop() during startup."
+            )
+        asyncio.run_coroutine_threadsafe(coro, _main_loop)
 
 
 class DeskCoordinator:
@@ -47,38 +77,38 @@ class DeskCoordinator:
     def _on_serial(self, seat_id: int, msg: dict):
         """Callback registered with serial_svc. Runs in serial thread."""
         msg_type = msg.get("type", "")
-        room = ws_svc.get_or_create(self._seat_meeting.get(seat_id, 1))
+        meeting_id = self._seat_meeting.get(seat_id, 1)
 
         if msg_type == "seat_occupied":
             s = self.state.seat_occupied(seat_id)
             # Hardware → LED (stubbed when no Arduino)
             serial_svc.set_led(seat_id, s.led_pattern, s.led_color)
-            # Broadcast to all tablets
-            _run_async(room.broadcast({
-                "type": "seat_occupied",
-                "payload": {"seat_id": seat_id, "phase": s.phase.value},
-            }))
+            # Publish to EventBus → ws_event_bridge handles WebSocket broadcast
+            event_bus.publish(BaseEvent(
+                name="seat_occupied",
+                payload={"meeting_id": meeting_id, "seat_id": seat_id, "phase": s.phase.value},
+            ))
             # Auto checkin prompt after 3s
-            self._schedule_checkin_prompt(seat_id, room)
+            self._schedule_checkin_prompt(seat_id, meeting_id)
 
         elif msg_type == "seat_vacant":
             s = self.state.seat_vacant(seat_id)
             serial_svc.set_led(seat_id, s.led_pattern, s.led_color)
             self._cancel_checkin_prompt(seat_id)
-            _run_async(room.broadcast({
-                "type": "seat_vacant",
-                "payload": {"seat_id": seat_id, "phase": s.phase.value},
-            }))
+            event_bus.publish(BaseEvent(
+                name="seat_vacant",
+                payload={"meeting_id": meeting_id, "seat_id": seat_id, "phase": s.phase.value},
+            ))
 
     # ── Auto checkin prompt (3s delay after TOF detection) ──
 
-    def _schedule_checkin_prompt(self, seat_id: int, room):
+    def _schedule_checkin_prompt(self, seat_id: int, meeting_id: int):
         self._cancel_checkin_prompt(seat_id)
         def send():
-            _run_async(room.send_to_seat(seat_id, {
-                "type": "checkin_prompt",
-                "payload": {"seat_id": seat_id},
-            }))
+            event_bus.publish(BaseEvent(
+                name="checkin_prompt",
+                payload={"meeting_id": meeting_id, "seat_id": seat_id},
+            ))
         timer = threading.Timer(3.0, send)
         timer.start()
         self._pending_checkins[seat_id] = timer
@@ -98,61 +128,67 @@ class DeskCoordinator:
 
     async def on_vote_start(self, meeting_id: int, vote_id: int):
         """Set occupied seats' LEDs to gold during voting."""
-        room = ws_svc.get_or_create(meeting_id)
         for s in self.state.seats.values():
             if s.phase.value != "empty":
                 serial_svc.set_led(s.seat_id, "solid", (201, 168, 76))
-        await room.broadcast({"type": "vote_update", "payload": {"vote_id": vote_id}})
+        event_bus.publish(BaseEvent(
+            name="vote_started",
+            payload={"meeting_id": meeting_id, "vote_id": vote_id},
+        ))
 
     async def on_vote_close(self, meeting_id: int):
         """Reset LEDs to normal per-seat state after vote closes."""
-        room = ws_svc.get_or_create(meeting_id)
         for s in self.state.seats.values():
             serial_svc.set_led(s.seat_id, s.led_pattern, s.led_color)
-        await room.broadcast({"type": "vote_update", "payload": {}})
+        event_bus.publish(BaseEvent(
+            name="vote_closed",
+            payload={"meeting_id": meeting_id},
+        ))
 
     async def on_meeting_end(self, meeting_id: int):
         """Reset all seats when meeting ends."""
-        room = ws_svc.get_or_create(meeting_id)
         for s in self.state.seats.values():
             self.state.seat_vacant(s.seat_id)
             serial_svc.set_led(s.seat_id, "breathe", (255, 200, 150))
-        await room.broadcast({"type": "meeting_ended", "payload": {}})
+        event_bus.publish(BaseEvent(
+            name="meeting_ended",
+            payload={"meeting_id": meeting_id},
+        ))
 
     async def on_service_call(self, meeting_id: int, seat_id: int):
         """Broadcast service call update to all tablets."""
-        room = ws_svc.get_or_create(meeting_id)
-        await room.broadcast({
-            "type": "service_update",
-            "payload": {"seat_id": seat_id},
-        })
+        event_bus.publish(BaseEvent(
+            name="service_call_created",
+            payload={"meeting_id": meeting_id, "seat_id": seat_id},
+        ))
 
     async def on_speaker_seat(self, meeting_id: int, seat_id: int):
         """Broadcast speaker seat assignment + set LED to blue."""
-        room = ws_svc.get_or_create(meeting_id)
         serial_svc.set_led(seat_id, "solid", (80, 140, 255))
-        await room.broadcast({
-            "type": "speaker_seat_set",
-            "payload": {"seat_id": seat_id},
-        })
+        event_bus.publish(BaseEvent(
+            name="speaker_seat_set",
+            payload={"meeting_id": meeting_id, "seat_id": seat_id},
+        ))
 
     async def on_speaker_clear(self, meeting_id: int):
         """Clear speaker seat, reset LEDs."""
-        room = ws_svc.get_or_create(meeting_id)
         for s in self.state.seats.values():
             serial_svc.set_led(s.seat_id, s.led_pattern, s.led_color)
-        await room.broadcast({
-            "type": "speaker_seat_clear",
-            "payload": {},
-        })
+        event_bus.publish(BaseEvent(
+            name="speaker_seat_clear",
+            payload={"meeting_id": meeting_id},
+        ))
 
-    async def on_translation_result(self, meeting_id: int, zh: str, en: str, seat_id: int):
+    async def on_translation_result(self, meeting_id: int, zh: str, en: str, seat_id: int, segment_id: int = 0):
         """Broadcast translation result to all tablets."""
-        room = ws_svc.get_or_create(meeting_id)
-        await room.broadcast({
-            "type": "translation_result",
-            "payload": {"zh": zh, "en": en, "seat_id": seat_id},
-        })
+        event_bus.publish(BaseEvent(
+            name="translation_final",
+            payload={
+                "meeting_id": meeting_id, "zh": zh, "en": en,
+                "seat_id": seat_id, "segment_id": segment_id,
+                "is_final": True,
+            },
+        ))
 
     def get_seat_state(self, seat_id: int) -> dict:
         """Get current state of a seat (for debug / status queries)."""

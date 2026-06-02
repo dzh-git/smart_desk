@@ -59,6 +59,11 @@
       <span class="dot-flash"></span> 模型加载中，请稍候…
     </div>
 
+    <!-- WS disconnect warning -->
+    <div v-if="isSpeaker && wsConnected === false" class="card model-loading-hint" style="border-color: var(--danger);">
+      <span class="dot-flash" style="background: var(--danger);"></span> 连接断开，正在重连…
+    </div>
+
     <!-- No speaker seat yet -->
     <div v-if="!isAdmin && !speakingSeat" class="empty-sm">
       等待管理员指定发言席…
@@ -104,7 +109,7 @@ import TranscriptHistoryModal from './TranscriptHistoryModal.vue'
 
 const seatId = inject('seatId')
 const isAdmin = inject('isAdmin')
-const props = defineProps({ meetingId: Number, wsMsg: Object })
+const props = defineProps({ meetingId: Number, wsMsg: Object, wsConnected: Boolean })
 defineEmits(['close'])
 
 const selectedSeat = ref(1)
@@ -116,6 +121,7 @@ let _isLine2Final = false
 const historyItems = reactive([])
 const showHistory = ref(false)
 let idCounter = 0
+const _processedSegIds = new Set()
 let _preloadPollTimer = null
 
 function splitByPeriod(text) {
@@ -127,7 +133,6 @@ function splitByPeriod(text) {
     const s = part.trim()
     if (!s) continue
     // Fallback: long chunk with commas but no period → split on commas
-    // SenseVoice may output ， instead of 。 between sentences in continuous speech
     if (s.length > 15 && /[，,]/.test(s)) {
       const sub = s.split(/(?<=[，,])/)
       for (const ss of sub) {
@@ -138,26 +143,58 @@ function splitByPeriod(text) {
       result.push(s)
     }
   }
+  // Length-based fallback: single chunk > 25 chars without any punctuation
+  // → split by fixed length to keep display readable
+  if (result.length === 1 && result[0].length > 25 && !/[。！？.!?，,]/.test(result[0])) {
+    return chunkByLength(result[0], 25)
+  }
   return result
 }
 
-function textSimilar(a, b) {
-  if (!a || !b) return 0
-  const shorter = a.length < b.length ? a : b
-  const longer = a.length < b.length ? b : a
-  if (shorter.length === 0) return 0
-  let matches = 0
-  for (let i = 0; i < shorter.length; i++) {
-    if (shorter[i] === longer[i]) matches++
+function chunkByLength(text, charCount) {
+  const result = []
+  for (let i = 0; i < text.length; i += charCount) {
+    result.push(text.slice(i, i + charCount))
   }
-  return matches / longer.length
+  return result
 }
 
 let _line1Zh = ''
 let _line1En = ''
+let _lastZh = ''   // guard against duplicate interim text from backend re-sends
+let _transitionId = 0  // cancel stale transition animations
+
+function animateTextTransition(fromZh, toZh, en, duration = 300) {
+  if (!fromZh || fromZh === toZh) { updateLines(toZh, en, true); return }
+  const tid = ++_transitionId
+  const start = performance.now()
+  const fromLen = fromZh.length; const toLen = toZh.length
+
+  function step(now) {
+    if (tid !== _transitionId) return  // cancelled by newer transition
+    const progress = Math.min((now - start) / duration, 1)
+    const eased = 1 - Math.pow(1 - progress, 3)  // ease-out cubic
+    const splitPoint = Math.floor(toLen * eased)
+    const displayZh = toZh.slice(0, splitPoint) + fromZh.slice(Math.min(splitPoint, fromLen))
+    updateLines(displayZh, en, progress >= 1)
+    if (progress < 1) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
+
+function clearDisplay() {
+  _line1Zh = ''; _line1En = ''; _lastZh = ''
+  line1.zh = ''; line1.en = ''
+  line2.zh = ''; line2.en = ''
+  _isLine2Final = false
+}
 
 function updateLines(zh, en, isFinal) {
   if (!zh) return
+  // Skip if identical to last display — prevents flicker & duplication
+  if (zh === _lastZh && en === (line2.en || '') && !isFinal) return
+  _lastZh = zh
+
   const zhSents = splitByPeriod(zh)
   const enSents = splitByPeriod(en)
 
@@ -171,8 +208,11 @@ function updateLines(zh, en, isFinal) {
     }
     line1.zh = _line1Zh
     line1.en = _line1En
+  } else {
+    // Single sentence (no punctuation): clear line1 so old text doesn't
+    // appear alongside the growing line2 — prevents visual duplication
+    if (_line1Zh) { _line1Zh = ''; _line1En = ''; line1.zh = ''; line1.en = '' }
   }
-  // When < 2 sentences, keep line1 as-is (stable, doesn't disappear)
 
   line2.zh = zhSents[zhSents.length - 1] || ''
   line2.en = enSents.length >= 1 ? enSents[enSents.length - 1] : (en || '')
@@ -206,9 +246,21 @@ function addHistory(zh, en, sid, segId) {
 const { isRecording, errorMsg, interimItem, startRecording, stopRecording } = useAudioRecorder({
   meetingId: computed(() => props.meetingId),
   seatId,
-  onSpeechStart: () => { _line1Zh = ''; _line1En = ''; line1.zh = ''; line1.en = ''; line2.zh = ''; line2.en = ''; _isLine2Final = false },
+  onSpeechStart: () => { clearDisplay() },
   onInterim: (zh, en) => { updateLines(zh, en, false) },
-  onFinal: (zh, en, sid, segId) => { updateLines(zh, en, true); addHistory(zh, en, sid, segId) },
+  onFinal: (zh, en, sid, segId) => {
+    if (segId != null) _processedSegIds.add(segId)
+    // Smooth transition from streaming text to offline rescore result
+    const currentZh = (line1.zh || '') + (line2.zh || '')
+    if (currentZh && zh && zh !== currentZh) {
+      animateTextTransition(currentZh, zh, en, 300)
+    } else {
+      updateLines(zh, en, true)
+    }
+    addHistory(zh, en, sid, segId)
+    // Clear display after final — text lives in history, prevent stale overlap
+    setTimeout(clearDisplay, 5000)
+  },
 })
 
 const isSpeaker = computed(() => speakingSeat.value && speakingSeat.value === seatId.value)
@@ -237,21 +289,35 @@ watch(() => props.wsMsg, (msg) => {
   if (!msg) return
   if (msg.type === 'speaker_seat_set') {
     speakingSeat.value = msg.payload?.seat_id || null
-    _line1Zh = ''; _line1En = ''; line1.zh = ''; line1.en = ''; line2.zh = ''; line2.en = ''; _isLine2Final = false
+    clearDisplay()
   }
   if (msg.type === 'speaker_seat_clear') {
     speakingSeat.value = null; stopRecording()
-    _line1Zh = ''; _line1En = ''; line1.zh = ''; line1.en = ''; line2.zh = ''; line2.en = ''; _isLine2Final = false
+    clearDisplay()
   }
   if (msg.type === 'translation_result') {
-    const { zh, en, seat_id } = msg.payload
+    const { zh, en, seat_id, segment_id, is_final } = msg.payload || {}
     if (zh === '[无法识别语音]' && en === '[translation unavailable]') return
     if (!zh && !en) return
-    // WS echo: dedup by timestamp proximity + text similarity
-    const last = historyItems[historyItems.length - 1]
-    if (last && (Date.now() / 1000 - last.ts) < 8 && textSimilar(last.zh, zh) > 0.8) return
-    updateLines(zh, en, true)
-    addHistory(zh, en, seat_id, undefined)
+    // Skip if already processed via HTTP response (speaker's own result)
+    if (segment_id != null && _processedSegIds.has(segment_id)) return
+    // Segment-id dedup: same segment_id → overwrite; is_final → freeze
+    if (segment_id != null) {
+      let existing = null
+      for (let i = historyItems.length - 1; i >= 0; i--) {
+        if (historyItems[i].seg_id === segment_id) { existing = historyItems[i]; break }
+      }
+      if (existing) {
+        existing.zh = zh
+        existing.en = en
+        existing.ts = Date.now() / 1000
+        if (is_final) existing._frozen = true
+        updateLines(zh, en, is_final !== false)
+        return
+      }
+    }
+    updateLines(zh, en, is_final !== false)
+    addHistory(zh, en, seat_id, segment_id)
   }
 })
 
@@ -285,10 +351,20 @@ async function openHistory() {
 
 function mergeBackendHistory(backendEntries) {
   for (const e of backendEntries) {
-    // Check time proximity (<8s) + text similarity for dedup
-    const last = historyItems[historyItems.length - 1]
-    if (last && Math.abs((last.ts || 0) - (e.ts || 0)) < 8 && textSimilar(last.zh, e.zh) > 0.8) continue
-    historyItems.push({ id: ++idCounter, zh: e.zh, en: e.en, seat_id: e.seat_id, ts: e.ts })
+    // Segment-id dedup: backend entry id is the segment_id
+    if (e.id != null) {
+      let existing = null
+      for (let i = historyItems.length - 1; i >= 0; i--) {
+        if (historyItems[i].seg_id === e.id) { existing = historyItems[i]; break }
+      }
+      if (existing) {
+        existing.zh = e.zh
+        existing.en = e.en
+        existing.ts = e.ts
+        continue
+      }
+    }
+    historyItems.push({ id: ++idCounter, zh: e.zh, en: e.en, seat_id: e.seat_id, seg_id: e.id, ts: e.ts })
   }
   historyItems.sort((a, b) => (a.ts || 0) - (b.ts || 0))
   while (historyItems.length > 200) historyItems.shift()

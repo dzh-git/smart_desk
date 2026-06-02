@@ -2,15 +2,15 @@ import { ref, reactive } from 'vue'
 import { api } from '../api/index.js'
 
 const MAX_RECORDING_SEC = 20
-const INTERIM_INTERVAL_MS = 4000
-const SLIDING_WINDOW_SEC = 6  // interim sends trailing window for STT context
+const INTERIM_INTERVAL_MS = 800
 
 /**
  * VAD-based audio recording + STT/translation upload.
  *
- * Interim: sends trailing 6s sliding window — bounded cost, enough context.
- * Final: sends VAD-segmented complete utterance.
- * Force-finalize: sends full accumulated audio (max 20s continuous speech).
+ * Interim: sends non-overlapping 2s new-audio chunks, backend accumulates text.
+ *   No sliding window — never re-recognizes the same audio twice.
+ * Final: sends VAD-segmented complete utterance with utterance_id.
+ * Force-finalize: sends full accumulated audio, then resets VAD to stay in sync.
  */
 export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, onFinal, onError }) {
   const isRecording = ref(false)
@@ -20,11 +20,15 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
   let _vadStopped = false
   let _audioCtx = null
   let _audioStream = null
+  let _workletNode = null
   let _interimTimer = null
   let _interimPending = false
   let _myvad = null
   let _recordingStartedAt = 0
   let _utteranceId = 0
+  let _utteranceSeq = 0
+  let _interimFailCount = 0
+  let _lastInterimSampleIdx = 0
 
   function concatFloat32(chunks) {
     const len = chunks.reduce((s, c) => s + c.length, 0)
@@ -60,49 +64,111 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
 
   async function sendInterim() {
     if (_vadStopped || _interimPending || !_rawChunks.length) return
+    const seq = _utteranceSeq  // capture at send time for barrier check
     const fullAudio = concatFloat32(_rawChunks)
-    const winSamples = SLIDING_WINDOW_SEC * 16000
-    const windowStart = Math.max(0, fullAudio.length - winSamples)
-    const windowAudio = fullAudio.slice(windowStart)
-    if (windowAudio.length < 16000) return
+    // Only new audio since last interim — non-overlapping, no re-recognition
+    if (_lastInterimSampleIdx >= fullAudio.length) return
+    const newAudio = fullAudio.slice(_lastInterimSampleIdx)
+    if (newAudio.length < 16000) return // min 1s
+    const sampleIdxBefore = fullAudio.length
     _interimPending = true
     try {
-      const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(windowAudio), false)
-      if (r.ready === false || r.skipped) { /* models not ready or server busy, skip silently */ }
-      else if (r.zh && r.zh !== '[无法识别语音]') {
+      const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(newAudio), false, _utteranceId)
+      if (seq !== _utteranceSeq) return  // barrier: utterance ended while in flight
+      if (r.ready === false || r.skipped) { /* models not ready or server busy */ }
+      else if (r.zh) {
         interimItem.zh = r.zh
         interimItem.en = r.en || ''
         onInterim && onInterim(r.zh, r.en || '')
+        _interimFailCount = 0  // reset on success
       }
-    } catch { /* ignore */ }
+      _lastInterimSampleIdx = sampleIdxBefore
+    } catch {
+      _interimFailCount++
+      if (_interimFailCount >= 3 && onError) {
+        onError('语音识别网络异常，请检查连接')
+      }
+    }
     finally { _interimPending = false }
   }
 
   async function finalizeUtterance(vadAudio) {
     _interimPending = false
     const wavBlob = float32ToWav(vadAudio)
-    try {
-      const r = await api.uploadAudio(meetingId.value, seatId.value, wavBlob, true)
-      if (r.zh && r.zh !== '[无法识别语音]') {
-        onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value, _utteranceId)
+    const maxRetries = 2
+    let succeeded = false
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const r = await api.uploadAudio(meetingId.value, seatId.value, wavBlob, true, _utteranceId)
+        if (r.zh && r.zh !== '[无法识别语音]') {
+          onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value, _utteranceId)
+        }
+        succeeded = true
+        break
+      } catch (e) {
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+          continue
+        }
+        errorMsg.value = '语音识别失败: ' + e.message
+        onError && onError(e.message)
+        // Fallback: use last interim text if final request fails
+        if (interimItem.zh) {
+          onFinal && onFinal(interimItem.zh, interimItem.en || '', seatId.value, _utteranceId)
+        }
       }
-    } catch (e) {
-      errorMsg.value = '语音识别失败: ' + e.message
-      onError && onError(e.message)
     }
     interimItem.zh = ''
     interimItem.en = ''
     _rawChunks.length = 0
+    _lastInterimSampleIdx = 0
     _recordingStartedAt = 0
+  }
+
+  function _resetVAD() {
+    if (_myvad) {
+      _myvad.destroy()
+      _myvad = null
+    }
+  }
+
+  async function _createVAD() {
+    _myvad = await vad.MicVAD.new({
+      onSpeechStart: () => {
+        _utteranceId++
+        _utteranceSeq++
+        _lastInterimSampleIdx = 0
+        interimItem.zh = ''
+        interimItem.en = ''
+        onSpeechStart && onSpeechStart()
+      },
+      onSpeechEnd: (audio) => {
+        if (_vadStopped) return
+        if (_interimTimer) { clearInterval(_interimTimer); _interimTimer = null }
+        _utteranceSeq++  // invalidate in-flight interim responses
+        finalizeUtterance(audio)
+      },
+      onVADMisfire: () => {},
+      redemptionFrames: 30,
+      preSpeechPadFrames: 20,
+      minSpeechFrames: 16,
+      positiveSpeechThreshold: 0.6,
+      negativeSpeechThreshold: 0.4,
+      onnxWASMBasePath: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
+      baseAssetPath: 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/',
+    })
+    _myvad.start()
   }
 
   async function forceFinalize() {
     if (_vadStopped || !_rawChunks.length) return
     _interimPending = false
+    _utteranceSeq++  // invalidate in-flight interim responses
+    if (_interimTimer) { clearInterval(_interimTimer); _interimTimer = null }
     const fullAudio = concatFloat32(_rawChunks)
     if (fullAudio.length < 16000) return
     try {
-      const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(fullAudio), true)
+      const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(fullAudio), true, _utteranceId)
       if (r.zh && r.zh !== '[无法识别语音]') {
         onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value, _utteranceId)
       }
@@ -110,10 +176,15 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
       errorMsg.value = '语音识别失败: ' + e.message
       onError && onError(e.message)
     }
+    // Reset VAD state synchronously — critical: VAD state must match _rawChunks
     _rawChunks.length = 0
+    _lastInterimSampleIdx = 0
     _recordingStartedAt = Date.now()
     interimItem.zh = ''
     interimItem.en = ''
+    _resetVAD()
+    await _createVAD()
+    _interimTimer = setInterval(sendInterim, INTERIM_INTERVAL_MS)  // restart timer
   }
 
   async function startRecording() {
@@ -121,46 +192,27 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
       _vadStopped = false
       _rawChunks.length = 0
       _interimPending = false
+      _lastInterimSampleIdx = 0
       _recordingStartedAt = Date.now()
       interimItem.zh = ''
       interimItem.en = ''
       errorMsg.value = ''
 
-      _myvad = await vad.MicVAD.new({
-        onSpeechStart: () => {
-          _utteranceId++
-          interimItem.zh = ''
-          interimItem.en = ''
-          onSpeechStart && onSpeechStart()
-        },
-        onSpeechEnd: (audio) => {
-          if (_vadStopped) return
-          finalizeUtterance(audio)
-        },
-        onVADMisfire: () => {},
-        redemptionFrames: 60,
-        preSpeechPadFrames: 20,
-        minSpeechFrames: 12,
-        positiveSpeechThreshold: 0.55,
-        negativeSpeechThreshold: 0.4,
-        onnxWASMBasePath: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
-        baseAssetPath: 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/',
-      })
-      _myvad.start()
+      await _createVAD()
 
       _audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
       _audioCtx = new AudioContext({ sampleRate: 16000 })
+      await _audioCtx.audioWorklet.addModule('/audio-processor.js')
       const source = _audioCtx.createMediaStreamSource(_audioStream)
-      const processor = _audioCtx.createScriptProcessor(4096, 1, 1)
-      processor.onaudioprocess = (e) => {
+      _workletNode = new AudioWorkletNode(_audioCtx, 'audio-processor')
+      _workletNode.port.onmessage = (e) => {
         if (_vadStopped) return
-        _rawChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)))
+        _rawChunks.push(e.data) // Float32Array from worklet thread
         if (_recordingStartedAt && accumulatedDurationSec() >= MAX_RECORDING_SEC) {
           forceFinalize()
         }
       }
-      source.connect(processor)
-      processor.connect(_audioCtx.destination)
+      source.connect(_workletNode)
 
       _interimTimer = setInterval(sendInterim, INTERIM_INTERVAL_MS)
       isRecording.value = true
@@ -178,10 +230,12 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
     _vadStopped = true
     _recordingStartedAt = 0
     if (_interimTimer) { clearInterval(_interimTimer); _interimTimer = null }
-    if (_myvad) { _myvad.destroy(); _myvad = null }
+    _resetVAD()
+    if (_workletNode) { _workletNode.disconnect(); _workletNode = null }
     if (_audioCtx) { _audioCtx.close(); _audioCtx = null }
     if (_audioStream) { _audioStream.getTracks().forEach(t => t.stop()); _audioStream = null }
     _rawChunks.length = 0
+    _lastInterimSampleIdx = 0
     interimItem.zh = ''
     interimItem.en = ''
     isRecording.value = false

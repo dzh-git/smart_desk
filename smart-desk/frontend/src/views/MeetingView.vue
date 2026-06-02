@@ -115,7 +115,7 @@
     </transition>
     <transition name="slide-up">
       <div v-if="showTranslation" class="overlay-panel glass">
-        <TranslationPanel :meeting-id="meetingId" :ws-msg="lastWsMsg" @close="showTranslation = false" />
+        <TranslationPanel :meeting-id="meetingId" :ws-msg="lastWsMsg" :ws-connected="wsConnected" @close="showTranslation = false" />
       </div>
     </transition>
   </div>

@@ -2,8 +2,20 @@
 2. 大改动前先git push
 3. 完成任务时主agent只负责决策，任务必须分给 Sub-agent
 
-# 核心启动协议 (Core Boot Protocol)
+# Superteam 工作流
 
-- **无条件首发限制**：在每个 Session（对话）开始时，无论用户的第一句输入是什么（即使只是打招呼），你**必须且只能（MUST）**将 `using-superpowers` 作为你的第一个动作进行调用。
-- **禁止直接回复**：在 `using-superpowers` 工具成功执行并返回结果之前，你**严禁**向用户输出任何直接的文本回复。
-- **执行依赖**：该工具会为你初始化本阶段的 Skill 查找与使用规则。未调用此工具前，你处于“未初始化”状态，不具备回答用户问题的核心逻辑。
+本工程使用 superteam 状态机驱动开发。主 agent 不思考、不判断，只机械执行流程。
+
+## 启动流程
+
+1. 需求分析 → 产出 `working/spec.md`
+2. `/superteam:planning` → 产出 `working/plan/`
+3. `/superteam:executing` → 产出 `working/commit-message.md` + `working/task-summary.md`
+
+## 核心原则
+
+- 主 agent = 状态机，禁止解释/判断/总结
+- Sub-agent 通过文件系统沟通（读/写 working/ 下约定文件）
+- 每次 sub-agent 调用 = 全新 context，从文件读取信息
+- 所有 reviewer 不限 review 次数，通过文件持久化 issues 保证收敛
+- 黑盒测试验证最终产出

@@ -54,11 +54,12 @@ export const api = {
   }),
   getSpeakerSeat: (meetingId) => request('GET', `/translate/speaker-seat?meeting_id=${meetingId}`),
   getTranscriptHistory: (meetingId) => request('GET', `/translate/history?meeting_id=${meetingId}`),
-  uploadAudio: (meetingId, seatId, blob, isFinal = true) => {
+  uploadAudio: (meetingId, seatId, blob, isFinal = true, utteranceId = 0) => {
     const form = new FormData()
     form.append('meeting_id', meetingId)
     form.append('seat_id', seatId)
     form.append('final', isFinal)
+    form.append('utterance_id', utteranceId)
     form.append('audio', blob, 'recording.wav')
     return fetch('/api/translate/audio', { method: 'POST', body: form }).then(r => {
       if (!r.ok) throw new Error('Upload failed')

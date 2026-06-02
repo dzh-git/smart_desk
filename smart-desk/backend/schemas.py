@@ -88,6 +88,7 @@ class VoteOut(BaseModel):
 # ── Service Call ──
 class ServiceCallCreate(BaseModel):
     seat_id: int = Field(..., ge=1, le=10)
+    attendee_id: int | None = None
     service_type: str = Field(..., pattern="^(coffee|tea|water|other)$")
 
 class ServiceCallUpdate(BaseModel):
@@ -97,6 +98,7 @@ class ServiceCallOut(BaseModel):
     id: int
     meeting_id: int
     seat_id: int
+    attendee_id: int | None = None
     service_type: str
     status: str
     created_at: datetime
@@ -123,9 +125,66 @@ class WSMessage(BaseModel):
     payload: dict = {}
 
 
-# ── Seat state ──
-class SeatState(BaseModel):
+# ── Seat state (WS) ──
+class SeatStateWS(BaseModel):
     seat_id: int
     occupied: bool = False
     checked_in: bool = False
     attendee_name: str = ""
+
+
+# ── Translation Record (ORM) ──
+class TranslationRecordCreate(BaseModel):
+    meeting_id: int
+    seat_id: int
+    source_lang: str = Field(..., max_length=10)
+    target_lang: str = Field(..., max_length=10)
+    source_text: str = Field(..., min_length=1)
+    translated_text: str = Field(..., min_length=1)
+
+
+class TranslationRecordOut(BaseModel):
+    id: int
+    meeting_id: int
+    seat_id: int
+    source_lang: str
+    target_lang: str
+    source_text: str
+    translated_text: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TextTranslateRequest(BaseModel):
+    text: str
+
+
+# ── Seat State (ORM) ──
+class SeatStateOut(BaseModel):
+    seat_id: int
+    status: str
+    attendee_id: int | None
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SpeakerSeatOut(BaseModel):
+    id: int
+    seat_id: int | None
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SpeakerSeatSet(BaseModel):
+    seat_id: int = Field(..., ge=0, le=10)  # 0 = clear
+
+
+# ── Vote (extended) ──
+class VoteCreateRequest(BaseModel):
+    meeting_id: int
+    title: str = Field(..., max_length=500)
+    options: list[str] = Field(..., min_length=2)
+    is_anonymous: bool = False
