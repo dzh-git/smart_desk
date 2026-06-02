@@ -1,8 +1,7 @@
 """
-Translation router — SenseVoiceSmall (STT) + Opus-MT (translation).
-Pure local models, CPU-optimized, zero network dependency after first download.
-SenseVoiceSmall: 893MB, RTF 0.49 on CPU (faster than real-time)
-Opus-MT zh-en: 300MB, 0.3-0.8s per sentence on CPU
+Translation router — thin FastAPI wrapper around speech_module.
+Handles: HTTP endpoints, WS broadcast, transcript history, speaker seat.
+Delegates: STT, MT, language detection, audio loading → speech_module.
 """
 from __future__ import annotations
 import asyncio
@@ -10,287 +9,93 @@ import os
 import tempfile
 import threading
 import time
-import warnings
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
-import re
-import numpy as np
 from fastapi import APIRouter, UploadFile, File, Form, Query
 from pydantic import BaseModel
 
-# pydub + funasr warn about missing ffmpeg — code uses soundfile, never touches ffmpeg
-warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv")
-
 from backend.schemas import TranslationRequest, TranslationOut
-from backend.services.ws_service import ws_svc
 from backend.services.desk_coordinator import desk
-
-# Force offline mode — models are pre-cached
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
+from speech_module import SpeechModule
+from speech_module.mt_engine import MTEngine
+from speech_module.history_store import HistoryStore
+from speech_module.text_utils import text_similarity
 
 router = APIRouter(prefix="/api/translate", tags=["translation"])
 
+# Singleton speech module + history store (file-persisted, survives restarts)
+history_store = HistoryStore("speech_history.db")
+mt_engine = MTEngine(device="cpu")
+speech = SpeechModule(max_workers=4, history_store=history_store, mt_engine=mt_engine)
 _executor = ThreadPoolExecutor(max_workers=4)
 _pending_sema = threading.Semaphore(4)
-
-# ── Lazy-loaded models ──
-
-_stt_model = None
-_mt_zh_en_model = None
-_mt_zh_en_tokenizer = None
-_mt_en_zh_model = None
-_mt_en_zh_tokenizer = None
-_preload_done = False
 _preloading = False
 
+# ── App-level state (not in speech_module — these depend on meeting context) ──
 
 class SpeakerSeatRequest(BaseModel):
     meeting_id: int
     seat_id: int  # 0 = clear
 
-
 _speaker_seats: dict[int, int] = {}
 
-# Transcript history: meeting_id → [{id, zh, en, seat_id, ts}]
-_transcript_history: dict[int, list[dict]] = defaultdict(list)
-_history_id_counter = 0
 
-
-# ── Model loaders ──
-
-def _get_stt_model():
-    """Lazy-load SenseVoiceSmall from local cache."""
-    global _stt_model
-    if _stt_model is None:
-        from funasr import AutoModel
-        model_dir = os.path.expanduser(
-            "~/.cache/modelscope/hub/models/iic/SenseVoiceSmall"
-        )
-        _stt_model = AutoModel(
-            model=model_dir,
-            device="cpu",
-            disable_update=True,
-            trust_remote_code=True,  # SenseVoiceSmall custom code — safe in offline env
-        )
-    return _stt_model
-
-
-def _get_mt_zh_en_model():
-    """Lazy-load Opus-MT zh→en (cached via HuggingFace)."""
-    global _mt_zh_en_model, _mt_zh_en_tokenizer
-    if _mt_zh_en_model is None:
-        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-        model_name = "Helsinki-NLP/opus-mt-zh-en"
-        _mt_zh_en_tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-        _mt_zh_en_model = AutoModelForSeq2SeqLM.from_pretrained(model_name, local_files_only=True)
-    return _mt_zh_en_tokenizer, _mt_zh_en_model
-
-
-def _get_mt_en_zh_model():
-    """Lazy-load Opus-MT en→zh (cached via HuggingFace)."""
-    global _mt_en_zh_model, _mt_en_zh_tokenizer
-    if _mt_en_zh_model is None:
-        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-        model_name = "Helsinki-NLP/opus-mt-en-zh"
-        _mt_en_zh_tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-        _mt_en_zh_model = AutoModelForSeq2SeqLM.from_pretrained(model_name, local_files_only=True)
-    return _mt_en_zh_tokenizer, _mt_en_zh_model
-
-
-# ── Preload & warmup ──
-
-def _warmup():
-    """Load both models and run dummy inference to trigger JIT/optimization passes."""
-    try:
-        print("[preload] Loading SenseVoiceSmall...")
-        _get_stt_model()
-        print("[preload] Loading Opus-MT zh→en...")
-        _get_mt_zh_en_model()
-        print("[preload] Loading Opus-MT en→zh...")
-        _get_mt_en_zh_model()
-        # Warm STT with 1s silence — primes funasr internal buffers
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        tmp.close()  # release handle so Windows allows read
-        try:
-            import soundfile as sf
-            sf.write(tmp.name, np.zeros(16000, dtype=np.float32), 16000)
-            _transcribe_sensevoice(tmp.name)
-        finally:
-            os.unlink(tmp.name)
-        # Warm MT with short text — primes PyTorch JIT
-        _translate_zh_to_en("预热测试")
-        _translate_en_to_zh("warmup test")
-        print("[preload] Models ready.")
-    except Exception as e:
-        print(f"[preload] Warmup error (models will load on first use): {e}")
-
+# ── Preload ──
 
 async def preload_models():
-    """Preload STT+MT models in background thread. Idempotent, safe to call anytime."""
-    global _preloading, _preload_done
-    if _preload_done or _preloading:
+    """Preload STT models in background. Idempotent."""
+    global _preloading
+    if speech.ready:
         return
     _preloading = True
     loop = asyncio.get_running_loop()
     try:
-        await loop.run_in_executor(_executor, _warmup)
+        await loop.run_in_executor(_executor, speech.preload)
     except Exception as e:
         print(f"[preload] Failed: {e}")
     finally:
         _preloading = False
-        _preload_done = True  # Mark done so frontend stops polling
 
-
-# ── Audio loading (no ffmpeg) ──
-
-def _load_audio(path: str) -> np.ndarray:
-    """Load audio as float32 numpy array. Uses soundfile — no ffmpeg needed."""
-    import soundfile as sf
-    audio, sr = sf.read(path, dtype="float32")
-    if audio.ndim > 1:
-        audio = audio.mean(axis=1)
-    if sr != 16000:
-        from scipy import signal
-        ratio = 16000 / sr
-        audio = signal.resample(audio, int(len(audio) * ratio))
-    return np.asarray(audio, dtype=np.float32)
-
-
-# ── STT (SenseVoiceSmall) ──
-
-def _transcribe_sensevoice(audio_path: str) -> str:
-    """Transcribe Chinese speech using SenseVoiceSmall. Returns text."""
-    try:
-        model = _get_stt_model()
-        result = model.generate(
-            input=audio_path,
-            language="auto",
-            use_itn=True,
-            batch_size_s=30,
-        )
-        if result and len(result) > 0:
-            text = result[0].get("text", "").strip()
-            # Strip all SenseVoice emotion/speech/language tags: <|NEUTRAL|>, <|Speech|>, <|withitn|>, etc.
-            text = re.sub(r"<\|[^|]+\|>", "", text).strip()
-            return text
-    except Exception as e:
-        print(f"[stt] SenseVoice failed: {e}")
-    return ""
-
-
-# ── Language detection ──
-
-def _is_similar(a: str, b: str, threshold: float = 0.8) -> bool:
-    """Character-level prefix-match ratio. True if >80% chars match from start."""
-    if not a or not b:
-        return False
-    shorter = a if len(a) < len(b) else b
-    longer = b if len(a) < len(b) else a
-    if len(shorter) == 0:
-        return False
-    matches = sum(1 for i, c in enumerate(shorter) if i < len(longer) and c == longer[i])
-    return matches / len(longer) > threshold
-
-
-def _detect_language(text: str) -> str:
-    """Detect if text is primarily Chinese or English. Returns 'zh' or 'en'."""
-    cjk = sum(1 for c in text if '一' <= c <= '鿿' or '㐀' <= c <= '䶿')
-    latin = sum(1 for c in text if c.isascii() and c.isalpha())
-    return 'zh' if cjk >= latin else 'en'
-
-
-# ── Translation (Opus-MT) ──
-
-def _translate_zh_to_en(text: str) -> str:
-    """Translate Chinese→English using Opus-MT."""
-    try:
-        tokenizer, model = _get_mt_zh_en_model()
-        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        outputs = model.generate(
-            **inputs, max_length=512, num_beams=4,
-            repetition_penalty=1.2, no_repeat_ngram_size=3, early_stopping=True,
-        )
-        return tokenizer.decode(outputs[0], skip_special_tokens=True)
-    except Exception as e:
-        print(f"[mt] zh→en failed: {e}")
-    return ""
-
-
-def _translate_en_to_zh(text: str) -> str:
-    """Translate English→Chinese using Opus-MT."""
-    try:
-        tokenizer, model = _get_mt_en_zh_model()
-        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        outputs = model.generate(
-            **inputs, max_length=512, num_beams=4,
-            repetition_penalty=1.2, no_repeat_ngram_size=3, early_stopping=True,
-        )
-        return tokenizer.decode(outputs[0], skip_special_tokens=True)
-    except Exception as e:
-        print(f"[mt] en→zh failed: {e}")
-    return ""
-
-
-def _transcribe_and_translate(audio_path: str) -> tuple[str, str]:
-    """STT + auto-detect language + translate. Always returns (zh, en)."""
-    text = _transcribe_sensevoice(audio_path)
-    if not text:
-        return "[无法识别语音]", "[translation unavailable]"
-
-    lang = _detect_language(text)
-    if lang == 'zh':
-        zh = text
-        en = _translate_zh_to_en(zh) or f"[EN] {zh}"
-    else:
-        en = text
-        zh = _translate_en_to_zh(en) or f"[ZH] {en}"
-    return zh, en
-
-
-async def _translate_text(text: str) -> tuple[str, str]:
-    """Auto-detect and translate. Returns (zh, en)."""
-    loop = asyncio.get_running_loop()
-    lang = _detect_language(text)
-    if lang == 'zh':
-        en = await loop.run_in_executor(_executor, _translate_zh_to_en, text)
-        return text, en or f"[EN] {text}"
-    else:
-        zh = await loop.run_in_executor(_executor, _translate_en_to_zh, text)
-        return zh or f"[ZH] {text}", text
-
-
-# ── Preload endpoints ──
 
 @router.post("/preload")
 async def preload():
-    """Trigger model preloading. Idempotent — safe to call multiple times."""
     await preload_models()
-    return {"ok": True, "ready": _preload_done}
+    return {"ok": True, "ready": speech.ready}
 
 
 @router.get("/preload/status")
 def preload_status():
-    models_loaded = (
-        _stt_model is not None
-        and _mt_zh_en_model is not None
-        and _mt_en_zh_model is not None
-    )
-    return {"ready": _preload_done or models_loaded, "loading": _preloading}
+    return {"ready": speech.ready, "loading": _preloading}
 
 
 # ── Transcript history ──
 
 @router.get("/history")
 def get_history(meeting_id: int = Query(...)):
-    entries = _transcript_history.get(meeting_id, [])
+    """Query translation history from persistent HistoryStore."""
+    rows = speech.get_history(meeting_id, limit=500)
+    entries = []
+    for row in rows:
+        try:
+            ts = time.mktime(time.strptime(row["created_at"], "%Y-%m-%d %H:%M:%S"))
+        except (ValueError, TypeError):
+            ts = time.time()
+        entries.append({
+            "id": row["segment_id"],
+            "zh": row["zh_text"],
+            "en": row["en_text"],
+            "seat_id": row["seat_id"],
+            "ts": ts,
+        })
     return {"meeting_id": meeting_id, "entries": entries}
 
 
 @router.delete("/history")
 def clear_history(meeting_id: int = Query(...)):
-    _transcript_history.pop(meeting_id, None)
+    """Delete all history records for a meeting."""
+    conn = history_store._get_conn()
+    conn.execute("DELETE FROM translation_history WHERE meeting_id = ?", (meeting_id,))
+    conn.commit()
     return {"ok": True}
 
 
@@ -318,29 +123,32 @@ def get_speaker_seat(meeting_id: int):
 @router.post("", response_model=TranslationOut)
 async def translate(data: TranslationRequest):
     text = data.text.strip()
-    zh, en = await _translate_text(text)
+    zh, en = speech.translate_text(text)
     return TranslationOut(
-        original=zh,
-        translated=en,
-        source_lang="auto",
-        target_lang="auto",
+        original=zh, translated=en,
+        source_lang="auto", target_lang="auto",
     )
 
 
-# ── Audio (STT + translation) ──
+# ── Audio upload (STT + translation) ──
 
 @router.post("/audio")
 async def transcribe_audio(
     meeting_id: int = Form(...),
     seat_id: int = Form(...),
     final: bool = Form(True),
+    utterance_id: int = Form(0),
     audio: UploadFile = File(...),
 ):
-    """Receive audio → SenseVoice STT → Opus-MT → broadcast if final."""
-    if _stt_model is None or _mt_zh_en_model is None or _mt_en_zh_model is None:
+    """
+    Receive audio → STT → translate (only if final) → broadcast (only if final).
+
+    interim (final=false): Streaming ASR via Paraformer Streaming + SentenceMerger.
+    final   (final=true):  Offline rescore via Paraformer-large → translate → record → broadcast.
+    """
+    if not speech.ready:
         return {"zh": "", "en": "", "final": final, "ready": False}
 
-    # Interim: skip if all workers busy, avoid queue buildup
     acquired = _pending_sema.acquire(blocking=final)
     if not acquired:
         return {"zh": "", "en": "", "final": False, "skipped": True}
@@ -352,33 +160,65 @@ async def transcribe_audio(
 
     try:
         loop = asyncio.get_running_loop()
-        zh_text, en_text = await loop.run_in_executor(
-            _executor, _transcribe_and_translate, tmp_path
-        )
+        session_key = f"{meeting_id}_{seat_id}"
 
-        if final and zh_text and zh_text != "[无法识别语音]":
-            global _history_id_counter
-            entries = _transcript_history[meeting_id]
-            if entries and _is_similar(entries[-1]['zh'], zh_text):
-                entries[-1]['zh'] = zh_text
-                entries[-1]['en'] = en_text
-                entries[-1]['ts'] = time.time()
-            else:
-                _history_id_counter += 1
-                entry = {
-                    "id": _history_id_counter,
-                    "zh": zh_text,
-                    "en": en_text,
-                    "seat_id": seat_id,
-                    "ts": time.time(),
-                }
-                entries.append(entry)
-                if len(entries) > 200:
-                    _transcript_history[meeting_id] = entries[-200:]
+        # Detect utterance boundary via utterance_id increment → reset SentenceMerger
+        _utt_state = speech._sessions.get(session_key)
+        _last_utt = _utt_state.get("_last_utterance_id", -1) if _utt_state else -1
+        if _last_utt != -1 and utterance_id != _last_utt:
+            speech.start_utterance(session_key)
 
-            await desk.on_translation_result(meeting_id, zh_text, en_text, seat_id)
+        if final:
+            try:
+                # Offline full-context rescore for best quality on complete utterance
+                zh_text = await loop.run_in_executor(
+                    _executor, speech.transcribe, tmp_path
+                )
 
-        return {"zh": zh_text, "en": en_text, "final": final, "seat_id": seat_id}
+                if not zh_text or zh_text == "[无法识别语音]":
+                    speech.reset_interim(session_key)
+                    return {"zh": zh_text or "", "en": "", "final": True,
+                            "segment_id": 0, "seat_id": seat_id}
+
+                zh, en = speech.translate_text(zh_text)
+
+                # Dedup against last entry for this meeting+seat
+                existing = speech.get_history(meeting_id, seat_id, limit=1)
+                if existing and text_similarity(existing[0].get("zh_text", ""), zh) > 0.8:
+                    seg_id = existing[0]["segment_id"]
+                else:
+                    seg_id = speech.get_next_segment_id(meeting_id, seat_id)
+
+                history_store.upsert(
+                    meeting_id=meeting_id, seat_id=seat_id,
+                    segment_id=seg_id, zh_text=zh, en_text=en, is_final=True,
+                )
+
+                await desk.on_translation_result(meeting_id, zh, en, seat_id, seg_id)
+                speech.reset_interim(session_key)
+
+                return {"zh": zh, "en": en, "final": True,
+                        "segment_id": seg_id, "seat_id": seat_id}
+            except Exception as e:
+                print(f"[transcribe] Error processing final audio: {e}")
+                speech.reset_interim(session_key)
+                return {"zh": "", "en": "", "final": True, "error": str(e),
+                        "segment_id": 0, "seat_id": seat_id}
+
+        else:
+            try:
+                # Track utterance_id for boundary detection
+                if speech._sessions.get(session_key):
+                    speech._sessions[session_key]["_last_utterance_id"] = utterance_id
+                # Streaming ASR → SentenceMerger handles accumulation + sentence boundary
+                accumulated = await loop.run_in_executor(
+                    _executor, speech.process_interim_chunk, tmp_path, session_key
+                )
+                return {"zh": accumulated, "en": "", "final": False}
+            except Exception as e:
+                print(f"[transcribe] Error processing interim audio: {e}")
+                return {"zh": "", "en": "", "final": False, "error": str(e)}
+
     finally:
         _pending_sema.release()
         try:
