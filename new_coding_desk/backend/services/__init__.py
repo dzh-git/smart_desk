@@ -12,5 +12,6 @@ from backend.services.meeting_service import MeetingService
 from backend.services.seat_service import SeatService
 from backend.services.service_call_service import ServiceCallService
 from backend.services.translation_service import TranslationService
+from backend.services.vote_service import VoteService
 
-__all__ = ["BaseService", "MeetingService", "SeatService", "ServiceCallService", "TranslationService"]
+__all__ = ["BaseService", "MeetingService", "SeatService", "ServiceCallService", "TranslationService", "VoteService"]

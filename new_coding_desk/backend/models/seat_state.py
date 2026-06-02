@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Index
 from backend.database import Base
 
 
@@ -18,3 +18,7 @@ class SeatState(Base):
     status = Column(String(20), nullable=False, default="vacant")
     attendee_id = Column(Integer, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_seat_states_status", "status"),
+    )

@@ -5,7 +5,7 @@ Repository: MeetingRepository.
 """
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Index
 from backend.database import Base
 
 
@@ -16,3 +16,7 @@ class Agenda(Base):
     meeting_id = Column(Integer, ForeignKey("meetings.id"), nullable=False)
     title = Column(String(500), nullable=False)
     sort_order = Column(Integer, default=0)
+
+    __table_args__ = (
+        Index("ix_agendas_meeting_id", "meeting_id"),
+    )

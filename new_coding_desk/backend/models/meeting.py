@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, Index
 from backend.database import Base
 
 
@@ -21,3 +21,8 @@ class Meeting(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     ended_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_meetings_status", "status"),
+        Index("ix_meetings_created_at", "created_at"),
+    )

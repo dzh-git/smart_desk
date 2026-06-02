@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint, Index
 from backend.database import Base
 
 
@@ -19,3 +19,8 @@ class VoteRecord(Base):
     attendee_id = Column(Integer, ForeignKey("attendees.id"), nullable=False)
     option = Column(String(200), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("vote_id", "attendee_id", name="uq_vote_attendee"),
+        Index("ix_vote_records_vote_id", "vote_id"),
+    )

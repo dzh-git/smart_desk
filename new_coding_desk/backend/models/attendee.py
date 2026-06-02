@@ -5,7 +5,7 @@ Repository: AttendeeRepository.
 """
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Index
 from backend.database import Base
 
 
@@ -18,3 +18,8 @@ class Attendee(Base):
     title = Column(String(100), default="")
     seat_id = Column(Integer, nullable=True)
     checked_in = Column(Boolean, default=False)
+
+    __table_args__ = (
+        Index("ix_attendees_meeting_id", "meeting_id"),
+        Index("ix_attendees_seat_id", "seat_id"),
+    )

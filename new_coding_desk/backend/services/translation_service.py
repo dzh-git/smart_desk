@@ -13,9 +13,6 @@ Business rules:
 """
 from __future__ import annotations
 
-import sys
-import os
-
 from sqlalchemy.orm import Session
 
 from backend.events.event_bus import EventBus
@@ -26,13 +23,6 @@ from backend.repositories.translation_repository import TranslationRepository
 from backend.services.base import BaseService
 
 # ── SpeechModule singleton ─────────────────────────────────────────────────────
-# Add smart-desk to sys.path so we can import speech_module.
-_SMART_DESK = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "smart-desk")
-)
-if _SMART_DESK not in sys.path:
-    sys.path.insert(0, _SMART_DESK)
-
 _speech = None  # lazy singleton
 
 NOT_AVAILABLE = "[translation not available]"
@@ -42,7 +32,7 @@ def _get_speech():
     """Return the module-level SpeechModule singleton, creating it if needed."""
     global _speech
     if _speech is None:
-        from speech_module import SpeechModule
+        from backend.speech_module import SpeechModule
 
         _speech = SpeechModule(max_workers=2)
     return _speech
