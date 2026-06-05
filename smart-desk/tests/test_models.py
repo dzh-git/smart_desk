@@ -132,17 +132,17 @@ def test_translation_record_create_validation_empty_translated_text():
 
 
 def test_vote_cast_still_importable():
-    """Original VoteCast schema must remain importable for routers."""
-    from backend.schemas import VoteCast
-    v = VoteCast(attendee_id=1, option="agree")
+    """VoteCastRequest (successor to VoteCast) must be importable from votes router."""
+    from backend.routers.votes import VoteCastRequest
+    v = VoteCastRequest(attendee_id=1, option="agree")
     assert v.attendee_id == 1
     assert v.option == "agree"
 
 
 def test_service_call_create_still_importable():
-    """Original ServiceCallCreate schema must remain importable for routers."""
-    from backend.schemas import ServiceCallCreate
-    s = ServiceCallCreate(seat_id=3, service_type="coffee")
+    """ServiceCallCreateRequest (successor to ServiceCallCreate) must be importable from service_calls router."""
+    from backend.routers.service_calls import ServiceCallCreateRequest
+    s = ServiceCallCreateRequest(seat_id=3, service_type="coffee")
     assert s.seat_id == 3
     assert s.service_type == "coffee"
 

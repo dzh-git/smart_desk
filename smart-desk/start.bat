@@ -8,6 +8,12 @@ echo.
 
 cd /d "%~dp0"
 
+:: --- Runtime database ---
+set "SMART_DESK_DATA_DIR=%LOCALAPPDATA%\SmartDesk"
+if not exist "%SMART_DESK_DATA_DIR%" mkdir "%SMART_DESK_DATA_DIR%" >nul 2>&1
+set "SMART_DESK_DB_PATH=%SMART_DESK_DATA_DIR%\smart_desk.db"
+echo Database: %SMART_DESK_DB_PATH%
+
 :: --- Kill old processes ---
 echo [0/2] Cleaning old processes...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000 " ^| findstr LISTENING 2^>nul') do taskkill /PID %%a /F >nul 2>&1
@@ -17,7 +23,7 @@ timeout /t 2 /nobreak >nul
 :: --- Backend ---
 echo.
 echo [1/2] Starting backend...
-start "SD-Backend" cmd /k "cd /d %~dp0 && uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000"
+start "SD-Backend" cmd /k "cd /d %~dp0 && .venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
 timeout /t 3 /nobreak >nul
 
 :: --- Frontend ---

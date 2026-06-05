@@ -18,7 +18,7 @@ sleep 1
 echo ""
 echo "[1/2] Starting backend..."
 cd "$SCRIPT_DIR"
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000 &
+.venv/bin/python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 sleep 2
 

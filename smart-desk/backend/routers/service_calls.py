@@ -1,77 +1,84 @@
 from __future__ import annotations
-from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+from pydantic import BaseModel, Field
 from backend.database import get_db
-from backend.models import ServiceCall
-from backend.schemas import ServiceCallCreate, ServiceCallUpdate, ServiceCallOut
-from backend.services.event_bus import event_bus, BaseEvent
+from backend.repositories.service_call_repository import ServiceCallRepository
+from backend.services.event_bus import event_bus
+from backend.services.service_call_service import (
+    ServiceCallService, ServiceCallNotFoundError, DuplicatePendingCallError,
+    ServiceCallNotPendingError,
+)
+from backend.utils import _ok
 
 router = APIRouter(prefix="/api/service-calls", tags=["service_calls"])
 
 
-def persist_service_call(meeting_id: int, seat_id: int, service_type: str) -> ServiceCall:
-    """Create a service call from WS. Returns the created ServiceCall."""
-    from backend.database import SessionLocal
-    from backend.models import Attendee
-    db = SessionLocal()
-    try:
-        # Look up the attendee at this seat to link the service call
-        attendee = db.query(Attendee).filter(
-            Attendee.meeting_id == meeting_id, Attendee.seat_id == seat_id
-        ).first()
-        sc = ServiceCall(
-            meeting_id=meeting_id,
-            seat_id=seat_id,
-            attendee_id=attendee.id if attendee else None,
-            service_type=service_type,
-            status="pending",
-        )
-        db.add(sc)
-        db.commit()
-        db.refresh(sc)
-        event_bus.publish(BaseEvent(
-            name="service_call_created",
-            payload={
-                "meeting_id": meeting_id,
-                "seat_id": seat_id,
-                "service_type": service_type,
-            },
-        ))
-        return sc
-    finally:
-        db.close()
+class ServiceCallCreateRequest(BaseModel):
+    seat_id: int = Field(..., ge=1, le=10)
+    service_type: str = Field(..., pattern="^(coffee|tea|water|other)$")
+    custom_text: str | None = None
 
 
-@router.get("/{meeting_id}", response_model=List[ServiceCallOut])
+def _sc_out(sc):
+    return {
+        "id": sc.id, "meeting_id": sc.meeting_id, "seat_id": sc.seat_id,
+        "service_type": sc.service_type, "custom_text": sc.custom_text,
+        "status": sc.status, "cancel_reason": sc.cancel_reason,
+        "created_at": str(sc.created_at) if sc.created_at else None,
+    }
+
+
+def _get_service(db: Session):
+    return ServiceCallService(event_bus, ServiceCallRepository(db))
+
+
+@router.get("")
 def list_service_calls(meeting_id: int, db: Session = Depends(get_db)):
-    return db.query(ServiceCall).filter(
-        ServiceCall.meeting_id == meeting_id
-    ).order_by(ServiceCall.created_at.desc()).all()
+    svc = _get_service(db)
+    calls = svc.list_by_meeting(meeting_id)
+    return _ok([_sc_out(c) for c in calls])
 
 
-@router.post("/{meeting_id}", response_model=ServiceCallOut, status_code=201)
-def create_service_call(meeting_id: int, data: ServiceCallCreate, db: Session = Depends(get_db)):
-    sc = ServiceCall(meeting_id=meeting_id, seat_id=data.seat_id, attendee_id=data.attendee_id, service_type=data.service_type)
-    db.add(sc)
-    db.commit()
-    db.refresh(sc)
-    event_bus.publish(BaseEvent(
-        name="service_call_created",
-        payload={"meeting_id": meeting_id, "seat_id": data.seat_id},
-    ))
-    return sc
+@router.get("/current")
+def get_current_call(meeting_id: int, seat_id: int, db: Session = Depends(get_db)):
+    svc = _get_service(db)
+    sc = svc.get_pending_by_seat(meeting_id, seat_id)
+    return _ok(_sc_out(sc) if sc else None)
 
 
-@router.patch("/{meeting_id}/{call_id}", response_model=ServiceCallOut)
-def update_call_status(meeting_id: int, call_id: int, data: ServiceCallUpdate, db: Session = Depends(get_db)):
-    sc = db.query(ServiceCall).filter(
-        ServiceCall.id == call_id, ServiceCall.meeting_id == meeting_id
-    ).first()
-    if not sc:
-        raise HTTPException(404, "Service call not found")
-    sc.status = data.status
-    db.commit()
-    db.refresh(sc)
-    return sc
+@router.post("", status_code=201)
+def create_service_call(data: ServiceCallCreateRequest, meeting_id: int,
+                         db: Session = Depends(get_db)):
+    svc = _get_service(db)
+    try:
+        sc = svc.create(meeting_id, data.seat_id, data.service_type, data.custom_text)
+    except ValueError:
+        raise HTTPException(400, detail="INVALID_SERVICE_TYPE")
+    except DuplicatePendingCallError:
+        raise HTTPException(409, detail="SERVICE_CALL_ALREADY_PENDING")
+    return _ok(_sc_out(sc))
+
+
+@router.post("/{call_id}/resolve")
+def resolve_call(call_id: int, db: Session = Depends(get_db)):
+    svc = _get_service(db)
+    try:
+        sc = svc.resolve(call_id)
+    except ServiceCallNotFoundError:
+        raise HTTPException(404, detail="SERVICE_CALL_NOT_FOUND")
+    except ServiceCallNotPendingError:
+        raise HTTPException(400, detail="SERVICE_CALL_NOT_PENDING")
+    return _ok(_sc_out(sc))
+
+
+@router.post("/{call_id}/cancel")
+def cancel_call(call_id: int, db: Session = Depends(get_db)):
+    svc = _get_service(db)
+    try:
+        sc = svc.cancel(call_id, reason="manual")
+    except ServiceCallNotFoundError:
+        raise HTTPException(404, detail="SERVICE_CALL_NOT_FOUND")
+    except ServiceCallNotPendingError:
+        raise HTTPException(400, detail="SERVICE_CALL_NOT_PENDING")
+    return _ok(_sc_out(sc))

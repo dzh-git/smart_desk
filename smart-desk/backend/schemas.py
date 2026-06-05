@@ -56,56 +56,6 @@ class AttendeeOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Check-in (UI确认签到, no RFID) ──
-class CheckInRequest(BaseModel):
-    seat_id: int = Field(..., ge=1, le=10)
-
-
-# ── Vote ──
-class VoteCreate(BaseModel):
-    title: str = Field(..., max_length=500)
-    options: list[str] = Field(..., min_length=2)
-
-class VoteCast(BaseModel):
-    attendee_id: int
-    option: str
-
-class VoteResult(BaseModel):
-    option: str
-    count: int
-
-class VoteOut(BaseModel):
-    id: int
-    meeting_id: int
-    title: str
-    options: list[str]
-    status: str
-    results: list[VoteResult] = []
-
-    model_config = {"from_attributes": True}
-
-
-# ── Service Call ──
-class ServiceCallCreate(BaseModel):
-    seat_id: int = Field(..., ge=1, le=10)
-    attendee_id: int | None = None
-    service_type: str = Field(..., pattern="^(coffee|tea|water|other)$")
-
-class ServiceCallUpdate(BaseModel):
-    status: str = Field(..., pattern="^(acknowledged|completed)$")
-
-class ServiceCallOut(BaseModel):
-    id: int
-    meeting_id: int
-    seat_id: int
-    attendee_id: int | None = None
-    service_type: str
-    status: str
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
 # ── Translation (C-tier, keep stubbed) ──
 class TranslationRequest(BaseModel):
     text: str
@@ -181,10 +131,3 @@ class SpeakerSeatOut(BaseModel):
 class SpeakerSeatSet(BaseModel):
     seat_id: int = Field(..., ge=0, le=10)  # 0 = clear
 
-
-# ── Vote (extended) ──
-class VoteCreateRequest(BaseModel):
-    meeting_id: int
-    title: str = Field(..., max_length=500)
-    options: list[str] = Field(..., min_length=2)
-    is_anonymous: bool = False

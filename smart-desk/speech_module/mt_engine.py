@@ -14,6 +14,7 @@ routes to the appropriate model. Never raises — returns placeholder on failure
 """
 
 from __future__ import annotations
+import importlib.util as _importlib_util
 import os as _os
 import glob as _glob
 from typing import Optional
@@ -50,6 +51,8 @@ def _resolve_model_path(model_dir: str | None, model_name: str) -> str:
 
 def _load_model(model_name: str, model_dir: str | None, device: str):
     """Load a single MarianMT model + tokenizer. Returns (model, tokenizer)."""
+    if _importlib_util.find_spec("torch") is None:
+        raise RuntimeError("PyTorch is required before loading MarianMT models")
     from transformers import MarianMTModel, MarianTokenizer
 
     path = _resolve_model_path(model_dir, model_name)
@@ -92,6 +95,8 @@ class MTEngine:
         """Load opus-mt-zh-en + opus-mt-en-zh. Idempotent. Raise on first failure."""
         if self._ready:
             return
+        if _os.environ.get("SMART_DESK_ENABLE_MT") != "1" and _os.environ.get("SMART_DESK_RUN_SLOW_MODELS") != "1":
+            raise RuntimeError("Machine translation preload is disabled; set SMART_DESK_ENABLE_MT=1 to enable it")
 
         global _zh2en_model, _zh2en_tokenizer, _en2zh_model, _en2zh_tokenizer
 

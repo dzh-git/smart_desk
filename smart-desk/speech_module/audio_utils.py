@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 import numpy as np
+import soundfile as sf
+from scipy import signal
 from typing import Optional
+
+
+def load_audio_resampled(path: str, target_sr: int = 16000) -> tuple[np.ndarray, int]:
+    """Load audio and resample to target_sr if needed. Returns (audio_array, sample_rate).
+
+    Delegates to centralized resample_if_needed for sample rate conversion (CR-013).
+    """
+    audio, sr = sf.read(path, dtype="float32")
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)  # stereo -> mono
+    if sr != target_sr:
+        audio = resample_if_needed(audio, sr, target_sr)
+    return audio.astype(np.float32), target_sr
 
 
 def load_audio(file_path: str) -> tuple[np.ndarray, int]:

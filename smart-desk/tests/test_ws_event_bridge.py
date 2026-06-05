@@ -44,8 +44,8 @@ def _clear_event_bus():
 # ---------------------------------------------------------------------------
 
 def test_all_events_mapped():
-    """Verify all 15 spec events are mapped."""
-    assert len(EVENT_TO_WS_TYPE) == 15
+    """Verify all 16 spec events are mapped."""
+    assert len(EVENT_TO_WS_TYPE) == 16
     expected = {
         "seat_occupied", "seat_vacant", "checkin_prompt", "check_in",
         "speaker_seat_set", "speaker_seat_clear",
@@ -53,6 +53,7 @@ def test_all_events_mapped():
         "vote_started", "vote_updated", "vote_closed",
         "service_call_created", "service_call_resolved", "service_call_cancelled",
         "translation_final",
+        "recording_stop",
     }
     assert set(EVENT_TO_WS_TYPE.keys()) == expected
 
@@ -157,8 +158,8 @@ class TestWSBridgeRouting:
 
             assert len(broadcast_1) == 1
             assert len(broadcast_2) == 1
-            assert broadcast_1[0]["type"] == "translation_result"
-            assert broadcast_2[0]["type"] == "translation_result"
+            assert broadcast_1[0]["type"] == "translation_final"
+            assert broadcast_2[0]["type"] == "translation_final"
         finally:
             bridge_mod.ws_svc.rooms = original_rooms
 
@@ -284,6 +285,38 @@ class TestWSBridgeRouting:
         finally:
             del bridge_mod.ws_svc.get_or_create
 
+    def test_recording_stop_maps_to_correct_ws_type(self):
+        """C8+CR-004: recording_stop with meeting_id routes to specific room."""
+        import backend.services.ws_event_bridge as bridge_mod
+
+        mock_room = MeetingRoom(meeting_id=1)
+        broadcast_msgs = []
+
+        async def capture(msg, **kw):
+            broadcast_msgs.append(msg)
+
+        mock_room.broadcast = capture
+
+        bridge_mod.ws_svc.get_or_create = lambda mid: mock_room
+
+        try:
+            event = BaseEvent(
+                name="recording_stop",
+                payload={"meeting_id": 1, "seat_id": 5, "reason": "speaker_changed"},
+            )
+            event_bus.publish(event)
+            self._run_captured_coros()
+
+            # Routes to specific room (meeting_id=1), not all rooms
+            assert len(broadcast_msgs) == 1
+            msg = broadcast_msgs[0]
+            assert msg["type"] == "recording_stop"
+            assert msg["payload"]["meeting_id"] == 1
+            assert msg["payload"]["seat_id"] == 5
+            assert msg["payload"]["reason"] == "speaker_changed"
+        finally:
+            del bridge_mod.ws_svc.get_or_create
+
 
 # ---------------------------------------------------------------------------
 # Thread-safety tests for _run_async
@@ -375,7 +408,7 @@ def test_full_pipeline_publish_to_broadcast():
         event_bus.publish(event)
 
         assert len(broadcast_msgs) == 1
-        assert broadcast_msgs[0]["type"] == "service_update"
+        assert broadcast_msgs[0]["type"] == "service_call_created"
         assert broadcast_msgs[0]["payload"]["service_type"] == "coffee"
         assert broadcast_msgs[0]["payload"]["seat_id"] == 3
     finally:

@@ -17,6 +17,11 @@ class DuplicatePendingCallError(ServiceCallError):
     pass
 
 
+class ServiceCallNotPendingError(ServiceCallError):
+    """Service call is not in pending status."""
+    pass
+
+
 class ServiceCallService:
     VALID_SERVICE_TYPES = {"coffee", "tea", "water", "other"}
 
@@ -36,7 +41,7 @@ class ServiceCallService:
         sc = self.repo.create(meeting_id, seat_id, service_type, custom_text, attendee_id=attendee_id)
         self.bus.publish(BaseEvent(
             name="service_call_created",
-            payload={"call_id": sc.id, "seat_id": seat_id, "service_type": service_type},
+            payload={"meeting_id": meeting_id, "call_id": sc.id, "seat_id": seat_id, "service_type": service_type},
         ))
         return sc
 
@@ -46,23 +51,36 @@ class ServiceCallService:
     def get_pending_by_seat(self, meeting_id: int, seat_id: int):
         return self.repo.get_pending_by_seat(meeting_id, seat_id)
 
+    def _assert_pending(self, sc):
+        """Raise ServiceCallNotPendingError if the call is not in 'pending' status."""
+        if sc.status != "pending":
+            raise ServiceCallNotPendingError(
+                f"Service call {sc.id} is {sc.status}, not pending"
+            )
+
     def resolve(self, call_id: int):
+        sc = self.repo.get_by_id(call_id)
+        if not sc:
+            raise ServiceCallNotFoundError(f"Service call {call_id} not found")
+        self._assert_pending(sc)
         sc = self.repo.resolve(call_id)
         if not sc:
             raise ServiceCallNotFoundError(f"Service call {call_id} not found")
         self.bus.publish(BaseEvent(
             name="service_call_resolved",
-            payload={"call_id": call_id},
+            payload={"meeting_id": sc.meeting_id, "call_id": call_id},
         ))
         return sc
 
     def cancel(self, call_id: int, reason: str = "manual"):
-        sc = self.repo.cancel(call_id, reason)
+        sc = self.repo.get_by_id(call_id)
         if not sc:
             raise ServiceCallNotFoundError(f"Service call {call_id} not found")
+        self._assert_pending(sc)
+        sc = self.repo.cancel(call_id, reason)
         self.bus.publish(BaseEvent(
             name="service_call_cancelled",
-            payload={"call_id": call_id, "reason": reason},
+            payload={"meeting_id": sc.meeting_id, "call_id": call_id, "reason": reason},
         ))
         return sc
 
@@ -71,6 +89,6 @@ class ServiceCallService:
         for sc in expired:
             self.bus.publish(BaseEvent(
                 name="service_call_cancelled",
-                payload={"call_id": sc.id, "reason": "TIMEOUT"},
+                payload={"meeting_id": sc.meeting_id, "call_id": sc.id, "reason": "TIMEOUT"},
             ))
         return expired

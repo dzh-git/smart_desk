@@ -1,7 +1,14 @@
 """Unit tests for MTEngine — Opus-MT zh↔en bidirectional translation."""
 
+import os
+
 import pytest
 from speech_module.mt_engine import MTEngine
+
+requires_slow_models = pytest.mark.skipif(
+    os.environ.get("SMART_DESK_RUN_SLOW_MODELS") != "1",
+    reason="requires local model preload; set SMART_DESK_RUN_SLOW_MODELS=1",
+)
 
 
 class TestMTEngine:
@@ -49,6 +56,7 @@ class TestMTEngine:
         assert mt._model_dir is None
 
 
+@requires_slow_models
 class TestMTEngineIntegration:
     """Integration tests — require preloaded models. Mark as slow."""
 

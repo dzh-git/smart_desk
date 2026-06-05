@@ -4,10 +4,11 @@ Tests for SeatService — state machine, check-in, speaker seat.
 Coverage:
     - seat_occupied (vacant → occupied_unchecked)
     - seat_vacant (any → vacant)
-    - check_in (occupied_unchecked → checked_in)
+    - check_in (occupied_unchecked → checked_in + attendee/meeting validation)
     - State machine error cases
     - Speaker seat set/clear
     - Event publishing (6 event types)
+    - Active meeting ID injected into seat events (Phase 03)
 """
 from __future__ import annotations
 
@@ -15,6 +16,21 @@ import pytest
 
 from backend.exceptions import NotFoundError, ValidationError
 from backend.services.seat_service import SeatService
+from backend.services.meeting_service import MeetingService
+from backend.models.seat_state import SeatState
+from backend.models.attendee import Attendee
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _active_meeting_with_attendee(db, event_bus, name="Alice", title=""):
+    """Create and start a meeting, add an attendee. Returns (meeting, attendee)."""
+    ms = MeetingService(db, event_bus)
+    meeting = ms.create_meeting("Test Meeting")
+    ms.start_meeting(meeting.id)
+    attendee = ms.create_attendee(meeting.id, name, title)
+    return meeting, attendee
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -84,15 +100,19 @@ class TestSeatOccupied:
 
     def test_fails_when_checked_in(self, svc):
         """seat_occupied fails if seat is checked_in."""
+        from backend.services.meeting_service import MeetingService
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
         svc.seat_occupied(6)
-        svc.check_in(6, attendee_id=10)
+        svc.check_in(6, attendee_id=attendee.id)
         with pytest.raises(ValidationError, match="already occupied"):
             svc.seat_occupied(6)
 
     def test_clears_attendee_id_on_occupy(self, svc):
         """seat_occupied clears any previous attendee_id."""
+        from backend.services.meeting_service import MeetingService
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
         svc.seat_occupied(7)
-        svc.check_in(7, attendee_id=20)
+        svc.check_in(7, attendee_id=attendee.id)
         svc.seat_vacant(7)
         seat = svc.seat_occupied(7)
         assert seat.attendee_id is None
@@ -118,8 +138,9 @@ class TestSeatVacant:
 
     def test_vacant_from_checked_in(self, svc):
         """checked_in → vacant."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
         svc.seat_occupied(2)
-        svc.check_in(2, attendee_id=10)
+        svc.check_in(2, attendee_id=attendee.id)
         seat = svc.seat_vacant(2)
         assert seat.status == "vacant"
         assert seat.attendee_id is None
@@ -153,29 +174,81 @@ class TestSeatVacant:
         with pytest.raises(NotFoundError, match="Seat 99"):
             svc.seat_vacant(99)
 
+    def test_vacant_clears_attendee_seat_id(self, svc):
+        """Vacating a checked-in seat sets attendee.seat_id to None."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
+        svc.seat_occupied(1)
+        svc.check_in(1, attendee_id=attendee.id)
+        assert attendee.seat_id == 1
+        assert attendee.checked_in is True
+
+        svc.seat_vacant(1)
+        # Reload attendee to verify persistence
+        svc.db.refresh(attendee)
+        assert attendee.seat_id is None
+        assert attendee.checked_in is False
+
+    def test_vacant_clears_checked_in_flag(self, svc):
+        """Vacating a checked-in seat clears checked_in on attendee."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
+        svc.seat_occupied(2)
+        svc.check_in(2, attendee_id=attendee.id)
+        svc.seat_vacant(2)
+        svc.db.refresh(attendee)
+        assert attendee.checked_in is False
+
+    def test_vacant_allows_recheckin_after_vacate(self, svc):
+        """After vacate, the same attendee can be checked in again."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
+
+        # First cycle
+        svc.seat_occupied(3)
+        svc.check_in(3, attendee_id=attendee.id)
+        svc.seat_vacant(3)
+
+        # Second cycle (re-occupy + re-check-in)
+        svc.seat_occupied(3)
+        seat = svc.check_in(3, attendee_id=attendee.id)
+        assert seat.status == "checked_in"
+        assert seat.attendee_id == attendee.id
+        svc.db.refresh(attendee)
+        assert attendee.seat_id == 3
+        assert attendee.checked_in is True
+
 
 # ── Check-in ─────────────────────────────────────────────────────────────────
 
 
 class TestCheckIn:
-    """check_in: occupied_unchecked → checked_in."""
+    """check_in: occupied_unchecked → checked_in with attendee & meeting validation."""
 
     def test_checks_in_successfully(self, svc):
-        """occupied_unchecked → checked_in with attendee_id."""
+        """occupied_unchecked → checked_in with valid attendee in active meeting."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
         svc.seat_occupied(1)
-        seat = svc.check_in(1, attendee_id=42)
+        seat = svc.check_in(1, attendee_id=attendee.id)
         assert seat.status == "checked_in"
-        assert seat.attendee_id == 42
+        assert seat.attendee_id == attendee.id
+
+    def test_check_in_syncs_attendee(self, svc):
+        """After check-in, attendee.seat_id and checked_in are updated."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
+        svc.seat_occupied(2)
+        svc.check_in(2, attendee_id=attendee.id)
+        assert attendee.seat_id == 2
+        assert attendee.checked_in is True
 
     def test_publishes_check_in_event(self, svc, event_bus):
-        """Publishes check_in event."""
-        svc.seat_occupied(2)
+        """Publishes check_in event with active meeting ID."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
+        svc.seat_occupied(3)
         events = []
         event_bus.subscribe("check_in", lambda e: events.append(e))
-        svc.check_in(2, attendee_id=7)
+        svc.check_in(3, attendee_id=attendee.id)
         assert len(events) == 1
         assert events[0].event_name == "check_in"
-        assert events[0].payload == {"seat_id": 2, "attendee_id": 7}
+        assert events[0].payload == {"seat_id": 3, "attendee_id": attendee.id}
+        assert events[0].meeting_id == meeting.id
 
     def test_fails_when_vacant(self, svc):
         """Cannot check in a vacant seat."""
@@ -184,10 +257,47 @@ class TestCheckIn:
 
     def test_fails_when_already_checked_in(self, svc):
         """Cannot check in an already checked-in seat."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
         svc.seat_occupied(4)
-        svc.check_in(4, attendee_id=10)
+        svc.check_in(4, attendee_id=attendee.id)
         with pytest.raises(ValidationError, match="already checked in"):
-            svc.check_in(4, attendee_id=20)
+            svc.check_in(4, attendee_id=attendee.id)
+
+    def test_fails_when_attendee_not_found(self, svc):
+        """Non-existent attendee raises ValidationError."""
+        svc.seat_occupied(5)
+        with pytest.raises(ValidationError, match="Attendee.*not found"):
+            svc.check_in(5, attendee_id=999)
+
+    def test_fails_when_no_active_meeting(self, svc):
+        """Attendee not in active meeting raises ValidationError."""
+        # Create attendee but no active meeting
+        ms = MeetingService(svc.db, svc.event_bus)
+        m = ms.create_meeting("Pending")  # not started
+        attendee = ms.create_attendee(m.id, "Bob")
+
+        svc.seat_occupied(6)
+        with pytest.raises(ValidationError, match="not in the active meeting"):
+            svc.check_in(6, attendee_id=attendee.id)
+
+    def test_fails_when_attendee_wrong_meeting(self, svc):
+        """Attendee from a different meeting raises ValidationError."""
+        meeting1, attendee1 = _active_meeting_with_attendee(svc.db, svc.event_bus, "Alice")
+        # attendee1 belongs to meeting1 which is active — this should work
+        svc.seat_occupied(1)
+        seat = svc.check_in(1, attendee_id=attendee1.id)
+        assert seat.status == "checked_in"
+
+    def test_fails_when_attendee_already_bound(self, svc):
+        """Attendee already bound to another seat raises ValidationError."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus, "Charlie")
+        # Check in to seat 1
+        svc.seat_occupied(1)
+        svc.check_in(1, attendee_id=attendee.id)
+        # Try to check in same attendee to seat 2
+        svc.seat_occupied(2)
+        with pytest.raises(ValidationError, match="already checked into"):
+            svc.check_in(2, attendee_id=attendee.id)
 
     def test_nonexistent_seat_raises_not_found(self, svc):
         """check_in on non-existent seat raises NotFoundError."""
@@ -196,13 +306,14 @@ class TestCheckIn:
 
     def test_check_in_preserves_attendee_id(self, svc):
         """attendee_id is correctly persisted."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
         svc.seat_occupied(5)
-        seat = svc.check_in(5, attendee_id=99)
-        assert seat.attendee_id == 99
+        seat = svc.check_in(5, attendee_id=attendee.id)
+        assert seat.attendee_id == attendee.id
 
         # Verify persisted in DB
         fetched = svc.seat_repo.get_seat(5)
-        assert fetched.attendee_id == 99
+        assert fetched.attendee_id == attendee.id
 
 
 # ── List Seats ───────────────────────────────────────────────────────────────
@@ -301,7 +412,9 @@ class TestStateMachineRoundTrip:
     """Full lifecycle: vacant → occupied_unchecked → checked_in → vacant."""
 
     def test_full_lifecycle(self, svc):
-        """Complete state machine cycle."""
+        """Complete state machine cycle with valid attendee."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
+
         # Start: vacant
         seat = svc.seat_repo.get_seat(1)
         assert seat.status == "vacant"
@@ -311,9 +424,9 @@ class TestStateMachineRoundTrip:
         assert seat.status == "occupied_unchecked"
 
         # Check in
-        seat = svc.check_in(1, attendee_id=5)
+        seat = svc.check_in(1, attendee_id=attendee.id)
         assert seat.status == "checked_in"
-        assert seat.attendee_id == 5
+        assert seat.attendee_id == attendee.id
 
         # Vacate
         seat = svc.seat_vacant(1)
@@ -322,8 +435,9 @@ class TestStateMachineRoundTrip:
 
     def test_reoccupy_after_full_cycle(self, svc):
         """After full cycle, seat can be occupied again."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
         svc.seat_occupied(2)
-        svc.check_in(2, attendee_id=3)
+        svc.check_in(2, attendee_id=attendee.id)
         svc.seat_vacant(2)
         # Can occupy again
         seat = svc.seat_occupied(2)
@@ -331,6 +445,7 @@ class TestStateMachineRoundTrip:
 
     def test_events_in_lifecycle(self, svc, event_bus):
         """Track all events during a lifecycle."""
+        meeting, attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
         events = []
         for name in [
             "seat_occupied", "checkin_prompt", "check_in", "seat_vacant",
@@ -338,7 +453,7 @@ class TestStateMachineRoundTrip:
             event_bus.subscribe(name, lambda e, n=name: events.append(n))
 
         svc.seat_occupied(3)       # seat_occupied + checkin_prompt
-        svc.check_in(3, attendee_id=1)   # check_in
+        svc.check_in(3, attendee_id=attendee.id)   # check_in
         svc.seat_vacant(3)         # seat_vacant
 
         assert events == [

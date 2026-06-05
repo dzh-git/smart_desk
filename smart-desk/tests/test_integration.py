@@ -1,52 +1,11 @@
 # tests/test_integration.py
-"""Black-box integration tests: full meeting lifecycle through HTTP API.
-These tests MUST FAIL initially — they exercise endpoints and services
-that do not yet exist. This is the RED phase of TDD."""
+"""Black-box integration tests: full meeting lifecycle through HTTP API."""
 
 import pytest
-from fastapi.testclient import TestClient
 
-
-# Attempt to import app — will fail early if backend can't start
-try:
-    from backend.main import app
-    _APP_IMPORT_OK = True
-except Exception as e:
-    _APP_IMPORT_OK = False
-    _APP_IMPORT_ERROR = str(e)
-
-
-@pytest.fixture
-def client():
-    """Create TestClient. Fails early if app cannot be imported."""
-    if not _APP_IMPORT_OK:
-        pytest.skip(f"App import failed (expected in red phase): {_APP_IMPORT_ERROR}")
-    return TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def reset_state(client):
-    """Ensure clean DB state before each test: end any active meeting.
-    In red phase, endpoints may not exist — catch only expected failures
-    (JSON decode errors, missing keys) rather than all exceptions."""
-    import warnings
-    try:
-        resp = client.get("/api/meetings/active")
-        if resp.status_code == 200:
-            body = resp.json()
-            meeting = body.get("data", body)
-            if meeting and isinstance(meeting, dict) and meeting.get("id"):
-                end_resp = client.post(f"/api/meetings/{meeting['id']}/end")
-                if end_resp.status_code != 200:
-                    warnings.warn(
-                        f"reset_state: end meeting {meeting['id']} returned "
-                        f"{end_resp.status_code}: {end_resp.text[:200]}"
-                    )
-    except (ValueError, KeyError, TypeError):
-        # Expected during red phase: endpoints exist but return
-        # unexpected format (non-JSON body, missing keys, etc.)
-        pass
-    yield
+# CR-023: Shared client and reset_state fixtures are in tests/conftest.py.
+# Activate reset_state (non-autouse) for all tests in this file.
+pytestmark = pytest.mark.usefixtures("reset_state")
 
 
 class TestMeetingLifecycle:
@@ -250,7 +209,7 @@ class TestMeetingLifecycle:
         start_resp = client.post(f"/api/meetings/{mid}/start")
         assert start_resp.status_code == 200
 
-        # Preload status
+        # Preload status (router uses /api/translations prefix, returns unified envelope)
         resp = client.get("/api/translations/preload/status")
         assert resp.status_code == 200
         assert isinstance(resp.json()["data"]["ready"], bool)

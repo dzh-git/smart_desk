@@ -1,5 +1,6 @@
 <template>
   <div class="app-shell">
+    <ConnectionLostOverlay :connected="appConnected" :enabled="connectionOverlayEnabled" />
     <header class="top-bar">
       <div class="logo" @click="$router.push('/')" role="link" tabindex="0" aria-label="返回首页">
         <div class="logo-mark">
@@ -9,7 +10,7 @@
       </div>
       <div class="top-bar-right">
         <span class="time-display">{{ timeStr }}</span>
-        <span class="ws-indicator" :class="{ connected: wsConnected }" title="连接状态"></span>
+        <span class="ws-indicator" :class="{ connected: appConnected }" title="连接状态"></span>
       </div>
     </header>
     <main class="main-content">
@@ -23,16 +24,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
+import { useRoute } from 'vue-router'
 import { useSeat } from './composables/useSeat.js'
+import { appConnected } from './composables/useWebSocket.js'
+import ConnectionLostOverlay from './components/ConnectionLostOverlay.vue'
 
+const route = useRoute()
 const { seatId, isAdmin } = useSeat()
+const connectionOverlayEnabled = computed(() => route.name === 'meeting')
 provide('seatId', seatId)
 provide('isAdmin', isAdmin)
 
 const timeStr = ref('')
-const wsConnected = ref(false)
-provide('appConnected', wsConnected)
+provide('appConnected', appConnected)
 
 let timer = null
 function tick() {

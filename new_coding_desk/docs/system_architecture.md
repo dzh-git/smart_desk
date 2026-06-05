@@ -1,8 +1,8 @@
 # SmartDesk System Architecture
 
-Version: 2.0
+Version: 2.1
 Status: Architecture Baseline (Target)
-Last Updated: 2026-06-02
+Last Updated: 2026-06-04
 
 ---
 
@@ -153,7 +153,7 @@ SpeechModule 导入：
 * FastAPI
 * WebSocket
 * Arduino
-* Vue
+* React
 
 ---
 
@@ -162,9 +162,9 @@ SpeechModule 导入：
 ```text
                     +----------------+
                     |   Frontend     |
-                    | Vue 3 + Vite   |
-                    | Client VAD     |
-                    | (vad-web)      |
+                    | React + Vite   |
+                    | TypeScript     |
+                    | Client VAD (*) |
                     +-------+--------+
                             |
                   HTTP      |      WebSocket
@@ -187,11 +187,10 @@ SpeechModule 导入：
 |               v                                     |
 |     WebSocketService.broadcast()                    |
 |                                                     |
-|  Service Layer (7 services):                        |
+|  Service Layer (6 services):                        |
 |    MeetingService     SeatService                   |
 |    VoteService        ServiceCallService            |
-|    TranslationService DashboardService              |
-|    WebSocketService                                 |
+|    TranslationService WebSocketService              |
 |                                                     |
 |  SeatStateMachine (pure state machine, zero I/O)    |
 |                                                     |
@@ -212,7 +211,8 @@ Key architectural notes:
 
 * EventBus: in-process dict-dispatch, V1 only. No Kafka/RabbitMQ/Redis.
 * SeatStateMachine: formerly `business_logic.py`. Pure state machine with zero I/O dependencies.
-* Dual VAD: Client-side (vad-web in browser) for real-time segmentation; Server-side (FSMN-VAD) for final quality gate.
+* Frontend: React + Vite + TypeScript. The frontend only consumes HTTP API and WebSocket contracts.
+* Dual VAD: Client-side VAD is optional for the demo build; Server-side FSMN-VAD remains the final quality gate.
 * WebSocketEventHandler: bridges EventBus events to WebSocket broadcast. Fixed registration at startup.
 
 ---
@@ -224,7 +224,7 @@ Key architectural notes:
 目录：
 
 ```text
-backend/routers/
+backend/api/
 ```
 
 职责：
@@ -247,8 +247,8 @@ meetings.py       -- /api/meetings, /api/meetings/{id}/agendas, /api/meetings/{i
 seats.py          -- /api/seats, /api/seats/{id}/checkin, /api/seats/speaker
 votes.py          -- /api/votes
 service_calls.py  -- /api/service-calls
-translations.py   -- /api/translations, /api/translations/audio
-dashboard.py      -- /api/dashboard
+translations.py   -- /api/translations
+dashboard.py      -- /api/dashboard (reserved, not implemented in current demo backend)
 ```
 
 ---
@@ -274,7 +274,6 @@ backend/services/
 | VoteService | 发起投票、投票记录、关闭投票。无 quorum 要求。会议结束时自动关闭所有 open 投票。 |
 | ServiceCallService | 服务呼叫创建/解决/取消。5 分钟超时自动取消（可配置）。 |
 | TranslationService | 调用 SpeechModule、翻译结果持久化、发布 translation_final。 |
-| DashboardService | 聚合管理员首页数据：meeting, speaker_seat, active_vote, service_calls, seats。 |
 | WebSocketService | 房间管理、客户端连接管理、广播消息。通过 WebSocketEventHandler 订阅 EventBus 事件。 |
 
 ### 4.2.2 SeatStateMachine
@@ -519,7 +518,9 @@ class SpeechModule:
     def get_next_segment_id(meeting_id, seat_id) -> int
 ```
 
-### 4.7.1 Dual VAD Design [V1]
+### 4.7.1 Dual VAD Design [Post-demo]
+
+快速展示版本中，语音识别模块允许暂不实现。前端仅保留语音状态、翻译记录展示和上传接口封装，不要求接入麦克风、VAD 或 ASR 模型。
 
 ```
 +-------------------------------------------+
@@ -619,7 +620,7 @@ Browser Microphone
 Client VAD (vad-web): voice activity detection + segmentation
     |
     v
-POST /api/translations/audio  (FormData: audio + meeting_id + seat_id + final)
+POST /api/translations  (FormData: audio + meeting_id + seat_id + session_key + final)
     |
     +--->  final=false: Paraformer Streaming -> SentenceMerger -> HTTP 200 (interim)
     |
@@ -711,7 +712,7 @@ Vote design decisions [V1]:
 Seat Tablet
     |
     v
-POST /api/service-calls  {"seat_id": N, "service_type": "coffee|tea|water|other"}
+POST /api/service-calls?meeting_id=N  {"seat_id": N, "service_type": "coffee|tea|water|other"}
     |
     v
 ServiceCallService.create()
@@ -904,21 +905,19 @@ SeatStateMachine 为纯状态机，零 I/O。
 /api/votes/{id}/statistics GET    Get vote statistics
 /api/votes/{id}/close      POST   Close vote
 
-/api/service-calls         POST   Create service call
-/api/service-calls         GET    List service calls
-/api/service-calls/current GET    Get current seat call (?seat_id=N)
+/api/service-calls         POST   Create service call (?meeting_id=N)
+/api/service-calls         GET    List service calls (?meeting_id=N)
+/api/service-calls/current GET    Get current seat call (?meeting_id=N&seat_id=N)
 /api/service-calls/{id}/resolve  POST   Resolve call
 /api/service-calls/{id}/cancel   POST   Cancel call
 
-/api/translations                POST   Text translation
-/api/translations/audio          POST   Audio upload (FormData)
-/api/translations/history        GET    Translation history (?meeting_id=N)
-/api/translations/history        DELETE Clear history
-/api/translations/preload        POST   Trigger model preload
-/api/translations/preload/status GET    Preload status
+/api/translations                POST   Audio upload (FormData, speech placeholder)
+/api/translations                GET    Translation history (?meeting_id=N&seat_id=N)
 
-/api/dashboard             GET    Admin dashboard aggregation
+/api/dashboard             GET    Reserved, not implemented in current demo backend
 ```
+
+前端初始化时不得依赖 `/api/dashboard`。管理员页面应并行请求 active meeting、seats、speaker seat、active vote 和 service calls。
 
 统一响应格式：
 
@@ -1085,7 +1084,7 @@ speech_module/sentence_merge.py
 * 服务呼叫（5-min 超时）
 * 翻译历史（180 天留存）
 * EventBus（进程内 dict-dispatch）
-* Dual VAD（Client vad-web + Server FSMN-VAD）
+* 语音识别接口占位；Dual VAD 和 ASR 允许在展示版本后实现
 * Router -> Service -> Repository -> SQLite 分层架构
 
 **不包含：**
@@ -1119,12 +1118,12 @@ speech_module/sentence_merge.py
 | 13 | Arduino disconnect | seat_states 保持不变。物理层 != 业务层。 [V1] |
 | 14 | Post-meeting hardware | 记录物理状态，不改变业务状态。 [V1] |
 | 15 | Meeting cleanup | 重置 seats 为 vacant，保留所有历史记录。 [V1] |
-| 16 | Model preload | meeting_started 时触发 SpeechModule.preload()。加载失败会议继续，speech 不可用。 [V1] |
+| 16 | Model preload | 展示版本允许不加载语音模型。语音不可用时会议核心流程继续运行。 [V1] |
 | 17 | DB init | 应用启动时自动创建表 + 种子数据（seat_states 1~10, speaker_seat id=1）。幂等。dev 和 prod 均自动执行。 [V1] |
 | 18 | Audio format | WAV, PCM16, 16000Hz, Mono, <= 20s |
 | 19 | WS disconnect | 前端 overlay + 阻止写入 + 自动重连(3s) + 重连后全量状态同步 [V1] |
 | 20 | Deployment | Dev: Vite proxy /api -> localhost:8000。Prod: Nginx same-origin，无 CORS。Logging: logs/ 目录，每日轮转。 [V1] |
-| 21 | API paths | /api/translations（非 /api/translate），/api/translations/audio，/api/seats/speaker（非 /api/translate/speaker-seat）[V1] |
+| 21 | API paths | 音频上传和翻译历史均使用 /api/translations；发言席使用 /api/seats/speaker。[V1] |
 | 22 | Event names | translation_final（非 translation_result），vote_updated（非 vote_cast），service_call_created/resolved/cancelled [V1] |
 
 ---

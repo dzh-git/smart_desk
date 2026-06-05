@@ -22,6 +22,11 @@ class InvalidVoteOptionError(VoteError):
     pass
 
 
+class DuplicateOpenVoteError(VoteError):
+    """An open vote already exists for this meeting."""
+    pass
+
+
 class VoteService:
     def __init__(self, event_bus: EventBus, vote_repo):
         self.bus = event_bus
@@ -32,10 +37,15 @@ class VoteService:
             raise ValueError("title must not be empty")
         if not options:
             raise ValueError("options must not be empty")
+        existing = self.vote_repo.get_active(meeting_id)
+        if existing:
+            raise DuplicateOpenVoteError(
+                f"Meeting {meeting_id} already has an open vote (id={existing.id})"
+            )
         v = self.vote_repo.create(meeting_id, title, options, is_anonymous)
         self.bus.publish(BaseEvent(
             name="vote_started",
-            payload={"vote_id": v.id, "title": title},
+            payload={"meeting_id": meeting_id, "vote_id": v.id, "title": title},
         ))
         return v
 
@@ -58,7 +68,7 @@ class VoteService:
         self.vote_repo.cast(vote_id, attendee_id, option)
         self.bus.publish(BaseEvent(
             name="vote_updated",
-            payload={"vote_id": vote_id},
+            payload={"meeting_id": meeting_id, "vote_id": vote_id},
         ))
 
     def close(self, meeting_id: int, vote_id: int):
@@ -70,7 +80,7 @@ class VoteService:
         v = self.vote_repo.close(vote_id)
         self.bus.publish(BaseEvent(
             name="vote_closed",
-            payload={"vote_id": vote_id},
+            payload={"meeting_id": meeting_id, "vote_id": vote_id},
         ))
         return v
 

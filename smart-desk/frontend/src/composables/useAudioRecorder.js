@@ -21,6 +21,7 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
   let _audioCtx = null
   let _audioStream = null
   let _workletNode = null
+  let _silentGain = null
   let _interimTimer = null
   let _interimPending = false
   let _myvad = null
@@ -99,7 +100,9 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
     let succeeded = false
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
+        const seq = _utteranceSeq  // capture for barrier check
         const r = await api.uploadAudio(meetingId.value, seatId.value, wavBlob, true, _utteranceId)
+        if (_vadStopped || seq !== _utteranceSeq) return  // CR-009: stop barrier
         if (r.zh && r.zh !== '[无法识别语音]') {
           onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value, _utteranceId)
         }
@@ -130,6 +133,13 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
       _myvad.destroy()
       _myvad = null
     }
+  }
+
+  function _stopAudioGraph() {
+    if (_workletNode) { _workletNode.disconnect(); _workletNode = null }
+    if (_silentGain) { _silentGain.disconnect(); _silentGain = null }
+    if (_audioCtx) { _audioCtx.close(); _audioCtx = null }
+    if (_audioStream) { _audioStream.getTracks().forEach(t => t.stop()); _audioStream = null }
   }
 
   async function _createVAD() {
@@ -168,7 +178,9 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
     const fullAudio = concatFloat32(_rawChunks)
     if (fullAudio.length < 16000) return
     try {
+      const seq = _utteranceSeq  // capture for barrier check
       const r = await api.uploadAudio(meetingId.value, seatId.value, float32ToWav(fullAudio), true, _utteranceId)
+      if (_vadStopped || seq !== _utteranceSeq) return  // CR-009: stop barrier
       if (r.zh && r.zh !== '[无法识别语音]') {
         onFinal && onFinal(r.zh, r.en, r.seat_id || seatId.value, _utteranceId)
       }
@@ -205,6 +217,8 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
       await _audioCtx.audioWorklet.addModule('/audio-processor.js')
       const source = _audioCtx.createMediaStreamSource(_audioStream)
       _workletNode = new AudioWorkletNode(_audioCtx, 'audio-processor')
+      _silentGain = _audioCtx.createGain()
+      _silentGain.gain.value = 0
       _workletNode.port.onmessage = (e) => {
         if (_vadStopped) return
         _rawChunks.push(e.data) // Float32Array from worklet thread
@@ -213,6 +227,9 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
         }
       }
       source.connect(_workletNode)
+      // Keep the worklet in the active audio graph without playing mic audio.
+      _workletNode.connect(_silentGain)
+      _silentGain.connect(_audioCtx.destination)
 
       _interimTimer = setInterval(sendInterim, INTERIM_INTERVAL_MS)
       isRecording.value = true
@@ -226,20 +243,28 @@ export function useAudioRecorder({ meetingId, seatId, onSpeechStart, onInterim, 
     }
   }
 
-  function stopRecording() {
-    _vadStopped = true
+  async function stopRecording(options = {}) {
+    const shouldFinalize = options.finalize === true
+    const finalAudio = shouldFinalize && _rawChunks.length ? concatFloat32(_rawChunks) : null
+
+    _utteranceSeq++  // Invalidate in-flight interim responses (CR-008)
     _recordingStartedAt = 0
     if (_interimTimer) { clearInterval(_interimTimer); _interimTimer = null }
     _resetVAD()
-    if (_workletNode) { _workletNode.disconnect(); _workletNode = null }
-    if (_audioCtx) { _audioCtx.close(); _audioCtx = null }
-    if (_audioStream) { _audioStream.getTracks().forEach(t => t.stop()); _audioStream = null }
-    _rawChunks.length = 0
+    _stopAudioGraph()
+    isRecording.value = false
+
+    if (finalAudio && finalAudio.length >= 16000) {
+      _vadStopped = false
+      await finalizeUtterance(finalAudio)
+    } else {
+      _rawChunks.length = 0
+    }
+    _vadStopped = true
     _lastInterimSampleIdx = 0
     interimItem.zh = ''
     interimItem.en = ''
-    isRecording.value = false
   }
 
-  return { isRecording, errorMsg, interimItem, startRecording, stopRecording }
+  return { isRecording, errorMsg, interimItem, startRecording, stopRecording, stop: stopRecording }
 }

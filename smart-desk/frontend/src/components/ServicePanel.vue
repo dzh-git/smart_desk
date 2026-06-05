@@ -30,6 +30,7 @@ import { api } from '../api/index.js'
 
 const seatId = inject('seatId')
 const isAdmin = inject('isAdmin')
+const appConnected = inject('appConnected')
 const props = defineProps({ meetingId: Number, wsMsg: Object })
 
 const calls = ref([])
@@ -53,6 +54,7 @@ async function load() {
 }
 
 async function doCall(type) {
+  if (!appConnected.value) return
   await api.createServiceCall(props.meetingId, { seat_id: seatId.value, service_type: type })
   await load()
 }
@@ -70,7 +72,7 @@ function formatTime(d) {
 }
 
 watch(() => props.wsMsg, (msg) => {
-  if (msg?.type === 'service_update') load()
+  if (msg?.type === 'service_call_created' || msg?.type === 'service_call_resolved' || msg?.type === 'service_call_cancelled') load()
 })
 </script>
 

@@ -65,6 +65,7 @@ import BaseDialog from './shared/BaseDialog.vue'
 
 const seatId = inject('seatId')
 const isAdmin = inject('isAdmin')
+const appConnected = inject('appConnected')
 const props = defineProps({ meetingId: Number, wsMsg: Object })
 
 const votes = ref([])
@@ -77,7 +78,8 @@ const charts = {}
 onMounted(load)
 
 async function load() {
-  votes.value = await api.listVotes(props.meetingId)
+  const result = await api.getActiveVote(props.meetingId)
+  votes.value = result ? [result] : []
   await nextTick()
   votes.value.forEach(v => renderChart(v))
 }
@@ -155,36 +157,54 @@ function renderChart(v) {
 }
 
 async function doCreate() {
+  if (!appConnected.value) return
   const options = voteForm.value.optionsText.split('\n').map(s => s.trim()).filter(Boolean)
   if (!options.length) return
-  await api.createVote(props.meetingId, { title: voteForm.value.title, options })
+  await api.createVote({ title: voteForm.value.title, options, meeting_id: props.meetingId })
   showCreate.value = false
   voteForm.value = { title: '', optionsText: '同意\n反对\n弃权' }
   await load()
 }
 
 async function doCast(v) {
+  if (!appConnected.value) return
   const opt = selected.value[v.id]
   if (!opt) return
   // Look up attendee_id by seat_id (they're different)
-  let attendeeId = seatId.value
+  let attendeeId = null
   try {
     const attendees = await api.listAttendees(props.meetingId)
     const att = attendees.find(a => a.seat_id === seatId.value)
     if (att) attendeeId = att.id
-  } catch {}
-  await api.castVote(props.meetingId, v.id, { attendee_id: attendeeId, option: opt })
-  selected.value[v.id] = null
-  await load()
+  } catch (e) {
+    console.error('Failed to lookup attendee for vote:', e)
+    return
+  }
+  if (!attendeeId) {
+    console.error('Attendee not found for seat', seatId.value)
+    return
+  }
+  try {
+    await api.castVote(v.id, { attendee_id: attendeeId, option: opt })
+    selected.value[v.id] = null
+    await load()
+  } catch (e) {
+    console.error('Vote cast failed:', e)
+  }
 }
 
 async function doClose(v) {
-  await api.closeVote(props.meetingId, v.id)
-  await load()
+  if (!appConnected.value) return
+  try {
+    await api.closeVote(v.id)
+    await load()
+  } catch (e) {
+    console.error('Close vote failed:', e)
+  }
 }
 
 watch(() => props.wsMsg, (msg) => {
-  if (msg?.type === 'vote_update') load()
+  if (msg?.type === 'vote_updated') load()
 })
 
 onUnmounted(() => {

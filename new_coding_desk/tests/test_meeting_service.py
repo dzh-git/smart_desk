@@ -8,6 +8,8 @@ Coverage:
     - End meeting
     - Agenda CRUD
     - Attendee CRUD
+    - Meeting end resets seats, unbinds attendees, closes open vote,
+      preserves speaker seat (Phase 03)
 """
 from __future__ import annotations
 
@@ -15,6 +17,11 @@ import pytest
 
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.services.meeting_service import MeetingService
+from backend.services.seat_service import SeatService
+from backend.repositories.seat_repository import SeatRepository
+from backend.models.seat_state import SeatState
+from backend.models.vote import Vote
+from backend.models.speaker_seat import SpeakerSeat
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -367,3 +374,160 @@ class TestAttendeeCRUD:
         fetched = svc.attendee_repo.get_by_id(attendee.id)
         assert fetched is not None
         assert fetched.id == attendee.id
+
+
+# ── Extended Meeting End Behavior (Phase 03) ───────────────────────────────
+
+
+class TestEndMeetingExtended:
+    """Meeting end: seat reset, attendee unbind, vote close, speaker preserved."""
+
+    def _meeting_svc(self, db, event_bus) -> MeetingService:
+        return MeetingService(db, event_bus)
+
+    def _seat_svc(self, db, event_bus) -> SeatService:
+        return SeatService(db, event_bus)
+
+    def test_ends_meeting_resets_seats_to_vacant(self, seeded_db, event_bus):
+        """After end_meeting, all seats are vacant with attendee_id cleared."""
+        SeatRepository.init_seats(seeded_db)  # idempotent
+        ms = self._meeting_svc(seeded_db, event_bus)
+        ss = self._seat_svc(seeded_db, event_bus)
+
+        mid = _create_pending(ms)
+        ms.start_meeting(mid)
+
+        # Occupy and check in some seats
+        ss.seat_occupied(1)
+        ss.seat_occupied(2)
+
+        assert seeded_db.get(SeatState, 1).status == "occupied_unchecked"
+        assert seeded_db.get(SeatState, 2).status == "occupied_unchecked"
+
+        ms.end_meeting(mid)
+
+        assert seeded_db.get(SeatState, 1).status == "vacant"
+        assert seeded_db.get(SeatState, 1).attendee_id is None
+        assert seeded_db.get(SeatState, 2).status == "vacant"
+        assert seeded_db.get(SeatState, 2).attendee_id is None
+
+    def test_ends_meeting_unbinds_attendees(self, seeded_db, event_bus):
+        """Attendees have seat_id cleared and checked_in=false after end."""
+        SeatRepository.init_seats(seeded_db)
+        ms = self._meeting_svc(seeded_db, event_bus)
+        ss = self._seat_svc(seeded_db, event_bus)
+
+        mid = _create_pending(ms)
+        ms.start_meeting(mid)
+        attendee = ms.create_attendee(mid, "Alice")
+        ss.seat_occupied(1)
+        ss.check_in(1, attendee_id=attendee.id)
+
+        assert attendee.seat_id == 1
+        assert attendee.checked_in is True
+
+        ms.end_meeting(mid)
+
+        assert attendee.seat_id is None
+        assert attendee.checked_in is False
+
+    def test_ends_meeting_closes_open_vote(self, seeded_db, event_bus):
+        """Open vote is closed when meeting ends, vote_closed event published."""
+        from backend.events.vote_events import VoteClosedEvent
+
+        SeatRepository.init_seats(seeded_db)
+        ms = self._meeting_svc(seeded_db, event_bus)
+
+        mid = _create_pending(ms)
+        ms.start_meeting(mid)
+
+        # Create a vote directly
+        from backend.repositories.vote_repository import VoteRepository
+        import json
+        vote_repo = VoteRepository(seeded_db)
+        vote = vote_repo.create(
+            meeting_id=mid,
+            title="Test Vote",
+            options_json=json.dumps(["Yes", "No"]),
+            status="open",
+        )
+
+        events = []
+        event_bus.subscribe("vote_closed", lambda e: events.append(e))
+
+        ms.end_meeting(mid)
+
+        # Vote should be closed
+        closed_vote = seeded_db.get(Vote, vote.id)
+        assert closed_vote.status == "closed"
+        assert closed_vote.closed_at is not None
+        assert len(events) == 1
+        assert events[0].event_name == "vote_closed"
+        assert events[0].payload["vote_id"] == vote.id
+
+    def test_ends_meeting_preserves_speaker_seat(self, seeded_db, event_bus):
+        """Speaker seat is NOT cleared when meeting ends."""
+        SeatRepository.init_seats(seeded_db)
+        ms = self._meeting_svc(seeded_db, event_bus)
+        ss = self._seat_svc(seeded_db, event_bus)
+
+        mid = _create_pending(ms)
+        ms.start_meeting(mid)
+
+        # Set speaker seat
+        ss.set_speaker_seat(3)
+        assert seeded_db.get(SpeakerSeat, 1).seat_id == 3
+
+        ms.end_meeting(mid)
+
+        # Speaker seat must still be 3 (preserved)
+        assert seeded_db.get(SpeakerSeat, 1).seat_id == 3
+
+    def test_ends_meeting_publishes_meeting_ended(self, seeded_db, event_bus):
+        """meeting_ended event is published."""
+        SeatRepository.init_seats(seeded_db)
+        ms = self._meeting_svc(seeded_db, event_bus)
+
+        events = []
+        event_bus.subscribe("meeting_ended", lambda e: events.append(e))
+
+        mid = _create_pending(ms)
+        ms.start_meeting(mid)
+        ms.end_meeting(mid)
+
+        assert len(events) == 1
+        assert events[0].event_name == "meeting_ended"
+        assert events[0].meeting_id == mid
+
+    def test_ends_meeting_no_open_vote_skips_vote_closed(self, seeded_db, event_bus):
+        """No vote_closed event when there is no open vote."""
+        SeatRepository.init_seats(seeded_db)
+        ms = self._meeting_svc(seeded_db, event_bus)
+
+        events = []
+        event_bus.subscribe("vote_closed", lambda e: events.append(e))
+
+        mid = _create_pending(ms)
+        ms.start_meeting(mid)
+        ms.end_meeting(mid)
+
+        assert len(events) == 0
+
+    def test_ends_meeting_preserves_service_calls(self, seeded_db, event_bus):
+        """Service calls (historical data) are NOT deleted."""
+        SeatRepository.init_seats(seeded_db)
+        ms = self._meeting_svc(seeded_db, event_bus)
+
+        mid = _create_pending(ms)
+        ms.start_meeting(mid)
+
+        from backend.services.service_call_service import ServiceCallService
+        sc_svc = ServiceCallService(seeded_db, event_bus)
+        sc = sc_svc.create_call(mid, seat_id=5, service_type="coffee")
+        sc_id = sc.id
+
+        ms.end_meeting(mid)
+
+        # Service call should still exist
+        remaining = sc_svc.list_calls(mid)
+        assert any(c.id == sc_id for c in remaining)

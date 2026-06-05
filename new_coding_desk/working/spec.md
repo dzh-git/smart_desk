@@ -1,3 +1,17 @@
+> **⚠️ 历史背景文档 — 不作为新实现契约**
+>
+> 本文档记录 SmartDesk 全量目标架构设计过程，**仅作为历史背景参考**。
+> 所有最终实现的契约定义以以下文件为准：
+>
+> - [`docs/API_SPEC.md`](../docs/API_SPEC.md) — HTTP API 契约
+> - [`docs/WEBSOCKET_PROTOCOL.md`](../docs/WEBSOCKET_PROTOCOL.md) — WebSocket 协议
+> - [`docs/DATABASE_SCHEMA.md`](../docs/DATABASE_SCHEMA.md) — 数据库 schema
+> - [`docs/EVENT_BUS_SPEC.md`](../docs/EVENT_BUS_SPEC.md) — 事件总线规范
+> - [`docs/system_architecture.md`](../docs/system_architecture.md) — 架构概览
+>
+> 若本文档与上述契约文件存在冲突，以契约为准。
+> 本文档中的 `[待实现]` 标记不代表当前开发优先级，仅反映历史设计意图。
+
 # SmartDesk 全量技术规格（目标架构）
 
 Version: 2.0

@@ -1,121 +1,106 @@
 from __future__ import annotations
-from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+from pydantic import BaseModel, Field
 from backend.database import get_db
-from backend.models import Vote, VoteRecord, Attendee
-from backend.schemas import VoteCreate, VoteCast, VoteOut, VoteResult
-from backend.services.event_bus import event_bus, BaseEvent
-from backend.services.desk_coordinator import desk
+from backend.repositories.vote_repository import VoteRepository
+from backend.services.event_bus import event_bus
+from backend.services.vote_service import (
+    VoteService, VoteNotFoundError, VoteClosedError, InvalidVoteOptionError,
+    DuplicateOpenVoteError,
+)
+from backend.utils import _ok
 
 router = APIRouter(prefix="/api/votes", tags=["votes"])
 
 
-def persist_vote_cast(meeting_id: int, vote_id: int, seat_id: int, option: str):
-    """Cast a vote from WS, identified by seat instead of attendee_id. Returns VoteOut or None."""
-    from backend.database import SessionLocal
-    db = SessionLocal()
+class VoteCreateRequest(BaseModel):
+    meeting_id: int
+    title: str = Field(..., max_length=500)
+    options: list[str] = Field(..., min_length=2)
+    is_anonymous: bool = False
+
+
+class VoteCastRequest(BaseModel):
+    attendee_id: int
+    option: str
+
+
+def _get_service(db: Session):
+    return VoteService(event_bus, VoteRepository(db))
+
+
+def _vote_out(v):
+    return {
+        "id": v.id, "meeting_id": v.meeting_id, "title": v.title,
+        "options": v.options, "status": v.status,
+        "is_anonymous": v.is_anonymous,
+    }
+
+
+@router.get("/active")
+def get_active_vote(meeting_id: int, db: Session = Depends(get_db)):
+    repo = VoteRepository(db)
+    v = repo.get_active(meeting_id)
+    if not v:
+        return _ok(None)
+    return _ok(_vote_out(v))
+
+
+@router.post("", status_code=201)
+def create_vote(data: VoteCreateRequest, db: Session = Depends(get_db)):
+    svc = _get_service(db)
     try:
-        vote = db.query(Vote).filter(Vote.id == vote_id, Vote.meeting_id == meeting_id).first()
-        if not vote or vote.status != "open" or option not in vote.options:
-            return None
-        att = db.query(Attendee).filter(
-            Attendee.meeting_id == meeting_id, Attendee.seat_id == seat_id
-        ).first()
-        aid = att.id if att else seat_id
-        existing = db.query(VoteRecord).filter(
-            VoteRecord.vote_id == vote_id, VoteRecord.attendee_id == aid
-        ).first()
-        if existing:
-            existing.option = option
-        else:
-            db.add(VoteRecord(vote_id=vote_id, attendee_id=aid, option=option))
-        db.commit()
-        event_bus.publish(BaseEvent(
-            name="vote_updated",
-            payload={"meeting_id": meeting_id, "vote_id": vote_id},
-        ))
-        return _vote_out(vote, db)
-    finally:
-        db.close()
+        v = svc.create(data.meeting_id, data.title, data.options, data.is_anonymous)
+    except DuplicateOpenVoteError:
+        raise HTTPException(409, detail="DUPLICATE_OPEN_VOTE")
+    except ValueError:
+        raise HTTPException(400, detail="INVALID_VOTE_DATA")
+    return _ok(_vote_out(v))
 
 
-def _vote_out(v: Vote, db: Session) -> VoteOut:
-    records = db.query(VoteRecord).filter(VoteRecord.vote_id == v.id).all()
-    # Count per option
-    counts: dict[str, int] = {opt: 0 for opt in v.options}
-    for r in records:
-        if r.option in counts:
-            counts[r.option] += 1
-    results = [VoteResult(option=k, count=c) for k, c in counts.items()]
-    return VoteOut(
-        id=v.id, meeting_id=v.meeting_id, title=v.title,
-        options=v.options, status=v.status, results=results,
-    )
-
-
-@router.get("/{meeting_id}", response_model=List[VoteOut])
-def list_votes(meeting_id: int, db: Session = Depends(get_db)):
-    votes = db.query(Vote).filter(Vote.meeting_id == meeting_id).all()
-    return [_vote_out(v, db) for v in votes]
-
-
-@router.post("/{meeting_id}", response_model=VoteOut, status_code=201)
-def create_vote(meeting_id: int, data: VoteCreate, db: Session = Depends(get_db)):
-    import json
-    v = Vote(meeting_id=meeting_id, title=data.title)
-    v.options = data.options
-    db.add(v)
-    db.commit()
-    db.refresh(v)
-    event_bus.publish(BaseEvent(
-        name="vote_started", payload={"meeting_id": meeting_id, "vote_id": v.id},
-    ))
-    return _vote_out(v, db)
-
-
-@router.get("/{meeting_id}/{vote_id}", response_model=VoteOut)
-def get_vote(meeting_id: int, vote_id: int, db: Session = Depends(get_db)):
-    v = db.query(Vote).filter(Vote.id == vote_id, Vote.meeting_id == meeting_id).first()
+@router.get("/{vote_id}")
+def get_vote(vote_id: int, db: Session = Depends(get_db)):
+    svc = _get_service(db)
+    v = svc.get_by_id(vote_id)
     if not v:
-        raise HTTPException(404, "Vote not found")
-    return _vote_out(v, db)
+        raise HTTPException(404, detail="VOTE_NOT_FOUND")
+    return _ok(_vote_out(v))
 
 
-@router.post("/{meeting_id}/{vote_id}/cast", response_model=VoteOut)
-def cast_vote(meeting_id: int, vote_id: int, data: VoteCast, db: Session = Depends(get_db)):
-    v = db.query(Vote).filter(Vote.id == vote_id, Vote.meeting_id == meeting_id).first()
+@router.post("/{vote_id}/submit")
+def cast_vote(vote_id: int, data: VoteCastRequest, db: Session = Depends(get_db)):
+    svc = _get_service(db)
+    v = svc.get_by_id(vote_id)
     if not v:
-        raise HTTPException(404, "Vote not found")
-    if v.status != "open":
-        raise HTTPException(400, "Vote is closed")
-    if data.option not in v.options:
-        raise HTTPException(400, f"Invalid option: {data.option}")
-
-    existing = db.query(VoteRecord).filter(
-        VoteRecord.vote_id == vote_id, VoteRecord.attendee_id == data.attendee_id
-    ).first()
-    if existing:
-        existing.option = data.option
-    else:
-        db.add(VoteRecord(vote_id=vote_id, attendee_id=data.attendee_id, option=data.option))
-
-    db.commit()
-    event_bus.publish(BaseEvent(
-        name="vote_updated", payload={"meeting_id": meeting_id, "vote_id": vote_id},
-    ))
-    return _vote_out(v, db)
+        raise HTTPException(404, detail="VOTE_NOT_FOUND")
+    try:
+        svc.cast(v.meeting_id, vote_id, data.attendee_id, data.option)
+    except VoteClosedError:
+        raise HTTPException(400, detail="VOTE_CLOSED")
+    except InvalidVoteOptionError:
+        raise HTTPException(400, detail="INVALID_OPTION")
+    return _ok(_vote_out(v))
 
 
-@router.post("/{meeting_id}/{vote_id}/close", response_model=VoteOut)
-def close_vote(meeting_id: int, vote_id: int, db: Session = Depends(get_db)):
-    v = db.query(Vote).filter(Vote.id == vote_id, Vote.meeting_id == meeting_id).first()
+@router.get("/{vote_id}/statistics")
+def get_vote_statistics(vote_id: int, db: Session = Depends(get_db)):
+    svc = _get_service(db)
+    try:
+        stats = svc.get_statistics(vote_id)
+    except VoteNotFoundError:
+        raise HTTPException(404, detail="VOTE_NOT_FOUND")
+    return _ok(stats)
+
+
+@router.post("/{vote_id}/close")
+def close_vote(vote_id: int, db: Session = Depends(get_db)):
+    svc = _get_service(db)
+    v = svc.get_by_id(vote_id)
     if not v:
-        raise HTTPException(404, "Vote not found")
-    v.status = "closed"
-    db.commit()
-    event_bus.publish(BaseEvent(
-        name="vote_closed", payload={"meeting_id": meeting_id, "vote_id": vote_id},
-    ))
-    return _vote_out(v, db)
+        raise HTTPException(404, detail="VOTE_NOT_FOUND")
+    try:
+        v = svc.close(v.meeting_id, vote_id)
+    except VoteClosedError:
+        raise HTTPException(400, detail="VOTE_ALREADY_CLOSED")
+    return _ok(_vote_out(v))

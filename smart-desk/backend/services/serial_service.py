@@ -137,6 +137,8 @@ class SerialService:
         for conn in self.seats.values():
             if conn.connected and (now - conn.last_heartbeat) > self.HEARTBEAT_TIMEOUT:
                 conn.connected = False
+                from backend.services.background_tasks import get_logger
+                get_logger().warning(f"Seat {conn.seat_id} serial disconnected (heartbeat timeout)")
 
     # ── Stub helpers for UI dev ──
     def stub_seat_occupied(self, seat_id: int):

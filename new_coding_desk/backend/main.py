@@ -27,8 +27,10 @@ from backend.database import engine, Base, SessionLocal
 from backend.events import event_bus
 from backend.repositories.seat_repository import SeatRepository
 from backend.websocket import ws_service, WebSocketEventHandler
+from backend.seed_demo import seed_demo_data
 from backend.api import (
     dashboard,
+    dev,
     meetings,
     seats,
     votes,
@@ -46,14 +48,17 @@ async def lifespan(app: FastAPI):
     # DB: create all tables declared on Base
     Base.metadata.create_all(bind=engine)
 
-    # Seed: initialize seat_states (1..10) and speaker_seat (id=1)
+    # Seed: initialize seat_states (1..10), speaker_seat (id=1), and demo data
     db = SessionLocal()
     try:
         SeatRepository.init_seats(db)
+        seed_demo_data(db)
     finally:
         db.close()
 
-    # EventBus → WebSocket: register handler for all 15 broadcast events
+    # EventBus → WebSocket: capture the main event loop, then register
+    # handler for all 15 broadcast events
+    WebSocketEventHandler.capture_loop()
     WebSocketEventHandler.register_all(event_bus)
 
     yield
@@ -78,6 +83,7 @@ app.add_middleware(
 # ── Routers ───────────────────────────────────────────────────────────────────
 
 app.include_router(dashboard.router)
+app.include_router(dev.router)
 app.include_router(meetings.router)
 app.include_router(seats.router)
 app.include_router(votes.router)

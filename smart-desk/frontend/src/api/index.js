@@ -6,54 +6,61 @@ async function request(method, path, body) {
   const res = await fetch(`${BASE}${path}`, opts)
   if (res.status === 204) return null
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || res.statusText)
+    const err = await res.json().catch(() => ({ message: res.statusText }))
+    throw new Error(err.message || err.detail || res.statusText)
   }
-  return res.json()
+  const json = await res.json()
+  return json.data !== undefined ? json.data : json
 }
 
 export const api = {
-  // meetings
+  // ── Meetings ──
   listMeetings: () => request('GET', '/meetings'),
   createMeeting: (data) => request('POST', '/meetings', data),
   getMeeting: (id) => request('GET', `/meetings/${id}`),
   updateMeeting: (id, data) => request('PATCH', `/meetings/${id}`, data),
   deleteMeeting: (id) => request('DELETE', `/meetings/${id}`),
+  getActiveMeeting: () => request('GET', '/meetings/active'),
+  startMeeting: (id) => request('POST', `/meetings/${id}/start`),
+  endMeeting: (id) => request('POST', `/meetings/${id}/end`),
 
-  // agendas
+  // ── Agendas ──
   listAgendas: (mid) => request('GET', `/meetings/${mid}/agendas`),
   addAgenda: (mid, data) => request('POST', `/meetings/${mid}/agendas`, data),
   removeAgenda: (mid, aid) => request('DELETE', `/meetings/${mid}/agendas/${aid}`),
 
-  // attendees
+  // ── Attendees ──
   listAttendees: (mid) => request('GET', `/meetings/${mid}/attendees`),
   addAttendee: (mid, data) => request('POST', `/meetings/${mid}/attendees`, data),
   removeAttendee: (mid, aid) => request('DELETE', `/meetings/${mid}/attendees/${aid}`),
 
-  // checkin (seat-based, no RFID)
-  checkin: (mid, seatId) => request('POST', `/checkin/${mid}`, { seat_id: seatId }),
+  // ── Seats (was checkin) ──
+  listSeats: () => request('GET', '/seats'),
+  checkin: (seatId, attendeeId) => request('POST', `/seats/${seatId}/checkin`, { attendee_id: attendeeId }),
+  getSpeakerSeat: () => request('GET', '/seats/speaker'),
+  setSpeakerSeat: (seatId, meetingId = null) => request('POST', '/seats/speaker', { seat_id: seatId, meeting_id: meetingId }),
+  clearSpeakerSeat: (meetingId = null) => request('DELETE', meetingId ? `/seats/speaker?meeting_id=${meetingId}` : '/seats/speaker'),
 
-  // votes
-  listVotes: (mid) => request('GET', `/votes/${mid}`),
-  createVote: (mid, data) => request('POST', `/votes/${mid}`, data),
-  getVote: (mid, vid) => request('GET', `/votes/${mid}/${vid}`),
-  castVote: (mid, vid, data) => request('POST', `/votes/${mid}/${vid}/cast`, data),
-  closeVote: (mid, vid) => request('POST', `/votes/${mid}/${vid}/close`),
+  // ── Votes ──
+  getActiveVote: (meetingId) => request('GET', `/votes/active?meeting_id=${meetingId}`),
+  createVote: (data) => request('POST', '/votes', data),
+  getVote: (vid) => request('GET', `/votes/${vid}`),
+  castVote: (vid, data) => request('POST', `/votes/${vid}/submit`, data),
+  closeVote: (vid) => request('POST', `/votes/${vid}/close`),
+  getVoteStatistics: (vid) => request('GET', `/votes/${vid}/statistics`),
 
-  // service calls
-  listServiceCalls: (mid) => request('GET', `/service-calls/${mid}`),
-  createServiceCall: (mid, data) => request('POST', `/service-calls/${mid}`, data),
-  updateCallStatus: (mid, cid, data) => request('PATCH', `/service-calls/${mid}/${cid}`, data),
+  // ── Service Calls ──
+  listServiceCalls: (meetingId) => request('GET', `/service-calls?meeting_id=${meetingId}`),
+  createServiceCall: (meetingId, data) => request('POST', `/service-calls?meeting_id=${meetingId}`, data),
+  getCurrentCall: (meetingId, seatId) => request('GET', `/service-calls/current?meeting_id=${meetingId}&seat_id=${seatId}`),
+  resolveServiceCall: (cid) => request('POST', `/service-calls/${cid}/resolve`),
+  cancelServiceCall: (cid) => request('POST', `/service-calls/${cid}/cancel`),
 
-  // translation
-  translate: (data) => request('POST', '/translate', data),
-  preloadModels: () => request('POST', '/translate/preload'),
-  getPreloadStatus: () => request('GET', '/translate/preload/status'),
-  setSpeakerSeat: (meetingId, seatId) => request('POST', '/translate/speaker-seat', {
-    meeting_id: meetingId, seat_id: seatId,
-  }),
-  getSpeakerSeat: (meetingId) => request('GET', `/translate/speaker-seat?meeting_id=${meetingId}`),
-  getTranscriptHistory: (meetingId) => request('GET', `/translate/history?meeting_id=${meetingId}`),
+  // ── Translations (renamed paths) ──
+  translateText: (data) => request('POST', '/translations', data),
+  getPreloadStatus: () => request('GET', '/translations/preload/status'),
+  triggerPreload: () => request('POST', '/translations/preload'),
+  getTranslationHistory: (meetingId) => request('GET', `/translations?meeting_id=${meetingId}`),
   uploadAudio: (meetingId, seatId, blob, isFinal = true, utteranceId = 0) => {
     const form = new FormData()
     form.append('meeting_id', meetingId)
@@ -61,9 +68,15 @@ export const api = {
     form.append('final', isFinal)
     form.append('utterance_id', utteranceId)
     form.append('audio', blob, 'recording.wav')
-    return fetch('/api/translate/audio', { method: 'POST', body: form }).then(r => {
-      if (!r.ok) throw new Error('Upload failed')
-      return r.json()
+    return fetch(`${BASE}/translations/audio`, { method: 'POST', body: form }).then(async r => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ message: r.statusText }))
+        throw new Error(err.message || err.detail || r.statusText)
+      }
+      return r.json().then(json => json.data !== undefined ? json.data : json)
     })
   },
+
+  // ── Dashboard ──
+  getDashboard: (meetingId) => request('GET', `/dashboard?meeting_id=${meetingId}`),
 }

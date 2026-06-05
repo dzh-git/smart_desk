@@ -15,9 +15,12 @@ Lifecycle:
 """
 
 from __future__ import annotations
+import importlib.util
+import os
 import time
 import numpy as np
 from typing import Optional
+from .audio_utils import resample_if_needed
 
 
 class SpeechModule:
@@ -61,10 +64,16 @@ class SpeechModule:
         """Load all models + warmup. Idempotent. Raises on failure."""
         if self._ready:
             return
+        for dep in ("torch", "funasr"):
+            if importlib.util.find_spec(dep) is None:
+                raise RuntimeError(
+                    f"Missing required speech dependency: {dep}. "
+                    "Install backend speech dependencies before enabling speech recognition."
+                )
         from .stt_streaming import warmup_streaming, warmup_offline
         warmup_streaming()   # Paraformer Streaming for process_interim_*
         warmup_offline()     # Paraformer-large for transcribe / transcribe_array
-        if self._mt_engine:
+        if self._mt_engine and os.environ.get("SMART_DESK_ENABLE_MT") == "1":
             self._mt_engine.preload()
         self._ready = True
 
@@ -79,15 +88,15 @@ class SpeechModule:
         except Exception:
             return ""
 
-    def transcribe_array(
-        self, audio: np.ndarray, sample_rate: int = 16000,
-    ) -> str:
-        """Transcribe a float32 mono array. Returns "" on failure."""
+    def transcribe_array(self, audio: np.ndarray, sr: int) -> str:
+        """Transcribe audio array, auto-resampling to 16kHz if needed.
+
+        Delegates to centralized resample_if_needed (CR-013).
+        """
         try:
             from .stt_streaming import offline_rescore
-            if sample_rate != 16000:
-                from .audio_utils import resample_if_needed
-                audio = resample_if_needed(audio, sample_rate, 16000)
+            if sr != 16000:
+                audio = resample_if_needed(audio, sr, 16000)
             return offline_rescore(audio)
         except Exception:
             return ""
@@ -143,7 +152,6 @@ class SpeechModule:
         processor = state["processor"]
 
         if sample_rate != 16000:
-            from .audio_utils import resample_if_needed
             audio = resample_if_needed(audio, sample_rate, 16000)
 
         # Never set is_final=True — CIF cache stays alive across chunks.
@@ -162,6 +170,18 @@ class SpeechModule:
     def start_utterance(self, session_key: str = "default") -> None:
         """Mark start of a new utterance. Resets SentenceMerger only."""
         self.reset_interim(session_key)
+
+    def get_last_utterance_id(self, session_key: str = "default") -> int:
+        """Get the last utterance_id tracked for a session. Returns -1 if unset."""
+        state = self._sessions.get(session_key)
+        if state is None:
+            return -1
+        return state.get("_last_utterance_id", -1)
+
+    def set_last_utterance_id(self, session_key: str, utterance_id: int) -> None:
+        """Set the last utterance_id for a streaming session."""
+        state = self._ensure_session(session_key)
+        state["_last_utterance_id"] = utterance_id
 
     def get_interim(self, session_key: str = "default") -> str:
         """Get current accumulated text without processing new audio."""

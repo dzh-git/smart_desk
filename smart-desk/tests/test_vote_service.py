@@ -35,6 +35,7 @@ def test_create_vote(vote_services):
     v = svc.create(meeting_id, "Budget", ["Yes", "No"], is_anonymous=False)
     assert v.title == "Budget"
     assert len(events) == 1
+    assert events[0].payload.get("meeting_id") == meeting_id
 
 
 def test_cast_and_close(vote_services):
@@ -50,6 +51,7 @@ def test_cast_and_close(vote_services):
     # Check close event fired
     close_events = [e for e in events if e.name == "vote_closed"]
     assert len(close_events) == 1
+    assert close_events[0].payload.get("meeting_id") == meeting_id
 
 
 def test_statistics_anonymous(vote_services):

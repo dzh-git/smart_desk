@@ -155,7 +155,7 @@ watch(() => props.wsMsg, (msg) => {
     const s = seats.find(s => s.id === sid)
     if (s) { s.checkedIn = true; s.ledPattern = 'solid'; s.ledColor = [255, 220, 180] }
   }
-  if (msg.type === 'vote_cast' && p.vote_id) {
+  if (msg.type === 'vote_updated' && p.vote_id) {
     seats.forEach(s => { s.ledColor = [212, 176, 76]; s.ledPattern = 'solid' })
     setTimeout(() => {
       seats.forEach((s, i) => {

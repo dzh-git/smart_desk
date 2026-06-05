@@ -8,7 +8,7 @@ from backend.services.ws_service import ws_svc
 # Event name → WS message type (mapped to match frontend WS listeners).
 # Multiple event names may map to the same WS type when the frontend uses
 # a single handler for related events (e.g. VotingPanel listens for
-# "vote_update" regardless of whether the event is vote_started/vote_updated/vote_closed).
+# "vote_updated" regardless of whether the event is vote_started/vote_updated/vote_closed).
 EVENT_TO_WS_TYPE = {
     "seat_occupied": "seat_occupied",
     "seat_vacant": "seat_vacant",
@@ -18,13 +18,14 @@ EVENT_TO_WS_TYPE = {
     "speaker_seat_clear": "speaker_seat_clear",
     "meeting_started": "meeting_started",
     "meeting_ended": "meeting_ended",
-    "vote_started": "vote_update",
-    "vote_updated": "vote_update",
-    "vote_closed": "vote_update",
-    "service_call_created": "service_update",
-    "service_call_resolved": "service_update",
-    "service_call_cancelled": "service_update",
-    "translation_final": "translation_result",
+    "vote_started": "vote_updated",
+    "vote_updated": "vote_updated",
+    "vote_closed": "vote_updated",
+    "service_call_created": "service_call_created",
+    "service_call_resolved": "service_call_resolved",
+    "service_call_cancelled": "service_call_cancelled",
+    "translation_final": "translation_final",
+    "recording_stop": "recording_stop",
 }
 
 # Reference to the main event loop captured at startup.

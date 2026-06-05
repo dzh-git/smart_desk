@@ -1,7 +1,9 @@
 from __future__ import annotations
-import threading
 from sqlalchemy.orm import Session
 from backend.services.event_bus import EventBus, BaseEvent
+from backend.services.background_tasks import get_logger
+
+logger = get_logger()
 
 
 class SeatService:
@@ -18,7 +20,11 @@ class SeatService:
         return self.seat_repo.get_seat_state(seat_id)
 
     def on_seat_occupied(self, meeting_id: int, seat_id: int):
-        """Handle TOF detection: vacant -> occupied_unchecked; re-seat auto-binding."""
+        """Persist TOF detection to DB: vacant -> occupied_unchecked; re-seat auto-binding.
+
+        CR-009: This method only updates DB state. EventBus publishing and
+        checkin_prompt timer are handled by DeskCoordinator._on_serial().
+        """
         current = self.seat_repo.get_seat_state(seat_id)
         if not current:
             return None
@@ -29,32 +35,25 @@ class SeatService:
         previous_attendee_id = current.attendee_id
         s = self.seat_repo.update_seat(seat_id, "occupied_unchecked",
                                        attendee_id=previous_attendee_id)
-        self.bus.publish(BaseEvent(
-            name="seat_occupied",
-            payload={"meeting_id": meeting_id, "seat_id": seat_id},
-        ))
-        # Schedule checkin_prompt after 3s delay (spec 9.1)
-        timer = threading.Timer(3.0, self.schedule_checkin_prompt, args=[meeting_id, seat_id])
-        timer.daemon = True
-        timer.start()
+        logger.info(f"Seat {seat_id} occupied: attendee_id={previous_attendee_id}")
         return s
 
     def on_seat_vacant(self, meeting_id: int, seat_id: int):
-        """Handle TOF vacancy. Does NOT clear speaker seat. Preserves attendee_id for re-seat auto-binding."""
+        """Persist TOF vacancy to DB. Does NOT clear speaker seat. Preserves attendee_id for re-seat auto-binding.
+
+        CR-009: This method only updates DB state. EventBus publishing is
+        handled by DeskCoordinator._on_serial().
+        """
         current = self.seat_repo.get_seat_state(seat_id)
         if not current:
             return None
-        # Guard: no-op if seat is already vacant (CR-015: symmetric to CR-009)
+        # Guard: no-op if seat is already vacant (CR-009: symmetric to guard in on_seat_occupied)
         if current.status == "vacant":
             return current
         # Reset checked_in flag if seat was in checked_in state (CR-002: enable re-checkin)
         if current.status == "checked_in" and current.attendee_id:
             self.attendee_repo.uncheck(current.attendee_id)
         s = self.seat_repo.update_seat(seat_id, "vacant", attendee_id=current.attendee_id)
-        self.bus.publish(BaseEvent(
-            name="seat_vacant",
-            payload={"meeting_id": meeting_id, "seat_id": seat_id},
-        ))
         return s
 
     def checkin(self, meeting_id: int, seat_id: int, attendee_id: int):
@@ -62,12 +61,16 @@ class SeatService:
         seat = self.seat_repo.get_seat_state(seat_id)
         if not seat:
             return None
-        if seat.status != "occupied_unchecked":
-            return None  # INVALID_SEAT_STATE
         # Verify attendee exists and is pre-assigned
         att = self.attendee_repo.get_by_id(attendee_id)
         if not att or att.meeting_id != meeting_id:
             return None
+        if att.seat_id != seat_id:
+            return None
+        # Manual/tablet check-in is allowed for pre-assigned attendees even
+        # when hardware has not reported TOF occupancy yet.
+        if seat.status not in ("vacant", "occupied_unchecked"):
+            return None  # INVALID_SEAT_STATE
         if att.checked_in:
             return None  # SEAT_ALREADY_CHECKED_IN
         # Check attendee not already in another seat
@@ -81,21 +84,26 @@ class SeatService:
             name="check_in",
             payload={"meeting_id": meeting_id, "seat_id": seat_id, "attendee_id": attendee_id},
         ))
+        logger.info(f"Seat {seat_id} checkin: attendee_id={attendee_id}")
         return s
-
-    def schedule_checkin_prompt(self, meeting_id: int, seat_id: int):
-        """Publish checkin_prompt event (caller handles 3s delay)."""
-        self.bus.publish(BaseEvent(
-            name="checkin_prompt",
-            payload={"meeting_id": meeting_id, "seat_id": seat_id},
-        ))
 
     def get_speaker_seat(self):
         return self.seat_repo.get_speaker_seat()
 
     def set_speaker_seat(self, meeting_id: int, seat_id: int):
-        """Set speaker seat. Fires event; caller handles recording interrupt."""
+        """Set speaker seat. Includes recording_stop signal for previous speaker."""
+        current = self.seat_repo.get_speaker_seat()
+        previous_seat_id = current.seat_id if current else None
+
         sp = self.seat_repo.set_speaker_seat(seat_id)
+
+        # Publish recording_stop for previous speaker AFTER successful mutation
+        if previous_seat_id and previous_seat_id != seat_id:
+            self.bus.publish(BaseEvent(
+                name="recording_stop",
+                payload={"meeting_id": meeting_id, "seat_id": previous_seat_id, "reason": "speaker_changed"},
+            ))
+
         self.bus.publish(BaseEvent(
             name="speaker_seat_set",
             payload={"meeting_id": meeting_id, "seat_id": seat_id},
@@ -103,7 +111,18 @@ class SeatService:
         return sp
 
     def clear_speaker_seat(self, meeting_id: int):
+        current = self.seat_repo.get_speaker_seat()
+        previous_seat_id = current.seat_id if current else None
+
         sp = self.seat_repo.clear_speaker_seat()
+
+        # Publish recording_stop AFTER successful mutation
+        if previous_seat_id:
+            self.bus.publish(BaseEvent(
+                name="recording_stop",
+                payload={"meeting_id": meeting_id, "seat_id": previous_seat_id, "reason": "speaker_cleared"},
+            ))
+
         self.bus.publish(BaseEvent(
             name="speaker_seat_clear",
             payload={"meeting_id": meeting_id},

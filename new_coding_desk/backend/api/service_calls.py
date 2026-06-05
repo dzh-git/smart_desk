@@ -10,117 +10,111 @@ Per API_SPEC §9:
 """
 from __future__ import annotations
 
-from typing import List
-
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.events import event_bus
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
-from backend.schemas import ApiResponse
-from backend.schemas.service_call import ServiceCallCreate, ServiceCallResponse
 from backend.services.service_call_service import ServiceCallService
+from backend.utils import _ok
 
 router = APIRouter(prefix="/api/service-calls", tags=["service_calls"])
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Request models ────────────────────────────────────────────────────────────
 
 
-def _service(db: Session) -> ServiceCallService:
-    return ServiceCallService(db, event_bus)
+class ServiceCallCreateRequest(BaseModel):
+    seat_id: int = Field(..., ge=1, le=10)
+    service_type: str = Field(..., pattern="^(coffee|tea|water|other)$")
+    custom_text: str | None = None
 
 
-def _to_json(api_response: ApiResponse, status_code: int = 200) -> JSONResponse:
-    """Serialize ApiResponse to JSONResponse with the given HTTP status."""
-    return JSONResponse(
-        content=api_response.model_dump(),
-        status_code=status_code,
-    )
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-# ── Service call endpoints ───────────────────────────────────────────────────
+def _sc_out(sc) -> dict:
+    """Serialize ServiceCall ORM object to API response dict."""
+    return {
+        "id": sc.id,
+        "meeting_id": sc.meeting_id,
+        "seat_id": sc.seat_id,
+        "service_type": sc.service_type,
+        "status": sc.status,
+        "created_at": str(sc.created_at) if sc.created_at else None,
+    }
 
 
-@router.post("", response_model=ApiResponse[ServiceCallResponse], status_code=201)
-def create_call(body: ServiceCallCreate, db: Session = Depends(get_db)):
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+
+@router.get("")
+def list_service_calls(meeting_id: int, db: Session = Depends(get_db)):
+    """GET /api/service-calls — list all service calls for a meeting."""
+    svc = ServiceCallService(db, event_bus)
+    calls = svc.list_calls(meeting_id)
+    return _ok([_sc_out(c) for c in calls])
+
+
+@router.get("/current")
+def get_current_call(meeting_id: int, seat_id: int, db: Session = Depends(get_db)):
+    """GET /api/service-calls/current — get pending call for a seat."""
+    svc = ServiceCallService(db, event_bus)
+    sc = svc.get_current(meeting_id, seat_id)
+    return _ok(_sc_out(sc) if sc else None)
+
+
+@router.post("", status_code=201)
+def create_service_call(
+    data: ServiceCallCreateRequest,
+    meeting_id: int,
+    db: Session = Depends(get_db),
+):
     """POST /api/service-calls — create a new service call.
 
     Publishes: service_call_created event.
     """
-    svc = _service(db)
+    svc = ServiceCallService(db, event_bus)
     try:
-        call = svc.create_call(
-            meeting_id=body.meeting_id,
-            seat_id=body.seat_id,
-            service_type=body.service_type,
+        sc = svc.create_call(
+            meeting_id=meeting_id,
+            seat_id=data.seat_id,
+            service_type=data.service_type,
         )
     except ConflictError as e:
-        return _to_json(ApiResponse.fail(e.message, e.error_code), 409)
-    return ApiResponse.ok(data=ServiceCallResponse.model_validate(call))
+        raise HTTPException(409, detail=e.error_code)
+    return _ok(_sc_out(sc))
 
 
-@router.get("", response_model=ApiResponse[List[ServiceCallResponse]])
-def list_calls(
-    meeting_id: int = Query(..., description="Meeting ID"),
-    db: Session = Depends(get_db),
-):
-    """GET /api/service-calls — list all service calls for a meeting."""
-    svc = _service(db)
-    calls = svc.list_calls(meeting_id)
-    results = [ServiceCallResponse.model_validate(c) for c in calls]
-    return ApiResponse.ok(data=results)
-
-
-@router.get(
-    "/current", response_model=ApiResponse[ServiceCallResponse]
-)
-def get_current(
-    meeting_id: int = Query(..., description="Meeting ID"),
-    seat_id: int = Query(..., description="Seat ID"),
-    db: Session = Depends(get_db),
-):
-    """GET /api/service-calls/current — get pending call for a seat."""
-    svc = _service(db)
-    call = svc.get_current(meeting_id, seat_id)
-    if call is None:
-        return ApiResponse.ok(data=None)
-    return ApiResponse.ok(data=ServiceCallResponse.model_validate(call))
-
-
-@router.post(
-    "/{call_id}/resolve", response_model=ApiResponse[ServiceCallResponse]
-)
+@router.post("/{call_id}/resolve")
 def resolve_call(call_id: int, db: Session = Depends(get_db)):
     """POST /api/service-calls/{call_id}/resolve — resolve a pending call.
 
     Publishes: service_call_resolved event.
     """
-    svc = _service(db)
+    svc = ServiceCallService(db, event_bus)
     try:
-        call = svc.resolve_call(call_id)
+        sc = svc.resolve_call(call_id)
     except NotFoundError as e:
-        return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+        raise HTTPException(404, detail=e.error_code)
     except ValidationError as e:
-        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
-    return ApiResponse.ok(data=ServiceCallResponse.model_validate(call))
+        raise HTTPException(400, detail=e.error_code)
+    return _ok(_sc_out(sc))
 
 
-@router.post(
-    "/{call_id}/cancel", response_model=ApiResponse[ServiceCallResponse]
-)
+@router.post("/{call_id}/cancel")
 def cancel_call(call_id: int, db: Session = Depends(get_db)):
     """POST /api/service-calls/{call_id}/cancel — cancel a pending call.
 
     Publishes: service_call_cancelled event.
     """
-    svc = _service(db)
+    svc = ServiceCallService(db, event_bus)
     try:
-        call = svc.cancel_call(call_id)
+        sc = svc.cancel_call(call_id)
     except NotFoundError as e:
-        return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+        raise HTTPException(404, detail=e.error_code)
     except ValidationError as e:
-        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
-    return ApiResponse.ok(data=ServiceCallResponse.model_validate(call))
+        raise HTTPException(400, detail=e.error_code)
+    return _ok(_sc_out(sc))

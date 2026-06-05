@@ -1,8 +1,10 @@
 # SmartDesk WebSocket Protocol
 
-Version: 1.0
+Version: 1.1
 
-Status: Frozen
+Status: Frontend Integration Contract
+
+Last Updated: 2026-06-04
 
 ---
 
@@ -37,14 +39,17 @@ V1 WebSocket 仅用于服务端广播。
 # 2. Endpoint
 
 ```text
-/ws/{meeting_id}
+/ws/{meeting_id}?seat={seat_id}
 ```
 
 Example
 
 ```text
-/ws/1
+Admin:  /ws/1
+Seat 3: /ws/1?seat=3
 ```
+
+`seat` 为可选查询参数。管理员不传或使用 `seat=0`。
 
 ---
 
@@ -89,6 +94,15 @@ Server
 连接关闭。
 
 不发送业务事件。
+
+前端必须：
+
+```text
+显示连接中断 overlay
+禁用业务写操作
+每 3 秒自动重连
+重连成功后重新请求全部 HTTP 状态
+```
 
 ---
 
@@ -191,6 +205,8 @@ Room Broadcast
 ```
 
 全部接收。
+
+前端收到事件后，应将事件视为“数据已变化”通知，并重新请求对应 HTTP API。不要仅依赖 payload 在本地复制后端业务状态。
 
 ---
 
@@ -504,3 +520,18 @@ WebSocketService
 
 消息持久化
 ```
+
+---
+
+# 14. Frontend Refresh Mapping
+
+| Event | Frontend HTTP refresh |
+|---|---|
+| `meeting_started`, `meeting_ended` | active meeting, seats, speaker seat, active vote |
+| `seat_occupied`, `seat_vacant`, `check_in` | seats |
+| `checkin_prompt` | target seat opens check-in dialog, then loads attendees |
+| `speaker_seat_set`, `speaker_seat_clear` | speaker seat |
+| `vote_started`, `vote_closed` | active vote |
+| `vote_updated` | vote detail; admin also loads statistics |
+| `service_call_created`, `service_call_resolved`, `service_call_cancelled` | service calls |
+| `translation_final` | translation history |

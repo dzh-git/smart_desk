@@ -1,0 +1,65 @@
+SmartDesk Phase 06 — 执行报告
+====================================
+
+一、修改文件列表
+-----------------
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `frontend/src/api/resources.ts` | 修改 | 新增 `createVote`, `closeVote`, `resolveServiceCall` |
+| `frontend/src/components/AdminDashboard.tsx` | 修改 | 新增 Create Vote 表单、Close Vote/Resolve 回调、错误处理 |
+| `frontend/src/components/VotePanel.tsx` | 修改 | 新增 Close Vote 按钮 |
+| `frontend/src/components/ServicePanel.tsx` | 修改 | 新增 Resolve 按钮 |
+| `frontend/src/__tests__/admin.test.tsx` | 修改 | 新增 21 个测试用例 |
+| `start.bat` | 重写 | 一键启动 & 演示环境变量 |
+| `kill.bat` | 重写 | 窗口标题/端口/进程多级清理 |
+| `working/plan/phase-06/changes.md` | 新增 | Phase 06 变更记录 |
+| `working/plan/phase-06/test-results.md` | 新增 | 测试结果记录 |
+| `working/plan/phase-05/changes.md` | 修改 | 删除"后端无修改"错误描述 |
+| `working/deferred-issues.md` | 修改 | 删除已实现的 SeatTablet 条目，修正编号 |
+
+
+二、验证结果摘要
+-----------------
+
+| 验证项 | 结果 |
+|--------|------|
+| `pytest -q` | **144 passed** ✓ |
+| `npm run typecheck` | **通过** ✓ |
+| `npm run lint` | **0 errors, 5 warnings** (已有 warning，记录放行) ✓ |
+| `npm test -- --run` | **71 passed** (新增 21 个测试) ✓ |
+| `npm run build` | **构建成功** (205 kB gzip 60 kB) ✓ |
+| 后端 API 端点测试 | **全部通过** ✓ |
+
+
+三、Browser 演示流程验证结果
+-------------------------------
+
+| # | 操作 | 结果 |
+|---|------|------|
+| 1 | `start.bat` 一键启动 | 后端 `127.0.0.1:8000` / 前端 `127.0.0.1:5173` ✓ |
+| 2 | 管理端展示自动种子会议 | `GET /api/meetings/active` → "2026年第二季度产品评审" ✓ |
+| 3 | 管理端创建投票 | POST `/api/votes` → 标题+选项+匿名开关 ✓ |
+| 4 | 座位端 `?seat=5` 完成签到 | 选择 attendee → POST `/seats/{id}/checkin` ✓ |
+| 5 | 座位端提交并修改投票 | POST `/votes/{id}/submit` → upsert 不重复 ✓ |
+| 6 | 管理端查看统计并关闭投票 | GET `/votes/{id}/statistics` + POST `/votes/{id}/close` ✓ |
+| 7 | 座位端创建服务呼叫 | POST `/service-calls?meeting_id=X` → coffee/tea/water/other ✓ |
+| 8 | 管理端处理服务呼叫 | POST `/service-calls/{id}/resolve` → status "resolved" ✓ |
+| 9 | 管理端和座位端展示翻译历史 | GET `/translations?meeting_id=X` → 2 条记录 ✓ |
+| 10 | WebSocket 推动页面自动刷新 | vote_closed / service_call_resolved 事件触发 re-fetch ✓ |
+
+
+四、是否可以进行最终审查
+---------------------------
+
+**是。** 所有验收标准已满足：
+
+- [x] `pytest -q` 不低于 144 passed → **144 passed**
+- [x] 前端 typecheck 通过 → **通过**
+- [x] 前端 build 通过 → **通过**
+- [x] 前端测试全部通过 → **71 passed（新增 21）**
+- [x] lint 无新增 error → **0 errors （5 个已有 warning）**
+- [x] 管理端和座位端核心演示流程全部可完成 → **已验证**
+- [x] 未覆盖或回退无关模块 → **仅修改目标文件**
+
+可以进行最终审查。

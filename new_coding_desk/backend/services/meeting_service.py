@@ -14,10 +14,13 @@ from sqlalchemy.orm import Session
 
 from backend.events.event_bus import EventBus
 from backend.events.meeting_events import MeetingStartedEvent, MeetingEndedEvent
+from backend.events.vote_events import VoteClosedEvent
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.models.meeting import Meeting
 from backend.models.agenda import Agenda
 from backend.models.attendee import Attendee
+from backend.models.seat_state import SeatState
+from backend.models.vote import Vote
 from backend.repositories.meeting_repository import MeetingRepository
 from backend.repositories.attendee_repository import AttendeeRepository
 from backend.services.base import BaseService
@@ -30,7 +33,8 @@ class MeetingService(BaseService):
         - Only one active meeting at a time.
         - Status flow: pending → active → finished (no rollback).
         - start_meeting() publishes meeting_started.
-        - end_meeting() publishes meeting_ended.
+        - end_meeting() resets seats, unbinds attendees, closes open vote,
+          preserves speaker seat, publishes meeting_ended + vote_closed.
     """
 
     def __init__(self, db: Session, event_bus: EventBus) -> None:
@@ -113,8 +117,14 @@ class MeetingService(BaseService):
 
         Rules:
             - Meeting must be active.
-            - finished status is irreversible.
-            - Publishes meeting_ended event.
+            - All seat_states reset to vacant (attendee_id cleared).
+            - All attendees for this meeting have seat_id cleared and
+              checked_in set to false.
+            - Any open vote is automatically closed (vote_closed event).
+            - Speaker seat is preserved (NOT cleared).
+            - Historical votes, service calls and translation records
+              are preserved.
+            - Publishes meeting_ended and (if vote was closed) vote_closed.
         """
         meeting = self.get_meeting(meeting_id)
 
@@ -127,11 +137,38 @@ class MeetingService(BaseService):
         if meeting.status != "active":
             raise ValidationError(
                 "Only an active meeting can be ended",
-                "MEETING_NOT_FOUND",
+                "MEETING_NOT_ACTIVE",
             )
 
         meeting.status = "finished"
         meeting.ended_at = datetime.now(timezone.utc)
+
+        # Reset all seat_states to vacant, clear attendee_id
+        seats = self.db.query(SeatState).all()
+        for seat in seats:
+            seat.status = "vacant"
+            seat.attendee_id = None
+
+        # Clear attendee bindings for this meeting
+        attendees = self.attendee_repo.list_by_meeting(meeting_id)
+        for attendee in attendees:
+            attendee.seat_id = None
+            attendee.checked_in = False
+
+        # Auto-close open vote (if any)
+        open_vote = self.db.query(Vote).filter(Vote.status == "open").first()
+        if open_vote is not None:
+            open_vote.status = "closed"
+            open_vote.closed_at = datetime.now(timezone.utc)
+            self.event_bus.publish(
+                VoteClosedEvent(
+                    meeting_id=meeting_id,
+                    payload={"vote_id": open_vote.id},
+                )
+            )
+
+        # Speaker seat deliberately preserved — NOT cleared.
+
         self.meeting_repo.save(meeting)
 
         self.event_bus.publish(

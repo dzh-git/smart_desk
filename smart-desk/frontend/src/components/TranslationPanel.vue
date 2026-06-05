@@ -118,6 +118,7 @@ const modelReady = ref(false)
 const line1 = reactive({ zh: '', en: '' })
 const line2 = reactive({ zh: '', en: '' })
 let _isLine2Final = false
+let _clearTranscriptTimer = null
 const historyItems = reactive([])
 const showHistory = ref(false)
 let idCounter = 0
@@ -182,7 +183,9 @@ function animateTextTransition(fromZh, toZh, en, duration = 300) {
   requestAnimationFrame(step)
 }
 
-function clearDisplay() {
+function clearTranscript() {
+  ++_transitionId  // Cancel any in-flight text transition animation
+  if (_clearTranscriptTimer) { clearTimeout(_clearTranscriptTimer); _clearTranscriptTimer = null }
   _line1Zh = ''; _line1En = ''; _lastZh = ''
   line1.zh = ''; line1.en = ''
   line2.zh = ''; line2.en = ''
@@ -246,7 +249,7 @@ function addHistory(zh, en, sid, segId) {
 const { isRecording, errorMsg, interimItem, startRecording, stopRecording } = useAudioRecorder({
   meetingId: computed(() => props.meetingId),
   seatId,
-  onSpeechStart: () => { clearDisplay() },
+  onSpeechStart: () => { clearTranscript() },
   onInterim: (zh, en) => { updateLines(zh, en, false) },
   onFinal: (zh, en, sid, segId) => {
     if (segId != null) _processedSegIds.add(segId)
@@ -259,7 +262,8 @@ const { isRecording, errorMsg, interimItem, startRecording, stopRecording } = us
     }
     addHistory(zh, en, sid, segId)
     // Clear display after final — text lives in history, prevent stale overlap
-    setTimeout(clearDisplay, 5000)
+    if (_clearTranscriptTimer) clearTimeout(_clearTranscriptTimer)
+    _clearTranscriptTimer = setTimeout(clearTranscript, 5000)
   },
 })
 
@@ -267,19 +271,24 @@ const isSpeaker = computed(() => speakingSeat.value && speakingSeat.value === se
 
 onMounted(async () => {
   try {
-    const data = await api.getSpeakerSeat(props.meetingId)
-    speakingSeat.value = data.speaker_seat
-  } catch {}
+    const data = await api.getSpeakerSeat()
+    speakingSeat.value = data.seat_id
+  } catch (e) { console.error('Failed to get speaker seat:', e) }
+  api.triggerPreload().catch(e => {
+    errorMsg.value = `模型加载失败：${e.message || e}`
+  })
   // Poll model ready status — non-blocking
   _preloadPollTimer = setInterval(async () => {
     try {
       const s = await api.getPreloadStatus()
+      if (s.error) errorMsg.value = `模型加载失败：${s.error}`
       if (s.ready) {
         modelReady.value = true
+        errorMsg.value = ''
         clearInterval(_preloadPollTimer)
         _preloadPollTimer = null
       }
-    } catch {}
+    } catch (e) { console.error('Failed to get preload status:', e) }
   }, 2000)
 })
 
@@ -289,13 +298,17 @@ watch(() => props.wsMsg, (msg) => {
   if (!msg) return
   if (msg.type === 'speaker_seat_set') {
     speakingSeat.value = msg.payload?.seat_id || null
-    clearDisplay()
+    clearTranscript()
   }
   if (msg.type === 'speaker_seat_clear') {
     speakingSeat.value = null; stopRecording()
-    clearDisplay()
+    clearTranscript()
   }
-  if (msg.type === 'translation_result') {
+  if (msg.type === 'recording_stop' && msg.payload?.seat_id === seatId.value) {
+    stopRecording()
+    clearTranscript()
+  }
+  if (msg.type === 'translation_final') {
     const { zh, en, seat_id, segment_id, is_final } = msg.payload || {}
     if (zh === '[无法识别语音]' && en === '[translation unavailable]') return
     if (!zh && !en) return
@@ -324,19 +337,35 @@ watch(() => props.wsMsg, (msg) => {
 // ── Speaker seat ──
 
 async function setSpeaker() {
-  await api.setSpeakerSeat(props.meetingId, selectedSeat.value)
-  speakingSeat.value = selectedSeat.value
+  try {
+    errorMsg.value = ''
+    await api.setSpeakerSeat(selectedSeat.value, props.meetingId)
+    speakingSeat.value = selectedSeat.value
+  } catch (e) {
+    errorMsg.value = `指定发言席失败：${e.message || e}`
+    console.error('Failed to set speaker seat:', e)
+  }
 }
 
 async function clearSpeaker() {
-  await api.setSpeakerSeat(props.meetingId, 0)
-  speakingSeat.value = null
+  try {
+    errorMsg.value = ''
+    await api.clearSpeakerSeat(props.meetingId)
+    speakingSeat.value = null
+  } catch (e) {
+    errorMsg.value = `取消发言席失败：${e.message || e}`
+    console.error('Failed to clear speaker seat:', e)
+  }
 }
 
 // ── Recording toggle ──
 
-function toggleRecord() {
-  isRecording.value ? stopRecording() : startRecording()
+async function toggleRecord() {
+  if (isRecording.value) {
+    await stopRecording({ finalize: true })
+  } else {
+    await startRecording()
+  }
 }
 
 // ── History ──
@@ -344,9 +373,9 @@ function toggleRecord() {
 async function openHistory() {
   showHistory.value = true
   try {
-    const data = await api.getTranscriptHistory(props.meetingId)
-    if (data.entries && data.entries.length) mergeBackendHistory(data.entries)
-  } catch { /* local fine */ }
+    const data = await api.getTranslationHistory(props.meetingId)
+    if (data && data.length) mergeBackendHistory(data)
+  } catch (e) { console.error('Failed to load translation history:', e) }
 }
 
 function mergeBackendHistory(backendEntries) {
@@ -377,6 +406,7 @@ function mergeBackendHistory(backendEntries) {
 onUnmounted(() => {
   stopRecording()
   if (_preloadPollTimer) clearInterval(_preloadPollTimer)
+  if (_clearTranscriptTimer) clearTimeout(_clearTranscriptTimer)
 })
 </script>
 

@@ -172,7 +172,7 @@ watch(lastWsMsg, (msg) => {
   if (msg?.type === 'meeting_ended') meeting.value.status = 'finished'
   if (msg?.type === 'meeting_started') {
     meeting.value.status = 'active'
-    api.preloadModels().catch(() => {})
+    api.triggerPreload().catch(() => {})
   }
 })
 
@@ -181,10 +181,15 @@ function onSeatClick(seatId) {
 }
 
 async function toggleStatus() {
-  const newStatus = meeting.value.status === 'active' ? 'finished' : 'active'
-  meeting.value = await api.updateMeeting(meetingId, { status: newStatus })
-  if (newStatus === 'active') {
-    api.preloadModels().catch(() => {})
+  try {
+    if (meeting.value.status === 'active') {
+      meeting.value = await api.endMeeting(meetingId)
+    } else {
+      meeting.value = await api.startMeeting(meetingId)
+      api.triggerPreload().catch(() => {})
+    }
+  } catch (e) {
+    console.error('Failed to toggle meeting status:', e)
   }
 }
 

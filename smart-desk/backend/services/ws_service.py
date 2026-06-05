@@ -88,6 +88,8 @@ class WSService:
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
+            from backend.services.background_tasks import get_logger
+            get_logger().info(f"WebSocket disconnected: meeting_id={meeting_id}, seat_id={seat_id}")
             room.remove(ws)
             await room.broadcast({
                 "type": "seat_left",

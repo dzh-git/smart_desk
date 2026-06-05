@@ -26,7 +26,10 @@ from backend.events.seat_events import (
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.models.seat_state import SeatState
 from backend.models.speaker_seat import SpeakerSeat
+from backend.models.attendee import Attendee
+from backend.models.meeting import Meeting
 from backend.repositories.seat_repository import SeatRepository, SEAT_COUNT
+from backend.repositories.attendee_repository import AttendeeRepository
 from backend.services.base import BaseService
 
 logger = logging.getLogger(__name__)
@@ -37,7 +40,8 @@ class SeatService(BaseService):
 
     Business rules:
         - seat_occupied: only from vacant state.
-        - check_in: only from occupied_unchecked state.
+        - check_in: only from occupied_unchecked state; attendee must exist
+          and belong to the active meeting; no duplicate seat/attendee bindings.
         - seat_vacant: any state → vacant.
         - One speaker seat at a time; setting new overwrites old.
         - Publishes 6 event types.
@@ -46,6 +50,7 @@ class SeatService(BaseService):
     def __init__(self, db: Session, event_bus: EventBus) -> None:
         super().__init__(db, event_bus)
         self.seat_repo = SeatRepository(db)
+        self.attendee_repo = AttendeeRepository(db)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -64,6 +69,10 @@ class SeatService(BaseService):
         if meeting_id is not None:
             event.meeting_id = meeting_id
         self.event_bus.publish(event)
+
+    def _active_meeting(self) -> Meeting | None:
+        """Return the currently active meeting, or None."""
+        return self.db.query(Meeting).filter(Meeting.status == "active").first()
 
     # ── Seat State ───────────────────────────────────────────────────────────
 
@@ -114,13 +123,27 @@ class SeatService(BaseService):
 
         Rules:
             - Idempotent (calling on already-vacant seat is a no-op).
-            - Clears attendee_id.
+            - If a checked-in attendee is bound to this seat, unbind them:
+              attendee.seat_id = None, attendee.checked_in = False.
+            - Clears seat.attendee_id.
             - Publishes seat_vacant.
         """
         seat = self._get_seat(seat_id)
 
         if seat.status == "vacant":
             return seat  # already vacant, no event
+
+        # Unbind any attendee that was checked into this seat
+        if seat.attendee_id is not None:
+            attendee = self.attendee_repo.get_by_id(seat.attendee_id)
+            if attendee is not None:
+                attendee.seat_id = None
+                attendee.checked_in = False
+                self.attendee_repo.save(attendee)
+                logger.info(
+                    "Seat %d: unbound attendee %d (seat_id=None, checked_in=False)",
+                    seat_id, seat.attendee_id,
+                )
 
         seat.status = "vacant"
         seat.attendee_id = None
@@ -143,7 +166,11 @@ class SeatService(BaseService):
 
         Rules:
             - Seat must be in occupied_unchecked state.
-            - attendee_id must be provided.
+            - attendee must exist and belong to the active meeting.
+            - attendee must not already be bound to another seat.
+            - seat must not be bound to another attendee.
+            - On success: seat.status=checked_in, seat.attendee_id set,
+              attendee.seat_id set, attendee.checked_in=true.
             - Publishes check_in.
         """
         seat = self._get_seat(seat_id)
@@ -159,10 +186,47 @@ class SeatService(BaseService):
                 "SEAT_ALREADY_CHECKED_IN",
             )
 
-        # status == "occupied_unchecked"
+        # Validate attendee exists
+        attendee = self.attendee_repo.get_by_id(attendee_id)
+        if attendee is None:
+            raise ValidationError(
+                f"Attendee {attendee_id} not found",
+                "ATTENDEE_NOT_FOUND",
+            )
+
+        # Validate attendee belongs to active meeting
+        active = self._active_meeting()
+        if active is None or attendee.meeting_id != active.id:
+            raise ValidationError(
+                f"Attendee {attendee_id} is not in the active meeting",
+                "ATTENDEE_NOT_IN_ACTIVE_MEETING",
+            )
+
+        # Validate attendee not already bound to another seat
+        if attendee.seat_id is not None and attendee.seat_id != seat_id:
+            raise ValidationError(
+                f"Attendee {attendee_id} is already checked into seat {attendee.seat_id}",
+                "ATTENDEE_ALREADY_CHECKED_IN",
+            )
+
+        # Validate seat not bound to a different attendee
+        if seat.attendee_id is not None and seat.attendee_id != attendee_id:
+            raise ValidationError(
+                f"Seat {seat_id} is already bound to attendee {seat.attendee_id}",
+                "SEAT_ALREADY_BOUND",
+            )
+
+        # Use active meeting ID if not explicitly provided
+        if meeting_id is None and active is not None:
+            meeting_id = active.id
+
+        # Update both seat and attendee
         seat.status = "checked_in"
         seat.attendee_id = attendee_id
+        attendee.seat_id = seat_id
+        attendee.checked_in = True
         self.seat_repo.save_seat(seat)
+        self.attendee_repo.save(attendee)
 
         self._publish(
             CheckInEvent(

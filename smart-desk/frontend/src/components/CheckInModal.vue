@@ -25,7 +25,20 @@ const loading = ref(false)
 async function confirm() {
   loading.value = true
   try {
-    await api.checkin(props.meetingId, props.seatId)
+    let attendeeId = null
+    try {
+      const attendees = await api.listAttendees(props.meetingId)
+      const att = attendees.find(a => a.seat_id === props.seatId)
+      if (att) attendeeId = att.id
+    } catch (e) {
+      console.error('Failed to lookup attendee for check-in:', e)
+      return
+    }
+    if (!attendeeId) {
+      console.error('Attendee not found for seat', props.seatId)
+      return
+    }
+    await api.checkin(props.seatId, attendeeId)
     emit('confirmed', props.seatId)
   } catch (e) {
     console.error('Check-in failed:', e)

@@ -27,6 +27,7 @@ from backend.schemas.seat import (
     SetSpeakerRequest,
 )
 from backend.services.seat_service import SeatService
+from backend.services.meeting_service import MeetingService
 
 router = APIRouter(prefix="/api/seats", tags=["seats"])
 
@@ -42,6 +43,12 @@ def _to_json(api_response: ApiResponse, status_code: int = 200) -> JSONResponse:
         content=api_response.model_dump(),
         status_code=status_code,
     )
+
+
+def _active_meeting_id(db: Session) -> int | None:
+    """Return the active meeting's ID, or None if none is active."""
+    meeting = MeetingService(db, event_bus).get_active_meeting()
+    return meeting.id if meeting else None
 
 
 # ── Seat List ────────────────────────────────────────────────────────────────
@@ -68,11 +75,13 @@ def check_in(
 ):
     """POST /api/seats/{seat_id}/checkin — confirm attendee check-in.
 
+    The active meeting ID is automatically injected into events.
     Publishes: check_in event.
     """
     svc = _service(db)
+    mid = _active_meeting_id(db)
     try:
-        seat = svc.check_in(seat_id=seat_id, attendee_id=body.attendee_id)
+        seat = svc.check_in(seat_id=seat_id, attendee_id=body.attendee_id, meeting_id=mid)
     except NotFoundError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
     except ValidationError as e:
@@ -96,11 +105,13 @@ def set_speaker_seat(
 ):
     """POST /api/seats/speaker — set the speaker seat.
 
+    The active meeting ID is automatically injected into events.
     Publishes: speaker_seat_set event.
     """
     svc = _service(db)
+    mid = _active_meeting_id(db)
     try:
-        speaker = svc.set_speaker_seat(seat_id=body.seat_id)
+        speaker = svc.set_speaker_seat(seat_id=body.seat_id, meeting_id=mid)
     except NotFoundError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
     return ApiResponse.ok(data=SpeakerSeatResponse.model_validate(speaker))
@@ -110,7 +121,10 @@ def set_speaker_seat(
 def clear_speaker_seat(db: Session = Depends(get_db)):
     """DELETE /api/seats/speaker — clear the speaker seat.
 
+    The active meeting ID is automatically injected into events.
     Publishes: speaker_seat_clear event.
     """
-    speaker = _service(db).clear_speaker_seat()
+    svc = _service(db)
+    mid = _active_meeting_id(db)
+    speaker = svc.clear_speaker_seat(meeting_id=mid)
     return ApiResponse.ok(data=SpeakerSeatResponse.model_validate(speaker))
