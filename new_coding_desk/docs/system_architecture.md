@@ -6,6 +6,27 @@ Last Updated: 2026-06-04
 
 ---
 
+# 0. Speech ADR Override
+
+For speech recognition and transcript behavior, `docs/adr/0001` through
+`docs/adr/0004` and `docs/adr/SPEECH_SYSTEM_OVERVIEW.md` override older
+placeholder notes in this document.
+
+Current speech-enabled architecture:
+
+* `/ws/{meeting_id}?seat=N` is the meeting broadcast channel.
+* `/ws/speech/{meeting_id}?seat=N` is the Speaker Seat audio uplink channel.
+* Live audio uses PCM16 little-endian, 16 kHz, mono binary WebSocket frames.
+* The backend owns VAD, utterance IDs, final boundaries, offline ASR rescore,
+  persistence, and transcript events.
+* The runtime contract requires real FunASR ASR/VAD. Mock speech fallback is
+  not part of the implementation contract.
+* Translation may remain a placeholder while ASR is integrated.
+* `speech_module/` is legacy reference code and must not be modified by
+  SmartDesk implementation tasks.
+
+---
+
 # 1. Project Overview
 
 SmartDesk 是一个面向会议场景的智能会议桌系统。
@@ -389,9 +410,12 @@ backend/events/
 
 | Event | Publisher | Payload |
 |---|---|---|
-| translation_final | TranslationService | {"translation_id": N, "seat_id": N, "source_lang": "...", "target_lang": "...", "source_text": "...", "translated_text": "..."} |
+| translation_interim | SpeechStreamService | {"utterance_id": "...", "seat_id": N, "revision": N, "source_lang": "...", "target_lang": "...", "source_text": "...", "translated_text": "", "is_final": false} |
+| translation_final | TranslationService | {"utterance_id": "...", "translation_id": N, "seat_id": N, "source_lang": "...", "target_lang": "...", "source_text": "...", "translated_text": "...", "source_type": "..."} |
+| translation_interim_cancelled | SpeechStreamService | {"utterance_id": "...", "seat_id": N, "reason": "speaker_seat_changed"} |
 
-Note: translation_interim 不进入 EventBus/WebSocket，由 HTTP 直接返回。
+Interim transcript events enter EventBus/WebSocket for real-time UI display but
+are not persisted. Final transcript events are persisted and broadcast.
 
 ### Event Flow
 
@@ -438,7 +462,10 @@ backend/websocket/
 ws://host:8000/ws/{meeting_id}?seat=N
 ```
 
-V1 仅支持服务端 -> 客户端广播。客户端不通过 WebSocket 发送业务请求。
+The meeting channel `/ws/{meeting_id}?seat=N` supports server-to-client
+broadcast. The speech channel `/ws/speech/{meeting_id}?seat=N` supports
+client-to-server PCM16 audio upload from the current Speaker Seat only. Other
+business writes continue to use HTTP APIs.
 
 ---
 
@@ -518,9 +545,12 @@ class SpeechModule:
     def get_next_segment_id(meeting_id, seat_id) -> int
 ```
 
-### 4.7.1 Dual VAD Design [Post-demo]
+### 4.7.1 Dual VAD Design
 
-快速展示版本中，语音识别模块允许暂不实现。前端仅保留语音状态、翻译记录展示和上传接口封装，不要求接入麦克风、VAD 或 ASR 模型。
+Speech recognition is now in scope. The frontend captures microphone audio only
+after explicit user action on the current Speaker Seat. The frontend may perform
+lightweight energy checks for UI state, but it does not decide final utterance
+boundaries. Server-side VAD owns final speech boundary decisions.
 
 ```
 +-------------------------------------------+
@@ -556,14 +586,15 @@ class SpeechModule:
 后端 FSMN-VAD 拥有最终决定权。
 ```
 
-### 4.7.2 Audio Format [V1]
+### 4.7.2 Audio Format
 
 ```
-Format: WAV
-Encoding: PCM16
+Transport: WebSocket binary frames on /ws/speech/{meeting_id}?seat=N
+Encoding: PCM16 little-endian
 Sample Rate: 16000 Hz
 Channels: Mono
-Max Duration: <= 20s
+Recommended Frame Size: 100 ms
+Final Source: backend buffered utterance PCM with offline ASR rescore
 ```
 
 ---
@@ -611,44 +642,55 @@ Note: seat_occupied = 物理状态变化事件, checkin_prompt = 业务提示事
 
 ---
 
-## 5.2 Translation Flow
+## 5.2 Speech and Translation Flow
 
 ```text
-Browser Microphone
+Speaker Seat Browser Microphone
     |
     v
-Client VAD (vad-web): voice activity detection + segmentation
+AudioContext / resample / PCM16 encode
     |
     v
-POST /api/translations  (FormData: audio + meeting_id + seat_id + session_key + final)
+/ws/speech/{meeting_id}?seat=N
     |
-    +--->  final=false: Paraformer Streaming -> SentenceMerger -> HTTP 200 (interim)
+    +---> start control message
+    |        |
+    |        v
+    |     backend generates utterance_id
     |
-    +--->  final=true:
-              |
-              v
-           Server VAD (FSMN-VAD): quality gate, filter false triggers
-              |
-              v
-           Paraformer-large: offline rescore
-              |
-              v
-           MTEngine.translate(): Opus-MT zh<->en
-              |
-              v
-           TranslationRepository.upsert(): persist translation_records
-              |
-              v
-           TranslationService -> EventBus.publish(translation_final)
-              |
-              v
-           WebSocketEventHandler -> WebSocketService.broadcast()
-              |
-              v
-           All Tablets: bilingual transcript update
+    +---> PCM16 binary frames
+             |
+             v
+          SpeechStreamService
+             |
+             +---> streaming ASR -> EventBus.publish(translation_interim)
+             |                         |
+             |                         v
+             |                      /ws/{meeting_id} broadcast
+             |
+             +---> backend VAD detects final boundary
+                       |
+                       v
+                    buffered utterance PCM
+                       |
+                       v
+                    TranslationService.process_final_array()
+                       |
+                       v
+                    Paraformer-large offline ASR rescore
+                       |
+                       v
+                    TranslationRepository.create()
+                       |
+                       v
+                    EventBus.publish(translation_final)
+                       |
+                       v
+                    /ws/{meeting_id} broadcast
 ```
 
-translation_interim 不进入 EventBus/WebSocket。由 HTTP 直接返回，避免高频广播。
+`POST /api/translations` remains only as a compatibility path for complete
+audio-file final processing or diagnostics. It is not the live interim channel.
 
 ---
 
@@ -911,8 +953,9 @@ SeatStateMachine 为纯状态机，零 I/O。
 /api/service-calls/{id}/resolve  POST   Resolve call
 /api/service-calls/{id}/cancel   POST   Cancel call
 
-/api/translations                POST   Audio upload (FormData, speech placeholder)
+/api/translations                POST   Compatible final audio upload (not live interim)
 /api/translations                GET    Translation history (?meeting_id=N&seat_id=N)
+/ws/speech/{meeting_id}?seat=N   WS     Speaker Seat live PCM16 speech uplink
 
 /api/dashboard             GET    Reserved, not implemented in current demo backend
 ```
@@ -1118,12 +1161,12 @@ speech_module/sentence_merge.py
 | 13 | Arduino disconnect | seat_states 保持不变。物理层 != 业务层。 [V1] |
 | 14 | Post-meeting hardware | 记录物理状态，不改变业务状态。 [V1] |
 | 15 | Meeting cleanup | 重置 seats 为 vacant，保留所有历史记录。 [V1] |
-| 16 | Model preload | 展示版本允许不加载语音模型。语音不可用时会议核心流程继续运行。 [V1] |
+| 16 | Speech models | Speech-enabled builds require real FunASR ASR/VAD. Missing models must be reported as environment errors; no runtime mock fallback. |
 | 17 | DB init | 应用启动时自动创建表 + 种子数据（seat_states 1~10, speaker_seat id=1）。幂等。dev 和 prod 均自动执行。 [V1] |
-| 18 | Audio format | WAV, PCM16, 16000Hz, Mono, <= 20s |
+| 18 | Audio format | Speech WS uses PCM16 little-endian, 16000Hz, mono, recommended 100ms frames. Compatibility upload accepts complete audio files. |
 | 19 | WS disconnect | 前端 overlay + 阻止写入 + 自动重连(3s) + 重连后全量状态同步 [V1] |
 | 20 | Deployment | Dev: Vite proxy /api -> localhost:8000。Prod: Nginx same-origin，无 CORS。Logging: logs/ 目录，每日轮转。 [V1] |
-| 21 | API paths | 音频上传和翻译历史均使用 /api/translations；发言席使用 /api/seats/speaker。[V1] |
+| 21 | API paths | Live speech uses /ws/speech/{meeting_id}?seat=N. Final upload/history use /api/translations. Speaker seat uses /api/seats/speaker. |
 | 22 | Event names | translation_final（非 translation_result），vote_updated（非 vote_cast），service_call_created/resolved/cancelled [V1] |
 
 ---

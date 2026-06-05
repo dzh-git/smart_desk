@@ -17,3 +17,17 @@ export interface SeatDisplay {
   isVacant: boolean;
   isSpeaker: boolean;
 }
+
+// ── Interim Translation (from WS translation_interim events) ──────────────────
+// Displayed in TranscriptPanel as real-time subtitles, not persisted.
+// Replaced by translation_final (persisted via GET /api/translations).
+
+export interface InterimTranslation {
+  utteranceId: string;
+  seatId: number;
+  revision: number;
+  sourceLang: string;
+  targetLang: string;
+  sourceText: string;
+  translatedText: string;
+}

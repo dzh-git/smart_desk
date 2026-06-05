@@ -1,111 +1,41 @@
 # SmartDesk Event Bus Specification
 
-Version: 1.0
+Version: 2.0
 
-Status: Frozen
+Status: Speech Integration Contract
 
-Architecture:
-
-```text
-Service
-↓
-EventBus.publish()
-↓
-Event Handler
-↓
-WebSocketService.broadcast()
-```
+Last Updated: 2026-06-05
 
 ---
 
 # 1. Purpose
 
-EventBus 用于实现模块解耦。
+EventBus decouples domain services from WebSocket broadcasting.
 
-禁止：
+Allowed flow:
 
-```python
-seat_service.set_speaker()
-
-ws_service.broadcast(...)
+```text
+Service
+-> EventBus.publish()
+-> WebSocketEventHandler
+-> WebSocketService.broadcast()
 ```
 
-正确：
+Forbidden flow:
 
-```python
-seat_service.set_speaker()
-
-event_bus.publish(
-    SpeakerSeatSetEvent(...)
-)
+```text
+Service -> WebSocketService
+Router  -> EventBus.publish()
+Repository -> EventBus.publish()
 ```
+
+Speech WebSocket endpoints may receive client audio/control messages, but they
+must delegate speech decisions to service code. `speech_module/` is legacy
+reference code and must not be modified by SmartDesk implementation tasks.
 
 ---
 
-# 2. Event Rules
-
-## E1
-
-事件必须由 Service 发布。
-
-禁止：
-
-```text
-Router 发布事件
-Repository 发布事件
-WebSocket 发布事件
-```
-
----
-
-## E2
-
-事件必须为业务事件。
-
-正确：
-
-```text
-VoteStartedEvent
-```
-
-错误：
-
-```text
-DatabaseUpdatedEvent
-```
-
----
-
-## E3
-
-事件为进程内事件。
-
-V1 不使用：
-
-```text
-Kafka
-RabbitMQ
-Redis Stream
-```
-
----
-
-## E4
-
-事件默认不持久化。
-
-仅用于：
-
-```text
-模块通知
-WebSocket广播
-```
-
----
-
-# 3. Base Event Schema
-
-所有事件统一格式：
+# 2. Base Event Schema
 
 ```python
 class BaseEvent:
@@ -115,27 +45,12 @@ class BaseEvent:
     payload: dict
 ```
 
----
-
-# 4. Event Publishing Flow
-
-```text
-HardwareService
-↓
-SeatService
-↓
-seat_occupied
-↓
-EventBus
-↓
-WebSocketEventHandler
-↓
-WebSocketService
-```
+Events are in-process notifications. They are not persisted. Speech final
+records are persisted separately in `translation_records`.
 
 ---
 
-# 5. Event Categories
+# 3. Event Categories
 
 ## Seat Events
 
@@ -148,16 +63,12 @@ speaker_seat_set
 speaker_seat_clear
 ```
 
----
-
 ## Meeting Events
 
 ```text
 meeting_started
 meeting_ended
 ```
-
----
 
 ## Vote Events
 
@@ -167,8 +78,6 @@ vote_updated
 vote_closed
 ```
 
----
-
 ## Service Call Events
 
 ```text
@@ -177,593 +86,171 @@ service_call_resolved
 service_call_cancelled
 ```
 
----
-
 ## Translation Events
 
+```text
+translation_interim
 translation_final
-
----
-
-# 6. Seat Events
-
-## seat_occupied
-
-Publisher
-
-```text
-SeatService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "seat_id": 3
-}
-```
-
-Meaning
-
-```text
-SeatService确认座位状态从 vacant
-变为 occupied_unchecked 后发布
-```
-
-Broadcast
-
-```text
-YES
+translation_interim_cancelled
 ```
 
 ---
 
-## seat_vacant
+# 4. Existing Business Events
 
-Publisher
+Existing seat, meeting, vote, and service-call events keep their current
+publishers and payloads:
 
-```text
-SeatService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "seat_id": 3
-}
-```
-
-Meaning
-
-```text
-SeatService确认座位状态变为 vacant 后发布
-```
-
-Broadcast
-
-```text
-YES
-```
+| Event | Publisher | Broadcast |
+|---|---|---|
+| `seat_occupied` | SeatService | YES |
+| `seat_vacant` | SeatService | YES |
+| `checkin_prompt` | SeatService | YES |
+| `check_in` | SeatService | YES |
+| `speaker_seat_set` | SeatService | YES |
+| `speaker_seat_clear` | SeatService | YES |
+| `meeting_started` | MeetingService | YES |
+| `meeting_ended` | MeetingService | YES |
+| `vote_started` | VoteService | YES |
+| `vote_updated` | VoteService | YES |
+| `vote_closed` | VoteService | YES |
+| `service_call_created` | ServiceCallService | YES |
+| `service_call_resolved` | ServiceCallService | YES |
+| `service_call_cancelled` | ServiceCallService | YES |
 
 ---
 
-## checkin_prompt
+# 5. Translation Events
 
-Publisher
+## translation_interim
 
-```text
-SeatService
-```
+Publisher: `SpeechStreamService`
 
-Subscribers
+Subscribers: `WebSocketEventHandler`
 
-```text
-WebSocketEventHandler
-```
+Broadcast: YES
 
-Payload
+Persistence: NO
+
+Payload:
 
 ```json
 {
-  "seat_id": 3
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-## check_in
-
-Publisher
-
-```text
-SeatService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
+  "utterance_id": "utt_1_3_000042",
   "seat_id": 3,
-  "attendee_id": 8
+  "revision": 4,
+  "source_lang": "zh",
+  "target_lang": "en",
+  "source_text": "我认为这个方案需要重新",
+  "translated_text": "",
+  "is_final": false
 }
 ```
 
-Broadcast
-
-```text
-YES
-```
-
----
-
-## speaker_seat_set
-
-Publisher
-
-```text
-SeatService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "seat_id": 5
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-## speaker_seat_clear
-
-Publisher
-
-```text
-SeatService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-# 7. Meeting Events
-
-## meeting_started
-
-Publisher
-
-```text
-MeetingService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "meeting_id": 1
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-## meeting_ended
-
-Publisher
-
-```text
-MeetingService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "meeting_id": 1
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-# 8. Vote Events
-
-## vote_started
-
-Publisher
-
-```text
-VoteService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "vote_id": 1,
-  "title": "Approve Budget"
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-## vote_updated
-
-Publisher
-
-```text
-VoteService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "vote_id": 1
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
-Notes
-
-```text
-不广播具体投票内容
-
-避免泄露投票结果
-```
-
----
-
-## vote_closed
-
-Publisher
-
-```text
-VoteService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "vote_id": 1
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-# 9. Service Call Events
-
-## service_call_created
-
-Publisher
-
-```text
-ServiceCallService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "call_id": 1,
-  "seat_id": 4,
-  "service_type": "coffee"
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-## service_call_resolved
-
-Publisher
-
-```text
-ServiceCallService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "call_id": 1
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-## service_call_cancelled
-
-Publisher
-
-```text
-ServiceCallService
-```
-
-Subscribers
-
-```text
-WebSocketEventHandler
-```
-
-Payload
-
-```json
-{
-  "call_id": 1
-}
-```
-
-Broadcast
-
-```text
-YES
-```
-
----
-
-# 10. Translation Events
+Meaning: streaming ASR produced an updated interim transcript for the current
+utterance. Clients update local interim UI state and do not persist this event.
 
 ## translation_final
 
-Publisher
+Publisher: `TranslationService`
 
-```text
-TranslationService
-```
+Subscribers: `WebSocketEventHandler`
 
-Subscribers
+Broadcast: YES
 
-```text
-WebSocketEventHandler
-```
+Persistence: YES, through `translation_records`
 
-Payload
+Payload:
 
 ```json
 {
-  "translation_id": 15,
+  "utterance_id": "utt_1_3_000042",
+  "translation_id": 42,
   "seat_id": 3,
-  "source_lang": "en",
-  "target_lang": "zh",
-  "source_text": "Hello everyone",
-  "translated_text": "大家好"
+  "source_lang": "zh",
+  "target_lang": "en",
+  "source_text": "我认为这个方案需要重新评估。",
+  "translated_text": "I think this plan needs to be re-evaluated.",
+  "source_type": "offline_rescore"
 }
 ```
 
-Broadcast
+Meaning: the backend has finalized an utterance using offline ASR rescore,
+persisted the record, and broadcast the final transcript.
 
-```text
-YES
+## translation_interim_cancelled
+
+Publisher: `SpeechStreamService`
+
+Subscribers: `WebSocketEventHandler`
+
+Broadcast: YES
+
+Persistence: NO
+
+Payload:
+
+```json
+{
+  "utterance_id": "utt_1_3_000042",
+  "seat_id": 3,
+  "reason": "speaker_seat_changed"
+}
 ```
+
+Meaning: an interim utterance was discarded and will not produce a final
+record. Speaker Seat hard switch is the primary reason.
 
 ---
 
-# 11. WebSocket Mapping
+# 6. WebSocket Mapping
 
-EventBus Event
-
-↓
-
-WebSocket Event
-
-一一对应：
+The following EventBus events are broadcast to `/ws/{meeting_id}`:
 
 ```text
 seat_occupied
 seat_vacant
-
 checkin_prompt
 check_in
-
 speaker_seat_set
 speaker_seat_clear
-
 meeting_started
 meeting_ended
-
 vote_started
 vote_updated
 vote_closed
-
 service_call_created
 service_call_resolved
 service_call_cancelled
-
+translation_interim
 translation_final
+translation_interim_cancelled
 ```
+
+`translation_interim` and `translation_interim_cancelled` are ephemeral UI
+events. `translation_final` is the durable event that corresponds to a database
+record.
 
 ---
 
-# 12. Event Handler Registration
+# 7. Event Handler Registration
 
-V1 固定注册：
+WebSocket event handlers are registered at application startup for the complete
+broadcast event list. Runtime dynamic registration is forbidden.
 
 ```python
-event_bus.subscribe(
-    event_name,
-    websocket_handler
-)
+event_bus.subscribe(event_name, websocket_handler)
 ```
-
-启动时完成。
-
-禁止运行时动态注册。
 
 ---
 
-# 13. EventBus Interface
+# 8. EventBus Interface
 
 ```python
 class EventBus:
-
-    def publish(
-        self,
-        event: BaseEvent
-    ) -> None:
+    def publish(self, event: BaseEvent) -> None:
         ...
 
-    def subscribe(
-        self,
-        event_name: str,
-        handler
-    ) -> None:
+    def subscribe(self, event_name: str, handler) -> None:
         ...
 ```
-
----
-
-# 14. Responsibility Matrix
-
-| Event                  | Publisher          | Broadcast |
-| ---------------------- | ------------------ | --------- |
-| seat_occupied          | SeatService        | YES       |
-| seat_vacant            | SeatService        | YES       |
-| checkin_prompt         | SeatService        | YES       |
-| check_in               | SeatService        | YES       |
-| speaker_seat_set       | SeatService        | YES       |
-| speaker_seat_clear     | SeatService        | YES       |
-| meeting_started        | MeetingService     | YES       |
-| meeting_ended          | MeetingService     | YES       |
-| vote_started           | VoteService        | YES       |
-| vote_updated           | VoteService        | YES       |
-| vote_closed            | VoteService        | YES       |
-| service_call_created   | ServiceCallService | YES       |
-| service_call_resolved  | ServiceCallService | YES       |
-| service_call_cancelled | ServiceCallService | YES       |
-|                        |                    |           |
-| translation_final      | TranslationService | YES       |

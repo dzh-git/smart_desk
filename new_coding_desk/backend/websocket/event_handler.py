@@ -56,8 +56,8 @@ class WebSocketEventHandler:
     the actual async broadcast as a fire-and-forget task.
     """
 
-    # Event names that require broadcast (all 15 per EVENT_BUS_SPEC §14).
-    # translation_interim is excluded per WEBSOCKET_PROTOCOL §10.
+    # Event names that require broadcast (all 17 per EVENT_BUS_SPEC §6, §14).
+    # translation_interim and translation_interim_cancelled were added in Phase 3.
     BROADCAST_EVENTS: ClassVar[frozenset[str]] = frozenset({
         "seat_occupied",
         "seat_vacant",
@@ -73,6 +73,8 @@ class WebSocketEventHandler:
         "service_call_created",
         "service_call_resolved",
         "service_call_cancelled",
+        "translation_interim",
+        "translation_interim_cancelled",
         "translation_final",
     })
 

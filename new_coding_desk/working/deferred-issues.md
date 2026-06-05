@@ -118,3 +118,27 @@ Non-blocking issues logged during development that do **not** block the v1.0 dem
 **Impact:** Low — after WS reconnects, the default refresh event triggers a full HTTP re-fetch anyway.
 
 **Suggested fix:** Add a "Reconnect" action that closes and reopens the WebSocket, or rename the button to "Refresh Data".
+
+---
+
+### 10. No stale-interim cleanup if translation_final/cancelled never arrives
+
+**File:** `frontend/src/hooks/useAdminData.ts`, `frontend/src/hooks/useSeatData.ts`  
+**Issue:** If a `translation_interim` event is received but no matching `translation_final` or `translation_interim_cancelled` follows (e.g., connection lost mid-utterance, or backend crash), the interim entry remains in the UI indefinitely.
+
+**Impact:** Low — the interim text is visually distinct (italic, dimmed, spinner) so it's clear it's not final. A page refresh or new meeting clears all interims. The real-time translation use case means users see text appear and disappear normally.
+
+**Suggested fix (Phase 09 or later):**
+  1. Add a stale-interim timeout (e.g., 30 s without update → auto-remove).
+  2. On WebSocket reconnect, clear all interims (they belong to a past connection epoch).
+
+---
+
+### 11. SeatTablet transcript section previously hidden when empty; now shows empty state
+
+**File:** `frontend/src/components/SeatTablet.tsx`  
+**Issue:** Before Phase 7, the SeatTablet hid the entire "Bilingual Transcript" section when there were no translations (`{translations.length > 0 && (...)}`). Now the TranscriptPanel is always rendered, showing the "No transcript yet" empty state.
+
+**Impact:** Low — the empty state is informative and matches the AdminDashboard behaviour. Users see a placeholder instead of nothing, which is better for discoverability.
+
+**Suggested fix:** None required — this is an intentional alignment with the AdminDashboard design. Revert to hidden-if-empty only if users find the empty state distracting.

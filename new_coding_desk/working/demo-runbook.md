@@ -250,6 +250,118 @@ http://127.0.0.1:5173/?seat=5
 
 ---
 
+## 语音演示流程（Phase 7 — 实时转录）
+
+> **前置条件**：Python 语音依赖已安装（`pip install -r requirements.txt`），模型文件已下载至 `models/`。首次启动时后端自动检查依赖和模型。
+
+### 步骤 S1: 确认 Speaker Seat
+
+**管理端** http://localhost:5173
+
+验证：
+- [ ] 页头显示 "Speaking" 标签（默认 Speaker 为座位 1 —— 张伟）
+- [ ] 如需切换 Speaker Seat，点击座位卡片上的麦克风图标
+
+### 步骤 S2: 打开 Speaker Seat 座位端
+
+```
+http://localhost:5173/?seat=1
+```
+
+验证：
+- [ ] 页面标题显示 "Seat 1" 和会议名称
+- [ ] "Voice Recognition" 区域：Speaker Seat → 显示 Start 按钮
+- [ ] 非 Speaker Seat → 显示 "Only speaker seat can stream audio"（只读）
+
+### 步骤 S3: 授权麦克风并开始录音
+
+1. 点击 **"Start"** 按钮
+2. 浏览器弹出麦克风权限请求，选择"允许"
+3. 状态变化：`requesting_microphone` → `connecting_speech_ws` → `recording`
+
+验证：
+- [ ] "Recording" 标签（红色脉冲圆点）显示
+- [ ] "Streaming audio..." 状态文字
+- [ ] 出现 **Stop** 和 **Cancel** 按钮
+- [ ] Start 按钮消失
+
+> 如果提示 "Microphone not supported"，请使用 Chrome 或 Edge。
+> 如果提示 "Microphone access denied"，检查系统麦克风设置：设置 → 隐私和安全 → 麦克风。
+
+### 步骤 S4: 说话
+
+对着麦克风说一段话（中文普通话或英文，约 5–10 秒）。
+
+### 步骤 S5: 管理端查看实时 interim
+
+**切换回管理端**（或分屏查看）
+
+验证：
+- [ ] "Bilingual Transcript" 面板中出现新的实时字幕行
+- [ ] interim 行显示为：斜体、浅灰色、带旋转加载指示器
+- [ ] interim 显示在 final 历史记录之上
+- [ ] 随着说话持续，interim 文本更新（revision 递增）
+
+### 步骤 S6: Stop → 查看 final 翻译
+
+**切换回座位端**，点击 **"Stop"**
+
+验证：
+- [ ] "Recording" 标签消失，返回 idle 状态（Start 按钮重新出现）
+- [ ] 已发送 `end_hint` → 后端 finalize
+
+**切换到管理端**
+
+验证：
+- [ ] interim 消失
+- [ ] 新的 final 双语记录出现在 Transcript Panel（带时间戳和语言标签）
+
+### 步骤 S7: 验证持久化记录
+
+在浏览器中打开：
+```
+http://localhost:8000/api/translations?meeting_id=1
+```
+
+或通过 Swagger UI 查看。
+
+验证：
+- [ ] 返回的 entries 列表包含刚完成的翻译记录
+- [ ] 包含 `source_text` 和 `translated_text` 字段
+- [ ] `created_at` 时间正确
+
+### 步骤 S8: 切换 Speaker Seat
+
+**管理端**点击另一个座位（如座位 2）的麦克风图标设置为 Speaker Seat
+
+验证：
+- [ ] 原 Speaker Seat（座位 1）的 "Speaking" 标签消失
+- [ ] 新座位（座位 2）出现 "Speaking" 标签
+- [ ] 管理端 Transcript Panel 中旧的 interim 被移除（收到 `translation_interim_cancelled`）
+
+**在座位 1 页面**（原 Speaker Seat）：
+- [ ] Voice Recognition 区域显示 "Only speaker seat can stream audio"
+- [ ] 旧 WS 连接已关闭
+
+**打开新 Speaker Seat 页面** `http://localhost:5173/?seat=2`：
+- [ ] 签到后（如需），可点击 Start 开始新的录音会话
+
+---
+
+## 语音演示预期状态对照
+
+| 状态 | 座位端（Speaker） | 管理端 Transcript Panel |
+|---|---|---|
+| Idle | "Click Start to begin speaking" + Start 按钮 | final 历史展示 |
+| Requesting mic | "Requesting microphone access..." | 无变化 |
+| Connecting WS | "Connecting to speech service..." | 无变化 |
+| Recording | 红色脉冲圆点 + "Recording" + Stop/Cancel | interim 行（斜体 + spinner + 浅色） |
+| Stopping | "Stopping..." | interim → final 过渡 |
+| Error | 错误消息 + Retry 按钮 | 无变化 |
+| Not speaker | "Only speaker seat can stream audio" | — |
+
+---
+
 ## 演示完成
 
 ```powershell
@@ -271,5 +383,7 @@ http://127.0.0.1:5173/?seat=5
 | 7 | 服务呼叫操作无骨架屏 | 按钮 spinner 足够用 |
 | 8 | 投票按姓名匹配与会者 ID | 重名时异常 |
 | 9 | "Retry Now" 不触发 WS 重连 | 等效于刷新数据 |
+| 10 | 无 stale-interim 超时清理 | 刷新页面即可清除 |
+| 11 | 首次模型加载慢（10–60 秒） | 演示前预热或提前告知 |
 
-所有问题均不影响核心演示流程。
+所有问题均不影响核心演示流程。语音演示需确保模型已下载（见上述前置条件）。

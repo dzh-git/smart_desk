@@ -32,6 +32,9 @@ class TranslationRecordResponse(BaseModel):
     source_text: str
     translated_text: str
     created_at: datetime
+    # Phase 4: speech WS traceability
+    utterance_id: str | None = None
+    source_type: str | None = None
 
     model_config = {"from_attributes": True}
 

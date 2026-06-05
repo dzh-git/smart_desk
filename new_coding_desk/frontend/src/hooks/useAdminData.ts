@@ -7,10 +7,11 @@
 //   2. If active meeting exists → fetch agendas, attendees, service calls, translations (parallel)
 //   3. If active vote exists → fetch statistics
 //
-// Error handling for vote statistics (Phase 04 review fix):
-//   If statistics fetch fails, the error is exposed via `voteStatsError` and
-//   `activeVote` remains null. The UI shows a retryable error state instead
-//   of silently faking zero results.
+// WebSocket event handling:
+//   translation_interim           → update interimMap only, no HTTP refresh
+//   translation_final             → remove matching interim, full HTTP refresh
+//   translation_interim_cancelled → remove matching interim, no HTTP refresh
+//   all other events              → full HTTP refresh (existing behaviour)
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
@@ -27,7 +28,7 @@ import {
 import { buildSeatDisplays } from "../api/adapters";
 import { useWebSocket } from "./useWebSocket";
 import type { WSMessage } from "./useWebSocket";
-import type { ConnectionStatus, SeatDisplay } from "../types";
+import type { ConnectionStatus, SeatDisplay, InterimTranslation } from "../types";
 import type {
   Meeting,
   Attendee,
@@ -64,6 +65,8 @@ export interface AdminData {
   serviceCalls: ServiceCall[];
   /** Translation history (empty when no meeting). */
   translations: TranslationRecord[];
+  /** Interim translations keyed by utterance_id (not persisted). */
+  interimMap: Record<string, InterimTranslation>;
   /** WebSocket connection status. */
   connection: ConnectionStatus;
   /** True when there is no active meeting (idle/waiting state). */
@@ -106,6 +109,7 @@ export function useAdminData(): AdminData {
   const [connectMeetingId, setConnectMeetingId] = useState<number | null>(null);
   const [hasActiveVote, setHasActiveVote] = useState(false);
   const [voteStatsError, setVoteStatsError] = useState<string | null>(null);
+  const [interimMap, setInterimMap] = useState<Record<string, InterimTranslation>>({});
 
   // Track if a refresh is in flight to avoid races
   const fetchingRef = useRef(false);
@@ -201,10 +205,64 @@ export function useAdminData(): AdminData {
   // ── WebSocket event handler ────────────────────────────────────────────
 
   const handleWSEvent = useCallback(
-    (_event: string, _message: WSMessage) => {
-      // We always trigger a full refresh for simplicity and correctness.
-      // According to the protocol, the frontend should re-fetch HTTP state
-      // after receiving events. A full refresh is always safe.
+    (event: string, message: WSMessage) => {
+      // translation_interim: update interimMap only, no HTTP refresh
+      if (event === "translation_interim") {
+        const p = message.payload;
+        const uid = p.utterance_id as string;
+        if (!uid) return;
+        const revision = p.revision as number;
+
+        setInterimMap((prev) => {
+          const existing = prev[uid];
+          // Only accept equal or higher revision (protect against stale frames)
+          if (existing && existing.revision > revision) return prev;
+          return {
+            ...prev,
+            [uid]: {
+              utteranceId: uid,
+              seatId: p.seat_id as number,
+              revision,
+              sourceLang: p.source_lang as string,
+              targetLang: p.target_lang as string,
+              sourceText: p.source_text as string,
+              translatedText: p.translated_text as string,
+            },
+          };
+        });
+        return;
+      }
+
+      // translation_interim_cancelled: remove matching interim, no HTTP refresh
+      if (event === "translation_interim_cancelled") {
+        const uid = message.payload.utterance_id as string;
+        if (!uid) return;
+        setInterimMap((prev) => {
+          if (!(uid in prev)) return prev;
+          const next = { ...prev };
+          delete next[uid];
+          return next;
+        });
+        return;
+      }
+
+      // translation_final: remove interim, then refresh translations via full re-fetch
+      if (event === "translation_final") {
+        const uid = message.payload.utterance_id as string;
+        if (uid) {
+          setInterimMap((prev) => {
+            if (!(uid in prev)) return prev;
+            const next = { ...prev };
+            delete next[uid];
+            return next;
+          });
+        }
+        // Full refresh to pick up the new persisted final record
+        doFetch(false);
+        return;
+      }
+
+      // All other events: full HTTP refresh (existing behaviour)
       doFetch(false);
     },
     [doFetch],
@@ -227,6 +285,7 @@ export function useAdminData(): AdminData {
     voteStatsError,
     serviceCalls: data.serviceCalls,
     translations: data.translations,
+    interimMap,
     connection,
     noMeeting: !loading && !data.meeting && !error,
     refresh: () => doFetch(false),

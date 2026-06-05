@@ -1,82 +1,46 @@
 # SmartDesk WebSocket Protocol
 
-Version: 1.1
+Version: 2.0
 
-Status: Frontend Integration Contract
+Status: Speech Integration Contract
 
-Last Updated: 2026-06-04
+Last Updated: 2026-06-05
 
 ---
 
 # 1. Purpose
 
-WebSocket 用于：
+SmartDesk uses two WebSocket channels:
 
-```text
-服务端
-↓
-客户端
-```
+| Channel | Endpoint | Direction | Purpose |
+|---|---|---|---|
+| Meeting broadcast | `/ws/{meeting_id}?seat={seat_id}` | server -> clients | Seat, meeting, vote, service-call, and transcript events |
+| Speech uplink | `/ws/speech/{meeting_id}?seat={seat_id}` | current Speaker Seat -> server | Live PCM16 audio upload and speech control messages |
 
-实时事件同步。
+Normal meeting, seat, vote, and service-call mutations still use HTTP APIs.
+Live speech audio is the only client-to-server WebSocket data path.
 
-禁止：
-
-```text
-客户端
-↓
-WebSocket
-↓
-服务端业务调用
-```
-
-V1 WebSocket 仅用于服务端广播。
-
-业务操作全部走 HTTP API。
+`speech_module/` is legacy reference code and must not be modified by SmartDesk
+implementation tasks.
 
 ---
 
-# 2. Endpoint
+# 2. Meeting Broadcast Channel
 
 ```text
 /ws/{meeting_id}?seat={seat_id}
 ```
 
-Example
+Examples:
 
 ```text
 Admin:  /ws/1
 Seat 3: /ws/1?seat=3
 ```
 
-`seat` 为可选查询参数。管理员不传或使用 `seat=0`。
+`seat` is optional. Admin clients omit it or use `seat=0`.
 
----
-
-# 3. Supported Clients
-
-```text
-Admin Tablet
-
-Seat Tablet 1
-Seat Tablet 2
-...
-Seat Tablet 10
-```
-
----
-
-# 4. Connection Lifecycle
-
-## Connect
-
-Client
-
-```text
-WebSocket Connect
-```
-
-Server
+On successful connection, the server sends:
 
 ```json
 {
@@ -87,28 +51,7 @@ Server
 }
 ```
 
----
-
-## Disconnect
-
-连接关闭。
-
-不发送业务事件。
-
-前端必须：
-
-```text
-显示连接中断 overlay
-禁用业务写操作
-每 3 秒自动重连
-重连成功后重新请求全部 HTTP 状态
-```
-
----
-
-# 5. Message Format
-
-所有广播统一格式：
+Broadcast message format:
 
 ```json
 {
@@ -119,419 +62,219 @@ Server
 }
 ```
 
+Most broadcast events mean "data changed" and clients should re-fetch the
+related HTTP resource. `translation_interim` is different: clients update local
+interim transcript state directly and should not trigger a full HTTP refresh for
+each revision.
+
 ---
 
-# 6. Common Fields
-
-## event
-
-事件名称。
-
-例如：
+# 3. Speech Uplink Channel
 
 ```text
-vote_started
-translation_final
+/ws/speech/{meeting_id}?seat={seat_id}
 ```
 
----
+Only the current Speaker Seat may connect. The backend validates:
 
-## meeting_id
+* meeting exists and is active
+* `seat_id` is between 1 and 10
+* `seat_id` equals the persisted Speaker Seat
 
-所属会议。
+If validation fails, the server must send an error or close the connection with
+a clear reason. The frontend must not attempt to bypass this rule.
 
----
+Client control messages:
 
-## timestamp
+```json
+{"type":"start","sample_rate":16000,"encoding":"pcm_s16le","channels":1}
+{"type":"end_hint"}
+{"type":"cancel"}
+```
 
-Unix Timestamp
+Server control messages:
 
-单位：
+```json
+{"type":"started","utterance_id":"utt_1_3_000042","session_key":"speech_1_3"}
+{"type":"utterance_started","utterance_id":"utt_1_3_000043"}
+{"type":"error","code":"NOT_SPEAKER_SEAT","message":"Only the speaker seat may stream audio"}
+```
+
+Audio frames are binary WebSocket messages:
 
 ```text
-seconds
+encoding:    pcm_s16le
+sample_rate: 16000
+channels:    1
+frame_ms:    100 recommended
+bytes/frame: 3200 for 100 ms
 ```
 
----
-
-## payload
-
-业务数据。
+The backend owns VAD, utterance boundaries, final ASR rescore, persistence, and
+translation event publication. The frontend may show local recording state but
+must not decide final transcript boundaries.
 
 ---
 
-# 7. Connection Management
-
-## Room Model
-
-一个会议对应一个 Room。
+# 4. Speech Event Flow
 
 ```text
-meeting_id
-↓
-room
-↓
-connections
+Seat Tablet (Speaker Seat)
+  -> /ws/speech/{meeting_id}?seat=N
+  -> start
+  <- started(utterance_id)
+  -> PCM16 binary frames
+  -> backend streaming ASR
+  -> EventBus translation_interim
+  -> /ws/{meeting_id} broadcast
+  -> backend VAD detects final boundary
+  -> offline ASR rescore
+  -> TranslationService persists translation_records
+  -> EventBus translation_final
+  -> /ws/{meeting_id} broadcast
 ```
+
+Final records are the only speech results persisted. Interim results are
+ephemeral and may be dropped.
 
 ---
 
-## Example
+# 5. Event Definitions
 
-```text
-meeting_id=1
+## translation_interim
 
-connections:
-    Admin
-    Seat1
-    Seat2
-    Seat3
-```
-
----
-
-# 8. Broadcast Rules
-
-默认：
-
-```text
-Room Broadcast
-```
-
-即：
-
-```text
-同会议所有客户端
-```
-
-全部接收。
-
-前端收到事件后，应将事件视为“数据已变化”通知，并重新请求对应 HTTP API。不要仅依赖 payload 在本地复制后端业务状态。
-
----
-
-# 9. Event Definitions
-
-## connected
-
-Payload
-
-```json
-{}
-```
-
----
-
-## seat_occupied
-
-Payload
+Broadcast on the meeting channel only. Not persisted.
 
 ```json
 {
-  "seat_id": 3
+  "event": "translation_interim",
+  "meeting_id": 1,
+  "timestamp": 1748700000,
+  "payload": {
+    "utterance_id": "utt_1_3_000042",
+    "seat_id": 3,
+    "revision": 4,
+    "source_lang": "zh",
+    "target_lang": "en",
+    "source_text": "我认为这个方案需要重新",
+    "translated_text": "",
+    "is_final": false
+  }
 }
 ```
 
----
-
-## seat_vacant
-
-Payload
-
-```json
-{
-  "seat_id": 3
-}
-```
-
----
-
-## checkin_prompt
-
-Payload
-
-```json
-{
-  "seat_id": 3
-}
-```
-
-说明：
-
-```text
-仅Seat3平板显示签到弹窗
-```
-
-虽然广播给所有客户端。
-
-只有目标客户端处理。
-
----
-
-## check_in
-
-Payload
-
-```json
-{
-  "seat_id": 3,
-  "attendee_id": 8
-}
-```
-
----
-
-## speaker_seat_set
-
-Payload
-
-```json
-{
-  "seat_id": 5
-}
-```
-
----
-
-## speaker_seat_clear
-
-Payload
-
-```json
-{}
-```
-
----
-
-## meeting_started
-
-Payload
-
-```json
-{
-  "meeting_id": 1
-}
-```
-
----
-
-## meeting_ended
-
-Payload
-
-```json
-{
-  "meeting_id": 1
-}
-```
-
----
-
-## vote_started
-
-Payload
-
-```json
-{
-  "vote_id": 1,
-  "title": "Approve Budget"
-}
-```
-
----
-
-## vote_updated
-
-Payload
-
-```json
-{
-  "vote_id": 1
-}
-```
-
-说明：
-
-```text
-不包含统计结果
-```
-
----
-
-## vote_closed
-
-Payload
-
-```json
-{
-  "vote_id": 1
-}
-```
-
----
-
-## service_call_created
-
-Payload
-
-```json
-{
-  "call_id": 1,
-  "seat_id": 4,
-  "service_type": "coffee"
-}
-```
-
----
-
-## service_call_resolved
-
-Payload
-
-```json
-{
-  "call_id": 1
-}
-```
-
----
-
-## service_call_cancelled
-
-Payload
-
-```json
-{
-  "call_id": 1
-}
-```
-
----
+Clients replace prior interim content for the same `utterance_id` when a higher
+`revision` arrives.
 
 ## translation_final
 
-Payload
+Broadcast after final/offline ASR, optional translation, and database write.
 
 ```json
 {
-  "translation_id": 15,
-  "seat_id": 3,
-  "source_lang": "en",
-  "target_lang": "zh",
-  "source_text": "Hello everyone",
-  "translated_text": "大家好"
+  "event": "translation_final",
+  "meeting_id": 1,
+  "timestamp": 1748700000,
+  "payload": {
+    "utterance_id": "utt_1_3_000042",
+    "translation_id": 42,
+    "seat_id": 3,
+    "source_lang": "zh",
+    "target_lang": "en",
+    "source_text": "我认为这个方案需要重新评估。",
+    "translated_text": "I think this plan needs to be re-evaluated.",
+    "source_type": "offline_rescore"
+  }
 }
 ```
 
+Clients remove the matching interim entry by `utterance_id` and display the
+final record.
+
+## translation_interim_cancelled
+
+Broadcast when a pending interim utterance is discarded.
+
+```json
+{
+  "event": "translation_interim_cancelled",
+  "meeting_id": 1,
+  "timestamp": 1748700000,
+  "payload": {
+    "utterance_id": "utt_1_3_000042",
+    "seat_id": 3,
+    "reason": "speaker_seat_changed"
+  }
+}
+```
+
+Clients delete the matching interim entry and do not expect a final record for
+that utterance.
+
 ---
 
-# 10. Not Broadcast Events
+# 6. Existing Broadcast Events
 
-以下事件不进入 WebSocket：
+The meeting broadcast channel also carries the existing events:
 
 ```text
+connected
+seat_occupied
+seat_vacant
+checkin_prompt
+check_in
+speaker_seat_set
+speaker_seat_clear
+meeting_started
+meeting_ended
+vote_started
+vote_updated
+vote_closed
+service_call_created
+service_call_resolved
+service_call_cancelled
 translation_interim
+translation_final
+translation_interim_cancelled
 ```
 
-原因：
-
-```text
-interim结果由HTTP直接返回
-```
-
-避免高频广播。
+Existing event payloads remain as defined in `docs/EVENT_BUS_SPEC.md`.
 
 ---
 
-# 11. WebSocket Service Interface
+# 7. Speaker Seat Switch
 
-```python
-class WebSocketService:
+Speaker Seat switching is a hard switch:
 
-    async def connect(
-        meeting_id: int,
-        websocket
-    ):
-        ...
-
-    async def disconnect(
-        meeting_id: int,
-        websocket
-    ):
-        ...
-
-    async def broadcast(
-        meeting_id: int,
-        message: dict
-    ):
-        ...
-```
+* old seat speech WebSocket is closed immediately
+* old `SpeechStreamSession` is cleaned up
+* pending interim text is discarded and not persisted
+* `translation_interim_cancelled` is broadcast with
+  `reason="speaker_seat_changed"`
+* the new Speaker Seat may open `/ws/speech/...`
 
 ---
 
-# 12. EventBus Integration
+# 8. Frontend Refresh Mapping
 
-唯一允许方式：
-
-```text
-Service
-↓
-Publish Event
-↓
-EventBus
-↓
-WebSocketEventHandler
-↓
-WebSocketService.broadcast()
-```
-
-禁止：
-
-```text
-Service
-↓
-WebSocketService
-```
-
-直接调用。
-
----
-
-# 13. V1 Scope
-
-支持：
-
-```text
-单会议
-
-11客户端以内
-
-广播消息
-```
-
-不支持：
-
-```text
-客户端消息
-
-点对点消息
-
-跨会议广播
-
-消息持久化
-```
-
----
-
-# 14. Frontend Refresh Mapping
-
-| Event | Frontend HTTP refresh |
+| Event | Frontend action |
 |---|---|
-| `meeting_started`, `meeting_ended` | active meeting, seats, speaker seat, active vote |
-| `seat_occupied`, `seat_vacant`, `check_in` | seats |
+| `meeting_started`, `meeting_ended` | refresh active meeting, seats, speaker seat, active vote |
+| `seat_occupied`, `seat_vacant`, `check_in` | refresh seats |
 | `checkin_prompt` | target seat opens check-in dialog, then loads attendees |
-| `speaker_seat_set`, `speaker_seat_clear` | speaker seat |
-| `vote_started`, `vote_closed` | active vote |
-| `vote_updated` | vote detail; admin also loads statistics |
-| `service_call_created`, `service_call_resolved`, `service_call_cancelled` | service calls |
-| `translation_final` | translation history |
+| `speaker_seat_set`, `speaker_seat_clear` | refresh speaker seat; speech client re-checks permission |
+| `vote_started`, `vote_closed` | refresh active vote |
+| `vote_updated` | refresh vote detail; admin also loads statistics |
+| `service_call_created`, `service_call_resolved`, `service_call_cancelled` | refresh service calls |
+| `translation_interim` | update local interim transcript map only |
+| `translation_final` | remove matching interim and show final transcript |
+| `translation_interim_cancelled` | remove matching interim |
+
+---
+
+# 9. Implementation Boundary
+
+Services publish EventBus events. `WebSocketEventHandler` bridges EventBus events
+to the meeting broadcast channel. The speech WebSocket endpoint may receive
+audio/control messages, but speech business decisions belong in service code,
+not in the endpoint.

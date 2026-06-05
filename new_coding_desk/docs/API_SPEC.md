@@ -21,7 +21,7 @@ Last Updated: 2026-06-04
 * WebSocket 实时事件同步
 * 翻译历史展示
 
-语音识别模块允许暂不实现。前端应保留语音 UI 和 `/api/translations` 接口封装，但不得将语音功能作为会议核心流程的前置条件。
+语音识别进入当前实现范围。前端座位端应在当前座位为 Speaker Seat 时接入麦克风和 `/ws/speech/{meeting_id}?seat=N`；会议核心流程仍不得依赖语音模块成功运行。
 
 ---
 
@@ -182,10 +182,12 @@ interface TranslationRecord {
   id: number
   meeting_id: number
   seat_id: number
+  utterance_id: string | null
   source_lang: string
   target_lang: string
   source_text: string
   translated_text: string
+  source_type: "offline_rescore" | "streaming_fallback" | "manual" | string
   created_at: string
 }
 ```
@@ -327,9 +329,74 @@ vacant -> occupied_unchecked -> checked_in
 
 ---
 
-# 12. Translation APIs
+# 12. Translation and Speech APIs
 
-语音模块在快速展示版本中允许不可用。前端应显示“语音识别接口预留”状态，不自动访问麦克风。
+Speech recognition is governed by `docs/adr/0001` through `docs/adr/0004` and
+`docs/adr/SPEECH_SYSTEM_OVERVIEW.md`. The first speech-enabled version must use
+real FunASR ASR/VAD. Runtime mock fallback is not part of the contract.
+Translation may remain a placeholder while ASR integration is completed.
+
+`speech_module/` is legacy reference code and must not be modified by SmartDesk
+implementation tasks. Runtime integration should use `backend/speech_module/`
+or new backend service/websocket modules only when the task explicitly allows
+that scope.
+
+Speech uses two WebSocket channels:
+
+| Channel | Direction | Purpose |
+|---|---|---|
+| `/ws/{meeting_id}?seat=N` | server to clients | Meeting broadcast events, including speech transcript events |
+| `/ws/speech/{meeting_id}?seat=N` | current Speaker Seat to server | Live PCM16 audio upload and speech control messages |
+
+Live interim captions are broadcast as `translation_interim` events on the
+meeting broadcast channel. Final captions are persisted to `translation_records`
+and broadcast as `translation_final`.
+
+## Compatible Final Audio Upload
+
+`POST /api/translations` is retained only as a compatibility path for complete
+audio files or developer diagnostics. It must not be used for live interim
+captions. It accepts `audio`, `meeting_id`, and `seat_id` form fields and
+returns `TranslationRecord`. `utterance_id` may be `null` for compatibility
+uploads because no speech WebSocket utterance exists.
+
+## Live Speech WebSocket
+
+```text
+WS /ws/speech/{meeting_id}?seat={seat_id}
+```
+
+Only the current Speaker Seat may connect and upload audio. The frontend sends
+JSON control messages and PCM16 little-endian binary frames. The backend owns
+utterance IDs, VAD, final sentence boundaries, offline rescore, persistence, and
+speech WebSocket errors.
+
+Client control messages:
+
+```json
+{"type":"start","sample_rate":16000,"encoding":"pcm_s16le","channels":1}
+{"type":"end_hint"}
+{"type":"cancel"}
+```
+
+Server control messages on `/ws/speech/...`:
+
+```json
+{"type":"started","utterance_id":"utt_1_3_000042","session_key":"speech_1_3"}
+{"type":"utterance_started","utterance_id":"utt_1_3_000043"}
+{"type":"error","code":"NOT_SPEAKER_SEAT","message":"Only the speaker seat may stream audio"}
+```
+
+Audio frames:
+
+```text
+encoding:    pcm_s16le
+sample_rate: 16000
+channels:    1
+frame_ms:    100 recommended
+```
+
+语音模块在当前版本必须接入真实 ASR。前端不得自动访问麦克风；只有用户在 Speaker Seat 页面主动开始发言时才请求麦克风权限。
 
 ## Process Audio
 
@@ -344,11 +411,10 @@ FormData：
 audio       required, WAV file
 meeting_id  required, integer
 seat_id     required, integer
-session_key optional, string
-final       optional, boolean, default false
+session_key deprecated, ignored for live speech
 ```
 
-`final=false` 响应 data：
+Deprecated HTTP interim response shape, retained only for historical context:
 
 ```json
 {
@@ -356,7 +422,7 @@ final       optional, boolean, default false
 }
 ```
 
-`final=true` 响应 data：`TranslationRecord`
+Final upload response data: `TranslationRecord`
 
 ## Get Translation History
 
@@ -406,6 +472,10 @@ SERVICE_CALL_NOT_FOUND
 SERVICE_CALL_ALREADY_RESOLVED
 TRANSLATION_FAILED
 SPEECH_MODULE_ERROR
+NOT_SPEAKER_SEAT
+SPEECH_WS_NOT_STARTED
+INVALID_AUDIO_FORMAT
+SPEECH_MODEL_NOT_READY
 INTERNAL_ERROR
 ATTENDEE_NOT_IN_ACTIVE_MEETING
 ATTENDEE_ALREADY_CHECKED_IN
@@ -454,9 +524,19 @@ Demo seed only runs when:
 
 # 16. Frontend Rules
 
-* 所有业务写操作使用 HTTP API，不通过 WebSocket 发送。
-* WebSocket 事件用于提示数据已变化；收到事件后重新请求对应 HTTP API。
-* WebSocket 断开时显示全屏连接中断提示，并禁用写操作。
-* WebSocket 重连后执行一次完整初始化。
-* 不在前端复制后端业务状态机。
-* 不调用未在本文档中列出的接口。
+* Normal meeting, seat, vote, and service-call mutations continue to use HTTP
+  APIs.
+* The only client-to-server WebSocket data path in this contract is live speech
+  audio on `/ws/speech/{meeting_id}?seat=N`.
+* Meeting broadcast WebSocket events indicate that data changed. For ordinary
+  business events, clients re-fetch the related HTTP resource.
+* `translation_interim` is an exception: clients update the local interim
+  transcript map directly and do not perform a full HTTP refresh for each
+  interim revision.
+* `translation_final` removes the matching interim entry by `utterance_id` and
+  may either insert the final record locally or refresh translation history.
+* WebSocket disconnect should show a connection warning and disable unsafe
+  writes. Speech capture must stop when `/ws/speech` disconnects.
+* The frontend must not decide final speech boundaries; backend VAD owns final
+  utterance decisions.
+* Do not call interfaces that are not listed in this document.

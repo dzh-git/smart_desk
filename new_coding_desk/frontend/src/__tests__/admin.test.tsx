@@ -855,3 +855,348 @@ describe("AdminDashboard - disconnected overlay", () => {
     expect(screen.queryByText("Connection Lost")).not.toBeInTheDocument();
   });
 });
+
+// ── Transcript WebSocket Event Tests ────────────────────────────────────────
+
+describe("Transcript - translation_interim event", () => {
+  function mockTranscriptScenario() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse({
+          meeting_id: 1,
+          entries: [
+            { id: 1, meeting_id: 1, seat_id: 1, source_lang: "en", target_lang: "zh", source_text: "Good morning everyone", translated_text: "大家早上好", created_at: "2026-01-01T10:01:00Z" },
+          ],
+        });
+      }
+      return okResponse(null);
+    });
+  }
+
+  it("shows interim subtitle after translation_interim event", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send translation_interim WS event
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_1_1_000001",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "我认为这个方案需要",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Interim text should appear in the panel
+    await waitFor(() => {
+      expect(screen.getByText("我认为这个方案需要")).toBeInTheDocument();
+    });
+  });
+
+  it("higher revision overwrites lower revision interim", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send rev 1
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_1_1_000002",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "我认为这个方案",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("我认为这个方案")).toBeInTheDocument();
+    });
+
+    // Send rev 2 (higher) — should overwrite
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_1_1_000002",
+        seat_id: 1,
+        revision: 2,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "我认为这个方案需要重新评估",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Old text should be gone, new text should appear
+    await waitFor(() => {
+      expect(screen.getByText("我认为这个方案需要重新评估")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("我认为这个方案")).not.toBeInTheDocument();
+  });
+
+  it("lower revision does not overwrite higher revision interim", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send rev 5 first (higher)
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_1_1_000003",
+        seat_id: 1,
+        revision: 5,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "最新的识别结果",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("最新的识别结果")).toBeInTheDocument();
+    });
+
+    // Send rev 3 (lower) — should NOT overwrite
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_1_1_000003",
+        seat_id: 1,
+        revision: 3,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "旧的识别结果",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Higher revision text should persist
+    expect(screen.getByText("最新的识别结果")).toBeInTheDocument();
+    expect(screen.queryByText("旧的识别结果")).not.toBeInTheDocument();
+  });
+
+  it("does not trigger full HTTP refresh on translation_interim", async () => {
+    let fetchCount = 0;
+    mockFetch.mockImplementation((url: string) => {
+      fetchCount++;
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    const callsAfterLoad = fetchCount;
+
+    // Send multiple translation_interim events
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_1_1_000004",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "测试文本",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Fetch count should NOT increase (no HTTP refresh for interims)
+    expect(fetchCount).toBe(callsAfterLoad);
+  });
+});
+
+describe("Transcript - translation_final event", () => {
+  it("removes matching interim and shows final record", async () => {
+    let initialTranslationsCall = true;
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        // On first call, return empty; on subsequent calls (triggered by
+        // translation_final refresh), return the final record.
+        if (initialTranslationsCall) {
+          initialTranslationsCall = false;
+          return okResponse({ meeting_id: 1, entries: [] });
+        }
+        return okResponse({
+          meeting_id: 1,
+          entries: [
+            { id: 10, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", source_text: "最终的翻译结果", translated_text: "The final translation result", created_at: "2026-01-01T10:05:00Z" },
+          ],
+        });
+      }
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No transcript yet")).toBeInTheDocument();
+    });
+
+    // Send translation_interim
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_1_1_000005",
+        seat_id: 1,
+        revision: 3,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "最终的翻译结果",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("最终的翻译结果")).toBeInTheDocument();
+    });
+
+    // Send translation_final for the same utterance_id
+    await act(async () => {
+      wsSend(0, "translation_final", 1, {
+        utterance_id: "utt_1_1_000005",
+        translation_id: 10,
+        seat_id: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "最终的翻译结果",
+        translated_text: "The final translation result",
+        source_type: "offline_rescore",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // The interim should be gone and the final record visible.
+    // The final record is fetched via HTTP refresh triggered by translation_final.
+    await waitFor(() => {
+      expect(screen.getByText("The final translation result")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Transcript - translation_interim_cancelled event", () => {
+  it("removes matching interim without adding history", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No transcript yet")).toBeInTheDocument();
+    });
+
+    // Send translation_interim
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_1_1_000006",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "被取消的中间结果",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("被取消的中间结果")).toBeInTheDocument();
+    });
+
+    // Send translation_interim_cancelled
+    await act(async () => {
+      wsSend(0, "translation_interim_cancelled", 1, {
+        utterance_id: "utt_1_1_000006",
+        seat_id: 1,
+        reason: "speaker_seat_changed",
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Interim should be removed; "No transcript yet" should return since no entries
+    await waitFor(() => {
+      expect(screen.getByText("No transcript yet")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("被取消的中间结果")).not.toBeInTheDocument();
+  });
+});

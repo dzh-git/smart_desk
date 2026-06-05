@@ -18,10 +18,13 @@ import {
   Clock,
   Vote,
   CheckCircle2,
+  Square,
 } from "lucide-react";
 import { useSeatData } from "../hooks/useSeatData";
 import { useClock, formatTime, formatDuration } from "./shared";
 import { isDemoControlsEnabled } from "./shared";
+import { useSpeechStream } from "../hooks/useSpeechStream";
+import { TranscriptPanel } from "./TranscriptPanel";
 import {
   checkinSeat,
   devOccupySeat,
@@ -55,6 +58,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     voteStatsError,
     currentServiceCall,
     translations,
+    interimMap,
     connection,
     noMeeting,
     refresh,
@@ -92,6 +96,14 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   // Current attendee name for this seat (memoized)
   const myAttendeeName = mySeat?.attendeeName ?? null;
   const myAttendeeTitle = mySeat?.attendeeTitle ?? null;
+
+  // Build seat → name map for TranscriptPanel
+  const seatNameMap: Record<number, string> = {};
+  for (const a of attendees) {
+    if (a.seat_id != null) {
+      seatNameMap[a.seat_id] = a.name;
+    }
+  }
 
   // Get the current vote submission status for this seat's attendee
   const voteSubmission = useMemo(() => {
@@ -407,27 +419,21 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           />
         )}
 
-        {/* Voice Placeholder */}
-        <VoicePlaceholder />
+        {/* Speech Control */}
+        <SpeechControl
+          meetingId={meeting?.id ?? null}
+          seatId={seatId}
+          isSpeaker={isSpeaker}
+          isCheckedIn={isCheckedIn}
+          writesAllowed={writesAllowed}
+        />
 
-        {/* Translation history */}
-        {translations.length > 0 && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">
-              Bilingual Transcript
-            </p>
-            <div className="space-y-3 max-h-48 overflow-y-auto">
-              {translations.map((t) => (
-                <div key={t.id} className="text-sm">
-                  <p className="text-slate-700">{t.source_text}</p>
-                  <p className="text-xs text-slate-500 mt-0.5 border-l-2 border-slate-200 pl-2">
-                    {t.translated_text}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Bilingual Transcript */}
+        <TranscriptPanel
+          entries={translations}
+          interims={Object.values(interimMap)}
+          seatNameMap={seatNameMap}
+        />
       </main>
 
       {/* Disconnected overlay */}
@@ -1026,20 +1032,163 @@ function SeatServiceSection({
   );
 }
 
-// ── Voice Placeholder ─────────────────────────────────────────────────────────
+// ── Speech Control ────────────────────────────────────────────────────────────
 
-function VoicePlaceholder() {
-  return (
-    <div className="bg-white rounded-2xl border border-dashed border-slate-300 shadow-sm p-5">
-      <div className="flex items-center gap-2 mb-2">
-        <Mic size={16} className="text-slate-400" />
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-          Voice Recognition
+interface SpeechControlProps {
+  meetingId: number | null;
+  seatId: number;
+  isSpeaker: boolean;
+  isCheckedIn: boolean;
+  writesAllowed: boolean;
+}
+
+function SpeechControl({
+  meetingId,
+  seatId,
+  isSpeaker,
+  isCheckedIn,
+  writesAllowed,
+}: SpeechControlProps) {
+  const { status, error, start, stop, cancel } = useSpeechStream(
+    meetingId,
+    seatId,
+    isSpeaker,
+  );
+
+  const browserSupportsMic =
+    typeof navigator !== "undefined" &&
+    navigator.mediaDevices?.getUserMedia != null;
+
+  const startDisabled =
+    !writesAllowed ||
+    !isCheckedIn ||
+    !browserSupportsMic ||
+    status === "requesting_microphone" ||
+    status === "connecting_speech_ws";
+
+  // ── Non-speaker seat: read-only hint ────────────────────────────────────
+  if (!isSpeaker) {
+    return (
+      <div className="bg-white rounded-2xl border border-dashed border-slate-300 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <Mic size={16} className="text-slate-400" />
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Voice Recognition
+          </p>
+        </div>
+        <p className="text-xs text-slate-500">
+          Only speaker seat can stream audio
         </p>
       </div>
-      <p className="text-xs text-slate-400 italic">
-        语音识别接口预留 / Speech recognition interface reserved
-      </p>
+    );
+  }
+
+  // ── Speaker seat: controls ─────────────────────────────────────────────
+  return (
+    <div className="bg-white rounded-2xl border border-sky-200 shadow-sm p-5">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <Mic
+          size={16}
+          className={
+            status === "recording" ? "text-rose-500" : "text-sky-500"
+          }
+        />
+        <p className="text-xs font-semibold uppercase tracking-widest text-sky-600">
+          Voice Recognition
+        </p>
+        {status === "recording" && (
+          <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2.5 py-0.5">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            Recording
+          </span>
+        )}
+      </div>
+
+      {/* Error */}
+      {status === "error" && error && (
+        <div className="mb-3 bg-red-50 border border-red-200 rounded-xl px-3 py-2 flex items-start gap-2">
+          <AlertCircle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-red-700">{error}</p>
+            <button
+              onClick={cancel}
+              className="text-xs font-medium text-red-600 underline mt-1 hover:text-red-800"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Status text */}
+      <div className="mb-3 text-xs text-slate-500 space-y-1">
+        {status === "idle" && <p>Click Start to begin speaking</p>}
+        {status === "requesting_microphone" && (
+          <p className="text-amber-600">
+            Requesting microphone access...
+          </p>
+        )}
+        {status === "connecting_speech_ws" && (
+          <p className="text-amber-600">
+            Connecting to speech service...
+          </p>
+        )}
+        {status === "recording" && (
+          <p className="text-emerald-600">Streaming audio...</p>
+        )}
+        {status === "stopping" && (
+          <p className="text-slate-400">Stopping...</p>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-2">
+        {status === "idle" && (
+          <button
+            onClick={start}
+            disabled={startDisabled}
+            className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Mic size={14} />
+            Start
+          </button>
+        )}
+        {status === "recording" && (
+          <>
+            <button
+              onClick={stop}
+              className="inline-flex items-center gap-2 text-xs font-medium bg-slate-700 text-white rounded-lg px-4 py-2 hover:bg-slate-800 transition-colors"
+            >
+              <Square size={14} />
+              Stop
+            </button>
+            <button
+              onClick={cancel}
+              className="inline-flex items-center gap-2 text-xs font-medium text-rose-600 bg-white border border-rose-200 rounded-lg px-4 py-2 hover:bg-rose-50 transition-colors"
+            >
+              <XCircle size={14} />
+              Cancel
+            </button>
+          </>
+        )}
+        {status === "error" && (
+          <button
+            onClick={cancel}
+            className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors"
+          >
+            <RefreshCw size={14} />
+            Retry
+          </button>
+        )}
+      </div>
+
+      {/* Mic not supported warning */}
+      {!browserSupportsMic && (
+        <p className="mt-2 text-xs text-amber-600">
+          Microphone not supported in this browser
+        </p>
+      )}
     </div>
   );
 }

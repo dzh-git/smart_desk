@@ -13,6 +13,7 @@ Business rules:
 """
 from __future__ import annotations
 
+import numpy as np
 from sqlalchemy.orm import Session
 
 from backend.events.event_bus import EventBus
@@ -87,24 +88,75 @@ class TranslationService(BaseService):
             ) from exc
         return text or ""
 
-    # ── Final ────────────────────────────────────────────────────────────────
+    # ── Final (file-based) ───────────────────────────────────────────────────
 
     def process_final(
-        self, audio_path: str, meeting_id: int, seat_id: int
+        self, audio_path: str, meeting_id: int, seat_id: int,
+        utterance_id: str | None = None,
+        source_type: str | None = "speech_ws",
     ) -> TranslationRecord:
         """T2: Run full offline ASR → translate → persist → publish event.
 
-        Returns the persisted TranslationRecord.
-        Publishes: translation_final event with payload:
-            {translation_id, seat_id, source_lang, target_lang,
-             source_text, translated_text}
+        File-based variant (for HTTP upload scenarios).
+        Delegates to process_final_array after loading the audio file.
+
+        Publishes: translation_final event with payload including utterance_id.
+        """
+        speech = _get_speech()
+        try:
+            from backend.speech_module.audio_utils import load_audio
+            audio, sr = load_audio(audio_path)
+        except Exception as exc:
+            raise ValidationError(
+                f"Audio loading failed: {exc}",
+                "TRANSLATION_FAILED",
+            ) from exc
+
+        return self.process_final_array(
+            audio=audio, sr=sr,
+            meeting_id=meeting_id, seat_id=seat_id,
+            utterance_id=utterance_id, source_type=source_type,
+        )
+
+    # ── Final (array-based, Phase 4) ─────────────────────────────────────────
+
+    def process_final_array(
+        self, audio: np.ndarray, sr: int,
+        meeting_id: int, seat_id: int,
+        utterance_id: str | None = None,
+        source_type: str | None = "speech_ws",
+    ) -> TranslationRecord:
+        """T2: Offline ASR rescore → translate → persist → publish event.
+
+        Array-based variant for speech WS flow (concatenated PCM buffer).
+        Uses SpeechModule.transcribe_array() for full-context offline rescore.
+
+        Args:
+            audio: float32 numpy array, 16kHz mono preferred.
+            sr: Sample rate of the input audio (auto-resampled to 16kHz).
+            meeting_id: Active meeting ID.
+            seat_id: Speaker seat ID.
+            utterance_id: The utterance_id from the speech WS start message.
+            source_type: Origin of the record.
+
+        Returns:
+            The persisted TranslationRecord.
+
+        Raises:
+            ValidationError: On empty ASR result, model error, or persistence failure.
+
+        Published event payload (EVENT_BUS_SPEC §5):
+            translation_id, utterance_id, seat_id,
+            source_lang, target_lang,
+            source_text, translated_text,
+            source_type
         """
         self._ensure_preloaded()
         speech = _get_speech()
 
-        # 1. Full offline ASR
+        # 1. Full offline ASR rescore
         try:
-            source_text = speech.transcribe(audio_path)
+            source_text = speech.transcribe_array(audio, sr)
         except Exception as exc:
             raise ValidationError(
                 f"Transcription failed: {exc}",
@@ -114,7 +166,7 @@ class TranslationService(BaseService):
         if not source_text or not source_text.strip():
             raise ValidationError(
                 "Transcription returned empty text",
-                "TRANSLATION_FAILED",
+                "ASR_EMPTY_RESULT",
             )
 
         # 2. Translate (auto-detect language)
@@ -131,18 +183,16 @@ class TranslationService(BaseService):
             source_lang = "zh"
             target_lang = "en"
             translated_text = en_str
-            # source_text is the original ASR output; zh_str is the confirmed zh text
         elif zh_str == NOT_AVAILABLE and en_str != NOT_AVAILABLE:
             source_lang = "en"
             target_lang = "zh"
             translated_text = zh_str
         else:
-            # Both populated or both unavailable — default to auto/auto
             source_lang = "auto"
             target_lang = "auto"
             translated_text = en_str if en_str != NOT_AVAILABLE else zh_str
 
-        # 4. Persist to translation_records
+        # 4. Persist to translation_records (with new fields)
         record = self.repo.create(
             meeting_id=meeting_id,
             seat_id=seat_id,
@@ -150,20 +200,25 @@ class TranslationService(BaseService):
             target_lang=target_lang,
             source_text=source_text.strip(),
             translated_text=translated_text.strip(),
+            utterance_id=utterance_id,
+            source_type=source_type,
         )
 
         # 5. Publish event (DB committed inside repo.create())
+        payload: dict = {
+            "translation_id": record.id,
+            "utterance_id": utterance_id,
+            "seat_id": seat_id,
+            "source_lang": source_lang,
+            "target_lang": target_lang,
+            "source_text": source_text.strip(),
+            "translated_text": translated_text.strip(),
+            "source_type": source_type,
+        }
         self.event_bus.publish(
             TranslationFinalEvent(
                 meeting_id=meeting_id,
-                payload={
-                    "translation_id": record.id,
-                    "seat_id": seat_id,
-                    "source_lang": source_lang,
-                    "target_lang": target_lang,
-                    "source_text": source_text.strip(),
-                    "translated_text": translated_text.strip(),
-                },
+                payload=payload,
             )
         )
 

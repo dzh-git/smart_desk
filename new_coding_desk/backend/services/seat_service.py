@@ -23,6 +23,7 @@ from backend.events.seat_events import (
     SpeakerSeatSetEvent,
     SpeakerSeatClearEvent,
 )
+from backend.events.translation_events import TranslationInterimCancelledEvent
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.models.seat_state import SeatState
 from backend.models.speaker_seat import SpeakerSeat
@@ -31,6 +32,8 @@ from backend.models.meeting import Meeting
 from backend.repositories.seat_repository import SeatRepository, SEAT_COUNT
 from backend.repositories.attendee_repository import AttendeeRepository
 from backend.services.base import BaseService
+from backend.services.speech_stream_service import stream_service
+from backend.websocket.speech_registry import speech_registry
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +76,52 @@ class SeatService(BaseService):
     def _active_meeting(self) -> Meeting | None:
         """Return the currently active meeting, or None."""
         return self.db.query(Meeting).filter(Meeting.status == "active").first()
+
+    # ── Speaker Seat Switch (Phase 5) ─────────────────────────────────────────
+
+    def _handle_speaker_seat_switch(
+        self, meeting_id: int, old_seat_id: int,
+    ) -> None:
+        """Clean up when an old speaker seat is replaced.
+
+        Per WEBSOCKET_PROTOCOL §7 (Speaker Seat Switch):
+            1. Cancel any pending utterance (clear buffer, reset state).
+            2. Publish TranslationInterimCancelledEvent.
+            3. Close the old speech WS connection (triggers handler cleanup).
+
+        The old WS handler's finally block handles stream_service session
+        removal and speech_registry unregister.
+        """
+        old_key = f"speech_{meeting_id}_{old_seat_id}"
+
+        # 1. Cancel pending utterance (clears buffer, resets revision)
+        cancelled_uid = stream_service.cancel_utterance(old_key)
+
+        # 2. Publish TranslationInterimCancelledEvent
+        cancelled_uid_str = cancelled_uid if cancelled_uid else ""
+        self._publish(
+            TranslationInterimCancelledEvent(
+                payload={
+                    "utterance_id": cancelled_uid_str,
+                    "seat_id": old_seat_id,
+                    "reason": "speaker_seat_changed",
+                },
+            ),
+            meeting_id=meeting_id,
+        )
+
+        # 3. Mark old WS as invalidated so no further messages are processed
+        old_ws = speech_registry.get(meeting_id, old_seat_id)
+        if old_ws is not None:
+            speech_registry.mark_invalidated(old_ws)
+
+        # 4. Close old speech WS (async via call_soon_threadsafe)
+        speech_registry.close_seat(meeting_id, old_seat_id)
+
+        logger.info(
+            "Speaker seat switch: cleaned up seat %d (utterance=%s)",
+            old_seat_id, cancelled_uid_str or "(none)",
+        )
 
     # ── Seat State ───────────────────────────────────────────────────────────
 
@@ -253,11 +302,19 @@ class SeatService(BaseService):
 
         Rules:
             - seat_id must reference a valid seat (1..10).
+            - If the old and new seat differ, performs a hard switch:
+              old speech WS closed, pending interim cancelled, buffer cleared.
             - Publishes speaker_seat_set.
         """
         self._get_seat(seat_id)  # validate seat exists
 
         speaker = self.seat_repo.get_speaker_seat()
+        old_seat_id = speaker.seat_id
+
+        # Hard switch: clean up old speaker seat if it changed
+        if old_seat_id is not None and old_seat_id != seat_id and meeting_id is not None:
+            self._handle_speaker_seat_switch(meeting_id, old_seat_id)
+
         speaker.seat_id = seat_id
         self.seat_repo.save_speaker_seat(speaker)
 
@@ -266,7 +323,9 @@ class SeatService(BaseService):
             meeting_id=meeting_id,
         )
 
-        logger.info("Speaker seat set to %d", seat_id)
+        logger.info(
+            "Speaker seat set to %d (was %s)", seat_id, old_seat_id,
+        )
         return speaker
 
     def clear_speaker_seat(
@@ -275,9 +334,17 @@ class SeatService(BaseService):
         """Clear the speaker seat (set to NULL).
 
         Rules:
+            - If there was an active speaker, performs hard switch cleanup:
+              old speech WS closed, pending interim cancelled, buffer cleared.
             - Publishes speaker_seat_clear.
         """
         speaker = self.seat_repo.get_speaker_seat()
+        old_seat_id = speaker.seat_id
+
+        # Hard switch: clean up old speaker seat if one was set
+        if old_seat_id is not None and meeting_id is not None:
+            self._handle_speaker_seat_switch(meeting_id, old_seat_id)
+
         speaker.seat_id = None
         self.seat_repo.save_speaker_seat(speaker)
 
@@ -286,5 +353,7 @@ class SeatService(BaseService):
             meeting_id=meeting_id,
         )
 
-        logger.info("Speaker seat cleared")
+        logger.info(
+            "Speaker seat cleared (was %s)", old_seat_id,
+        )
         return speaker

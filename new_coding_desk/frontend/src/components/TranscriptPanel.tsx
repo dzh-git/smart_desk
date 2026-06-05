@@ -1,4 +1,4 @@
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Loader2 } from "lucide-react";
 import { SectionCard, EmptyState, LoadingState } from "./shared";
 import type { TranslationRecord } from "../api/types";
 
@@ -23,18 +23,42 @@ function initials(name: string) {
     .join("");
 }
 
+// ── Interim entry type (from WS translation_interim events) ─────────────────
+
+export interface InterimDisplayEntry {
+  utteranceId: string;
+  seatId: number;
+  sourceLang: string;
+  targetLang: string;
+  sourceText: string;
+  translatedText: string;
+}
+
+// ── Props ──────────────────────────────────────────────────────────────────
+
 interface TranscriptPanelProps {
+  /** Persisted final translation records from GET /api/translations. */
   entries: TranslationRecord[];
-  /** Mapping seat_id → speaker name */
+  /** Live interim subtitles keyed by utterance_id. */
+  interims?: InterimDisplayEntry[];
+  /** Mapping seat_id → speaker name. */
   seatNameMap: Record<number, string>;
+  /** True while translations are being fetched for the first time. */
   loading?: boolean;
 }
 
+// ── Component ──────────────────────────────────────────────────────────────
+
 export function TranscriptPanel({
   entries,
+  interims = [],
   seatNameMap,
   loading = false,
 }: TranscriptPanelProps) {
+  const hasInterims = interims.length > 0;
+  const hasEntries = entries.length > 0;
+  const isEmpty = !loading && !hasEntries && !hasInterims;
+
   return (
     <SectionCard
       title="Bilingual Transcript"
@@ -44,7 +68,7 @@ export function TranscriptPanel({
     >
       {loading ? (
         <LoadingState rows={3} />
-      ) : entries.length === 0 ? (
+      ) : isEmpty ? (
         <EmptyState
           icon={<MessageSquare size={20} />}
           title="No transcript yet"
@@ -52,6 +76,18 @@ export function TranscriptPanel({
         />
       ) : (
         <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+          {/* Interim entries (live, not persisted) */}
+          {interims.map((interim) => (
+            <InterimRow
+              key={interim.utteranceId}
+              interim={interim}
+              speakerName={
+                seatNameMap[interim.seatId] ?? `Seat ${interim.seatId}`
+              }
+            />
+          ))}
+
+          {/* Final entries (persisted) */}
           {entries.map((entry) => (
             <TranscriptRow
               key={entry.id}
@@ -66,6 +102,8 @@ export function TranscriptPanel({
     </SectionCard>
   );
 }
+
+// ── Final Transcript Row (existing) ────────────────────────────────────────
 
 function TranscriptRow({
   entry,
@@ -106,6 +144,53 @@ function TranscriptRow({
         <p className="text-xs text-slate-500 mt-1 leading-relaxed border-l-2 border-slate-200 pl-2">
           {entry.translated_text}
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Interim Row (live subtitle, not persisted) ──────────────────────────────
+
+function InterimRow({
+  interim,
+  speakerName,
+}: {
+  interim: InterimDisplayEntry;
+  speakerName: string;
+}) {
+  const color = avatarColors[(interim.seatId - 1) % avatarColors.length];
+
+  const langLabel =
+    interim.sourceLang.toUpperCase() === "EN" ? "EN" : "中文";
+
+  return (
+    <div className="flex gap-3 opacity-80">
+      <div
+        className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold ${color}`}
+      >
+        {initials(speakerName)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 mb-1">
+          <span className="text-xs font-semibold text-slate-600">
+            {speakerName}
+          </span>
+          <Loader2
+            size={10}
+            className="animate-spin text-sky-400"
+          />
+          <span className="text-[10px] font-medium text-sky-500 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5">
+            {langLabel}
+          </span>
+        </div>
+        <p className="text-sm text-slate-500 leading-relaxed italic">
+          {interim.sourceText}
+        </p>
+        {interim.translatedText && (
+          <p className="text-xs text-slate-400 mt-1 leading-relaxed border-l-2 border-sky-200 pl-2 italic">
+            {interim.translatedText}
+          </p>
+        )}
       </div>
     </div>
   );

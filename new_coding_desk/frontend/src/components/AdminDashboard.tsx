@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { Loader2, AlertCircle, Cpu, RefreshCw, Vote, XCircle } from "lucide-react";
 import { useAdminData } from "../hooks/useAdminData";
+
 import { AdminHeader } from "./AdminHeader";
 import { ConferenceTable } from "./ConferenceTable";
 import { AgendaPanel } from "./AgendaPanel";
@@ -29,6 +30,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
     voteStatsError,
     serviceCalls,
     translations,
+    interimMap,
     connection,
     noMeeting,
     refresh,
@@ -398,6 +400,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         <div className="mt-6">
           <TranscriptPanel
             entries={translations}
+            interims={Object.values(interimMap)}
             seatNameMap={seatNameMap}
           />
         </div>
