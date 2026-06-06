@@ -12,6 +12,7 @@ set "SD_ROOT=%~dp0"
 
 :: --- Set demo environment variables ---
 set ENABLE_DEMO_SEED=true
+set ENABLE_DEMO_SEED_WHEN_NO_ACTIVE=true
 set ENABLE_DEMO_SEAT_API=true
 set VITE_ENABLE_DEMO_CONTROLS=true
 
@@ -79,6 +80,7 @@ echo   Docs:     http://localhost:8000/docs
 echo.
 echo   Demo controls enabled:
 echo     - Auto-seed meeting data
+echo     - Auto-create demo meeting if no active meeting exists
 echo     - Seat API controls
 echo     - Demo seat preview
 echo.

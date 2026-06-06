@@ -294,3 +294,27 @@ class TestDemoSeedEnabled:
         meetings = resp.json()["data"]
         assert len(meetings) == 1
         assert meetings[0]["title"] == "Real Meeting"
+
+    def test_launcher_flag_creates_demo_when_no_meeting_is_active(self):
+        """Demo launcher can seed when old meetings exist but none are active."""
+        client.post("/api/meetings", json={"title": "Old Pending Meeting", "description": ""})
+
+        old = os.environ.get("ENABLE_DEMO_SEED_WHEN_NO_ACTIVE", "")
+        os.environ["ENABLE_DEMO_SEED_WHEN_NO_ACTIVE"] = "true"
+        try:
+            self._run_seed()
+        finally:
+            if old:
+                os.environ["ENABLE_DEMO_SEED_WHEN_NO_ACTIVE"] = old
+            else:
+                del os.environ["ENABLE_DEMO_SEED_WHEN_NO_ACTIVE"]
+
+        resp = client.get("/api/meetings")
+        meetings = resp.json()["data"]
+        assert len(meetings) == 2
+        assert any(m["title"] == "Old Pending Meeting" for m in meetings)
+
+        resp = client.get("/api/meetings/active")
+        assert resp.status_code == 200
+        assert resp.json()["data"] is not None
+        assert resp.json()["data"]["status"] == "active"

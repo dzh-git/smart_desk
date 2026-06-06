@@ -107,11 +107,13 @@ export interface TranslationRecord {
   id: number;
   meeting_id: number;
   seat_id: number;
+  utterance_id?: string | null;
   source_lang: string;
   target_lang: string;
   source_text: string;
   translated_text: string;
   created_at: string;
+  source_type?: string | null;
 }
 
 export interface TranslationHistoryResponse {

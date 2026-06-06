@@ -15,7 +15,6 @@ Lifecycle:
 """
 
 from __future__ import annotations
-import time
 import numpy as np
 from typing import Optional
 
@@ -38,12 +37,9 @@ class SpeechModule:
         # Per-session streaming state: session_key -> state dict
         # Each state dict:
         #   "processor"        : StreamingChunkProcessor (CIF cache + accumulated text)
-        #   "pending_text"     : str  (text awaiting sentence-final punctuation)
-        #   "committed_text"   : str  (completed sentences, flushed)
-        #   "pending_start_time": float (monotonic timestamp when pending started)
         #   "meeting_id"       : int | None  (set via set_session_context)
         #   "seat_id"          : int | None  (set via set_session_context)
-        #   "next_segment_id"  : int  (auto-incremented per commit)
+        #   "next_segment_id"  : int  (unused after Task 112 — was for _record_commit)
         self._sessions: dict[str, dict] = {}
 
     # ── Properties ───────────────────────────────────────────────────────────
@@ -114,10 +110,10 @@ class SpeechModule:
     def process_interim_chunk(
         self, audio_path: str, session_key: str = "default",
     ) -> str:
-        """Transcribe an audio chunk, merge with previous results.
+        """Transcribe an audio chunk, return accumulated text.
 
-        Returns accumulated text (committed + pending). Sentence-boundary-aware:
-        text accumulates until sentence-final punctuation is seen.
+        Returns the raw cumulative full_text from StreamingChunkProcessor.
+        No SentenceMerger post-processing (see Task 112).
         """
         from .audio_utils import load_audio
         audio, sr = load_audio(audio_path)
@@ -127,12 +123,18 @@ class SpeechModule:
         self, audio: np.ndarray, session_key: str = "default",
         sample_rate: int = 16000,
     ) -> str:
-        """Transcribe audio array chunk with sentence-boundary-aware merging.
+        """Transcribe audio array chunk, return accumulated full text.
+
+        Returns the raw cumulative full_text from StreamingChunkProcessor
+        directly. Does NOT pass through SentenceMerger, because
+        result["full_text"] is already the accumulated text with overlap-aware
+        merging applied by StreamingChunkProcessor. Sending cumulative text
+        through SentenceMerger would cause duplication when the merger flushes
+        (see Task 112 root cause: committed old full text + pending new full
+        text that includes the old text = duplicated output).
 
         The CIF encoder/decoder cache is kept alive across all chunks in a
-        session. Sentence boundaries are detected from text content (punctuation),
-        not from audio VAD signals. This prevents over-splitting when speakers
-        pause mid-sentence.
+        session (is_final is always False here).
         """
         state = self._ensure_session(session_key)
         processor = state["processor"]
@@ -144,15 +146,17 @@ class SpeechModule:
         # Never set is_final=True — CIF cache stays alive across chunks.
         # Sentence boundaries are determined by text content, not VAD.
         result = processor.process_chunk(audio, is_final=False)
-        raw_text = result["full_text"]
 
-        return self._merge_sentence_aware(state, raw_text)
+        # Task 112: return raw cumulative full_text directly.
+        # Bypass SentenceMerger entirely to prevent committed + pending
+        # duplication when cumulative text grows beyond flush thresholds.
+        return result["full_text"]
 
     def reset_interim(self, session_key: str = "default") -> None:
-        """Reset SentenceMerger state for a new utterance. Preserves CIF cache."""
+        """Reset accumulated text for a new utterance. Preserves CIF cache."""
         state = self._sessions.get(session_key)
         if state is not None:
-            state["merger"].reset()
+            state["processor"].reset_accumulated_text()
 
     def start_utterance(self, session_key: str = "default") -> None:
         """Mark start of a new utterance. Resets SentenceMerger only."""
@@ -163,9 +167,7 @@ class SpeechModule:
         state = self._sessions.get(session_key)
         if state is None:
             return ""
-        merger = state["merger"]
-        committed = "".join(dl["text"] for dl in merger.committed_lines)
-        return committed + merger.pending_text
+        return state["processor"].accumulated_text
 
     # ── Session Context ────────────────────────────────────────────────────
 
@@ -219,43 +221,18 @@ class SpeechModule:
         """Get or create per-session state."""
         if session_key not in self._sessions:
             from .stt_streaming import StreamingChunkProcessor
-            from .sentence_merge import SentenceMerger
             self._sessions[session_key] = {
                 "processor": StreamingChunkProcessor(),
-                "merger": SentenceMerger(),
                 "meeting_id": None,
                 "seat_id": None,
                 "next_segment_id": 1,
             }
         return self._sessions[session_key]
 
-    def _merge_sentence_aware(self, state: dict, raw_text: str) -> str:
-        """Merge raw ASR output with pending text, flushing on sentence boundary.
-
-        Delegates to SentenceMerger for joint decision logic
-        (punctuation + length + age + gap).
-
-        Returns committed_text + pending_text (the full visible output).
-        """
-        merger = state["merger"]
-        flushed = merger.feed(raw_text, time.monotonic(), segment_id=0)
-        if flushed is not None:
-            self._record_commit(state, flushed)
-
-        committed = "".join(dl["text"] for dl in merger.committed_lines)
-        return committed + merger.pending_text
-
-    def _record_commit(self, state: dict, text: str) -> None:
-        """Record committed sentence to history store if configured."""
-        if self._history_store is None:
-            return
-        mid = state.get("meeting_id")
-        sid = state.get("seat_id")
-        if mid is None or sid is None:
-            return
-        seg_id = state["next_segment_id"]
-        self._history_store.upsert(
-            meeting_id=mid, seat_id=sid, segment_id=seg_id,
-            zh_text=text, en_text="", is_final=True,
-        )
-        state["next_segment_id"] = seg_id + 1
+    # NOTE (Task 112): _merge_sentence_aware and _record_commit were removed.
+    # They previously fed cumulative full_text through SentenceMerger, causing
+    # committed + pending duplication when flush thresholds were exceeded.
+    # process_interim_array now returns StreamingChunkProcessor's full_text
+    # directly. If SentenceMerger is needed for future sentence-boundary
+    # segmentation of final text, it must operate on incremental segment text
+    # (not cumulative full_text), or use a dedicated "cumulative mode".

@@ -177,6 +177,14 @@ class StreamingChunkProcessor:
         self._accumulated_text = ""
         self._total_frames = 0
 
+    def reset_accumulated_text(self):
+        """Reset accumulated text for a new utterance. Preserves CIF cache.
+
+        Used by SpeechModule.reset_interim() to clear the display text
+        while keeping the encoder/decoder cache alive across chunks.
+        """
+        self._accumulated_text = ""
+
     def process_chunk(
         self,
         audio: np.ndarray,

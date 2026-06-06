@@ -8,9 +8,7 @@
       "Glob(*)",
       "Grep(*)",
       "WebFetch(*)",
-      "WebSearch(*)",
-      "NotebookEdit(*)",
-      "mcp__*"
+      "WebSearch(*)"
     ]
   }
 }

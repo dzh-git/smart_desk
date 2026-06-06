@@ -142,3 +142,16 @@ Non-blocking issues logged during development that do **not** block the v1.0 dem
 **Impact:** Low — the empty state is informative and matches the AdminDashboard behaviour. Users see a placeholder instead of nothing, which is better for discoverability.
 
 **Suggested fix:** None required — this is an intentional alignment with the AdminDashboard design. Revert to hidden-if-empty only if users find the empty state distracting.
+
+---
+
+### 12. `test_same_key_reconnect_generates_increasing_ids` flakes on utterance_id sequence
+
+**File:** `tests/test_speech_stream_service.py`  
+**Issue:** The test `TestUtteranceIdUniqueness::test_same_key_reconnect_generates_increasing_ids` expects `utt_1_1_000001` but when run after other tests that have already generated sequence IDs for (meeting=1, seat=1), the sequence starts at a higher number (e.g., 000016).
+
+**Details:** The `_utterance_sequences` counter in `SpeechStreamService` is module-level and persists across tests within the same process. When test ordering is `[other tests that use (1,1)] → [this test]`, the counter has already advanced past 000001. In full-suite runs the test passes (different ordering); in targeted runs it may fail.
+
+**Impact:** Low — only affects `pytest -k` or targeted test file runs. Full suite (`pytest -q`) passes. Not a production issue.
+
+**Suggested fix:** Either (a) reset `SpeechStreamService._utterance_sequences` in a pytest fixture, or (b) parameterize the expected value dynamically. Suitable for any maintenance phase.

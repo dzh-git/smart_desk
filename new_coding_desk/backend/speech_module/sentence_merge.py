@@ -57,18 +57,19 @@ class SentenceMerger:
 
     def feed(self, text: str, end_time_s: float, segment_id: int,
              start_time_s: float | None = None) -> str | None:
-        """Feed one segment's ASR final text.
+        """Feed one segment's ASR text.
+
+        NOTE (Task 111): The interim path always sends the FULL accumulated
+        text from StreamingChunkProcessor, which already performs per-chunk
+        overlap-aware merging internally. We do NOT call merge_texts here
+        because that would double-merge the full text, causing duplication
+        when ASR refines its output between frames (e.g. "我喝了好多" →
+        "我喝了很多" would concatenate to "我喝了好多我喝了很多").
 
         Returns the flushed text if a sentence boundary was detected,
         or None if the text is held in pending buffer.
         """
         if not text:
-            return None
-
-        from .text_utils import merge_texts
-
-        merged = merge_texts(self._pending, text) if self._pending else text
-        if not merged:
             return None
 
         t_start = start_time_s if start_time_s is not None else end_time_s
@@ -80,10 +81,10 @@ class SentenceMerger:
         self._pending_end_time = end_time_s
         self._pending_source_segments.append(segment_id)
 
-        if self._should_flush(merged, end_time_s):
-            return self._commit(merged, end_time_s)
+        if self._should_flush(text, end_time_s):
+            return self._commit(text, end_time_s)
         else:
-            self._pending = merged
+            self._pending = text
             return None
 
     def flush(self) -> str | None:

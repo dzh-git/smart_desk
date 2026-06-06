@@ -46,6 +46,15 @@ lerna-debug.log*
 *.njsproj
 *.sln
 
+# Working artifacts (plans, reports, debug output)
+working/
+
+# Test results
+frontend/test-results/
+
+# Real audio data (large binary files)
+真实语音数据集/
+
 # OS
 .DS_Store
 Thumbs.db

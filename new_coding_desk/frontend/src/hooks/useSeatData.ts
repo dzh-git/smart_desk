@@ -121,11 +121,18 @@ export function useSeatData(seatId: number): SeatData {
 
   // Track if a refresh is in flight to avoid races
   const fetchingRef = useRef(false);
+  // Track if a refresh was requested while one was already in flight
+  const needsRefreshRef = useRef(false);
 
   // ── Core fetch function ────────────────────────────────────────────────
 
   const doFetch = useCallback(async (isInitial: boolean) => {
-    if (fetchingRef.current) return;
+    // If already fetching, mark that a re-fetch is needed and return.
+    // The in-flight fetch will check this flag and re-trigger itself.
+    if (fetchingRef.current) {
+      needsRefreshRef.current = true;
+      return;
+    }
     fetchingRef.current = true;
 
     if (isInitial) setLoading(true);
@@ -205,6 +212,11 @@ export function useSeatData(seatId: number): SeatData {
     } finally {
       fetchingRef.current = false;
       setLoading(false);
+      // If a refresh was queued while we were fetching, re-trigger now.
+      if (needsRefreshRef.current) {
+        needsRefreshRef.current = false;
+        doFetch(false);
+      }
     }
   }, [seatId]);
 

@@ -1200,3 +1200,264 @@ describe("Transcript - translation_interim_cancelled event", () => {
     expect(screen.queryByText("被取消的中间结果")).not.toBeInTheDocument();
   });
 });
+
+describe("Transcript - deduplication", () => {
+  function mockScenario(translationsReturn: unknown = null) {
+    const translationsData = translationsReturn ?? {
+      meeting_id: 1,
+      entries: [
+        { id: 1, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", source_text: "Good morning everyone", translated_text: "大家早上好", created_at: "2026-01-01T10:01:00Z" },
+      ],
+    };
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse(translationsData);
+      }
+      return okResponse(null);
+    });
+  }
+
+  it("same utterance_id multiple revisions only renders one interim DOM row", async () => {
+    mockScenario({ meeting_id: 1, entries: [] });
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send rev 1
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_dedup_001",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "第一版识别",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("第一版识别")).toBeInTheDocument();
+    });
+
+    // Send rev 2 for same utterance_id
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_dedup_001",
+        seat_id: 1,
+        revision: 2,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "第二版识别结果",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // The new text should appear and there must be exactly 1 interim row for this utterance_id
+    await waitFor(() => {
+      expect(screen.getByText("第二版识别结果")).toBeInTheDocument();
+    });
+    const interimRows = screen.getAllByTestId("transcript-interim");
+    const matching = interimRows.filter(
+      (el) => el.getAttribute("data-utterance-id") === "utt_dedup_001",
+    );
+    expect(matching).toHaveLength(1);
+  });
+
+  it("final arrival removes all interims for same utterance_id", async () => {
+    let translationsCallCount = 0;
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        translationsCallCount++;
+        if (translationsCallCount <= 1) {
+          return okResponse({ meeting_id: 1, entries: [] });
+        }
+        // Subsequent calls return the final record with utterance_id
+        return okResponse({
+          meeting_id: 1,
+          entries: [
+            { id: 99, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", utterance_id: "utt_dedup_002", source_text: "最终的识别结果", translated_text: "Final recognition result", created_at: "2026-01-01T10:05:00Z" },
+          ],
+        });
+      }
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send interim
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_dedup_002",
+        seat_id: 1,
+        revision: 3,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "最终的识别结果",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("最终的识别结果")).toBeInTheDocument();
+    });
+
+    // Send final
+    await act(async () => {
+      wsSend(0, "translation_final", 1, {
+        utterance_id: "utt_dedup_002",
+        translation_id: 99,
+        seat_id: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "最终的识别结果",
+        translated_text: "Final recognition result",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // Interim should be gone
+    await waitFor(() => {
+      expect(screen.queryByTestId("transcript-interim")).not.toBeInTheDocument();
+    });
+
+    // Final should appear, exactly once
+    await waitFor(() => {
+      expect(screen.getByText("Final recognition result")).toBeInTheDocument();
+    });
+    const finalRows = screen.getAllByTestId("transcript-final");
+    const matching = finalRows.filter(
+      (el) => el.getAttribute("data-utterance-id") === "utt_dedup_002",
+    );
+    expect(matching).toHaveLength(1);
+  });
+
+  it("TranscriptPanel deduplicates same final translation id", async () => {
+    // Render TranscriptPanel directly with duplicate entries
+    const { TranscriptPanel } = await import("../components/TranscriptPanel");
+
+    const dupEntries = [
+      { id: 50, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", utterance_id: "utt_x", source_text: "重复文本", translated_text: "Duplicated text", created_at: "2026-01-01T10:05:00Z", source_type: null },
+      { id: 50, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", utterance_id: "utt_x", source_text: "重复文本", translated_text: "Duplicated text", created_at: "2026-01-01T10:05:00Z", source_type: null },
+    ];
+
+    render(
+      <TranscriptPanel
+        entries={dupEntries}
+        seatNameMap={{ 1: "Alice Wang" }}
+      />,
+    );
+
+    // Should only render one row (deduplicated by id=50)
+    const rows = screen.getAllByTestId("transcript-final");
+    expect(rows).toHaveLength(1);
+  });
+
+  it("TranscriptPanel filters interims that already have a final entry", async () => {
+    const { TranscriptPanel } = await import("../components/TranscriptPanel");
+
+    const entries = [
+      { id: 60, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", utterance_id: "utt_y", source_text: "最终文本", translated_text: "Final text", created_at: "2026-01-01T10:05:00Z", source_type: null },
+    ];
+
+    render(
+      <TranscriptPanel
+        entries={entries}
+        interims={[
+          { utteranceId: "utt_y", seatId: 1, revision: 5, sourceLang: "zh", targetLang: "en", sourceText: "旧中间结果", translatedText: "" },
+        ]}
+        seatNameMap={{ 1: "Alice Wang" }}
+      />,
+    );
+
+    // The interim should NOT be rendered (filtered out because utt_y has a final entry)
+    expect(screen.queryByText("旧中间结果")).not.toBeInTheDocument();
+    // The final should be rendered
+    expect(screen.getByText("最终文本")).toBeInTheDocument();
+  });
+
+  it("TranscriptPanel deduplicates finals by utterance_id keeping last entry", async () => {
+    const { TranscriptPanel } = await import("../components/TranscriptPanel");
+
+    const entries = [
+      { id: 70, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", utterance_id: "utt_z", source_text: "旧版本", translated_text: "Old version", created_at: "2026-01-01T10:05:00Z", source_type: null },
+      { id: 71, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", utterance_id: "utt_z", source_text: "新版本", translated_text: "New version", created_at: "2026-01-01T10:06:00Z", source_type: null },
+    ];
+
+    render(
+      <TranscriptPanel
+        entries={entries}
+        seatNameMap={{ 1: "Alice Wang" }}
+      />,
+    );
+
+    // Only one final row for utt_z should exist
+    const rows = screen.getAllByTestId("transcript-final");
+    expect(rows).toHaveLength(1);
+    // The latest entry's text should be shown
+    expect(screen.getByText("新版本")).toBeInTheDocument();
+    expect(screen.queryByText("旧版本")).not.toBeInTheDocument();
+  });
+});
+
+describe("Transcript - language labels", () => {
+  it("TranscriptPanel does not render non-ASCII language labels", async () => {
+    const { TranscriptPanel } = await import("../components/TranscriptPanel");
+
+    render(
+      <TranscriptPanel
+        entries={[
+          { id: 1, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", source_text: "你好", translated_text: "Hello", created_at: "2026-01-01T10:05:00Z", source_type: null },
+          { id: 2, meeting_id: 1, seat_id: 1, source_lang: "en", target_lang: "zh", source_text: "Hi", translated_text: "嗨", created_at: "2026-01-01T10:06:00Z", source_type: null },
+        ]}
+        seatNameMap={{ 1: "Alice Wang" }}
+      />,
+    );
+
+    // The header label should be "EN / ZH" (ASCII only)
+    const headerLabel = screen.getByText("EN / ZH");
+    expect(headerLabel).toBeInTheDocument();
+
+    // Language badges should be "EN" or "ZH", never contain Chinese characters
+    const badgeEls = screen.getAllByTestId("transcript-lang-label");
+    expect(badgeEls.length).toBeGreaterThanOrEqual(2);
+    badgeEls.forEach((el) => {
+      const text = el.textContent ?? "";
+      expect(text).toMatch(/^(EN|ZH)$/);
+    });
+  });
+});

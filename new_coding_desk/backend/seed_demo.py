@@ -7,6 +7,9 @@ Rules:
     - Default off (ENABLE_DEMO_SEED must be explicitly "true").
     - Only seeds when no meetings exist in the database (idempotent).
     - Never modifies or supplements existing data.
+    - Demo launcher may set ENABLE_DEMO_SEED_WHEN_NO_ACTIVE=true to create
+      a fresh demo meeting when old finished/pending meetings exist but no
+      meeting is currently active.
     - Creates attendees, seat states, votes, service calls, and
       translation records consistent with each other.
 
@@ -41,22 +44,31 @@ logger = logging.getLogger(__name__)
 
 
 def seed_demo_data(db: Session) -> None:
-    """Seed demo data if ENABLE_DEMO_SEED=true and no meetings exist.
+    """Seed demo data if enabled and allowed by the current DB state.
 
-    Idempotent: subsequent calls with existing meetings are no-ops.
+    Idempotent: subsequent calls with an active meeting are no-ops.
     """
     enabled = os.environ.get("ENABLE_DEMO_SEED", "").lower() == "true"
     if not enabled:
         logger.debug("seed_demo_data: disabled (ENABLE_DEMO_SEED != true)")
         return
 
+    allow_when_no_active = (
+        os.environ.get("ENABLE_DEMO_SEED_WHEN_NO_ACTIVE", "").lower() == "true"
+    )
     existing = db.query(Meeting).count()
     if existing > 0:
+        active = db.query(Meeting).filter(Meeting.status == "active").first()
+        if active is not None or not allow_when_no_active:
+            logger.info(
+                "seed_demo_data: %d meetings already exist, skipping",
+                existing,
+            )
+            return
         logger.info(
-            "seed_demo_data: %d meetings already exist, skipping",
+            "seed_demo_data: %d meetings exist but none active; creating demo meeting",
             existing,
         )
-        return
 
     now = datetime.now(timezone.utc)
 
