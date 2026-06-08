@@ -229,6 +229,19 @@ export function useAdminData(): AdminData {
           const existing = prev[uid];
           // Only accept equal or higher revision (protect against stale frames)
           if (existing && existing.revision > revision) return prev;
+
+          // Extract optional caption from payload
+          const rawCaption = p.caption;
+          let caption: InterimTranslation['caption'] | undefined;
+          if (rawCaption && typeof rawCaption === 'object') {
+            const cap = rawCaption as Record<string, unknown>;
+            caption = {
+              previousLine: String(cap.previous_line ?? ''),
+              currentLine: String(cap.current_line ?? ''),
+              mode: String(cap.mode ?? 'two_line'),
+            };
+          }
+
           return {
             ...prev,
             [uid]: {
@@ -239,6 +252,7 @@ export function useAdminData(): AdminData {
               targetLang: p.target_lang as string,
               sourceText: p.source_text as string,
               translatedText: p.translated_text as string,
+              caption,
             },
           };
         });

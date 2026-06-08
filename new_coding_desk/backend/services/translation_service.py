@@ -22,6 +22,7 @@ from backend.exceptions import ValidationError
 from backend.models.translation_record import TranslationRecord
 from backend.repositories.translation_repository import TranslationRepository
 from backend.services.base import BaseService
+from backend.speech_module.punctuation import add_punctuation
 
 # ── SpeechModule singleton ─────────────────────────────────────────────────────
 _speech = None  # lazy singleton
@@ -168,6 +169,9 @@ class TranslationService(BaseService):
                 "Transcription returned empty text",
                 "ASR_EMPTY_RESULT",
             )
+
+        # Phase 02: apply punctuation to final source_text before persist
+        source_text = add_punctuation(source_text)
 
         # 2. Translate (auto-detect language)
         try:

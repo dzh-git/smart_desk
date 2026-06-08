@@ -30,4 +30,10 @@ export interface InterimTranslation {
   targetLang: string;
   sourceText: string;
   translatedText: string;
+  /** Optional two-line caption from backend caption formatter. */
+  caption?: {
+    previousLine: string;
+    currentLine: string;
+    mode: string;
+  };
 }

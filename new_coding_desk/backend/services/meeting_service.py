@@ -8,6 +8,7 @@ Per system_architecture §4.2, EVENT_BUS_SPEC §7:
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -24,6 +25,8 @@ from backend.models.vote import Vote
 from backend.repositories.meeting_repository import MeetingRepository
 from backend.repositories.attendee_repository import AttendeeRepository
 from backend.services.base import BaseService
+
+logger = logging.getLogger(__name__)
 
 
 class MeetingService(BaseService):
@@ -109,6 +112,9 @@ class MeetingService(BaseService):
                 payload={"meeting_id": meeting.id},
             )
         )
+
+        # Task 119: trigger background model preload (non-blocking)
+        _trigger_speech_preload()
 
         return meeting
 
@@ -235,3 +241,21 @@ class MeetingService(BaseService):
                 "ATTENDEE_NOT_FOUND",
             )
         self.attendee_repo.delete(attendee)
+
+
+# ── Background speech preload (Task 119) ────────────────────────────────────────
+
+
+def _trigger_speech_preload() -> None:
+    """Trigger SpeechModule preload in background after meeting starts.
+
+    Non-blocking — the meeting start API returns immediately.
+    Preload runs in a daemon thread and is idempotent.
+    """
+    try:
+        from backend.services.speech_stream_service import (
+            _preload_speech_models_background,
+        )
+        _preload_speech_models_background()
+    except Exception as exc:
+        logger.warning("Failed to trigger speech preload: %s", exc)

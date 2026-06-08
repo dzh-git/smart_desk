@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Cpu,
   ArrowLeft,
@@ -32,8 +32,9 @@ import {
   submitVote,
   createServiceCall,
   cancelServiceCall,
+  fetchSpeechStatus,
 } from "../api/resources";
-import type { ServiceType } from "../api/types";
+import type { ServiceType, SpeechModelStatus } from "../api/types";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -1055,6 +1056,34 @@ function SpeechControl({
     isSpeaker,
   );
 
+  // ── Speech model status polling (Task 119) ──────────────────────────────
+  const [speechStatus, setSpeechStatus] = useState<SpeechModelStatus | null>(null);
+  const [speechStatusError, setSpeechStatusError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const s = await fetchSpeechStatus();
+        setSpeechStatus(s);
+        setSpeechStatusError(null);
+      } catch (err) {
+        setSpeechStatusError(err instanceof Error ? err.message : "Failed to fetch speech status");
+      }
+    };
+    // Initial fetch
+    poll();
+    // Poll every 5 seconds
+    pollRef.current = setInterval(poll, 5000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const modelsReady = speechStatus?.ready ?? false;
+  const modelsPreloading = speechStatus?.preloading ?? false;
+  const punctuationFallback = speechStatus?.punctuation_fallback ?? true;
+
   const browserSupportsMic =
     typeof navigator !== "undefined" &&
     navigator.mediaDevices?.getUserMedia != null;
@@ -1063,6 +1092,7 @@ function SpeechControl({
     !writesAllowed ||
     !isCheckedIn ||
     !browserSupportsMic ||
+    !modelsReady ||
     status === "requesting_microphone" ||
     status === "connecting_speech_ws";
 
@@ -1103,7 +1133,41 @@ function SpeechControl({
             Recording
           </span>
         )}
+        {modelsPreloading && (
+          <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+            <Loader2 size={10} className="animate-spin" />
+            Loading models
+          </span>
+        )}
       </div>
+
+      {/* Speech status error (API fetch failure) */}
+      {speechStatusError && (
+        <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-2">
+          <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-700">{speechStatusError}</p>
+        </div>
+      )}
+
+      {/* Speech module not ready */}
+      {!modelsReady && !modelsPreloading && status === "idle" && (
+        <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-2">
+          <Loader2 size={14} className="text-amber-500 flex-shrink-0 mt-0.5 animate-spin" />
+          <p className="text-xs text-amber-700">
+            Speech models loading...
+          </p>
+        </div>
+      )}
+
+      {/* Punctuation fallback hint (non-blocking) */}
+      {punctuationFallback && status !== "recording" && status !== "error" && status !== "requesting_microphone" && status !== "connecting_speech_ws" && (
+        <div className="mb-3 bg-amber-50/50 border border-amber-200/50 rounded-xl px-3 py-1.5 flex items-start gap-2">
+          <AlertCircle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-amber-600">
+            Punctuation model unavailable — basic fallback active
+          </p>
+        </div>
+      )}
 
       {/* Error */}
       {status === "error" && error && (
@@ -1123,7 +1187,8 @@ function SpeechControl({
 
       {/* Status text */}
       <div className="mb-3 text-xs text-slate-500 space-y-1">
-        {status === "idle" && <p>Click Start to begin speaking</p>}
+        {status === "idle" && modelsReady && <p>Click Start to begin speaking</p>}
+        {status === "idle" && !modelsReady && <p>Waiting for speech models...</p>}
         {status === "requesting_microphone" && (
           <p className="text-amber-600">
             Requesting microphone access...
@@ -1182,6 +1247,13 @@ function SpeechControl({
           </button>
         )}
       </div>
+
+      {/* Model not ready tooltip */}
+      {status === "idle" && !modelsReady && !modelsPreloading && (
+        <p className="mt-2 text-xs text-amber-600">
+          Speech recognition models are being loaded. Start will be available once ready.
+        </p>
+      )}
 
       {/* Mic not supported warning */}
       {!browserSupportsMic && (

@@ -116,6 +116,10 @@ class TestProcessFinalArray:
         assert record.meeting_id == 1
         assert record.seat_id == 1
         assert record.source_text != ""
+        # Phase 02: persisted source_text should contain punctuation
+        assert any(p in record.source_text for p in "。？！，.!?"), (
+            f"DB source_text lacks punctuation: '{record.source_text}'"
+        )
         assert record.id > 0
 
     def test_publishes_translation_final_event(self, tsvc, event_bus):
@@ -148,6 +152,11 @@ class TestProcessFinalArray:
         assert payload["seat_id"] == 1
         assert isinstance(payload["source_text"], str)
         assert len(payload["source_text"]) > 0
+        # Phase 02: final event payload source_text contains punctuation
+        assert any(p in payload["source_text"] for p in "。？！，.!?"), (
+            f"final event source_text lacks punctuation: "
+            f"'{payload['source_text']}'"
+        )
         assert isinstance(payload["translated_text"], str)
         assert payload["source_type"] == "speech_ws"
 

@@ -33,6 +33,12 @@ export interface InterimDisplayEntry {
   targetLang: string;
   sourceText: string;
   translatedText: string;
+  /** Optional two-line caption from backend caption formatter. */
+  caption?: {
+    previousLine: string;
+    currentLine: string;
+    mode: string;
+  };
 }
 
 // ── Props ──────────────────────────────────────────────────────────────────
@@ -149,6 +155,10 @@ export function TranscriptPanel({
   // Deduplicate interims: per utteranceId keep highest revision, then filter
   const filteredInterims = deduplicateInterims(interims, finalUtteranceIds);
 
+  // Separate interims with and without caption
+  const captionInterims = filteredInterims.filter((i) => i.caption != null);
+  const textInterims = filteredInterims.filter((i) => i.caption == null);
+
   const hasInterims = filteredInterims.length > 0;
   const hasEntries = dedupedEntries.length > 0;
   const isEmpty = !loading && !hasEntries && !hasInterims;
@@ -170,8 +180,19 @@ export function TranscriptPanel({
         />
       ) : (
         <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
-          {/* Interim entries (live, not persisted) */}
-          {filteredInterims.map((interim) => (
+          {/* Live caption blocks (interims with caption) */}
+          {captionInterims.map((interim) => (
+            <LiveCaptionBlock
+              key={interim.utteranceId}
+              interim={interim}
+              speakerName={
+                seatNameMap[interim.seatId] ?? `Seat ${interim.seatId}`
+              }
+            />
+          ))}
+
+          {/* Interim rows for interims WITHOUT caption (fallback) */}
+          {textInterims.map((interim) => (
             <InterimRow
               key={interim.utteranceId}
               interim={interim}
@@ -249,6 +270,46 @@ function TranscriptRow({
         <p className="text-xs text-slate-500 mt-1 leading-relaxed border-l-2 border-slate-200 pl-2" data-testid="transcript-target">
           {entry.translated_text}
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Live Caption Block (two-line subtitle display) ────────────────────────────
+
+function LiveCaptionBlock({
+  interim,
+  speakerName,
+}: {
+  interim: InterimDisplayEntry;
+  speakerName: string;
+}) {
+  if (!interim.caption) return null;
+
+  const caption = interim.caption;
+
+  return (
+    <div
+      data-testid="live-caption"
+      className="bg-sky-50 border border-sky-200 rounded-lg p-3"
+    >
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <span className="text-xs font-semibold text-slate-600">
+          {speakerName}
+        </span>
+        <Loader2 size={10} className="animate-spin text-sky-400" />
+      </div>
+      <div
+        data-testid="live-caption-previous"
+        className="text-sm text-slate-500 leading-relaxed"
+      >
+        {caption.previousLine}
+      </div>
+      <div
+        data-testid="live-caption-current"
+        className="text-base text-slate-800 font-medium leading-relaxed"
+      >
+        {caption.currentLine}
       </div>
     </div>
   );

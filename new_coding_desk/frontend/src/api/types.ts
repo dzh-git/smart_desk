@@ -120,3 +120,25 @@ export interface TranslationHistoryResponse {
   meeting_id: number;
   entries: TranslationRecord[];
 }
+
+// ── Live Caption (from WS translation_interim.payload.caption) ────────────────
+
+export interface CaptionPayload {
+  previous_line: string;
+  current_line: string;
+  mode: string;
+}
+
+// ── Speech Model Status (Task 119) ─────────────────────────────────────────────
+
+export type ModelComponentStatus = "unknown" | "loading" | "loaded" | "error";
+
+export interface SpeechModelStatus {
+  ready: boolean;
+  preloading: boolean;
+  streaming_model: ModelComponentStatus;
+  offline_model: ModelComponentStatus;
+  punctuation_model: ModelComponentStatus;
+  punctuation_fallback: boolean;
+  last_error: string | null;
+}

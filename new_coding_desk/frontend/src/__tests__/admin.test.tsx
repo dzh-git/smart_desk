@@ -1434,6 +1434,339 @@ describe("Transcript - deduplication", () => {
   });
 });
 
+// ── Live Caption Display Tests ────────────────────────────────────────────────
+
+describe("Transcript - live caption display", () => {
+  function mockCaptionScenario() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+  }
+
+  it("renders two-line live caption when interim has caption", async () => {
+    mockCaptionScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send translation_interim WITH caption
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_cap_001",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "我认为这个方案需要重新评估，我们明天再讨论。",
+        translated_text: "",
+        is_final: false,
+        caption: {
+          previous_line: "我认为这个方案需要重新评估，",
+          current_line: "我们明天再讨论。",
+          mode: "two_line",
+        },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption block should appear
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+      expect(screen.getByTestId("live-caption-previous")).toHaveTextContent("我认为这个方案需要重新评估，");
+      expect(screen.getByTestId("live-caption-current")).toHaveTextContent("我们明天再讨论。");
+    });
+
+    // No InterimRow should be rendered for this utterance (caption replaces sourceText display)
+    const interimRows = screen.queryAllByTestId("transcript-interim");
+    const matchingInterimRows = interimRows.filter(
+      (el) => el.getAttribute("data-utterance-id") === "utt_cap_001",
+    );
+    expect(matchingInterimRows).toHaveLength(0);
+  });
+
+  it("updates previous/current lines on higher revision", async () => {
+    mockCaptionScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send rev 1 — only current line
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_cap_002",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "我认为这个方案",
+        translated_text: "",
+        is_final: false,
+        caption: {
+          previous_line: "",
+          current_line: "我认为这个方案",
+          mode: "two_line",
+        },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption-current")).toHaveTextContent("我认为这个方案");
+    });
+
+    // Send rev 2 — previous committed, current updated
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_cap_002",
+        seat_id: 1,
+        revision: 2,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "我认为这个方案需要重新评估，我们明天再讨论。",
+        translated_text: "",
+        is_final: false,
+        caption: {
+          previous_line: "我认为这个方案需要重新评估，",
+          current_line: "我们明天再讨论。",
+          mode: "two_line",
+        },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Previous and current should both be updated
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption-previous")).toHaveTextContent("我认为这个方案需要重新评估，");
+      expect(screen.getByTestId("live-caption-current")).toHaveTextContent("我们明天再讨论。");
+    });
+  });
+
+  it("falls back to sourceText when caption is absent", async () => {
+    mockCaptionScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send translation_interim WITHOUT caption
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_cap_003",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "没有标点的中间结果",
+        translated_text: "",
+        is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should NOT be rendered
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+
+    // Source text should appear as an InterimRow (fallback)
+    await waitFor(() => {
+      expect(screen.getByText("没有标点的中间结果")).toBeInTheDocument();
+    });
+
+    // The text should be inside a transcript-interim element
+    const interimRow = screen.getByTestId("transcript-interim");
+    expect(interimRow).toHaveTextContent("没有标点的中间结果");
+  });
+
+  it("does not render large cumulative sourceText as live paragraph when caption exists", async () => {
+    mockCaptionScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Send interim with long sourceText AND caption — caption should be shown, not sourceText
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_cap_004",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "这是一个非常长的累计识别文本，不应该作为一大段live段落展示在屏幕上当caption存在的时候，因为后端已经做了分句处理。",
+        translated_text: "",
+        is_final: false,
+        caption: {
+          previous_line: "这是一个非常长的累计识别文本，",
+          current_line: "不应该作为一大段live段落展示在屏幕上。",
+          mode: "two_line",
+        },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Caption block should be shown
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+      expect(screen.getByTestId("live-caption-previous")).toHaveTextContent("这是一个非常长的累计识别文本，");
+      expect(screen.getByTestId("live-caption-current")).toHaveTextContent("不应该作为一大段live段落展示在屏幕上。");
+    });
+
+    // The long sourceText should NOT be rendered as an interim row
+    const interimRows = screen.queryAllByTestId("transcript-interim");
+    const matchingInterimRows = interimRows.filter(
+      (el) => el.getAttribute("data-utterance-id") === "utt_cap_004",
+    );
+    expect(matchingInterimRows).toHaveLength(0);
+  });
+
+  it("live caption shows exactly two lines", async () => {
+    mockCaptionScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_cap_005",
+        seat_id: 1,
+        revision: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "今天天气真好。",
+        translated_text: "",
+        is_final: false,
+        caption: {
+          previous_line: "今天天气真好。",
+          current_line: "",
+          mode: "two_line",
+        },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+    });
+
+    // There should be exactly one previous line and one current line
+    const previousEls = screen.getAllByTestId("live-caption-previous");
+    const currentEls = screen.getAllByTestId("live-caption-current");
+    expect(previousEls).toHaveLength(1);
+    expect(currentEls).toHaveLength(1);
+  });
+
+  it("removes live caption and shows final record after translation_final", async () => {
+    let translationsCallCount = 0;
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        translationsCallCount++;
+        if (translationsCallCount <= 1) {
+          return okResponse({ meeting_id: 1, entries: [] });
+        }
+        return okResponse({
+          meeting_id: 1,
+          entries: [
+            { id: 200, meeting_id: 1, seat_id: 1, utterance_id: "utt_cap_006", source_lang: "zh", target_lang: "en", source_text: "最终的翻译结果。", translated_text: "The final translation result.", created_at: "2026-01-01T10:05:00Z", source_type: "offline_rescore" },
+          ],
+        });
+      }
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No transcript yet")).toBeInTheDocument();
+    });
+
+    // Send interim with caption
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_cap_006",
+        seat_id: 1,
+        revision: 3,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "最终的翻译结果。",
+        translated_text: "",
+        is_final: false,
+        caption: {
+          previous_line: "最终的翻译结果。",
+          current_line: "",
+          mode: "two_line",
+        },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should appear
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+    });
+
+    // Send translation_final for the same utterance_id
+    await act(async () => {
+      wsSend(0, "translation_final", 1, {
+        utterance_id: "utt_cap_006",
+        translation_id: 200,
+        seat_id: 1,
+        source_lang: "zh",
+        target_lang: "en",
+        source_text: "最终的翻译结果。",
+        translated_text: "The final translation result.",
+        source_type: "offline_rescore",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // Live caption should be gone
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+
+    // Final record should appear
+    await waitFor(() => {
+      expect(screen.getByText("The final translation result.")).toBeInTheDocument();
+    });
+
+    // Final record should be marked as transcript-final
+    expect(screen.getByTestId("transcript-final")).toBeInTheDocument();
+  });
+});
+
 describe("Transcript - language labels", () => {
   it("TranscriptPanel does not render non-ASCII language labels", async () => {
     const { TranscriptPanel } = await import("../components/TranscriptPanel");

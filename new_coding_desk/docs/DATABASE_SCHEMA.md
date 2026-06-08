@@ -484,6 +484,8 @@ ServiceCallRepository
 
 翻译历史。
 
+翻译当前为占位：`translated_text` 字段返回 `[translation not available]`，真实机器翻译为 deferred/future 能力。
+
 ---
 
 ## Table
@@ -501,6 +503,8 @@ translation_records
 | target_lang     | TEXT       |
 | source_text     | TEXT       |
 | translated_text | TEXT       |
+| utterance_id    | TEXT NULL  |
+| source_type     | TEXT NULL  |
 | created_at      | DATETIME   |
 
 ---
@@ -511,6 +515,10 @@ translation_records
 只允许新增
 
 禁止修改
+
+utterance_id 用于 interim/final 对齐，旧数据允许 NULL
+
+source_type 用于区分来源：speech_ws、manual_upload、seed 等，旧数据允许 NULL
 ```
 
 ---
@@ -520,9 +528,7 @@ translation_records
 ```sql
 (meeting_id)
 
-(meeting_id, seat_id)
-
-(created_at)
+(seat_id)
 ```
 
 ---
@@ -611,9 +617,7 @@ service_calls(meeting_id, status)
 
 translation_records(meeting_id)
 
-translation_records(meeting_id, seat_id)
-
-translation_records(created_at)
+translation_records(seat_id)
 ```
 
 ---

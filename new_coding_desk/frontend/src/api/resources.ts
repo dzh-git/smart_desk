@@ -177,3 +177,15 @@ export function cancelServiceCall(callId: number): Promise<ServiceCall> {
 export function resolveServiceCall(callId: number): Promise<ServiceCall> {
   return apiPost<ServiceCall>(`/service-calls/${callId}/resolve`);
 }
+
+// ── Speech Model Status (Task 119) ─────────────────────────────────────────────
+
+/** Returns unified speech model readiness state. */
+export function fetchSpeechStatus(): Promise<import("./types").SpeechModelStatus> {
+  return apiGet<import("./types").SpeechModelStatus>("/speech/status");
+}
+
+/** Trigger background model preload (non-blocking). */
+export function triggerSpeechPreload(): Promise<void> {
+  return apiPost<void>("/speech/preload");
+}

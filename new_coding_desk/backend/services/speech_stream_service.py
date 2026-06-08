@@ -19,11 +19,15 @@ Phase 3 additions:
 from __future__ import annotations
 
 import logging
+import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
+
+from backend.speech_module.caption_formatter import CaptionFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +51,8 @@ class SpeechStreamSession:
         # Phase 3: per-utterance tracking
         self.current_utterance_id: str | None = None
         self.revision: int = 0
+        # Phase 02: per-session caption formatter for punctuated two-line captions
+        self.caption_formatter: CaptionFormatter = CaptionFormatter()
         # Phase 4: PCM16 audio buffer for current utterance (concatenated raw bytes)
         self._utterance_buffer: list[bytes] = []
 
@@ -74,11 +80,23 @@ class SpeechStreamService:
         # sequence counter for utterance_id. Lives outside session lifecycle
         # so that reconnect gets a new, non-conflicting ID (ADR 0003).
         self._utterance_sequences: dict[tuple[int, int], int] = {}
+        # Task 119: background preload concurrency control
+        self._preload_started: bool = False
+        self._preload_lock: threading.Lock = threading.Lock()
 
     # ── SpeechModule (lazy-loaded) ───────────────────────────────────────────
 
     def _get_speech_module(self):
-        """Lazy-load and preload SpeechModule. Raises RuntimeError on failure."""
+        """Lazy-load and preload SpeechModule. Raises RuntimeError on failure.
+
+        If a background preload was already started (via
+        _preload_speech_models_background), waits for it to finish.
+        Thread-safe — SpeechModule.preload() handles lock-based concurrency.
+
+        If no background preload was triggered, this performs a synchronous
+        preload (original lazy-init path, e.g. first PCM frame arriving before
+        background preload completes).
+        """
         if self._speech_module_error:
             raise RuntimeError(self._speech_module_error)
         if self._speech_module is None:
@@ -93,6 +111,12 @@ class SpeechStreamService:
                 raise RuntimeError(
                     f"Speech module not available: {exc}"
                 )
+        # If background preload is still running, wait for it.
+        # Calling preload() again is safe — SpeechModule.preload()
+        # blocks on its internal lock until the running preload finishes,
+        # then returns immediately (idempotent).
+        if not self._speech_module.ready:
+            self._speech_module.preload()
         return self._speech_module
 
     @property
@@ -104,21 +128,45 @@ class SpeechStreamService:
         return self._speech_module is not None and self._speech_module.ready
 
     def ensure_speech_module(self) -> bool:
-        """Attempt to load SpeechModule. Returns True if successful.
+        """Attempt to load SpeechModule. Returns True if models are ready.
 
         Triggers lazy load (preload models, warmup). Safe to call
         multiple times — cached on success or error.
 
         Returns:
-            True if models are loaded and ready, False otherwise.
+            True if models are loaded and ready (streaming + offline ASR),
+            False otherwise.
         """
         try:
-            self._get_speech_module()
-            return True
+            module = self._get_speech_module()
+            return module.ready
         except RuntimeError:
             return False
 
-    # ── PCM16 conversion ─────────────────────────────────────────────────────
+    # ── Model status (Task 119) ───────────────────────────────────────────────
+
+    def get_model_status(self) -> dict:
+        """Return unified model readiness state.
+
+        If SpeechModule has been created, returns its detailed status dict.
+        Otherwise returns the initial pre-preload state.
+        """
+        if self._speech_module is not None:
+            base = dict(self._speech_module.status)
+        else:
+            from backend.speech_module.speech_module import _INITIAL_STATUS
+            base = dict(_INITIAL_STATUS)
+
+        # Add punctuation_fallback indicator
+        try:
+            from backend.speech_module.punctuation import is_punctuation_loaded
+            base["punctuation_fallback"] = not is_punctuation_loaded()
+        except Exception:
+            base["punctuation_fallback"] = True
+
+        return base
+
+    # ── PCM16 conversion ────────────────────────────────────────────────────
 
     @staticmethod
     def pcm16_to_float32(data: bytes) -> np.ndarray:
@@ -153,6 +201,7 @@ class SpeechStreamService:
         session.current_utterance_id = utterance_id
         session.revision = 0
         session._utterance_buffer.clear()
+        session.caption_formatter.reset()
 
         # Reset SpeechModule per-utterance state
         if self._speech_module is not None and self._speech_module.ready:
@@ -174,9 +223,16 @@ class SpeechStreamService:
         session.current_utterance_id = None
         session.revision = 0
         session._utterance_buffer.clear()
+        session.caption_formatter.reset()
         if self._speech_module is not None and self._speech_module.ready:
             self._speech_module.reset_interim(session_key)
         return uid
+
+    def reset_caption_formatter(self, session_key: str) -> None:
+        """Reset the caption formatter for a session (e.g. after finalization)."""
+        session = self._sessions.get(session_key)
+        if session is not None:
+            session.caption_formatter.reset()
 
     def process_pcm_frame(
         self, session_key: str, pcm_bytes: bytes,
@@ -212,15 +268,27 @@ class SpeechStreamService:
         sm.set_session_context(
             session_key, session.meeting_id, session.seat_id,
         )
-        source_text = sm.process_interim_array(audio, session_key)
+        raw_text = sm.process_interim_array(audio, session_key)
 
-        # 6. Bump revision
+        # 6. Apply caption formatter (Phase 02)
+        _now = time.monotonic()
+        caption_result = session.caption_formatter.update(raw_text, _now)
+        caption_result = (
+            session.caption_formatter.check_timeout(_now) or caption_result
+        )
+
+        # 7. Bump revision
         session.revision += 1
 
         return {
             "utterance_id": session.current_utterance_id,
             "revision": session.revision,
-            "source_text": source_text,
+            "source_text": caption_result.punctuated_text,
+            "caption": {
+                "previous_line": caption_result.previous_line,
+                "current_line": caption_result.current_line,
+                "mode": caption_result.mode,
+            },
         }
 
     # ── Audio buffer (Phase 4) ───────────────────────────────────────────────
@@ -406,3 +474,94 @@ class SpeechStreamService:
 
 # Module-level singleton — shared across all speech WS connections.
 stream_service = SpeechStreamService()
+
+
+# ── Background preload (Task 119) ──────────────────────────────────────────────
+
+
+def _start_daemon_thread(
+    target: threading.Thread,  # type: ignore[arg-type]
+    name: str = "speech-preload",
+) -> threading.Thread:
+    """Start a daemon thread for background tasks.
+
+    Extracted as a separate function for testability — tests can patch this
+    narrow function instead of ``threading.Thread.start`` globally, which
+    avoids interfering with Starlette/FastAPI ``TestClient`` internals.
+
+    Args:
+        target: Callable for the thread to run.
+        name: Thread name for debugging.
+
+    Returns:
+        The started daemon thread.
+    """
+    thread = threading.Thread(target=target, daemon=True, name=name)
+    thread.start()
+    return thread
+
+
+def _preload_speech_models_background() -> None:
+    """Trigger SpeechModule preload in a background daemon thread.
+
+    Service-level concurrency control:
+    - At most one preload thread runs at a time.
+    - Creates ``_speech_module`` immediately with ``preloading=True`` so that
+      ``GET /api/speech/status`` reflects the loading state right away.
+    - Idempotent: subsequent calls while preload is running are no-ops.
+
+    Thread-safety:
+    - ``_preload_started`` flag guarded by ``_preload_lock`` (double-checked).
+    - ``SpeechModule.preload()`` has its own internal lock for model loading.
+    """
+    # Fast path: already started (lock-free check)
+    if stream_service._preload_started:
+        logger.debug("Background preload already in progress — skipping")
+        return
+
+    with stream_service._preload_lock:
+        # Double-check after acquiring lock
+        if stream_service._preload_started:
+            return
+        # Already loaded — no-op
+        if (
+            stream_service._speech_module is not None
+            and stream_service._speech_module.ready
+        ):
+            return
+
+        stream_service._preload_started = True
+
+        # Create SpeechModule immediately for API status visibility.
+        # This ensures GET /api/speech/status returns preloading=true
+        # without waiting for the background thread to start.
+        if stream_service._speech_module is None:
+            from backend.speech_module import SpeechModule
+
+            module = SpeechModule()
+            module._status["preloading"] = True
+            stream_service._speech_module = module
+        else:
+            stream_service._speech_module._status["preloading"] = True
+
+    def _run() -> None:
+        try:
+            module = stream_service._speech_module
+            module.preload()  # thread-safe, idempotent
+            if module.ready:
+                logger.info("Background preload: all models ready")
+            else:
+                logger.warning(
+                    "Background preload: models not ready "
+                    "(streaming=%s offline=%s punc=%s)",
+                    module.status.get("streaming_model", "?"),
+                    module.status.get("offline_model", "?"),
+                    module.status.get("punctuation_model", "?"),
+                )
+        except Exception as exc:
+            logger.warning("Background preload failed: %s", exc)
+        finally:
+            stream_service._preload_started = False
+
+    _start_daemon_thread(_run, name="speech-preload")
+    logger.debug("Background preload thread started")

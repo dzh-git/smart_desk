@@ -274,6 +274,16 @@ class TestSpeechWebSocketBlackBox:
                     assert len(payload["source_text"]) > 0
                     assert payload["is_final"] is False
 
+                    # Phase 02: interim payload must contain caption
+                    assert "caption" in payload, (
+                        "interim payload missing 'caption' field"
+                    )
+                    caption = payload["caption"]
+                    assert isinstance(caption, dict)
+                    assert "previous_line" in caption
+                    assert "current_line" in caption
+                    assert caption["mode"] == "two_line"
+
                     # Verify broadcast message format per §5
                     assert interim["meeting_id"] == mid
                     assert isinstance(interim["timestamp"], int)
@@ -351,6 +361,53 @@ class TestSpeechWebSocketBlackBox:
                 assert uid2 != uid1
                 assert re.match(rf"utt_{mid}_1_\d{{6}}", uid2)
 
+    # ── Phase 02: caption appears in interim payload ────────────────────────
+
+    def test_interim_payload_has_caption(self) -> None:
+        """Every translation_interim payload must contain caption fields."""
+        if not stream_service.ensure_speech_module():
+            pytest.skip("Speech models not loaded")
+
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            with client.websocket_connect(f"/ws/{mid}") as broadcast_ws:
+                broadcast_ws.receive_json()  # "connected"
+
+                with client.websocket_connect(
+                    f"/ws/speech/{mid}?seat=1"
+                ) as speech_ws:
+                    speech_ws.send_json({
+                        "type": "start",
+                        "sample_rate": 16000,
+                        "encoding": "pcm_s16le",
+                        "channels": 1,
+                    })
+                    speech_ws.receive_json()  # started
+
+                    frames = _load_pcm16_frames(count=20)
+                    for frame in frames:
+                        speech_ws.send_bytes(frame)
+
+                    # Collect first interim caption
+                    caption_seen = False
+                    for _attempt in range(50):
+                        msg = broadcast_ws.receive_json()
+                        if msg["event"] == "translation_interim":
+                            payload = msg["payload"]
+                            if "caption" in payload:
+                                cap = payload["caption"]
+                                assert "previous_line" in cap
+                                assert "current_line" in cap
+                                assert cap["mode"] == "two_line"
+                                caption_seen = True
+                                break
+
+                    assert caption_seen, (
+                        "No translation_interim with caption received"
+                    )
+
     # ── Phase 4: end_hint → final broadcast ────────────────────────────────
 
     def test_end_hint_triggers_final_broadcast(self) -> None:
@@ -425,6 +482,11 @@ class TestSpeechWebSocketBlackBox:
                     assert len(payload["source_text"]) > 0, (
                         "source_text should not be empty with real speech"
                     )
+                    # Phase 02: final source_text should contain punctuation
+                    assert any(p in payload["source_text"] for p in "。？！，.!?"), (
+                        f"final source_text lacks punctuation: "
+                        f"'{payload['source_text']}'"
+                    )
                     assert isinstance(payload["translated_text"], str)
                     assert payload["source_type"] == "speech_ws"
 
@@ -486,6 +548,11 @@ class TestSpeechWebSocketBlackBox:
             assert record["source_type"] == "speech_ws"
             assert isinstance(record["source_text"], str)
             assert len(record["source_text"]) > 0
+            # Phase 02: persisted source_text contains punctuation
+            assert any(p in record["source_text"] for p in "。？！，.!?"), (
+                f"DB source_text lacks punctuation: "
+                f"'{record['source_text']}'"
+            )
             assert record["seat_id"] == 1
 
     def test_interim_not_persisted_before_end_hint(self) -> None:

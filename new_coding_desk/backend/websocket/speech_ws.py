@@ -278,6 +278,8 @@ async def _handle_text_message(
                     utterance_id=finalized["utterance_id"],
                     source_type="speech_ws",
                 )
+                # Phase 02: reset caption formatter after successful finalization
+                stream_service.reset_caption_formatter(session_key)
                 logger.info(
                     "Speech final: meeting=%d seat=%d utterance=%s record=%d",
                     meeting_id, seat_id, finalized["utterance_id"], record.id,
@@ -406,16 +408,21 @@ async def _handle_binary_message(
     if not source_text:
         return
 
+    # Phase 02: build payload with two-line caption
+    payload: dict[str, Any] = {
+        "utterance_id": result["utterance_id"],
+        "seat_id": seat_id,
+        "revision": result["revision"],
+        "source_lang": "zh",
+        "target_lang": "en",
+        "source_text": source_text,
+        "translated_text": "",
+        "is_final": False,
+    }
+    if "caption" in result:
+        payload["caption"] = result["caption"]
+
     event_bus.publish(TranslationInterimEvent(
         meeting_id=meeting_id,
-        payload={
-            "utterance_id": result["utterance_id"],
-            "seat_id": seat_id,
-            "revision": result["revision"],
-            "source_lang": "zh",
-            "target_lang": "en",
-            "source_text": source_text,
-            "translated_text": "",
-            "is_final": False,
-        },
+        payload=payload,
     ))

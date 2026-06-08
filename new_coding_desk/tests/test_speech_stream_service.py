@@ -10,6 +10,8 @@ Covers:
 """
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import pytest
 
@@ -275,6 +277,61 @@ class TestProcessPcmFrame:
         assert audio is not None
         assert len(audio) == 1600
 
+    # ── Phase 02: caption timeout commit ──────────────────────────────
+
+    def test_timeout_commits_via_check_timeout(self, monkeypatch):
+        """When ASR text does not change for text_change_timeout_s (2.0s),
+        check_timeout commits uncommitted current_line to previous_line.
+
+        Strategy:
+          - Mock SpeechModule to return identical >=5-char text on each call.
+          - Monkeypatch time.monotonic: first call → t0, second → t0 + 2.5.
+          - First process_pcm_frame: update() sets _last_change_time = t0.
+            check_timeout(t0) sees elapsed=0 and returns None.
+            → current_line non-empty, previous_line empty.
+          - Second process_pcm_frame: same text → update() short-circuits
+            (raw_text == _last_raw), _last_change_time stays t0.
+            check_timeout(t0+2.5) sees elapsed=2.5 >= 2.0 and commits.
+            → previous_line non-empty, current_line empty.
+        """
+        mock_sm = _MockSpeechModule()
+        monkeypatch.setattr(
+            stream_service, '_get_speech_module', lambda: mock_sm,
+        )
+
+        t0 = 1000.0
+        time_values = [t0, t0 + 2.5]
+        monkeypatch.setattr(time, 'monotonic', lambda: time_values.pop(0))
+
+        # Reset CT-Transformer punctuation model to heuristic fallback so
+        # the caption formatter does not split the mock text into two lines
+        # (which would break assertions about previous_line being empty).
+        monkeypatch.setattr(
+            "backend.speech_module.punctuation._punc_model", None,
+        )
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000030")
+
+        # ── First frame: text first seen, _last_change_time = t0 ──
+        r1 = stream_service.process_pcm_frame(
+            self.session_key, _make_pcm16_sine(),
+        )
+        c1 = r1["caption"]
+        assert c1["current_line"] != "", \
+            "First frame: current_line should hold uncommitted text"
+        assert c1["previous_line"] == "", \
+            "First frame: previous_line should be empty"
+
+        # ── Second frame: same text → timeout triggers commit ──
+        r2 = stream_service.process_pcm_frame(
+            self.session_key, _make_pcm16_sine(),
+        )
+        c2 = r2["caption"]
+        assert c2["previous_line"] != "", \
+            "Second frame: previous_line should contain committed text"
+        assert c2["current_line"] == "", \
+            "Second frame: current_line should be empty after commit"
+
     def test_cached_error_fails_fast(self) -> None:
         """When _speech_module_error is set, process_pcm_frame raises immediately."""
         stream_service.start_utterance(self.session_key, "utt_1_1_000007")
@@ -289,6 +346,130 @@ class TestProcessPcmFrame:
                 )
         finally:
             stream_service._speech_module_error = old_error
+
+    # ── Phase 02: caption formatter integration ───────────────────────────
+
+    def test_process_pcm_frame_includes_caption(self, monkeypatch):
+        """process_pcm_frame returns caption fields in the result dict."""
+        mock_sm = _MockSpeechModule()
+        monkeypatch.setattr(
+            stream_service, '_get_speech_module', lambda: mock_sm,
+        )
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000020")
+        result = stream_service.process_pcm_frame(
+            self.session_key, _make_pcm16_sine(),
+        )
+
+        assert "caption" in result
+        caption = result["caption"]
+        assert "previous_line" in caption
+        assert "current_line" in caption
+        assert caption["mode"] == "two_line"
+        assert isinstance(result["source_text"], str)
+
+    def test_process_pcm_frame_punctuated_text(self, monkeypatch):
+        """source_text in result is punctuated by the formatter."""
+        mock_sm = _MockSpeechModule()
+        monkeypatch.setattr(
+            stream_service, '_get_speech_module', lambda: mock_sm,
+        )
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000021")
+        result = stream_service.process_pcm_frame(
+            self.session_key, _make_pcm16_sine(),
+        )
+        # The mock returns "今天天气真好我们出去散步了"; heuristic adds 。
+        # With trailing-boundary rule the 。should not cause a split,
+        # so source_text = punctuated text, caption.current_line non-empty.
+        assert result["source_text"].endswith("。")
+        assert result["source_text"] != ""
+
+    def test_caption_reset_on_start_utterance(self, monkeypatch):
+        """start_utterance resets the caption formatter."""
+        mock_sm = _MockSpeechModule()
+        monkeypatch.setattr(
+            stream_service, '_get_speech_module', lambda: mock_sm,
+        )
+
+        # First utterance — formatter accumulates text
+        stream_service.start_utterance(self.session_key, "utt_1_1_000022")
+        stream_service.process_pcm_frame(
+            self.session_key, _make_pcm16_sine(),
+        )
+
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        # After first utterance, some state in caption formatter
+        assert session.caption_formatter._last_raw != ""
+
+        # Start a second utterance — must reset formatter
+        stream_service.start_utterance(self.session_key, "utt_1_1_000023")
+        assert session.caption_formatter._last_raw == ""
+        assert session.caption_formatter._previous_line == ""
+
+    def test_caption_reset_on_cancel_utterance(self, monkeypatch):
+        """cancel_utterance resets the caption formatter."""
+        mock_sm = _MockSpeechModule()
+        monkeypatch.setattr(
+            stream_service, '_get_speech_module', lambda: mock_sm,
+        )
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000024")
+        stream_service.process_pcm_frame(
+            self.session_key, _make_pcm16_sine(),
+        )
+
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        assert session.caption_formatter._last_raw != ""
+
+        stream_service.cancel_utterance(self.session_key)
+        assert session.caption_formatter._last_raw == ""
+
+    def test_reset_caption_formatter_method(self):
+        """reset_caption_formatter resets the formatter state."""
+        stream_service.start_utterance(self.session_key, "utt_1_1_000025")
+
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        session.caption_formatter._committed_raw_len = 10
+        session.caption_formatter._previous_line = "test"
+
+        stream_service.reset_caption_formatter(self.session_key)
+        assert session.caption_formatter._committed_raw_len == 0
+        assert session.caption_formatter._previous_line == ""
+
+
+class _MockSpeechModule:
+    """Minimal mock that replaces SpeechModule for caption tests.
+
+    Returns a known ASR text string so the caption formatter can be
+    exercised without loading real speech models.
+    """
+
+    def __init__(self):
+        self._sessions: dict = {}
+        self._ready = True
+
+    @property
+    def ready(self):
+        return self._ready
+
+    def preload(self):
+        pass
+
+    def set_session_context(self, session_key, meeting_id, seat_id):
+        pass
+
+    def process_interim_array(self, audio, session_key):
+        return "今天天气真好我们出去散步了"
+
+    def start_utterance(self, session_key):
+        pass
+
+    def reset_interim(self, session_key):
+        pass
 
 
 class TestIdentitySafeCleanup:

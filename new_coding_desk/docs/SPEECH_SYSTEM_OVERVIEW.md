@@ -1,5 +1,18 @@
 # SmartDesk 语音识别与翻译系统 — 架构与操作全貌
 
+> **Deprecated: historical reference only, not an implementation contract.**
+>
+> This document was written as a planning/design document before Task 119
+> implementation. Section 10 ("当前代码中的缺口") listed modules that have
+> since been implemented. For current implementation contracts, refer to:
+> - `docs/API_SPEC.md` — API and speech status/preload endpoints
+> - `docs/WEBSOCKET_PROTOCOL.md` — dual WebSocket protocol and event mapping
+> - `docs/EVENT_BUS_SPEC.md` — event bus events and speech preload workflow
+> - `docs/system_architecture.md` — current module layout and data flows
+>
+> This document remains for historical context on the design decisions that
+> shaped the dual-WebSocket architecture (ADR 0001–0004).
+
 本文档根据 2026-06-05 的四项架构决策更新，描述从当前状态到目标架构的完整设计。
 
 相关 ADR：`docs/adr/0001` ~ `0004`。

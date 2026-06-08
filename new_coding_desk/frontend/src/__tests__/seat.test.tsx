@@ -1002,6 +1002,16 @@ describe("SeatTablet - speech control (non-speaker)", () => {
       if (url.includes("/api/service-calls/current")) return okResponse(null);
       if (url.includes("/api/translations"))
         return okResponse({ meeting_id: 1, entries: [] });
+      if (url.includes("/api/speech/status"))
+        return okResponse({
+          ready: true,
+          preloading: false,
+          streaming_model: "loaded",
+          offline_model: "loaded",
+          punctuation_model: "loaded",
+          punctuation_fallback: false,
+          last_error: null,
+        });
       return okResponse(null);
     });
   }
@@ -1074,6 +1084,16 @@ describe("SeatTablet - speech control (speaker seat)", () => {
       if (url.includes("/api/service-calls/current")) return okResponse(null);
       if (url.includes("/api/translations"))
         return okResponse({ meeting_id: 1, entries: [] });
+      if (url.includes("/api/speech/status"))
+        return okResponse({
+          ready: true,
+          preloading: false,
+          streaming_model: "loaded",
+          offline_model: "loaded",
+          punctuation_model: "loaded",
+          punctuation_fallback: false,
+          last_error: null,
+        });
       return okResponse(null);
     });
   }
@@ -1346,6 +1366,136 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     // Should show Retry button
     expect(screen.getByText("Retry")).toBeInTheDocument();
   });
+
+  // ── Speech model status dependent tests ────────────────────────────────
+
+  /**
+   * Create a mock fetch implementation for a speaker seat with a custom
+   * /api/speech/status response. All other endpoints behave like
+   * mockSpeakerCheckedIn().
+   */
+  function mockSpeakerWithSpeechStatus(
+    speechStatus: Record<string, unknown>,
+  ) {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({
+          id: 1,
+          title: "Board Meeting",
+          status: "active",
+          started_at: "2026-01-01T10:00:00Z",
+        });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{
+          id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO",
+          seat_id: 1, checked_in: true,
+        }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations"))
+        return okResponse({ meeting_id: 1, entries: [] });
+      if (url.includes("/api/speech/status"))
+        return okResponse(speechStatus);
+      return okResponse(null);
+    });
+  }
+
+  it("shows Start enabled when speech ready with punctuation fallback", async () => {
+    mockSpeakerWithSpeechStatus({
+      ready: true,
+      preloading: false,
+      streaming_model: "loaded",
+      offline_model: "loaded",
+      punctuation_model: "error",
+      punctuation_fallback: true,
+      last_error: null,
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+
+    const startBtn = screen.getByText("Start");
+    // Must NOT be disabled when ASR is ready despite punctuation fallback
+    expect(startBtn).not.toBeDisabled();
+  });
+
+  it("shows punctuation fallback hint when fallback is active", async () => {
+    mockSpeakerWithSpeechStatus({
+      ready: true,
+      preloading: false,
+      streaming_model: "loaded",
+      offline_model: "loaded",
+      punctuation_model: "error",
+      punctuation_fallback: true,
+      last_error: null,
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Punctuation model unavailable — basic fallback active"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("disables Start and shows loading when models are loading", async () => {
+    mockSpeakerWithSpeechStatus({
+      ready: false,
+      preloading: true,
+      streaming_model: "loading",
+      offline_model: "loading",
+      punctuation_model: "unknown",
+      punctuation_fallback: false,
+      last_error: null,
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Loading models")).toBeInTheDocument();
+    });
+
+    // Start should not be rendered during loading (not idle)
+    // The "Waiting for speech models..." text should appear instead
+    expect(screen.getByText("Waiting for speech models...")).toBeInTheDocument();
+  });
+
+  it("disables Start and shows speech loading message when models are in error state", async () => {
+    mockSpeakerWithSpeechStatus({
+      ready: false,
+      preloading: false,
+      streaming_model: "error",
+      offline_model: "error",
+      punctuation_model: "error",
+      punctuation_fallback: true,
+      last_error: "streaming model failed to load",
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Speech models loading...")).toBeInTheDocument();
+    });
+
+    // Start button IS rendered but DISABLED when models not ready
+    const startBtn = screen.getByText("Start").closest("button");
+    expect(startBtn).toBeInTheDocument();
+    expect(startBtn).toBeDisabled();
+  });
 });
 
 // ── Data Fetching Tests ─────────────────────────────────────────────────────
@@ -1388,6 +1538,83 @@ describe("SeatTablet - data fetching", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Seat 3")).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Live Caption Display Tests ────────────────────────────────────────────────
+
+describe("SeatTablet - live caption display", () => {
+  function mockSpeakerWithCaption() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+  }
+
+  it("shows two-line live caption on seat UI when interim has caption", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send translation_interim with caption via meeting WS
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_seat_cap_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "今天天气真好，我们出去散步了。",
+              translated_text: "",
+              is_final: false,
+              caption: {
+                previous_line: "今天天气真好，",
+                current_line: "我们出去散步了。",
+                mode: "two_line",
+              },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should appear on the seat UI
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+      expect(screen.getByTestId("live-caption-previous")).toHaveTextContent("今天天气真好，");
+      expect(screen.getByTestId("live-caption-current")).toHaveTextContent("我们出去散步了。");
     });
   });
 });

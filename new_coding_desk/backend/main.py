@@ -39,6 +39,7 @@ from backend.api import (
     votes,
     service_calls,
     translations,
+    speech,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,6 +208,22 @@ async def lifespan(app: FastAPI):
     try:
         SeatRepository.init_seats(db)
         seed_demo_data(db)
+
+        # Task 119: trigger speech model preload if an active meeting exists.
+        # seed_demo_data creates an active meeting directly (SQLAlchemy INSERT),
+        # bypassing MeetingService.start_meeting(), so the preload must be
+        # triggered here explicitly.  Non-blocking — runs in a daemon thread.
+        from backend.models.meeting import Meeting
+        from backend.services.speech_stream_service import (
+            _preload_speech_models_background,
+        )
+        active_meeting = db.query(Meeting).filter(
+            Meeting.status == "active",
+        ).first()
+        if active_meeting is not None:
+            _preload_speech_models_background()
+    except Exception:
+        logger.exception("Startup speech preload failed")
     finally:
         db.close()
 
@@ -243,6 +260,7 @@ app.include_router(seats.router)
 app.include_router(votes.router)
 app.include_router(service_calls.router)
 app.include_router(translations.router)
+app.include_router(speech.router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

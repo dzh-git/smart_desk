@@ -1,7 +1,8 @@
 """SpeechModule — production facade for speech recognition and translation.
 
 Wraps Paraformer Streaming (streaming STT), Paraformer-large (offline STT),
-FSMN-VAD (voice activity detection), and audio preprocessing.
+FSMN-VAD (voice activity detection), CT-Transformer (punctuation restoration),
+and audio preprocessing.
 
 Implements the interface specified in docs/speech-module-spec.md §1.1.
 Adds sentence-boundary-aware text merging to prevent over-splitting when
@@ -12,11 +13,41 @@ Lifecycle:
     sm.preload()          # load all models, warmup
     text = sm.transcribe("audio.wav")
     interim = sm.process_interim_chunk("chunk.wav", session_key="seat_3")
+
+Status tracking (Task 119):
+    sm.preload()
+    sm.status  -> {
+        "ready": True,
+        "preloading": False,
+        "streaming_model": "loaded",
+        "offline_model": "loaded",
+        "punctuation_model": "loaded",
+        "last_error": None,
+    }
 """
 
 from __future__ import annotations
-import numpy as np
+import threading
 from typing import Optional
+
+import numpy as np
+
+
+# ── Model status constants ─────────────────────────────────────────────────────
+
+STATUS_UNKNOWN = "unknown"
+STATUS_LOADING = "loading"
+STATUS_LOADED = "loaded"
+STATUS_ERROR = "error"
+
+_INITIAL_STATUS = {
+    "ready": False,
+    "preloading": False,
+    "streaming_model": STATUS_UNKNOWN,
+    "offline_model": STATUS_UNKNOWN,
+    "punctuation_model": STATUS_UNKNOWN,
+    "last_error": None,
+}
 
 
 class SpeechModule:
@@ -24,6 +55,9 @@ class SpeechModule:
 
     All STT methods return "" on failure (no exceptions). MT methods return
     placeholder strings until Opus-MT is integrated.
+
+    Status is tracked per-instance via `self.status`.  Preload is idempotent
+    and guarded by a threading.Lock so concurrent calls do not double-load.
     """
 
     def __init__(
@@ -31,8 +65,11 @@ class SpeechModule:
         history_store: Optional["HistoryStore"] = None,
     ):
         self._max_workers = max_workers
-        self._ready = False
         self._history_store = history_store
+
+        # Unified status (Task 119)
+        self._status: dict = dict(_INITIAL_STATUS)
+        self._preload_lock = threading.Lock()
 
         # Per-session streaming state: session_key -> state dict
         # Each state dict:
@@ -47,18 +84,105 @@ class SpeechModule:
     @property
     def ready(self) -> bool:
         """True after preload() has completed successfully."""
-        return self._ready
+        return self._status["ready"]
+
+    @property
+    def status(self) -> dict:
+        """Unified model status dict (read-only snapshot).
+
+        Keys:
+            ready             — bool, all models loaded
+            preloading        — bool, preload in progress
+            streaming_model   — "unknown" | "loading" | "loaded" | "error"
+            offline_model     — "unknown" | "loading" | "loaded" | "error"
+            punctuation_model — "unknown" | "loading" | "loaded" | "error"
+            last_error        — str | None
+        """
+        return dict(self._status)
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
     def preload(self) -> None:
-        """Load all models + warmup. Idempotent. Raises on failure."""
-        if self._ready:
+        """Load all models + warmup. Idempotent and thread-safe.
+
+        Load order:
+            1. Paraformer Streaming (for process_interim_*)
+            2. Paraformer-large (for transcribe / transcribe_array)
+            3. CT-Transformer punctuation (for add_punctuation)
+
+        On failure, marks the failing model as STATUS_ERROR and keeps
+        last_error populated.  Other models may still load.  The overall
+        ready flag is only set when ALL models succeed.
+        """
+        # Fast path: already loaded
+        if self._status["ready"]:
             return
-        from .stt_streaming import warmup_streaming, warmup_offline
-        warmup_streaming()   # Paraformer Streaming for process_interim_*
-        warmup_offline()     # Paraformer-large for transcribe / transcribe_array
-        self._ready = True
+
+        # Lock to prevent concurrent preload racing
+        if not self._preload_lock.acquire(blocking=False):
+            # Another thread is already preloading — wait for it
+            self._preload_lock.acquire()
+            self._preload_lock.release()
+            return
+
+        try:
+            # Another thread may have completed preload while we waited for the lock
+            if self._status["ready"]:
+                return
+
+            self._status["preloading"] = True
+
+            # 1. Streaming model (Paraformer Streaming)
+            self._status["streaming_model"] = STATUS_LOADING
+            try:
+                from .stt_streaming import warmup_streaming
+                warmup_streaming()
+                self._status["streaming_model"] = STATUS_LOADED
+            except Exception as exc:
+                self._status["streaming_model"] = STATUS_ERROR
+                self._status["last_error"] = f"streaming: {exc}"
+                _log_warning(f"Streaming model load failed: {exc}")
+
+            # 2. Offline model (Paraformer-large)
+            self._status["offline_model"] = STATUS_LOADING
+            try:
+                from .stt_streaming import warmup_offline
+                warmup_offline()
+                self._status["offline_model"] = STATUS_LOADED
+            except Exception as exc:
+                self._status["offline_model"] = STATUS_ERROR
+                self._status["last_error"] = f"offline: {exc}"
+                _log_warning(f"Offline model load failed: {exc}")
+
+            # 3. Punctuation model (CT-Transformer)
+            self._status["punctuation_model"] = STATUS_LOADING
+            try:
+                from .punctuation import warmup_punc
+                warmup_punc()
+                # Check whether warmup actually set the model
+                from .punctuation import is_punctuation_loaded
+                if is_punctuation_loaded():
+                    self._status["punctuation_model"] = STATUS_LOADED
+                else:
+                    self._status["punctuation_model"] = STATUS_ERROR
+                    self._status["last_error"] = "punctuation: warmup completed but model not loaded"
+                    _log_warning("Punctuation model warmup did not set model instance")
+            except Exception as exc:
+                self._status["punctuation_model"] = STATUS_ERROR
+                self._status["last_error"] = f"punctuation: {exc}"
+                _log_warning(f"Punctuation model load failed: {exc}")
+
+            # Overall readiness: streaming + offline required.
+            # Punctuation model is tracked separately and does NOT block ASR.
+            all_ok = (
+                self._status["streaming_model"] == STATUS_LOADED
+                and self._status["offline_model"] == STATUS_LOADED
+            )
+            self._status["ready"] = all_ok
+
+        finally:
+            self._status["preloading"] = False
+            self._preload_lock.release()
 
     # ── STT ──────────────────────────────────────────────────────────────────
 
@@ -229,10 +353,10 @@ class SpeechModule:
             }
         return self._sessions[session_key]
 
-    # NOTE (Task 112): _merge_sentence_aware and _record_commit were removed.
-    # They previously fed cumulative full_text through SentenceMerger, causing
-    # committed + pending duplication when flush thresholds were exceeded.
-    # process_interim_array now returns StreamingChunkProcessor's full_text
-    # directly. If SentenceMerger is needed for future sentence-boundary
-    # segmentation of final text, it must operate on incremental segment text
-    # (not cumulative full_text), or use a dedicated "cumulative mode".
+
+# ── Module-level helper ─────────────────────────────────────────────────────────
+
+def _log_warning(msg: str) -> None:
+    """Print a warning to stderr (no logging dependency in this module)."""
+    import sys
+    print(f"[WARN] SpeechModule: {msg}", file=sys.stderr, flush=True)
