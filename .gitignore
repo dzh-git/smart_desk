@@ -35,3 +35,7 @@ smart-desk/语音测试样本/
 # Temp
 *.tmp
 *.log
+
+# Smart-desk model files (too large for LFS-free hosting)
+smart-desk/models/
+smart-desk/models/**
