@@ -39,11 +39,21 @@ export type SpeechWsStatusCallback = (
 
 export type SpeechWsErrorCallback = (code: string, message: string) => void;
 
+/**
+ * Callback invoked when the server sends
+ * {"type":"utterance_started","utterance_id":"..."}
+ * after an auto-final, signaling that a new utterance is ready.
+ */
+export type SpeechWsUtteranceStartedCallback = (
+  utteranceId: string,
+) => void;
+
 export class SpeechWsClient {
   private ws: WebSocket | null = null;
   private status: SpeechWsStatus = "disconnected";
   private statusCallback: SpeechWsStatusCallback | null = null;
   private errorCallback: SpeechWsErrorCallback | null = null;
+  private utteranceStartedCallback: SpeechWsUtteranceStartedCallback | null = null;
   private resolveConnect: ((result: StartResult) => void) | null = null;
   private rejectConnect: ((err: Error) => void) | null = null;
 
@@ -63,6 +73,16 @@ export class SpeechWsClient {
    */
   onError(cb: SpeechWsErrorCallback): void {
     this.errorCallback = cb;
+  }
+
+  /**
+   * Register a callback for "utterance_started" server messages.
+   * Called when the server auto-finalizes an utterance and starts a new one,
+   * sending {"type":"utterance_started","utterance_id":"..."}.
+   * The hook can update its utteranceId to reflect the new utterance.
+   */
+  onUtteranceStarted(cb: SpeechWsUtteranceStartedCallback): void {
+    this.utteranceStartedCallback = cb;
   }
 
   // ---- Connection ----
@@ -116,6 +136,10 @@ export class SpeechWsClient {
             });
             this.resolveConnect = null;
             this.rejectConnect = null;
+          } else if (msg.type === "utterance_started") {
+            // Task 122: backend auto-finalized → new utterance is ready.
+            // Notify the hook so it can update its utteranceId.
+            this.utteranceStartedCallback?.(msg.utterance_id);
           } else if (msg.type === "error") {
             this.setStatus("error", msg.message ?? msg.code);
             this.errorCallback?.(msg.code, msg.message ?? "");

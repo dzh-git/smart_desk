@@ -146,12 +146,12 @@ describe("App - admin mode (default)", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Conference Table/i)).toBeInTheDocument();
+      expect(screen.getByText(/Conference Room.*Seat Overview/i)).toBeInTheDocument();
     });
 
     // Should show meeting summary metrics (Elapsed, Attendees)
     expect(screen.getByText("Elapsed")).toBeInTheDocument();
-    expect(screen.getByText("Attendees")).toBeInTheDocument();
+    expect(screen.getAllByText("Attendees").length).toBeGreaterThanOrEqual(1);
 
     // Should show 2/10 checked in
     expect(screen.getByText("2/10")).toBeInTheDocument();
@@ -171,7 +171,7 @@ describe("App - admin mode (default)", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Waiting for Meeting")).toBeInTheDocument();
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
     });
   });
 
@@ -228,8 +228,8 @@ describe("App - seat mode via URL (no VITE_ENABLE_DEMO_CONTROLS)", () => {
       expect(screen.getByText("Seat 1")).toBeInTheDocument();
     });
 
-    // Should show Back button
-    expect(screen.getByText("Back")).toBeInTheDocument();
+    // Back-to-admin is hidden outside demo controls.
+    expect(screen.queryByText("Back")).not.toBeInTheDocument();
   });
 
   it("shows error page for invalid seat parameter", async () => {
@@ -259,5 +259,54 @@ describe("App - seat mode via URL (no VITE_ENABLE_DEMO_CONTROLS)", () => {
     await waitFor(() => {
       expect(screen.getByText("Invalid Seat Selection")).toBeInTheDocument();
     });
+  });
+});
+
+describe("App - display vote results", () => {
+  it("shows closed vote result on /display", async () => {
+    window.history.replaceState({}, "", "/display");
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({
+          id: 1,
+          title: "Board Meeting",
+          description: null,
+          status: "active",
+          created_at: "2026-01-01T00:00:00Z",
+          started_at: "2026-01-01T10:00:00Z",
+          ended_at: null,
+        });
+      }
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/votes?meeting_id=1") {
+        return okResponse([
+          { id: 31, meeting_id: 1, title: "Approve Roadmap", options: ["Approve", "Reject"], status: "closed", is_anonymous: false },
+        ]);
+      }
+      if (url === "/api/votes/31/statistics") {
+        return okResponse({
+          vote_id: 31,
+          title: "Approve Roadmap",
+          is_anonymous: false,
+          status: "closed",
+          total_votes: 3,
+          results: [
+            { option: "Approve", count: 2, attendee_ids: [1, 2] },
+            { option: "Reject", count: 1, attendee_ids: [3] },
+          ],
+        });
+      }
+      return okResponse(null);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Vote Result")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Approve Roadmap")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("2 votes / 67%")).toBeInTheDocument();
   });
 });

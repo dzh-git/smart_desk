@@ -159,4 +159,25 @@ describe("fetchTranslations", () => {
       expect.any(Object),
     );
   });
+
+  it("includes seat_id when seatId parameter is provided (seat filtering)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ meeting_id: 2, entries: [] }),
+    );
+    const result = await fetchTranslations(2, 1);
+    expect(result).toEqual({ meeting_id: 2, entries: [] });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/translations?meeting_id=2&seat_id=1",
+      expect.any(Object),
+    );
+  });
+
+  it("omits seat_id when seatId is undefined (admin view)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ meeting_id: 2, entries: [] }),
+    );
+    await fetchTranslations(2);
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).not.toContain("seat_id");
+  });
 });

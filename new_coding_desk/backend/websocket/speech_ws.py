@@ -405,24 +405,99 @@ async def _handle_binary_message(
 
     # Publish interim event (skip empty ASR results)
     source_text: str = result.get("source_text", "")
-    if not source_text:
-        return
+    if source_text:
+        # Phase 02: build payload with two-line caption
+        payload: dict[str, Any] = {
+            "utterance_id": result["utterance_id"],
+            "seat_id": seat_id,
+            "revision": result["revision"],
+            "source_lang": "zh",
+            "target_lang": "en",
+            "source_text": source_text,
+            "translated_text": "",
+            "is_final": False,
+        }
+        if "caption" in result:
+            payload["caption"] = result["caption"]
 
-    # Phase 02: build payload with two-line caption
-    payload: dict[str, Any] = {
-        "utterance_id": result["utterance_id"],
-        "seat_id": seat_id,
-        "revision": result["revision"],
-        "source_lang": "zh",
-        "target_lang": "en",
-        "source_text": source_text,
-        "translated_text": "",
-        "is_final": False,
-    }
-    if "caption" in result:
-        payload["caption"] = result["caption"]
+        event_bus.publish(TranslationInterimEvent(
+            meeting_id=meeting_id,
+            payload=payload,
+        ))
 
-    event_bus.publish(TranslationInterimEvent(
-        meeting_id=meeting_id,
-        payload=payload,
-    ))
+    # ── Task 122: VAD auto-final ──────────────────────────────────────────
+    # Check VAD even when source_text is empty (silence frames).
+    # If VAD silence threshold was exceeded, automatically finalize the
+    # current utterance, persist it, broadcast translation_final, and
+    # prepare the next utterance — all without requiring a frontend end_hint.
+    if result.get("vad_should_finalize"):
+        logger.info(
+            "VAD auto-final: meeting=%d seat=%d utterance=%s",
+            meeting_id, seat_id, result["utterance_id"],
+        )
+
+        finalized = stream_service.finalize_utterance(session_key)
+        if finalized is not None:
+            try:
+                from backend.database import SessionLocal  # noqa: F811
+                from backend.services.translation_service import TranslationService
+
+                db = SessionLocal()
+                try:
+                    tsvc = TranslationService(db, event_bus)
+                    record = tsvc.process_final_array(
+                        audio=finalized["audio"],
+                        sr=finalized["sr"],
+                        meeting_id=finalized["meeting_id"],
+                        seat_id=finalized["seat_id"],
+                        utterance_id=finalized["utterance_id"],
+                        source_type="speech_ws",
+                    )
+                    stream_service.reset_caption_formatter(session_key)
+                    logger.info(
+                        "Speech auto-final: meeting=%d seat=%d utterance=%s "
+                        "record=%d",
+                        meeting_id, seat_id,
+                        finalized["utterance_id"], record.id,
+                    )
+                finally:
+                    db.close()
+            except Exception as exc:
+                exc_str = str(exc)
+                if "ASR_EMPTY_RESULT" in exc_str or "empty text" in exc_str.lower():
+                    logger.debug(
+                        "VAD auto-final ASR empty (meeting=%d seat=%d): %s",
+                        meeting_id, seat_id, exc,
+                    )
+                else:
+                    logger.exception(
+                        "VAD auto-final error (meeting=%d seat=%d): %s",
+                        meeting_id, seat_id, exc,
+                    )
+                # Even if auto-final fails, prepare next utterance so the
+                # speech WS can continue streaming.
+        else:
+            logger.debug(
+                "VAD auto-final with no buffered audio "
+                "(meeting=%d seat=%d)",
+                meeting_id, seat_id,
+            )
+
+        # Prepare next utterance regardless of finalization outcome,
+        # so the session can continue receiving audio.
+        new_uid = stream_service.prepare_next_utterance(
+            session_key, meeting_id, seat_id,
+        )
+        if new_uid:
+            logger.info(
+                "Auto-final: new utterance %s on same WS "
+                "(meeting=%d seat=%d)",
+                new_uid, meeting_id, seat_id,
+            )
+            try:
+                await ws.send_json({
+                    "type": "utterance_started",
+                    "utterance_id": new_uid,
+                })
+            except Exception:
+                pass

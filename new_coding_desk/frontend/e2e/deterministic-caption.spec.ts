@@ -259,7 +259,12 @@ test.describe("Deterministic two-line live caption", () => {
     console.log(`[DetCaption] Mock rev1: prev="${PREV_LINE}" curr="${INITIAL_CURR_LINE}"`);
 
     // ── 7. Verify DOM live caption (rev 1) ───────────────────────────────────
-    await page.waitForSelector('[data-testid="live-caption"]', { timeout: 10_000 });
+    const lcEl = await page.waitForSelector('[data-testid="live-caption"]', { timeout: 10_000 });
+
+    // Assert data-* attributes match the mock WS payload
+    expect(await lcEl!.getAttribute("data-utterance-id")).toBe(realUid);
+    expect(await lcEl!.getAttribute("data-seat-id")).toBe("1");
+    expect(await lcEl!.getAttribute("data-revision")).toBe("1");
 
     report.dom_previous_line = await page.$eval(
       '[data-testid="live-caption-previous"]', (el: any) => (el.textContent || "").trim(),

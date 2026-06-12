@@ -1,0 +1,2 @@
+- [Task 121 — Interim Display Fix](task-121-interim-display-fix.md) — Fix frontend not showing streaming ASR interim results in real-time; empty-caption fallback to source_text + 3 new seat tests
+- Documentation generation rule: when asking Claude Code to create or update working/task documents, require English-only Markdown/JSON unless Chinese is explicitly necessary. Some Chinese text may look corrupted due to reader/terminal encoding rather than file corruption, so English documents reduce false mojibake reviews.

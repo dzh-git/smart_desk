@@ -4,6 +4,8 @@ import type { VoteStatistics } from "../api/types";
 
 interface VotePanelProps {
   vote: VoteStatistics | null;
+  /** Current and historical vote statistics, newest first. */
+  voteResults?: VoteStatistics[];
   /** True when the backend reports an active vote but statistics failed to load. */
   hasActiveVote?: boolean;
   /** Error message from a failed vote statistics fetch. */
@@ -18,13 +20,13 @@ interface VotePanelProps {
 
 export function VotePanel({
   vote,
+  voteResults = [],
   hasActiveVote = false,
   voteStatsError = null,
   onRetryStats,
   onCloseVote,
   closingVote = false,
 }: VotePanelProps) {
-  // ── Vote exists but statistics failed ──────────────────────────────────
   if (hasActiveVote && !vote && voteStatsError) {
     return (
       <SectionCard title="Active Vote">
@@ -52,46 +54,51 @@ export function VotePanel({
     );
   }
 
-  // ── No vote ────────────────────────────────────────────────────────────
-  if (!vote) {
+  const latestClosedVote =
+    voteResults.find((item) => item.status === "closed") ?? null;
+  const displayVote = vote ?? latestClosedVote;
+  const isRecentResult = !vote && latestClosedVote != null;
+
+  if (!displayVote) {
     return (
-      <SectionCard title="Active Vote">
+      <SectionCard title="Vote Results">
         <EmptyState
           icon={<VoteIcon size={20} />}
-          title="No vote in progress"
-          description="Votes will appear here when initiated by the chair."
+          title="No votes yet"
+          description="Votes and final results will appear here when initiated by the chair."
         />
       </SectionCard>
     );
   }
 
-  // ── Vote with statistics ───────────────────────────────────────────────
-  const maxCount = Math.max(...vote.results.map((o) => o.count), 1);
+  const maxCount = Math.max(...displayVote.results.map((o) => o.count), 1);
+  const statusLabel =
+    displayVote.status === "open" ? "In Progress" : "Closed";
 
   return (
     <SectionCard
-      title="Active Vote"
+      title={isRecentResult ? "Recent Vote Result" : "Active Vote"}
       headerRight={
         <span
           className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-            vote.status === "open"
+            displayVote.status === "open"
               ? "bg-sky-100 text-sky-700"
               : "bg-slate-100 text-slate-500"
           }`}
         >
-          {vote.status === "open" ? "Open" : "Closed"}
+          {statusLabel}
         </span>
       }
     >
       <p className="font-semibold text-slate-800 text-sm mb-3">
-        {vote.title}
+        {displayVote.title}
       </p>
 
       <div className="space-y-3 mb-4">
-        {vote.results.map((option, idx) => {
+        {displayVote.results.map((option, idx) => {
           const pct =
-            vote.total_votes > 0
-              ? Math.round((option.count / vote.total_votes) * 100)
+            displayVote.total_votes > 0
+              ? Math.round((option.count / displayVote.total_votes) * 100)
               : 0;
           const barWidth =
             maxCount > 0 ? (option.count / maxCount) * 100 : 0;
@@ -107,11 +114,11 @@ export function VotePanel({
               key={option.option}
               className="relative rounded-xl border border-slate-200 p-2.5"
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-sm text-slate-800">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="min-w-0 truncate font-semibold text-sm text-slate-800">
                   {option.option}
                 </span>
-                <span className="text-sm font-bold text-slate-700">
+                <span className="shrink-0 text-sm font-bold text-slate-700">
                   {pct}%
                 </span>
               </div>
@@ -129,16 +136,17 @@ export function VotePanel({
         })}
       </div>
 
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-        <p className="text-xs text-slate-400">
-          {vote.total_votes} vote{vote.total_votes !== 1 ? "s" : ""} cast
-          {vote.is_anonymous ? " (anonymous)" : ""}
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100">
+        <p className="min-w-0 truncate text-xs text-slate-400">
+          {displayVote.total_votes} vote
+          {displayVote.total_votes !== 1 ? "s" : ""} cast
+          {displayVote.is_anonymous ? " (anonymous)" : ""}
         </p>
-        {vote.status === "open" && onCloseVote && (
+        {displayVote.status === "open" && onCloseVote && (
           <button
-            onClick={() => onCloseVote(vote.vote_id)}
+            onClick={() => onCloseVote(displayVote.vote_id)}
             disabled={closingVote}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 bg-white border border-rose-200 rounded-lg px-3 py-1.5 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-rose-600 bg-white border border-rose-200 rounded-lg px-3 py-1.5 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {closingVote ? (
               <Loader2 size={12} className="animate-spin" />

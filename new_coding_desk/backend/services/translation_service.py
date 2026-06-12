@@ -13,6 +13,8 @@ Business rules:
 """
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from sqlalchemy.orm import Session
 
@@ -22,7 +24,14 @@ from backend.exceptions import ValidationError
 from backend.models.translation_record import TranslationRecord
 from backend.repositories.translation_repository import TranslationRepository
 from backend.services.base import BaseService
+from backend.services.translation_model_service import (
+    TranslationModelService,
+    is_translation_model_enabled,
+)
 from backend.speech_module.punctuation import add_punctuation
+from backend.speech_module.text_utils import detect_language
+
+logger = logging.getLogger(__name__)
 
 # ── SpeechModule singleton ─────────────────────────────────────────────────────
 _speech = None  # lazy singleton
@@ -173,28 +182,37 @@ class TranslationService(BaseService):
         # Phase 02: apply punctuation to final source_text before persist
         source_text = add_punctuation(source_text)
 
-        # 2. Translate (auto-detect language)
-        try:
-            zh_str, en_str = speech.translate_text(source_text)
-        except Exception as exc:
-            raise ValidationError(
-                f"Translation failed: {exc}",
-                "TRANSLATION_FAILED",
-            ) from exc
-
-        # 3. Detect source language from translate_text result
-        if en_str == NOT_AVAILABLE and zh_str != NOT_AVAILABLE:
-            source_lang = "zh"
+        # 2. Detect source language
+        source_lang = detect_language(source_text)
+        if source_lang == "zh":
             target_lang = "en"
-            translated_text = en_str
-        elif zh_str == NOT_AVAILABLE and en_str != NOT_AVAILABLE:
+        else:
             source_lang = "en"
             target_lang = "zh"
-            translated_text = zh_str
+
+        # 3. Translate (real model if enabled, otherwise placeholder)
+        if source_lang == "zh" and is_translation_model_enabled():
+            # Use real OPUS-MT zh-en model
+            model_svc = TranslationModelService.get_instance()
+            try:
+                translated_text = model_svc.translate(source_text)
+            except Exception as exc:
+                logger.warning("Translation failed (non-fatal): %s", exc)
+                translated_text = f"[translation failed: {exc}]"
         else:
-            source_lang = "auto"
-            target_lang = "auto"
-            translated_text = en_str if en_str != NOT_AVAILABLE else zh_str
+            # Fallback: use SpeechModule translate_text placeholder
+            try:
+                zh_str, en_str = speech.translate_text(source_text)
+            except Exception as exc:
+                raise ValidationError(
+                    f"Translation failed: {exc}",
+                    "TRANSLATION_FAILED",
+                ) from exc
+
+            if source_lang == "zh":
+                translated_text = en_str  # placeholder
+            else:
+                translated_text = zh_str  # placeholder
 
         # 4. Persist to translation_records (with new fields)
         record = self.repo.create(

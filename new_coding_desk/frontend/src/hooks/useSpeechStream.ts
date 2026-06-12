@@ -110,6 +110,15 @@ export function useSpeechStream(
     const wsClient = new SpeechWsClient();
     wsRef.current = wsClient;
 
+    // Task 122: listen for utterance_started from backend auto-final.
+    // When the backend automatically finalizes and starts a new utterance,
+    // update our tracked utteranceId so the UI stays in sync.
+    wsClient.onUtteranceStarted((newUtteranceId: string) => {
+      if (mountedRef.current) {
+        setUtteranceId(newUtteranceId);
+      }
+    });
+
     try {
       const result = await wsClient.connect(meetingId, seatId);
       if (!mountedRef.current) {

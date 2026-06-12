@@ -31,6 +31,22 @@ from backend.speech_module.caption_formatter import CaptionFormatter
 
 logger = logging.getLogger(__name__)
 
+# ── VAD configuration (Task 122) ──────────────────────────────────────────────
+
+#: RMS threshold below which audio is considered silence (16kHz mono).
+VAD_SILENCE_THRESHOLD_RMS: float = 0.006
+
+#: Seconds of consecutive silence before auto-final is triggered.
+VAD_SILENCE_DURATION_S: float = 1.2
+
+# ── Utterance state machine constants (Task 122) ──────────────────────────────
+
+UTTERANCE_STATE_IDLE = "IDLE"
+UTTERANCE_STATE_SPEAKING = "SPEAKING"
+UTTERANCE_STATE_PENDING_END = "PENDING_END"
+UTTERANCE_STATE_FINALIZING = "FINALIZING"
+UTTERANCE_STATE_READY_FOR_NEXT = "READY_FOR_NEXT"
+
 
 class SpeechStreamSession:
     """A single speech stream session for one (meeting_id, seat_id) pair.
@@ -55,6 +71,9 @@ class SpeechStreamSession:
         self.caption_formatter: CaptionFormatter = CaptionFormatter()
         # Phase 4: PCM16 audio buffer for current utterance (concatenated raw bytes)
         self._utterance_buffer: list[bytes] = []
+        # Task 122: VAD state tracking
+        self.utterance_state: str = UTTERANCE_STATE_IDLE
+        self.vad_silence_seconds: float = 0.0
 
 
 class SpeechStreamService:
@@ -166,6 +185,61 @@ class SpeechStreamService:
 
         return base
 
+    # ── VAD detection (Task 122) ─────────────────────────────────────────────
+
+    @staticmethod
+    def _compute_rms(audio: np.ndarray) -> float:
+        """Compute RMS (root mean square) of a float32 audio array.
+
+        Args:
+            audio: float32 numpy array, e.g. from pcm16_to_float32().
+
+        Returns:
+            RMS value as float.
+        """
+        return float(np.sqrt(np.mean(audio.astype(np.float64) ** 2)))
+
+    def _check_vad_end(self, session_key: str, audio: np.ndarray) -> bool:
+        """Update VAD silence counter and return True if utterance should end.
+
+        Called after each PCM frame processing. Updates the session's
+        accumulated silence counter based on RMS of the audio frame.
+
+        Returns True when consecutive silence exceeds VAD_SILENCE_DURATION_S,
+        indicating the utterance should be auto-finalized.
+
+        Args:
+            session_key: Active speech session key.
+            audio: float32 audio array from pcm16_to_float32().
+
+        Returns:
+            True if silence threshold exceeded (trigger auto-final).
+        """
+        session = self._sessions.get(session_key)
+        if session is None:
+            return False
+
+        # Compute RMS of this frame
+        rms = self._compute_rms(audio)
+        frame_duration_s = float(len(audio)) / 16000.0  # 16kHz
+
+        if rms < VAD_SILENCE_THRESHOLD_RMS:
+            # Silence detected — accumulate
+            session.vad_silence_seconds += frame_duration_s
+            if session.vad_silence_seconds >= VAD_SILENCE_DURATION_S:
+                logger.debug(
+                    "VAD auto-final triggered for session %s "
+                    "(silence=%.2fs rms=%.4f)",
+                    session_key, session.vad_silence_seconds, rms,
+                )
+                return True
+        else:
+            # Speech detected — reset silence counter
+            if session.vad_silence_seconds > 0:
+                session.vad_silence_seconds = 0.0
+
+        return False
+
     # ── PCM16 conversion ────────────────────────────────────────────────────
 
     @staticmethod
@@ -202,6 +276,9 @@ class SpeechStreamService:
         session.revision = 0
         session._utterance_buffer.clear()
         session.caption_formatter.reset()
+        # Task 122: reset VAD state
+        session.utterance_state = UTTERANCE_STATE_SPEAKING
+        session.vad_silence_seconds = 0.0
 
         # Reset SpeechModule per-utterance state
         if self._speech_module is not None and self._speech_module.ready:
@@ -224,6 +301,9 @@ class SpeechStreamService:
         session.revision = 0
         session._utterance_buffer.clear()
         session.caption_formatter.reset()
+        # Task 122: reset VAD state
+        session.utterance_state = UTTERANCE_STATE_IDLE
+        session.vad_silence_seconds = 0.0
         if self._speech_module is not None and self._speech_module.ready:
             self._speech_module.reset_interim(session_key)
         return uid
@@ -233,6 +313,36 @@ class SpeechStreamService:
         session = self._sessions.get(session_key)
         if session is not None:
             session.caption_formatter.reset()
+
+    def prepare_next_utterance(
+        self, session_key: str, meeting_id: int, seat_id: int,
+    ) -> str | None:
+        """Prepare the next utterance after auto-finalization.
+
+        Generates a new utterance_id and starts a new utterance with
+        reset state (revision, buffer, VAD, caption formatter).
+
+        The speech WS remains open — no reconnect needed.
+
+        Args:
+            session_key: Active speech session key.
+            meeting_id: Active meeting ID.
+            seat_id: Speaker seat ID.
+
+        Returns:
+            The new utterance_id, or None if session is unknown.
+        """
+        session = self._sessions.get(session_key)
+        if session is None:
+            return None
+
+        new_uid = self.generate_utterance_id(meeting_id, seat_id)
+        self.start_utterance(session_key, new_uid)
+        logger.debug(
+            "Prepared next utterance: %s (session=%s)",
+            new_uid, session_key,
+        )
+        return new_uid
 
     def process_pcm_frame(
         self, session_key: str, pcm_bytes: bytes,
@@ -280,6 +390,9 @@ class SpeechStreamService:
         # 7. Bump revision
         session.revision += 1
 
+        # 8. Task 122: Check VAD for auto-final detection
+        vad_should_finalize = self._check_vad_end(session_key, audio)
+
         return {
             "utterance_id": session.current_utterance_id,
             "revision": session.revision,
@@ -289,6 +402,7 @@ class SpeechStreamService:
                 "current_line": caption_result.current_line,
                 "mode": caption_result.mode,
             },
+            "vad_should_finalize": vad_should_finalize,
         }
 
     # ── Audio buffer (Phase 4) ───────────────────────────────────────────────

@@ -17,6 +17,11 @@ funasr>=1.0.0             # FunASR: Paraformer Streaming + Paraformer-large + FS
 scipy>=1.11.0
 soundfile>=0.12.0
 
+# == Translation Model (OPUS-MT zh-en via HuggingFace Transformers) ==
+transformers>=4.36.0          # AutoTokenizer, AutoModelForSeq2SeqLM
+sentencepiece>=0.2.0          # Marian tokenizer (source.spm / target.spm)
+sacremoses>=0.1.0             # Marian tokenizer pre-processing
+
 # == Speech / Audio (optional — offline audio file loading only) ==
 # pydub>=0.25.0           # Uncomment if you need transcribe() for audio files
                           # Not required for /ws/speech streaming demo

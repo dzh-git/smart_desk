@@ -121,22 +121,22 @@ function ServiceRow({
   const st = statusLabel[call.status] ?? statusLabel.pending;
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
       <div
         className={`flex items-center justify-center rounded-lg border w-8 h-8 flex-shrink-0 ${cfg.color}`}
       >
         {cfg.icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-800 leading-tight">
+        <p className="truncate text-sm font-semibold text-slate-800 leading-tight">
           {cfg.label} — Seat {call.seat_id}
         </p>
-        <p className="text-xs text-slate-500 leading-tight mt-0.5 flex items-center gap-1">
+        <p className="truncate text-xs text-slate-500 leading-tight mt-0.5 flex items-center gap-1">
           {attendeeName}
         </p>
       </div>
       <span
-        className={`inline-flex items-center gap-1 text-xs font-medium ${st.color}`}
+        className={`inline-flex shrink-0 items-center gap-1 text-xs font-medium ${st.color}`}
       >
         {st.icon}
         {st.label}
@@ -145,7 +145,7 @@ function ServiceRow({
         <button
           onClick={onResolve}
           disabled={isResolving}
-          className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 bg-white border border-emerald-200 rounded-lg px-2.5 py-1 hover:bg-emerald-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600 bg-white border border-emerald-200 rounded-lg px-2.5 py-1 hover:bg-emerald-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isResolving ? (
             <Loader2 size={12} className="animate-spin" />

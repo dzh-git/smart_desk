@@ -10,6 +10,7 @@ export const FIXTURE_SEAT_DISPLAYS: SeatDisplay[] = Array.from(
     seatId: i + 1,
     attendeeName: i < 6 ? `Person ${i + 1}` : null,
     attendeeTitle: i < 6 ? "Board Member" : null,
+    attendeeId: i < 6 ? i + 1 : null,
     isCheckedIn: i < 4,
     isVacant: i >= 6,
     isSpeaker: i === 2,

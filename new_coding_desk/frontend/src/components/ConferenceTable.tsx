@@ -56,7 +56,7 @@ export function SeatCard({
     >
       {/* Speaker mic badge */}
       {isCurrentSpeaker && (
-        <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center">
+        <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center z-10">
           <Mic size={8} className="text-white" />
         </div>
       )}
@@ -144,12 +144,12 @@ export function ConferenceTable({
   return (
     <div className="flex flex-col gap-4 select-none">
       {/* Top row */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {topSeats.map((seat) => (
           <button
             key={seat.seatId}
             onClick={() => onSeatClick?.(seat.seatId)}
-            className={`text-left transition-transform hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded-xl ${
+            className={`text-left transition-transform lg:hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded-xl ${
               activeSeat === seat.seatId
                 ? "ring-2 ring-sky-400 ring-offset-1"
                 : ""
@@ -175,12 +175,12 @@ export function ConferenceTable({
       </div>
 
       {/* Bottom row */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {bottomSeats.map((seat) => (
           <button
             key={seat.seatId}
             onClick={() => onSeatClick?.(seat.seatId)}
-            className={`text-left transition-transform hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded-xl ${
+            className={`text-left transition-transform lg:hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded-xl ${
               activeSeat === seat.seatId
                 ? "ring-2 ring-sky-400 ring-offset-1"
                 : ""

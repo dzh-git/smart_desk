@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -68,6 +68,14 @@ def get_active_vote(db: Session = Depends(get_db)):
     if not v:
         return _ok(None)
     return _ok(_vote_out(v))
+
+
+@router.get("")
+def list_votes(meeting_id: int = Query(...), db: Session = Depends(get_db)):
+    """GET /api/votes?meeting_id=N - list votes for a meeting, newest first."""
+    svc = VoteService(db, event_bus)
+    votes = svc.list_votes_by_meeting(meeting_id)
+    return _ok([_vote_out(v) for v in votes])
 
 
 @router.post("", status_code=201)

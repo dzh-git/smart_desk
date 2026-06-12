@@ -28,6 +28,15 @@ class VoteRepository(BaseRepository[Vote]):
         """Return the vote with status='open', or None."""
         return self.db.query(Vote).filter(Vote.status == "open").first()
 
+    def list_by_meeting(self, meeting_id: int) -> list[Vote]:
+        """Return all votes for a meeting, newest first."""
+        return (
+            self.db.query(Vote)
+            .filter(Vote.meeting_id == meeting_id)
+            .order_by(Vote.id.desc())
+            .all()
+        )
+
     # ── VoteRecord CRUD ──────────────────────────────────────────────────────
 
     def get_record(self, vote_id: int, attendee_id: int) -> VoteRecord | None:

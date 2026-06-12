@@ -13,6 +13,8 @@ export interface SeatDisplay {
   seatId: number;
   attendeeName: string | null;
   attendeeTitle: string | null;
+  /** Stable attendee id from the backend (null when seat is vacant or no check-in). */
+  attendeeId: number | null;
   isCheckedIn: boolean;
   isVacant: boolean;
   isSpeaker: boolean;

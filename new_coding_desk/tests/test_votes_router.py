@@ -49,6 +49,33 @@ def test_get_active_vote_with_vote():
     assert body["data"]["id"] == vid
 
 
+def test_list_votes_by_meeting_includes_closed_vote():
+    """GET /api/votes?meeting_id= returns closed vote history."""
+    mid = _create_meeting()
+    resp = client.post("/api/votes", json={
+        "meeting_id": mid, "title": "Historical Vote",
+        "options": ["Yes", "No"], "is_anonymous": False
+    })
+    vid = resp.json()["data"]["id"]
+    client.post(f"/api/votes/{vid}/submit", json={
+        "attendee_id": 1, "option": "Yes",
+    })
+    client.post(f"/api/votes/{vid}/close")
+
+    resp = client.get(f"/api/votes?meeting_id={mid}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["data"][0]["id"] == vid
+    assert body["data"][0]["status"] == "closed"
+
+    stats_resp = client.get(f"/api/votes/{vid}/statistics")
+    assert stats_resp.status_code == 200
+    stats = stats_resp.json()["data"]
+    assert stats["status"] == "closed"
+    assert stats["total_votes"] == 1
+
+
 # ── POST /api/votes ──────────────────────────────────────────────────────────
 
 

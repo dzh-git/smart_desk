@@ -20,6 +20,7 @@ import {
   fetchSpeakerSeat,
   fetchActiveVote,
   fetchVoteStatistics,
+  fetchVoteResultsForMeeting,
   fetchAgendas,
   fetchAttendees,
   fetchServiceCalls,
@@ -57,6 +58,8 @@ export interface AdminData {
   agenda: Agenda[];
   /** Active vote statistics, or null when no active vote or stats fetch failed. */
   activeVote: VoteStatistics | null;
+  /** Vote statistics for current and historical meeting votes, newest first. */
+  voteResults: VoteStatistics[];
   /** True when the backend reports an active vote but statistics failed to load. */
   hasActiveVote: boolean;
   /** Error message from a failed vote statistics fetch, or null. */
@@ -72,8 +75,14 @@ export interface AdminData {
   /** True when there is no active meeting (idle/waiting state). */
   noMeeting: boolean;
 
+  /** True when viewing an ended meeting's results (no active meeting). */
+  isEndedMeeting: boolean;
+
   /** Manual full re-initialisation. */
   refresh: () => void;
+
+  /** Clear ended meeting state and return to the "No Active Meeting" view. */
+  clearEndedMeeting: () => void;
 }
 
 // ── Internal state ──────────────────────────────────────────────────────────
@@ -85,6 +94,7 @@ interface DataState {
   attendees: Attendee[];
   agenda: Agenda[];
   activeVote: VoteStatistics | null;
+  voteResults: VoteStatistics[];
   serviceCalls: ServiceCall[];
   translations: TranslationRecord[];
 }
@@ -96,6 +106,7 @@ const EMPTY_DATA: DataState = {
   attendees: [],
   agenda: [],
   activeVote: null,
+  voteResults: [],
   serviceCalls: [],
   translations: [],
 };
@@ -110,6 +121,27 @@ export function useAdminData(): AdminData {
   const [hasActiveVote, setHasActiveVote] = useState(false);
   const [voteStatsError, setVoteStatsError] = useState<string | null>(null);
   const [interimMap, setInterimMap] = useState<Record<string, InterimTranslation>>({});
+
+  // ── Ended meeting state ──────────────────────────────────────────────────
+  // We keep ended-meeting info in refs (stable across renders) so the stable
+  // doFetch callback can read them without deps.  The React state only drives
+  // conditional rendering in the UI.
+  const endedMeetingIdRef = useRef<number | null>(null);
+  const endedMeetingTitleRef = useRef<string | null>(null);
+  const [isEndedMeeting, setIsEndedMeeting] = useState<boolean>(() => {
+    try {
+      const saved = sessionStorage.getItem('endedMeetingId');
+      if (saved) {
+        const parsed = Number(saved);
+        if (!isNaN(parsed)) {
+          endedMeetingIdRef.current = parsed;
+          endedMeetingTitleRef.current = sessionStorage.getItem('endedMeetingTitle');
+          return true;
+        }
+      }
+    } catch { /* sessionStorage may not be available */ }
+    return false;
+  });
 
   // Track if a refresh is in flight to avoid races
   const fetchingRef = useRef(false);
@@ -140,8 +172,53 @@ export function useAdminData(): AdminData {
         fetchActiveVote(),
       ]);
 
-      const meetingId = meeting?.id ?? null;
-      const voteExists = rawActiveVote != null;
+      // ── Determine effective meeting (active or ended) ──────────────────
+      let isEnded = false;
+
+      if (meeting) {
+        // Active meeting found — clear any lingering ended-meeting state
+        if (endedMeetingIdRef.current != null) {
+          endedMeetingIdRef.current = null;
+          endedMeetingTitleRef.current = null;
+          setIsEndedMeeting(false);
+          try {
+            sessionStorage.removeItem('endedMeetingId');
+            sessionStorage.removeItem('endedMeetingTitle');
+          } catch { /* sessionStorage may throw */ }
+        }
+      } else if (endedMeetingIdRef.current == null) {
+        // No active meeting and no ref yet — try sessionStorage (AdminDashboard
+        // may have written it before calling refresh() after endMeeting).
+        try {
+          const saved = sessionStorage.getItem('endedMeetingId');
+          if (saved) {
+            const parsed = Number(saved);
+            if (!isNaN(parsed)) {
+              endedMeetingIdRef.current = parsed;
+              endedMeetingTitleRef.current = sessionStorage.getItem('endedMeetingTitle');
+              setIsEndedMeeting(true);
+            }
+          }
+        } catch { /* sessionStorage may throw */ }
+      }
+
+      isEnded = !meeting && endedMeetingIdRef.current != null;
+      const effectiveMeeting: Meeting | null = meeting ?? (
+        endedMeetingIdRef.current != null
+          ? {
+              id: endedMeetingIdRef.current,
+              title: endedMeetingTitleRef.current ?? '',
+              description: null,
+              status: 'finished' as const,
+              created_at: '',
+              started_at: null,
+              ended_at: null,
+            }
+          : null
+      );
+      const effectiveMeetingId = effectiveMeeting?.id ?? null;
+
+      const voteExists = rawActiveVote != null && !isEnded;
       setHasActiveVote(voteExists);
 
       // Step 2: Meeting-dependent resources
@@ -149,23 +226,26 @@ export function useAdminData(): AdminData {
       let agenda: Agenda[] = [];
       let serviceCalls: ServiceCall[] = [];
       let translations: TranslationRecord[] = [];
+      let voteResults: VoteStatistics[] = [];
 
-      if (meetingId) {
-        const [a, ag, sc, tr] = await Promise.all([
-          fetchAttendees(meetingId),
-          fetchAgendas(meetingId),
-          fetchServiceCalls(meetingId),
-          fetchTranslations(meetingId),
+      if (effectiveMeetingId) {
+        const [a, ag, sc, tr, vr] = await Promise.all([
+          fetchAttendees(effectiveMeetingId),
+          fetchAgendas(effectiveMeetingId),
+          fetchServiceCalls(effectiveMeetingId),
+          fetchTranslations(effectiveMeetingId),
+          fetchVoteResultsForMeeting(effectiveMeetingId),
         ]);
         attendees = a;
         agenda = ag;
         serviceCalls = sc;
         translations = tr.entries;
+        voteResults = vr;
       }
 
       // Step 3: Vote statistics (if active vote)
       let voteStats: VoteStatistics | null = null;
-      if (rawActiveVote) {
+      if (rawActiveVote && !isEnded) {
         try {
           voteStats = await fetchVoteStatistics(rawActiveVote.id);
         } catch (err: unknown) {
@@ -181,18 +261,19 @@ export function useAdminData(): AdminData {
       const seats = buildSeatDisplays(seatStates, attendees, speaker);
 
       setData({
-        meeting,
+        meeting: effectiveMeeting,
         seats,
         speakerSeatId: speaker.seat_id,
         attendees,
         agenda,
         activeVote: voteStats,
+        voteResults,
         serviceCalls,
         translations,
       });
 
-      // Update WebSocket meeting target
-      setConnectMeetingId(meetingId);
+      // Update WebSocket meeting target (null for ended meetings — no WS needed)
+      setConnectMeetingId(isEnded ? null : effectiveMeetingId);
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "An unknown error occurred";
@@ -296,6 +377,19 @@ export function useAdminData(): AdminData {
 
   const connection = useWebSocket(connectMeetingId, handleWSEvent);
 
+  // ── Clear ended meeting ──────────────────────────────────────────────
+
+  const clearEndedMeeting = useCallback(() => {
+    endedMeetingIdRef.current = null;
+    endedMeetingTitleRef.current = null;
+    setIsEndedMeeting(false);
+    setData(EMPTY_DATA);
+    try {
+      sessionStorage.removeItem('endedMeetingId');
+      sessionStorage.removeItem('endedMeetingTitle');
+      } catch { /* sessionStorage may throw */ }
+  }, []);
+
   // ── Expose ─────────────────────────────────────────────────────────────
 
   return {
@@ -307,13 +401,16 @@ export function useAdminData(): AdminData {
     attendees: data.attendees,
     agenda: data.agenda,
     activeVote: data.activeVote,
+    voteResults: data.voteResults,
     hasActiveVote,
     voteStatsError,
     serviceCalls: data.serviceCalls,
     translations: data.translations,
     interimMap,
     connection,
-    noMeeting: !loading && !data.meeting && !error,
+    noMeeting: !loading && !data.meeting && !error && !isEndedMeeting,
+    isEndedMeeting,
     refresh: () => doFetch(false),
+    clearEndedMeeting,
   };
 }

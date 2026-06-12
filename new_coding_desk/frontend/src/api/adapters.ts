@@ -47,6 +47,7 @@ export function buildSeatDisplays(
       seatId: id,
       attendeeName: attendee?.name ?? null,
       attendeeTitle: attendee?.title ?? null,
+      attendeeId: state?.attendee_id ?? null,
       isCheckedIn: state?.status === "checked_in",
       isVacant: state == null || state.status === "vacant",
       isSpeaker: speakerSeatId === id,

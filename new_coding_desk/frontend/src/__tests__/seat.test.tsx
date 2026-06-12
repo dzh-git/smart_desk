@@ -645,6 +645,183 @@ describe("SeatTablet - voting action", () => {
   });
 });
 
+// ── Same-Name Attendee Voting Tests ─────────────────────────────────────────
+
+describe("SeatTablet - same-name attendee voting (Task 6)", () => {
+  /**
+   * Scenario: Two attendees share the same name ("John Doe").
+   * Seat 1 is checked in with attendee_id=1 (first John Doe).
+   * Seat 2 is checked in with attendee_id=2 (second John Doe).
+   * The vote submission must use the seat-bound attendee_id, not name lookup.
+   */
+  function mockSameNameScenario(seatId: number, boundAttendeeId: number) {
+    mockFetch.mockImplementation((url: string, _opts?: RequestInit) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({
+          id: 1,
+          title: "Board Meeting",
+          status: "active",
+          started_at: "2026-01-01T10:00:00Z",
+        });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i + 1 === seatId ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i + 1 === seatId ? boundAttendeeId : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") {
+        return okResponse({
+          id: 10,
+          meeting_id: 1,
+          title: "Floor",
+          options: ["Option A", "Option B"],
+          status: "open",
+          is_anonymous: false,
+        });
+      }
+      if (url === "/api/votes/10/statistics") {
+        return okResponse({
+          vote_id: 10,
+          title: "Floor",
+          is_anonymous: false,
+          status: "open",
+          total_votes: 0,
+          results: [
+            { option: "Option A", count: 0, attendee_ids: [] },
+            { option: "Option B", count: 0, attendee_ids: [] },
+          ],
+        });
+      }
+      if (url === "/api/meetings/1/attendees") {
+        // Both share the same name but have different IDs
+        return okResponse([
+          { id: 1, meeting_id: 1, name: "John Doe", title: "CEO", seat_id: 1, checked_in: true },
+          { id: 2, meeting_id: 1, name: "John Doe", title: "VP", seat_id: 2, checked_in: true },
+        ]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations"))
+        return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+  }
+
+  it("submits vote using attendeeId from seat data, not name lookup", async () => {
+    // Seat 1 is bound to attendee_id=1 (first "John Doe")
+    mockSameNameScenario(1, 1);
+
+    let submitBody: unknown = null;
+    let submitCalled = false;
+
+    // Override for vote submit
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      // Call the scenario mock first to get correct data, then intercept submit
+      return (url === "/api/votes/10/submit")
+        ? (() => {
+            submitCalled = true;
+            submitBody = opts?.body ? JSON.parse(opts.body as string) : null;
+            return okResponse({
+              id: 10,
+              meeting_id: 1,
+              title: "Floor",
+              options: ["Option A", "Option B"],
+              status: "open",
+              is_anonymous: false,
+            });
+          })()
+        : (mockSameNameScenario(1, 1), null); // We'll handle this differently
+    });
+
+    // Re-set the mock properly
+    mockFetch.mockReset();
+    // Build a proper mock chain
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/votes/10/submit") {
+        submitCalled = true;
+        submitBody = opts?.body ? JSON.parse(opts.body as string) : null;
+        return okResponse({
+          id: 10,
+          meeting_id: 1,
+          title: "Floor",
+          options: ["Option A", "Option B"],
+          status: "open",
+          is_anonymous: false,
+        });
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(Array.from({ length: 10 }, (_, i) => ({
+          seat_id: i + 1,
+          status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+          attendee_id: i === 0 ? 1 : null,
+          updated_at: "2026-01-01T00:00:00Z",
+        })));
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") {
+        return okResponse({ id: 10, meeting_id: 1, title: "Floor", options: ["Option A", "Option B"], status: "open", is_anonymous: false });
+      }
+      if (url === "/api/votes/10/statistics") {
+        return okResponse({
+          vote_id: 10, title: "Floor", is_anonymous: false, status: "open", total_votes: 0,
+          results: [
+            { option: "Option A", count: 0, attendee_ids: [] },
+            { option: "Option B", count: 0, attendee_ids: [] },
+          ],
+        });
+      }
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([
+          { id: 1, meeting_id: 1, name: "John Doe", title: "CEO", seat_id: 1, checked_in: true },
+          { id: 2, meeting_id: 1, name: "John Doe", title: "VP", seat_id: null, checked_in: false },
+        ]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Active Vote")).toBeInTheDocument();
+    });
+
+    // Select "Option A"
+    const optionABtns = screen.getAllByText("Option A").filter(el => el.closest("button"));
+    await act(async () => {
+      optionABtns[0].closest("button")!.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Submit vote
+    await waitFor(() => {
+      const btn = screen.getByText("Submit Vote");
+      if (btn.hasAttribute("disabled")) throw new Error("Button still disabled");
+    });
+
+    const submitBtn = screen.getByText("Submit Vote");
+    await act(async () => {
+      submitBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Verify vote was submitted with attendee_id=1 (seat-bound), not found by name
+    expect(submitCalled).toBe(true);
+    expect(submitBody).toEqual({ attendee_id: 1, option: "Option A" });
+  });
+});
+
 // ── Service Call Tests ──────────────────────────────────────────────────────
 
 describe("SeatTablet - service call actions", () => {
@@ -1322,6 +1499,98 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     });
   });
 
+  it("updates on utterance_started from speech WS and shows new utterance interim", async () => {
+    mockSpeakerCheckedIn();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+
+    // Click Start → speech WS opens → send "started" response
+    const startBtn = screen.getByText("Start");
+    await act(async () => {
+      startBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const speechWs = await waitFor(() => {
+      const ws = findSpeechWs();
+      if (!ws) throw new Error("Speech WS not created");
+      return ws;
+    });
+
+    // Simulate "started" → recording begins
+    if (speechWs.onmessage) {
+      await act(async () => {
+        speechWs.onmessage!({
+          data: JSON.stringify({
+            type: "started",
+            utterance_id: "utt_1_1_000001",
+            session_key: "speech_1_1",
+          }),
+        });
+      });
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+    });
+
+    // Simulate "utterance_started" — backend auto-finalised old utterance,
+    // started a new one (same speech WS, no reconnect).
+    if (speechWs.onmessage) {
+      await act(async () => {
+        speechWs.onmessage!({
+          data: JSON.stringify({
+            type: "utterance_started",
+            utterance_id: "utt_1_1_000002",
+          }),
+        });
+      });
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    // Send translation_interim for the NEW utterance on meeting WS
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000002",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "第二句语音内容。",
+              translated_text: "",
+              is_final: false,
+              caption: {
+                previous_line: "",
+                current_line: "第二句语音内容。",
+                mode: "two_line",
+              },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Verify live caption for the new utterance appears in DOM
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_1_1_000002");
+      expect(screen.getByTestId("live-caption-current")).toHaveTextContent("第二句语音内容。");
+    });
+  });
+
   it("shows error state on backend error message", async () => {
     mockSpeakerCheckedIn();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
@@ -1500,6 +1769,83 @@ describe("SeatTablet - speech control (speaker seat)", () => {
 
 // ── Data Fetching Tests ─────────────────────────────────────────────────────
 
+describe("SeatTablet - closed vote results", () => {
+  it("shows final vote result and disables submission after vote closes", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({
+          id: 1,
+          title: "Board Meeting",
+          status: "active",
+          started_at: "2026-01-01T10:00:00Z",
+        });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/votes?meeting_id=1") {
+        return okResponse([
+          { id: 21, meeting_id: 1, title: "Approve Roadmap", options: ["Approve", "Reject"], status: "closed", is_anonymous: false },
+        ]);
+      }
+      if (url === "/api/votes/21/statistics") {
+        return okResponse({
+          vote_id: 21,
+          title: "Approve Roadmap",
+          is_anonymous: false,
+          status: "closed",
+          total_votes: 2,
+          results: [
+            { option: "Approve", count: 1, attendee_ids: [1] },
+            { option: "Reject", count: 1, attendee_ids: [2] },
+          ],
+        });
+      }
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([
+          { id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true },
+        ]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      if (url.includes("/api/speech/status")) {
+        return okResponse({
+          ready: false,
+          preloading: false,
+          streaming_model: "unknown",
+          offline_model: "unknown",
+          punctuation_model: "unknown",
+          punctuation_fallback: false,
+          last_error: null,
+        });
+      }
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Final Result")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Approve Roadmap")).toBeInTheDocument();
+    expect(screen.getByText("Your choice:")).toBeInTheDocument();
+    expect(screen.getAllByText("Approve").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Submit Vote")).not.toBeInTheDocument();
+    expect(screen.queryByText("Update Vote")).not.toBeInTheDocument();
+  });
+});
+
 describe("SeatTablet - data fetching", () => {
   it("fetches seat-specific current service call for the correct seat", async () => {
     mockFetch.mockImplementation((url: string) => {
@@ -1610,11 +1956,500 @@ describe("SeatTablet - live caption display", () => {
       await new Promise((r) => setTimeout(r, 100));
     });
 
-    // Live caption should appear on the seat UI
+    // Live caption should appear on the seat UI with correct data-* attributes
     await waitFor(() => {
-      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_seat_cap_001");
+      expect(el).toHaveAttribute("data-seat-id", "1");
+      expect(el).toHaveAttribute("data-revision", "1");
       expect(screen.getByTestId("live-caption-previous")).toHaveTextContent("今天天气真好，");
       expect(screen.getByTestId("live-caption-current")).toHaveTextContent("我们出去散步了。");
+    });
+  });
+
+  it("shows transcript-interim when caption is absent (fallback to source_text)", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send translation_interim WITHOUT caption field
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_seat_nocap_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "这是没有字幕的中间结果",
+              translated_text: "",
+              is_final: false,
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Should NOT render a live-caption block (no caption field)
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    // Instead, should render transcript-interim with source_text
+    await waitFor(() => {
+      const interimEl = screen.getByTestId("transcript-interim");
+      expect(interimEl).toBeInTheDocument();
+      expect(interimEl).toHaveTextContent("这是没有字幕的中间结果");
+    });
+  });
+
+  it("shows transcript-interim when caption has empty lines (fallback to source_text)", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send translation_interim WITH caption but both lines empty
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_seat_empt_cap_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "字幕为空时的后备文本",
+              translated_text: "",
+              is_final: false,
+              caption: {
+                previous_line: "",
+                current_line: "",
+                mode: "two_line",
+              },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Should NOT render a live-caption block (empty caption lines)
+    // Our fix routes it to textInterims → InterimRow
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+      const interimEl = screen.getByTestId("transcript-interim");
+      expect(interimEl).toHaveTextContent("字幕为空时的后备文本");
+    });
+  });
+
+  it("removes live caption and shows final record after translation_final", async () => {
+    let firstTranslationsCall = true;
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) {
+        if (firstTranslationsCall) {
+          firstTranslationsCall = false;
+          return okResponse({ meeting_id: 1, entries: [] });
+        }
+        return okResponse({
+          meeting_id: 1,
+          entries: [
+            {
+              id: 20,
+              meeting_id: 1,
+              seat_id: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "今天的会议讨论了几个重要议题。",
+              translated_text: "Today's meeting discussed several important topics.",
+              created_at: "2026-01-01T10:05:00Z",
+              utterance_id: "utt_seat_final_001",
+            },
+          ],
+        });
+      }
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send translation_interim with caption
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_seat_final_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "今天的会议讨论了几个重要议题。",
+              translated_text: "",
+              is_final: false,
+              caption: {
+                previous_line: "今天的会议讨论了",
+                current_line: "几个重要议题。",
+                mode: "two_line",
+              },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should appear with correct data-* attributes
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_seat_final_001");
+      expect(el).toHaveAttribute("data-seat-id", "1");
+      expect(el).toHaveAttribute("data-revision", "1");
+    });
+
+    // Send translation_final for the same utterance_id
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              translation_id: 20,
+              utterance_id: "utt_seat_final_001",
+              seat_id: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "今天的会议讨论了几个重要议题。",
+              translated_text: "Today's meeting discussed several important topics.",
+              source_type: "offline_rescore",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    });
+
+    // Live caption should be removed and final record should appear
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+      expect(screen.getByText("Today's meeting discussed several important topics.")).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Task 7: Translation Visibility & Sorting Tests ───────────────────────
+
+describe("SeatTablet - meeting-wide translations (Task 7)", () => {
+  it("fetches translations without seat_id for seat 1", async () => {
+    const fetchedUrls: string[] = [];
+
+    mockFetch.mockImplementation((url: string) => {
+      fetchedUrls.push(url);
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Seat 1")).toBeInTheDocument();
+    });
+
+    const translationUrl = fetchedUrls.find((u) => u.includes("/api/translations"));
+    expect(translationUrl).toBeTruthy();
+    expect(translationUrl).toContain("meeting_id=1");
+    expect(translationUrl).not.toContain("seat_id");
+  });
+
+  it("fetches translations without seat_id for seat 2", async () => {
+    const fetchedUrls: string[] = [];
+
+    mockFetch.mockImplementation((url: string) => {
+      fetchedUrls.push(url);
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={2} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Seat 2")).toBeInTheDocument();
+    });
+
+    const translationUrl = fetchedUrls.find((u) => u.includes("/api/translations"));
+    expect(translationUrl).toBeTruthy();
+    expect(translationUrl).toContain("meeting_id=1");
+    expect(translationUrl).not.toContain("seat_id");
+  });
+
+  it("fetches translations without seat_id for seat 3", async () => {
+    const fetchedUrls: string[] = [];
+
+    mockFetch.mockImplementation((url: string) => {
+      fetchedUrls.push(url);
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={3} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Seat 3")).toBeInTheDocument();
+    });
+
+    const translationUrl = fetchedUrls.find((u) => u.includes("/api/translations"));
+    expect(translationUrl).toBeTruthy();
+    expect(translationUrl).toContain("meeting_id=1");
+    expect(translationUrl).not.toContain("seat_id");
+  });
+
+  it("shows seat 1's final translation on seat 1 after translation_final refresh", async () => {
+    let translationsCallCount = 0;
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/translations")) {
+        translationsCallCount++;
+        if (translationsCallCount > 1) {
+          // Subsequent calls include the final record from seat 1
+          return okResponse({
+            meeting_id: 1,
+            entries: [
+              {
+                id: 100, meeting_id: 1, seat_id: 1,
+                source_lang: "zh", target_lang: "en",
+                source_text: "这是测试内容",
+                translated_text: "This is test content",
+                created_at: "2026-01-01T10:05:00Z",
+                utterance_id: "utt_task7_001",
+              },
+            ],
+          });
+        }
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Seat 1")).toBeInTheDocument();
+    });
+
+    // Send translation_final to trigger refresh
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              translation_id: 100,
+              utterance_id: "utt_task7_001",
+              seat_id: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "这是测试内容",
+              translated_text: "This is test content",
+              source_type: "offline_rescore",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    });
+
+    // Seat 1 should see the final record
+    await waitFor(() => {
+      expect(screen.getByText("This is test content")).toBeInTheDocument();
+    });
+  });
+
+  it("shows seat 1's final translation on seat 2 after translation_final refresh", async () => {
+    let translationsCallCount = 0;
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/translations")) {
+        translationsCallCount++;
+        if (translationsCallCount > 1) {
+          return okResponse({
+            meeting_id: 1,
+            entries: [
+              {
+                id: 100, meeting_id: 1, seat_id: 1,
+                source_lang: "zh", target_lang: "en",
+                source_text: "跨座位可见测试",
+                translated_text: "Cross-seat visibility test",
+                created_at: "2026-01-01T10:05:00Z",
+                utterance_id: "utt_cross_seat_001",
+              },
+            ],
+          });
+        }
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={2} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Seat 2")).toBeInTheDocument();
+    });
+
+    // Send translation_final to trigger refresh
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              translation_id: 100,
+              utterance_id: "utt_cross_seat_001",
+              seat_id: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "跨座位可见测试",
+              translated_text: "Cross-seat visibility test",
+              source_type: "offline_rescore",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    });
+
+    // Seat 2 should ALSO see seat 1's final record (meeting-wide)
+    await waitFor(() => {
+      expect(screen.getByText("Cross-seat visibility test")).toBeInTheDocument();
     });
   });
 });

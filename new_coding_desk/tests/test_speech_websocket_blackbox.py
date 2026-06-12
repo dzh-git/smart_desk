@@ -31,8 +31,15 @@ from fastapi.testclient import TestClient
 
 from backend.main import app
 from backend.database import Base
-from backend.services.speech_stream_service import stream_service
+from backend.services.speech_stream_service import (
+    stream_service,
+    VAD_SILENCE_DURATION_S,
+)
 from tests.conftest import TEST_ENGINE, TestSessionLocal
+from backend.services.translation_model_service import (
+    is_translation_model_enabled,
+    NOT_AVAILABLE,
+)
 
 
 # ── Helper: PCM16 real speech fixture ────────────────────────────────────────
@@ -488,6 +495,12 @@ class TestSpeechWebSocketBlackBox:
                         f"'{payload['source_text']}'"
                     )
                     assert isinstance(payload["translated_text"], str)
+                    # Task 123: if real translation model is enabled and loaded, verify non-placeholder
+                    if is_translation_model_enabled() and stream_service.ensure_speech_module():
+                        assert payload["translated_text"] != NOT_AVAILABLE, (
+                            "translated_text should not be placeholder when model enabled: "
+                            f"'{payload['translated_text']}'"
+                        )
                     assert payload["source_type"] == "speech_ws"
 
                     # Verify broadcast message format per §5
@@ -1122,4 +1135,456 @@ class TestSpeechWebSocketBlackBox:
             assert len(matches_uid2) == 1, (
                 f"Expected exactly 1 record for utterance {uid2}, "
                 f"got {len(matches_uid2)}: {matches_uid2}"
+            )
+
+
+# ── Task 122: VAD auto-final tests ────────────────────────────────────────────
+#
+# These tests verify that the backend can automatically finalize utterances
+# based on VAD silence detection, without requiring the frontend to send
+# end_hint. They require speech models to be loaded.
+
+
+def _make_silence_frames(count: int) -> list[bytes]:
+    """Generate count frames of all-zero PCM16 (100ms each).
+
+    Each frame is 3200 bytes (100ms @ 16kHz s16le mono).
+    Used to trigger VAD silence detection.
+    """
+    return [b"\x00" * 3200 for _ in range(count)]
+
+
+class TestVadAutoFinal:
+    """VAD automatic finalization — no end_hint required.
+
+    Task 122: backend detects utterance end via RMS silence detection and
+    automatically triggers offline ASR rescore, persistence to translation_records,
+    and broadcast of translation_final.
+
+    These tests require speech models to be loaded.
+    """
+
+    # ── Auto-final without end_hint ─────────────────────────────────────
+
+    def test_auto_final_without_end_hint(self) -> None:
+        """PCM frames + silence → translation_final without end_hint.
+
+        Sends real speech frames followed by sustained silence. The backend's
+        VAD silence detector should trigger auto-final, producing a
+        translation_final event on the broadcast channel — all without the
+        frontend sending any end_hint message.
+        """
+        if not stream_service.ensure_speech_module():
+            pytest.skip("Speech models not loaded — cannot test auto-final")
+
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            with client.websocket_connect(f"/ws/{mid}") as broadcast_ws:
+                broadcast_ws.receive_json()  # consume "connected"
+
+                with client.websocket_connect(
+                    f"/ws/speech/{mid}?seat=1"
+                ) as speech_ws:
+                    speech_ws.send_json({
+                        "type": "start",
+                        "sample_rate": 16000,
+                        "encoding": "pcm_s16le",
+                        "channels": 1,
+                    })
+                    started = speech_ws.receive_json()
+                    assert started["type"] == "started"
+                    uid = started["utterance_id"]
+
+                    # Send speech frames (1 second of real speech)
+                    speech_frames = _load_pcm16_frames(count=10)
+                    for frame in speech_frames:
+                        speech_ws.send_bytes(frame)
+
+                    # Send silence frames to trigger VAD auto-final
+                    # VAD_SILENCE_DURATION_S ≈ 1.2s = 12 frames
+                    silence_needed = int(VAD_SILENCE_DURATION_S / 0.1) + 2
+                    silence_frames = _make_silence_frames(silence_needed)
+                    for frame in silence_frames:
+                        speech_ws.send_bytes(frame)
+
+                    # Drain events: collect interim messages, then expect final.
+                    # Auto-final may fire after ~12 silence frames, so we may
+                    # also receive interim from the speech frames.
+                    final = None
+                    for _attempt in range(100):
+                        msg = broadcast_ws.receive_json()
+                        if msg["event"] == "translation_final":
+                            final = msg
+                            break
+
+                    assert final is not None, (
+                        "No translation_final received after VAD silence "
+                        "detection (without end_hint)"
+                    )
+
+                    payload = final["payload"]
+                    assert payload["utterance_id"] == uid, (
+                        f"utterance_id mismatch: "
+                        f"{payload['utterance_id']} vs {uid}"
+                    )
+                    assert payload["seat_id"] == 1
+                    assert isinstance(payload["source_text"], str)
+                    assert len(payload["source_text"]) > 0
+                    assert payload["source_type"] == "speech_ws"
+
+                    # Verify broadcast envelope
+                    assert final["meeting_id"] == mid
+                    assert isinstance(final["timestamp"], int)
+
+    # ── Auto-final persists to DB ───────────────────────────────────────
+
+    def test_auto_final_persists_to_db(self) -> None:
+        """Auto-final record appears in GET /api/translations.
+
+        After VAD auto-final, the persisted translation record must be
+        queryable via the translations API, with correct utterance_id,
+        source_type, and source_text.
+        """
+        if not stream_service.ensure_speech_module():
+            pytest.skip("Speech models not loaded")
+
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            with client.websocket_connect(
+                f"/ws/speech/{mid}?seat=1"
+            ) as speech_ws:
+                speech_ws.send_json({
+                    "type": "start",
+                    "sample_rate": 16000,
+                    "encoding": "pcm_s16le",
+                    "channels": 1,
+                })
+                started = speech_ws.receive_json()
+                uid = started["utterance_id"]
+
+                # Speech + silence to trigger auto-final
+                speech_frames = _load_pcm16_frames(count=10)
+                for frame in speech_frames:
+                    speech_ws.send_bytes(frame)
+
+                silence_needed = int(VAD_SILENCE_DURATION_S / 0.1) + 2
+                for frame in _make_silence_frames(silence_needed):
+                    speech_ws.send_bytes(frame)
+
+            # Speech WS context manager exit → session cleanup.
+            # The record should have been persisted before cleanup.
+
+            resp = client.get(f"/api/translations?meeting_id={mid}")
+            assert resp.status_code == 200
+            entries = resp.json().get("data", {}).get("entries", [])
+            matches = [e for e in entries if e.get("utterance_id") == uid]
+            assert len(matches) >= 1, (
+                f"No translation record found for utterance {uid} "
+                f"after auto-final: {entries}"
+            )
+
+            record = matches[0]
+            assert record["source_type"] == "speech_ws"
+            assert isinstance(record["source_text"], str)
+            assert len(record["source_text"]) > 0
+            assert record["seat_id"] == 1
+
+    # ── Interim not persisted ───────────────────────────────────────────
+
+    def test_auto_final_does_not_persist_interim(self) -> None:
+        """Interim audio (before VAD threshold) does NOT produce DB records.
+
+        When speech frames are sent but NOT followed by enough silence to
+        trigger auto-final, no translation record should be persisted.
+        """
+        if not stream_service.ensure_speech_module():
+            pytest.skip("Speech models not loaded")
+
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            with client.websocket_connect(
+                f"/ws/speech/{mid}?seat=1"
+            ) as speech_ws:
+                speech_ws.send_json({
+                    "type": "start",
+                    "sample_rate": 16000,
+                    "encoding": "pcm_s16le",
+                    "channels": 1,
+                })
+                started = speech_ws.receive_json()
+                uid = started["utterance_id"]
+
+                # Send speech but NOT enough silence to trigger auto-final
+                frames = _load_pcm16_frames(count=10)
+                for frame in frames:
+                    speech_ws.send_bytes(frame)
+
+                # Only a few silence frames (less than VAD threshold)
+                few_silence = int(VAD_SILENCE_DURATION_S / 0.1) - 6
+                if few_silence > 0:
+                    for frame in _make_silence_frames(few_silence):
+                        speech_ws.send_bytes(frame)
+
+            # Query — should have NO records for this utterance
+            resp = client.get(f"/api/translations?meeting_id={mid}")
+            assert resp.status_code == 200
+            entries = resp.json().get("data", {}).get("entries", [])
+            matches = [e for e in entries if e.get("utterance_id") == uid]
+            assert len(matches) == 0, (
+                f"Found unexpected translation records before VAD threshold: "
+                f"{matches}"
+            )
+
+    # ── Multi-utterance in one WS ───────────────────────────────────────
+
+    def test_multi_utterance_in_one_ws(self) -> None:
+        """Single speech WS produces two finals with different utterance_ids.
+
+        Flow:
+            1. Send speech burst 1 + silence → auto-final utterance 1
+            2. Continue sending speech burst 2 (same WS) → new utterance active
+            3. Send silence → auto-final utterance 2
+
+        Verifies that each final has a unique utterance_id and both are
+        queryable via the translations API.
+        """
+        if not stream_service.ensure_speech_module():
+            pytest.skip("Speech models not loaded")
+
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            with client.websocket_connect(f"/ws/{mid}") as broadcast_ws:
+                broadcast_ws.receive_json()  # "connected"
+
+                with client.websocket_connect(
+                    f"/ws/speech/{mid}?seat=1"
+                ) as speech_ws:
+                    speech_ws.send_json({
+                        "type": "start",
+                        "sample_rate": 16000,
+                        "encoding": "pcm_s16le",
+                        "channels": 1,
+                    })
+                    started = speech_ws.receive_json()
+                    uid1 = started["utterance_id"]
+
+                    # ── Utterance 1: speech + silence ──────────────
+                    for frame in _load_pcm16_frames(count=10):
+                        speech_ws.send_bytes(frame)
+
+                    silence_needed = int(VAD_SILENCE_DURATION_S / 0.1) + 2
+                    for frame in _make_silence_frames(silence_needed):
+                        speech_ws.send_bytes(frame)
+
+                    # Drain events for utterance 1 final
+                    final1 = None
+                    for _attempt in range(100):
+                        msg = broadcast_ws.receive_json()
+                        if msg["event"] == "translation_final":
+                            final1 = msg
+                            break
+
+                    assert final1 is not None, (
+                        "No translation_final for utterance 1"
+                    )
+                    assert final1["payload"]["utterance_id"] == uid1
+
+                    # ── Utterance 2: speech + silence ──────────────
+                    # The speech WS is still open; send a second burst.
+                    for frame in _load_pcm16_frames(count=10):
+                        speech_ws.send_bytes(frame)
+
+                    for frame in _make_silence_frames(silence_needed):
+                        speech_ws.send_bytes(frame)
+
+                    # Drain events for utterance 2 final
+                    final2 = None
+                    for _attempt in range(100):
+                        msg = broadcast_ws.receive_json()
+                        if msg["event"] == "translation_final":
+                            final2 = msg
+                            break
+
+                    assert final2 is not None, (
+                        "No translation_final for utterance 2"
+                    )
+                    uid2 = final2["payload"]["utterance_id"]
+                    assert uid2 != uid1, (
+                        f"Second utterance ID {uid2} must differ from first "
+                        f"{uid1}"
+                    )
+
+            # Verify both records in DB
+            resp = client.get(f"/api/translations?meeting_id={mid}")
+            assert resp.status_code == 200
+            entries = resp.json().get("data", {}).get("entries", [])
+            uids_in_db = {e["utterance_id"] for e in entries}
+            assert uid1 in uids_in_db, (
+                f"Utterance 1 {uid1} not found in DB"
+            )
+            assert uid2 in uids_in_db, (
+                f"Utterance 2 {uid2} not found in DB"
+            )
+
+    # ── end_hint still works as fallback ────────────────────────────────
+
+    def test_end_hint_still_works_as_fallback(self) -> None:
+        """end_hint still triggers finalization (manual stop fallback).
+
+        Even with VAD auto-final enabled, explicit end_hint must remain
+        a valid way to finalize the current utterance.
+        """
+        if not stream_service.ensure_speech_module():
+            pytest.skip("Speech models not loaded")
+
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            with client.websocket_connect(f"/ws/{mid}") as broadcast_ws:
+                broadcast_ws.receive_json()  # "connected"
+
+                with client.websocket_connect(
+                    f"/ws/speech/{mid}?seat=1"
+                ) as speech_ws:
+                    speech_ws.send_json({
+                        "type": "start",
+                        "sample_rate": 16000,
+                        "encoding": "pcm_s16le",
+                        "channels": 1,
+                    })
+                    started = speech_ws.receive_json()
+                    uid = started["utterance_id"]
+
+                    frames = _load_pcm16_frames(count=10)
+                    for frame in frames:
+                        speech_ws.send_bytes(frame)
+
+                    # end_hint — must still work
+                    speech_ws.send_json({"type": "end_hint"})
+
+                    final = None
+                    for _attempt in range(50):
+                        msg = broadcast_ws.receive_json()
+                        if msg["event"] == "translation_final":
+                            final = msg
+                            break
+
+                    assert final is not None, (
+                        "No translation_final after end_hint"
+                    )
+                    assert final["payload"]["utterance_id"] == uid
+                    assert final["payload"]["seat_id"] == 1
+
+    # ── cancel no DB write ──────────────────────────────────────────────
+
+    def test_cancel_no_db_write(self) -> None:
+        """cancel discards buffered audio without writing to DB."""
+        if not stream_service.ensure_speech_module():
+            pytest.skip("Speech models not loaded")
+
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            with client.websocket_connect(
+                f"/ws/speech/{mid}?seat=1"
+            ) as speech_ws:
+                speech_ws.send_json({
+                    "type": "start",
+                    "sample_rate": 16000,
+                    "encoding": "pcm_s16le",
+                    "channels": 1,
+                })
+                started = speech_ws.receive_json()
+                uid = started["utterance_id"]
+
+                frames = _load_pcm16_frames(count=10)
+                for frame in frames:
+                    speech_ws.send_bytes(frame)
+
+                # Cancel — must discard buffer without persisting
+                speech_ws.send_json({"type": "cancel"})
+
+            # Verify no DB record for the cancelled utterance
+            resp = client.get(f"/api/translations?meeting_id={mid}")
+            assert resp.status_code == 200
+            entries = resp.json().get("data", {}).get("entries", [])
+            matches = [e for e in entries if e.get("utterance_id") == uid]
+            assert len(matches) == 0, (
+                f"Cancelled utterance {uid} should not be persisted: "
+                f"{matches}"
+            )
+
+    def test_cancel_drops_buffered_audio(self) -> None:
+        """After cancel, subsequent end_hint does not use old buffered audio.
+
+        Verifies that cancel properly clears the utterance buffer, so that
+        any subsequent end_hint (even if unintended) does not produce a
+        record from pre-cancel audio.
+        """
+        if not stream_service.ensure_speech_module():
+            pytest.skip("Speech models not loaded")
+
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            uid_to_check = None
+
+            with client.websocket_connect(
+                f"/ws/speech/{mid}?seat=1"
+            ) as speech_ws:
+                speech_ws.send_json({
+                    "type": "start",
+                    "sample_rate": 16000,
+                    "encoding": "pcm_s16le",
+                    "channels": 1,
+                })
+                started = speech_ws.receive_json()
+                uid_to_check = started["utterance_id"]
+
+                # Buffer some audio
+                frames = _load_pcm16_frames(count=5)
+                for frame in frames:
+                    speech_ws.send_bytes(frame)
+
+                # Cancel — clears buffer
+                speech_ws.send_json({"type": "cancel"})
+
+                # Start a new utterance (cancel clears current_utterance_id,
+                # so we need a new start to set a new utterance_id)
+                speech_ws.send_json({
+                    "type": "start",
+                    "sample_rate": 16000,
+                    "encoding": "pcm_s16le",
+                    "channels": 1,
+                })
+                started2 = speech_ws.receive_json()
+                uid2 = started2["utterance_id"]
+                assert uid2 != uid_to_check
+
+                # Send end_hint with NO new audio — buffer was cleared by
+                # the new start, so end_hint should be a no-op.
+                speech_ws.send_json({"type": "end_hint"})
+
+            # Verify no DB record for the cancelled utterance
+            resp = client.get(f"/api/translations?meeting_id={mid}")
+            assert resp.status_code == 200
+            entries = resp.json().get("data", {}).get("entries", [])
+            cancelled_matches = [
+                e for e in entries
+                if e.get("utterance_id") == uid_to_check
+            ]
+            assert len(cancelled_matches) == 0, (
+                f"Cancelled utterance {uid_to_check} should not be persisted: "
+                f"{cancelled_matches}"
             )

@@ -24,6 +24,7 @@ import {
   fetchSpeakerSeat,
   fetchActiveVote,
   fetchVoteStatistics,
+  fetchVoteResultsForMeeting,
   fetchAgendas,
   fetchAttendees,
   fetchCurrentServiceCall,
@@ -66,6 +67,8 @@ export interface SeatData {
   activeVote: Vote | null;
   /** Vote statistics for the active vote, or null. */
   voteStats: VoteStatistics | null;
+  /** Vote statistics for current and historical meeting votes, newest first. */
+  voteResults: VoteStatistics[];
   /** True when vote statistics fetch failed. */
   voteStatsError: string | null;
   /** Current pending service call for this seat, or null. */
@@ -93,6 +96,7 @@ interface DataState {
   agenda: Agenda[];
   activeVote: Vote | null;
   voteStats: VoteStatistics | null;
+  voteResults: VoteStatistics[];
   currentServiceCall: ServiceCall | null;
   translations: TranslationRecord[];
 }
@@ -105,6 +109,7 @@ const EMPTY_DATA: DataState = {
   agenda: [],
   activeVote: null,
   voteStats: null,
+  voteResults: [],
   currentServiceCall: null,
   translations: [],
 };
@@ -155,17 +160,20 @@ export function useSeatData(seatId: number): SeatData {
       let agenda: Agenda[] = [];
       let currentServiceCall: ServiceCall | null = null;
       let translations: TranslationRecord[] = [];
+      let voteResults: VoteStatistics[] = [];
 
       if (meetingId) {
         // Fetch attendees, agendas, and translations in parallel (no duplicates)
-        const [a, ag, tr] = await Promise.all([
+        const [a, ag, tr, vr] = await Promise.all([
           fetchAttendees(meetingId),
           fetchAgendas(meetingId),
           fetchTranslations(meetingId).then((r) => r.entries),
+          fetchVoteResultsForMeeting(meetingId),
         ]);
         attendees = a;
         agenda = ag;
         translations = tr;
+        voteResults = vr;
 
         // Fetch current service call separately with tolerance for failure
         try {
@@ -199,6 +207,7 @@ export function useSeatData(seatId: number): SeatData {
         agenda,
         activeVote,
         voteStats,
+        voteResults,
         currentServiceCall,
         translations,
       });
@@ -328,6 +337,7 @@ export function useSeatData(seatId: number): SeatData {
     agenda: data.agenda,
     activeVote: data.activeVote,
     voteStats: data.voteStats,
+    voteResults: data.voteResults,
     voteStatsError,
     currentServiceCall: data.currentServiceCall,
     translations: data.translations,

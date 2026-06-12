@@ -84,6 +84,10 @@ class VoteService(BaseService):
         """Return the currently open vote, or None."""
         return self.vote_repo.get_open_vote()
 
+    def list_votes_by_meeting(self, meeting_id: int) -> list[Vote]:
+        """Return all votes for a meeting, including closed vote history."""
+        return self.vote_repo.list_by_meeting(meeting_id)
+
     def get_vote(self, vote_id: int) -> Vote:
         """Get vote by ID. Raises NotFoundError if missing."""
         vote = self.vote_repo.get_by_id(vote_id)

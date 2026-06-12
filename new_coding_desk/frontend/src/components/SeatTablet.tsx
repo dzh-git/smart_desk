@@ -34,13 +34,24 @@ import {
   cancelServiceCall,
   fetchSpeechStatus,
 } from "../api/resources";
-import type { ServiceType, SpeechModelStatus } from "../api/types";
+import type { ServiceType, SpeechModelStatus, VoteStatistics } from "../api/types";
+import {
+  deriveSeatMeetingStatus,
+  canCheckIn,
+  canOccupySeat,
+  canVacateSeat,
+  canSubmitVote,
+  canSelectVoteOption,
+  canCallService,
+  canCancelService,
+  canStartSpeech,
+} from "../utils/uiState";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface SeatTabletProps {
   seatId: number;
-  onSwitchToAdmin: () => void;
+  onSwitchToAdmin?: () => void;
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -56,6 +67,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     unboundAttendees,
     activeVote,
     voteStats,
+    voteResults,
     voteStatsError,
     currentServiceCall,
     translations,
@@ -83,6 +95,20 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const isCheckedIn = mySeat?.isCheckedIn ?? false;
   const isSpeaker = speakerSeatId === seatId;
   const wsConnected = connection === "connected";
+  const latestClosedVote =
+    voteResults.find((vote) => vote.status === "closed") ?? null;
+  const displayVoteStats = voteStats ?? latestClosedVote;
+  const displayVote =
+    activeVote ??
+    (displayVoteStats
+      ? {
+          id: displayVoteStats.vote_id,
+          title: displayVoteStats.title,
+          options: displayVoteStats.results.map((item) => item.option),
+          status: displayVoteStats.status,
+          is_anonymous: displayVoteStats.is_anonymous,
+        }
+      : null);
 
   const isOccupiedUnchecked =
     !isVacant && !isCheckedIn;
@@ -106,20 +132,21 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     }
   }
 
-  // Get the current vote submission status for this seat's attendee
+  // Get the current vote submission status for this seat's attendee.
+  // Uses seat-bound attendeeId (stable) instead of name lookup to avoid
+  // selecting the wrong attendee when two share the same name.
+  const myAttendeeId = mySeat?.attendeeId ?? null;
   const voteSubmission = useMemo(() => {
-    if (!activeVote || !myAttendeeName) return null;
-    const myId = attendees.find((a) => a.name === myAttendeeName)?.id;
-    if (!myId || !voteStats) return null;
+    if (!displayVoteStats || !myAttendeeId) return null;
 
-    for (const result of voteStats.results) {
-      if (result.attendee_ids?.includes(myId)) {
-        return { option: result.option, attendeeId: myId };
+    for (const result of displayVoteStats.results) {
+      if (result.attendee_ids?.includes(myAttendeeId)) {
+        return { option: result.option, attendeeId: myAttendeeId };
       }
     }
     // If anonymous, we can't check, but let's still allow submission
-    return { option: null, attendeeId: myId };
-  }, [activeVote, voteStats, myAttendeeName, attendees]);
+    return { option: null, attendeeId: myAttendeeId };
+  }, [displayVoteStats, myAttendeeId]);
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
@@ -162,12 +189,13 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   }
 
   async function handleVoteSubmit() {
+    if (!activeVote || activeVote.status !== "open") return;
     if (!selectedVoteOption || !voteSubmission?.attendeeId) return;
     setSubmittingVote(true);
     setActionError(null);
     try {
       await submitVote(
-        activeVote!.id,
+        activeVote.id,
         voteSubmission.attendeeId,
         selectedVoteOption,
       );
@@ -214,9 +242,10 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     }
   }
 
-  // ── Whether writes are allowed ─────────────────────────────────────────
+  // ── Whether writes are allowed (Task 4) ─────────────────────────────────
 
-  const writesAllowed = wsConnected && !!meeting;
+  const meetingStatus = deriveSeatMeetingStatus(meeting);
+  const writesAllowed = wsConnected && !!meeting && meeting?.status === "active";
 
   // ── Loading State ──────────────────────────────────────────────────────
 
@@ -323,8 +352,8 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
         {/* Meeting info bar */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <p className="text-xs text-slate-500 font-medium">
                 {meeting?.title ?? "Meeting"}
               </p>
@@ -334,7 +363,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
               {isSpeaker && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
                   <Mic size={12} />
@@ -375,13 +404,14 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           onOccupy={handleOccupy}
           onVacate={handleVacate}
           writesAllowed={writesAllowed}
+          meetingStatus={meetingStatus}
         />
 
-        {/* Voting Section — only for checked-in seats with active vote */}
-        {isCheckedIn && activeVote && activeVote.status === "open" && (
+        {/* Voting Section: open votes are writable; closed votes remain visible as final results. */}
+        {isCheckedIn && displayVote && displayVoteStats && (
           <SeatVoteSection
-            vote={activeVote}
-            voteStats={voteStats}
+            vote={displayVote}
+            voteStats={displayVoteStats}
             voteStatsError={voteStatsError}
             currentVote={voteSubmission?.option ?? null}
             selectedOption={selectedVoteOption}
@@ -389,23 +419,8 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
             onSubmit={handleVoteSubmit}
             submitting={submittingVote}
             writesAllowed={writesAllowed}
+            meetingStatus={meetingStatus}
           />
-        )}
-
-        {/* Vote closed info */}
-        {isCheckedIn && activeVote && activeVote.status === "closed" && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Vote size={16} className="text-slate-400" />
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                Vote
-              </p>
-            </div>
-            <p className="text-sm text-slate-600">{activeVote.title}</p>
-            <span className="inline-flex items-center text-xs text-slate-500 bg-slate-100 rounded-full px-2 py-0.5 mt-1">
-              Closed
-            </span>
-          </div>
         )}
 
         {/* Service Calls Section — only for checked-in seats */}
@@ -417,6 +432,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
             creating={creatingService}
             cancelling={cancellingService}
             writesAllowed={writesAllowed}
+            meetingStatus={meetingStatus}
           />
         )}
 
@@ -427,6 +443,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           isSpeaker={isSpeaker}
           isCheckedIn={isCheckedIn}
           writesAllowed={writesAllowed}
+          meetingStatus={meetingStatus}
         />
 
         {/* Bilingual Transcript */}
@@ -467,7 +484,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 interface SeatHeaderProps {
   seatId: number;
   connection: "connecting" | "connected" | "disconnected";
-  onBack: () => void;
+  onBack?: () => void;
   meetingTitle?: string;
 }
 
@@ -480,33 +497,37 @@ function SeatHeader({
   const now = useClock();
 
   return (
-    <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between shadow-lg flex-shrink-0">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white transition-colors"
-        >
-          <ArrowLeft size={14} />
-          Back
-        </button>
-        <div className="w-px h-5 bg-slate-700" />
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-sky-500 flex items-center justify-center">
+    <header className="bg-slate-900 text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg flex-shrink-0">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {onBack && (
+          <>
+            <button
+              onClick={onBack}
+              className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white transition-colors"
+            >
+              <ArrowLeft size={14} />
+              Back
+            </button>
+            <div className="w-px h-5 bg-slate-700 shrink-0" />
+          </>
+        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-sky-500 flex shrink-0 items-center justify-center">
             <Cpu size={14} className="text-white" />
           </div>
           <span className="text-sm font-bold text-white">Seat {seatId}</span>
         </div>
         {meetingTitle && (
           <>
-            <div className="w-px h-5 bg-slate-700" />
-            <p className="text-xs text-slate-400 truncate max-w-[200px]">
+            <div className="hidden sm:block w-px h-5 bg-slate-700 shrink-0" />
+            <p className="min-w-0 max-w-[35vw] truncate text-xs text-slate-400 sm:max-w-[240px]">
               {meetingTitle}
             </p>
           </>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <ConnectionBadge status={connection} />
         <span className="text-xs font-mono text-slate-400">
           {formatTime(now)}
@@ -563,6 +584,7 @@ interface SeatStatusCardProps {
   onOccupy: () => void;
   onVacate: () => void;
   writesAllowed: boolean;
+  meetingStatus: "no_meeting" | "meeting_active";
 }
 
 function SeatStatusCard({
@@ -579,6 +601,7 @@ function SeatStatusCard({
   onOccupy,
   onVacate,
   writesAllowed,
+  meetingStatus,
 }: SeatStatusCardProps) {
   // ── Vacant ────────────────────────────────────────────────────────────
   if (isVacant) {
@@ -596,7 +619,7 @@ function SeatStatusCard({
         {demoControlsEnabled && (
           <button
             onClick={onOccupy}
-            disabled={!writesAllowed}
+            disabled={!canOccupySeat(meetingStatus, isVacant, writesAllowed)}
             className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <User size={14} />
@@ -684,7 +707,7 @@ function SeatStatusCard({
         <div className="flex items-center gap-2">
           <button
             onClick={onCheckin}
-            disabled={!checkinAttendeeId || !writesAllowed}
+            disabled={!canCheckIn(meetingStatus, isOccupiedUnchecked, !!checkinAttendeeId, writesAllowed)}
             className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <UserCheck size={14} />
@@ -693,7 +716,7 @@ function SeatStatusCard({
           {demoControlsEnabled && (
             <button
               onClick={onVacate}
-              disabled={!writesAllowed}
+              disabled={!canVacateSeat(meetingStatus, !isVacant, writesAllowed)}
               className="inline-flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-4 py-2 hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Vacate (Demo)
@@ -707,7 +730,7 @@ function SeatStatusCard({
   // ── Checked In ───────────────────────────────────────────────────────
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div
           className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold ${
             isSpeaker
@@ -731,7 +754,7 @@ function SeatStatusCard({
             {myAttendee?.title ?? "Attendee"}
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {isSpeaker && (
             <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
               <Mic size={12} />
@@ -749,7 +772,7 @@ function SeatStatusCard({
         <div className="mt-3 pt-3 border-t border-slate-100">
           <button
             onClick={onVacate}
-            disabled={!writesAllowed}
+            disabled={!canVacateSeat(meetingStatus, !isVacant, writesAllowed)}
             className="text-xs font-medium text-slate-500 bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Vacate Seat (Demo)
@@ -763,11 +786,14 @@ function SeatStatusCard({
 // ── Seat Vote Section ────────────────────────────────────────────────────────
 
 interface SeatVoteSectionProps {
-  vote: { id: number; title: string; options: string[]; is_anonymous: boolean };
-  voteStats: {
-    results: Array<{ option: string; count: number }>;
-    total_votes: number;
-  } | null;
+  vote: {
+    id: number;
+    title: string;
+    options: string[];
+    status: "open" | "closed";
+    is_anonymous: boolean;
+  };
+  voteStats: VoteStatistics;
   voteStatsError: string | null;
   currentVote: string | null;
   selectedOption: string | null;
@@ -775,6 +801,7 @@ interface SeatVoteSectionProps {
   onSubmit: () => void;
   submitting: boolean;
   writesAllowed: boolean;
+  meetingStatus: "no_meeting" | "meeting_active";
 }
 
 function SeatVoteSection({
@@ -787,20 +814,23 @@ function SeatVoteSection({
   onSubmit,
   submitting,
   writesAllowed,
+  meetingStatus,
 }: SeatVoteSectionProps) {
   const hasVoted = currentVote != null;
+  const isClosed = vote.status === "closed";
+  const statusLabel = isClosed ? "Final Result" : "Active Vote";
 
   return (
-    <div className="bg-white rounded-2xl border border-sky-200 shadow-sm p-5">
+    <div className={`bg-white rounded-2xl border shadow-sm p-5 ${isClosed ? "border-slate-200" : "border-sky-200"}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Vote size={16} className="text-sky-500" />
-          <p className="text-xs font-semibold uppercase tracking-widest text-sky-600">
-            Active Vote
+          <Vote size={16} className={isClosed ? "text-slate-500" : "text-sky-500"} />
+          <p className={`text-xs font-semibold uppercase tracking-widest ${isClosed ? "text-slate-500" : "text-sky-600"}`}>
+            {statusLabel}
           </p>
         </div>
-        <span className="text-xs font-medium text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5">
-          {vote.is_anonymous ? "Anonymous" : "Open"}
+        <span className={`text-xs font-medium rounded-full border px-2 py-0.5 ${isClosed ? "border-slate-200 bg-slate-100 text-slate-600" : "border-sky-200 bg-sky-50 text-sky-700"}`}>
+          {isClosed ? "Closed" : vote.is_anonymous ? "Anonymous" : "Open"}
         </span>
       </div>
 
@@ -809,39 +839,41 @@ function SeatVoteSection({
       </p>
 
       {/* Statistics bars (read-only) */}
-      {voteStats && (
-        <div className="mb-4 space-y-2">
-          {voteStats.results.map((opt) => {
-            const pct =
-              voteStats.total_votes > 0
-                ? Math.round((opt.count / voteStats.total_votes) * 100)
-                : 0;
-            return (
-              <div
-                key={opt.option}
-                className="flex items-center gap-2 text-xs"
-              >
-                <span className="w-16 text-slate-600 font-medium text-right">
-                  {opt.option}
-                </span>
-                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-sky-400 transition-all duration-500"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <span className="w-10 text-slate-500">
-                  {pct}%
-                </span>
+      <div className="mb-4 space-y-2">
+        {voteStats.results.map((opt) => {
+          const pct =
+            voteStats.total_votes > 0
+              ? Math.round((opt.count / voteStats.total_votes) * 100)
+              : 0;
+          return (
+            <div
+              key={opt.option}
+              className="flex items-center gap-2 text-xs"
+            >
+              <span className="w-20 min-w-0 truncate text-slate-600 font-medium text-right sm:w-24">
+                {opt.option}
+              </span>
+              <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${isClosed ? "bg-slate-500" : "bg-sky-400"}`}
+                  style={{ width: `${pct}%` }}
+                />
               </div>
-            );
-          })}
-        </div>
-      )}
+              <span className="w-20 shrink-0 text-slate-500">
+                {opt.count} / {pct}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
 
       {voteStatsError && (
         <p className="text-xs text-amber-600 mb-3">{voteStatsError}</p>
       )}
+
+      <p className="mb-3 text-xs text-slate-400">
+        {voteStats.total_votes} vote{voteStats.total_votes !== 1 ? "s" : ""} cast
+      </p>
 
       {/* Vote option selection */}
       <div className="space-y-1.5 mb-3">
@@ -852,7 +884,7 @@ function SeatVoteSection({
             <button
               key={option}
               onClick={() => onSelectOption(isSelected ? null : option)}
-              disabled={!writesAllowed}
+              disabled={!canSelectVoteOption(meetingStatus, vote.status, writesAllowed)}
               className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
                 isSelected
                   ? "border-sky-300 bg-sky-50"
@@ -878,11 +910,11 @@ function SeatVoteSection({
                   />
                 )}
               </div>
-              <span className="text-sm font-medium text-slate-700">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
                 {option}
               </span>
               {isMyVote && (
-                <span className="ml-auto text-xs text-emerald-600 font-medium">
+                <span className="shrink-0 text-xs text-emerald-600 font-medium">
                   Your vote
                 </span>
               )}
@@ -891,22 +923,29 @@ function SeatVoteSection({
         })}
       </div>
 
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onSubmit}
-          disabled={!selectedOption || submitting || !writesAllowed}
-          className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {submitting ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <CheckCircle2 size={14} />
-          )}
-          {hasVoted ? "Update Vote" : "Submit Vote"}
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {!isClosed && (
+          <button
+            onClick={onSubmit}
+            disabled={!canSubmitVote(meetingStatus, vote.status, true, !!selectedOption, writesAllowed) || submitting}
+            className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={14} />
+            )}
+            {hasVoted ? "Update Vote" : "Submit Vote"}
+          </button>
+        )}
         {hasVoted && (
+          <p className="min-w-0 truncate text-xs text-slate-400">
+            Your choice: <span className="font-semibold">{currentVote}</span>
+          </p>
+        )}
+        {isClosed && !hasVoted && (
           <p className="text-xs text-slate-400">
-            Your current vote: <span className="font-semibold">{currentVote}</span>
+            Your choice is unavailable for this result.
           </p>
         )}
       </div>
@@ -959,6 +998,7 @@ interface SeatServiceSectionProps {
   creating: boolean;
   cancelling: boolean;
   writesAllowed: boolean;
+  meetingStatus: "no_meeting" | "meeting_active";
 }
 
 function SeatServiceSection({
@@ -968,6 +1008,7 @@ function SeatServiceSection({
   creating,
   cancelling,
   writesAllowed,
+  meetingStatus,
 }: SeatServiceSectionProps) {
   const hasPending = currentCall?.status === "pending";
 
@@ -982,9 +1023,9 @@ function SeatServiceSection({
 
       {hasPending ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
             <Clock size={16} className="text-amber-500" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-slate-800">
                 {SERVICE_TYPES.find(
                   (s) => s.type === currentCall.service_type,
@@ -997,8 +1038,8 @@ function SeatServiceSection({
             </div>
             <button
               onClick={onCancel}
-              disabled={cancelling || !writesAllowed}
-              className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 bg-white border border-rose-200 rounded-lg px-3 py-1.5 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!canCancelService(meetingStatus, hasPending, writesAllowed) || cancelling}
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-600 bg-white border border-rose-200 rounded-lg px-3 py-1.5 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {cancelling ? (
                 <Loader2 size={12} className="animate-spin" />
@@ -1014,12 +1055,12 @@ function SeatServiceSection({
           <p className="text-xs text-slate-500 mb-3">
             Request a service:
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {SERVICE_TYPES.map((svc) => (
               <button
                 key={svc.type}
                 onClick={() => onRequest(svc.type)}
-                disabled={creating || !writesAllowed}
+                disabled={!canCallService(meetingStatus, true, hasPending, writesAllowed) || creating}
                 className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${svc.color} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {svc.icon}
@@ -1041,6 +1082,7 @@ interface SpeechControlProps {
   isSpeaker: boolean;
   isCheckedIn: boolean;
   writesAllowed: boolean;
+  meetingStatus: "no_meeting" | "meeting_active";
 }
 
 function SpeechControl({
@@ -1049,6 +1091,7 @@ function SpeechControl({
   isSpeaker,
   isCheckedIn,
   writesAllowed,
+  meetingStatus,
 }: SpeechControlProps) {
   const { status, error, start, stop, cancel } = useSpeechStream(
     meetingId,
@@ -1089,10 +1132,7 @@ function SpeechControl({
     navigator.mediaDevices?.getUserMedia != null;
 
   const startDisabled =
-    !writesAllowed ||
-    !isCheckedIn ||
-    !browserSupportsMic ||
-    !modelsReady ||
+    !canStartSpeech(meetingStatus, isSpeaker, isCheckedIn, writesAllowed, modelsReady, browserSupportsMic) ||
     status === "requesting_microphone" ||
     status === "connecting_speech_ws";
 
@@ -1117,7 +1157,7 @@ function SpeechControl({
   return (
     <div className="bg-white rounded-2xl border border-sky-200 shadow-sm p-5">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         <Mic
           size={16}
           className={
@@ -1127,18 +1167,20 @@ function SpeechControl({
         <p className="text-xs font-semibold uppercase tracking-widest text-sky-600">
           Voice Recognition
         </p>
-        {status === "recording" && (
-          <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2.5 py-0.5">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-            Recording
-          </span>
-        )}
-        {modelsPreloading && (
-          <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
-            <Loader2 size={10} className="animate-spin" />
-            Loading models
-          </span>
-        )}
+        <div className="ml-auto flex flex-wrap justify-end gap-1">
+          {status === "recording" && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2.5 py-0.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              Recording
+            </span>
+          )}
+          {modelsPreloading && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+              <Loader2 size={10} className="animate-spin" />
+              Loading models
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Speech status error (API fetch failure) */}
@@ -1208,7 +1250,7 @@ function SpeechControl({
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {status === "idle" && (
           <button
             onClick={start}

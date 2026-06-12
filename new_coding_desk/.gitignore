@@ -1,5 +1,6 @@
-# Model weights (~3GB, downloaded from ModelScope/HuggingFace)
+# Model weights and caches
 models/
+.hf_cache/
 
 # Python
 __pycache__/
@@ -20,18 +21,18 @@ env/
 *.swp
 *.swo
 
-# Database
+# Databases
 *.db
 *.db-journal
 *.db-wal
 
-# Frontend (Vite + React)
+# Frontend
 node_modules/
 dist-ssr/
 *.local
 .env
 
-# Frontend logs
+# Logs
 logs/
 *.log
 npm-debug.log*
@@ -40,19 +41,23 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Frontend IDE (Windows)
+# Windows project files
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 
-# Working artifacts (plans, reports, debug output)
+# Working artifacts
 working/
 
-# Test results
+# Test and browser artifacts
 frontend/test-results/
+.pytest_cache/
+.playwright-mcp/
+.codex-playwright-output/
+.workbuddy/
 
-# Real audio data (large binary files)
+# Real audio data
 真实语音数据集/
 
 # OS

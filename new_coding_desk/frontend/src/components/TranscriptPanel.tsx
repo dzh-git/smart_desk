@@ -102,6 +102,29 @@ function deduplicateFinals(entries: TranslationRecord[]): TranslationRecord[] {
   return [...noUtterance, ...byUtterance.values()];
 }
 
+/**
+ * Sort final records oldest-first by created_at, with id as tiebreaker.
+ * This ensures the UI always displays history chronologically regardless
+ * of the backend's sort order (e.g. newest-first).
+ */
+function sortFinalsOldestFirst(
+  entries: TranslationRecord[],
+): TranslationRecord[] {
+  return [...entries].sort((a, b) => {
+    const ta = new Date(a.created_at).getTime();
+    const tb = new Date(b.created_at).getTime();
+
+    // Both parse successfully → oldest first
+    if (!isNaN(ta) && !isNaN(tb)) {
+      if (ta !== tb) return ta - tb;
+    }
+
+    // Fallback: if one or both dates are invalid, still provide a stable
+    // order via id ascending so the UI is always deterministic.
+    return a.id - b.id;
+  });
+}
+
 /** Deduplicate interims: per utteranceId keep the entry with highest revision;
  *  if same revision, keep the last one in the array.
  */
@@ -143,8 +166,8 @@ export function TranscriptPanel({
   seatNameMap,
   loading = false,
 }: TranscriptPanelProps) {
-  // Deduplicate finals deterministically
-  const dedupedEntries = deduplicateFinals(entries);
+  // Deduplicate finals deterministically, then sort oldest-first
+  const dedupedEntries = sortFinalsOldestFirst(deduplicateFinals(entries));
 
   // Collect utterance_ids that have finals
   const finalUtteranceIds = new Set<string>();
@@ -155,9 +178,15 @@ export function TranscriptPanel({
   // Deduplicate interims: per utteranceId keep highest revision, then filter
   const filteredInterims = deduplicateInterims(interims, finalUtteranceIds);
 
-  // Separate interims with and without caption
-  const captionInterims = filteredInterims.filter((i) => i.caption != null);
-  const textInterims = filteredInterims.filter((i) => i.caption == null);
+  // Separate interims with and without caption.
+  // If caption exists but both previousLine and currentLine are empty,
+  // fall back to rendering source_text as a text-only interim row.
+  const captionInterims = filteredInterims.filter(
+    (i) => i.caption != null && (i.caption.currentLine || i.caption.previousLine),
+  );
+  const textInterims = filteredInterims.filter(
+    (i) => i.caption == null || (!i.caption.currentLine && !i.caption.previousLine),
+  );
 
   const hasInterims = filteredInterims.length > 0;
   const hasEntries = dedupedEntries.length > 0;
@@ -179,7 +208,7 @@ export function TranscriptPanel({
           description="Recognized speech will appear here in real time."
         />
       ) : (
-        <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+        <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1 md:max-h-72">
           {/* Live caption blocks (interims with caption) */}
           {captionInterims.map((interim) => (
             <LiveCaptionBlock
@@ -245,6 +274,7 @@ function TranscriptRow({
       data-utterance-id={utteranceId ?? ""}
       data-seat-id={entry.seat_id}
       data-translation-id={entry.id}
+      data-created-at={entry.created_at}
     >
       <div
         className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold ${color}`}
@@ -291,6 +321,9 @@ function LiveCaptionBlock({
   return (
     <div
       data-testid="live-caption"
+      data-utterance-id={interim.utteranceId}
+      data-seat-id={interim.seatId}
+      data-revision={interim.revision}
       className="bg-sky-50 border border-sky-200 rounded-lg p-3"
     >
       <div className="flex items-baseline gap-2 mb-1.5">
@@ -301,13 +334,13 @@ function LiveCaptionBlock({
       </div>
       <div
         data-testid="live-caption-previous"
-        className="text-sm text-slate-500 leading-relaxed"
+        className="min-h-[1.25rem] max-h-[1.25rem] overflow-hidden break-words text-sm text-slate-500 leading-snug"
       >
         {caption.previousLine}
       </div>
       <div
         data-testid="live-caption-current"
-        className="text-base text-slate-800 font-medium leading-relaxed"
+        className="min-h-[1.5rem] max-h-[1.5rem] overflow-hidden break-words text-base text-slate-800 font-medium leading-snug"
       >
         {caption.currentLine}
       </div>

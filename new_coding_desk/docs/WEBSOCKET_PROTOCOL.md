@@ -1,57 +1,95 @@
 # SmartDesk WebSocket Protocol
 
-Version: 2.1
+SmartDesk uses two backend-owned WebSocket channels. The frontend never
+connects directly to FunASR.
 
-Status: Speech Integration Contract
+## Channels
 
-Last Updated: 2026-06-08
-
----
-
-# 1. Purpose
-
-SmartDesk uses two WebSocket channels:
-
-| Channel | Endpoint | Direction | Purpose |
-|---|---|---|---|
-| Meeting broadcast | `/ws/{meeting_id}?seat={seat_id}` | server -> clients | Seat, meeting, vote, service-call, and transcript events |
-| Speech uplink | `/ws/speech/{meeting_id}?seat={seat_id}` | current Speaker Seat -> server | Live PCM16 audio upload and speech control messages |
-
-Normal meeting, seat, vote, and service-call mutations still use HTTP APIs.
-Live speech audio is the only client-to-server WebSocket data path.
-
-`speech_module/` is legacy reference code and must not be modified by SmartDesk
-implementation tasks.
-
----
-
-# 2. Meeting Broadcast Channel
+### Meeting Broadcast Channel
 
 ```text
-/ws/{meeting_id}?seat={seat_id}
+/ws/{meeting_id}?seat=N
 ```
 
-Examples:
+Use this channel for meeting-wide server events. Clients do not perform
+business writes over this channel.
+
+### Speech Uplink Channel
 
 ```text
-Admin:  /ws/1
-Seat 3: /ws/1?seat=3
+/ws/speech/{meeting_id}?seat=N
 ```
 
-`seat` is optional. Admin clients omit it or use `seat=0`.
+Only the current Speaker Seat may connect. The backend validates the active
+meeting and speaker seat before accepting speech streaming.
 
-On successful connection, the server sends:
+Audio format:
+
+- PCM signed 16-bit little-endian
+- 16 kHz
+- mono
+- sent as binary WebSocket frames
+
+## Speech Control Messages
+
+Frontend to backend JSON messages:
+
+```json
+{"type": "start"}
+```
+
+Starts an utterance session and returns:
 
 ```json
 {
-  "event": "connected",
-  "meeting_id": 1,
-  "timestamp": 1748700000,
-  "payload": {}
+  "type": "started",
+  "utterance_id": "utt_1_1_000001",
+  "session_key": "speech_1_1"
 }
 ```
 
-Broadcast message format:
+```json
+{"type": "end_hint"}
+```
+
+Forces the backend to finalize the buffered utterance. This is a fallback; the
+primary path is backend VAD auto-final.
+
+```json
+{"type": "cancel"}
+```
+
+Cancels the current interim utterance. Cancelled interim text is not persisted.
+
+## Speech Flow
+
+Primary path:
+
+1. Speaker Seat connects to `/ws/speech/{meeting_id}?seat=N`.
+2. Frontend sends `start`.
+3. Frontend streams PCM16 binary frames.
+4. Backend publishes `translation_interim` events for live caption display.
+5. Backend RMS endpoint detection decides the utterance boundary.
+6. Backend runs final ASR, persists the final record, and publishes
+   `translation_final`.
+7. The same speech WebSocket stays open and a new utterance can start.
+
+Fallback path:
+
+1. Frontend sends `end_hint`.
+2. Backend finalizes the current buffer immediately if possible.
+3. Backend publishes `translation_final`.
+
+Speaker Seat switch:
+
+1. Setting or clearing the speaker seat invalidates the old speech connection.
+2. Pending interim text for the old speaker is cancelled.
+3. Backend broadcasts `translation_interim_cancelled`.
+4. The new Speaker Seat may open a new speech WebSocket.
+
+## Event Envelope
+
+Broadcast events use:
 
 ```json
 {
@@ -62,101 +100,9 @@ Broadcast message format:
 }
 ```
 
-Most broadcast events mean "data changed" and clients should re-fetch the
-related HTTP resource. `translation_interim` is different: clients update local
-interim transcript state directly and should not trigger a full HTTP refresh for
-each revision.
+## `translation_interim`
 
----
-
-# 3. Speech Uplink Channel
-
-```text
-/ws/speech/{meeting_id}?seat={seat_id}
-```
-
-Only the current Speaker Seat may connect. The backend validates:
-
-* meeting exists and is active
-* `seat_id` is between 1 and 10
-* `seat_id` equals the persisted Speaker Seat
-
-If validation fails, the server must send an error or close the connection with
-a clear reason. The frontend must not attempt to bypass this rule.
-
-Client control messages:
-
-```json
-{"type":"start","sample_rate":16000,"encoding":"pcm_s16le","channels":1}
-{"type":"end_hint"}
-{"type":"cancel"}
-```
-
-Server control messages:
-
-```json
-{"type":"started","utterance_id":"utt_1_3_000042","session_key":"speech_1_3"}
-{"type":"utterance_started","utterance_id":"utt_1_3_000043"}
-{"type":"error","code":"NOT_SPEAKER_SEAT","message":"Only the speaker seat may stream audio"}
-```
-
-Audio frames are binary WebSocket messages:
-
-```text
-encoding:    pcm_s16le
-sample_rate: 16000
-channels:    1
-frame_ms:    100 recommended
-bytes/frame: 3200 for 100 ms
-```
-
-The backend owns VAD, utterance boundaries, final ASR rescore, persistence, and
-translation event publication. The frontend may show local recording state but
-must not decide final transcript boundaries.
-
----
-
-# 4. Speech Event Flow
-
-```text
-Seat Tablet (Speaker Seat)
-  -> /ws/speech/{meeting_id}?seat=N
-  -> start
-  <- started(utterance_id)
-  -> PCM16 binary frames
-  -> backend streaming ASR
-  -> EventBus translation_interim
-  -> /ws/{meeting_id} broadcast
-  -> backend VAD detects final boundary
-  -> offline ASR rescore
-  -> TranslationService persists translation_records
-  -> EventBus translation_final
-  -> /ws/{meeting_id} broadcast
-```
-
-Final records are the only speech results persisted. Interim results are
-ephemeral and may be dropped.
-
-After receiving `translation_final`, the frontend should:
-1. Delete the matching interim entry by `utterance_id` from local state.
-2. Issue `GET /api/translations?meeting_id={meeting_id}` (and optionally
-   `&seat_id={seat_id}`) to refresh the full final transcript list. The WS
-   `translation_final` payload carries the latest record; the HTTP refresh
-   guarantees the frontend is consistent with the server for all records
-   (including any that may have been persisted during brief WS disconnects).
-
----
-
-# 5. Event Definitions
-
-## translation_interim
-
-Broadcast on the meeting channel only. Not persisted.
-
-Punctuation is generated by the **backend speech module**, not the frontend.
-`payload.source_text` is punctuated cumulative ASR text.
-
-An optional `caption` object provides two-line subtitle state for live display:
+Published for live speech captions. It is not persisted and is not translated.
 
 ```json
 {
@@ -164,48 +110,27 @@ An optional `caption` object provides two-line subtitle state for live display:
   "meeting_id": 1,
   "timestamp": 1748700000,
   "payload": {
-    "utterance_id": "utt_1_3_000042",
-    "seat_id": 3,
+    "utterance_id": "utt_1_1_000001",
+    "seat_id": 1,
     "revision": 4,
     "source_lang": "zh",
     "target_lang": "en",
-    "source_text": "我认为这个方案需要重新评估，",
-    "translated_text": "",
-    "is_final": false,
+    "source_text": "Current punctuated interim text.",
     "caption": {
-      "previous_line": "",
-      "current_line": "我认为这个方案需要重新评估，",
+      "previous_line": "Previous short caption line.",
+      "current_line": "Current short caption line.",
       "mode": "two_line"
     }
   }
 }
 ```
 
-### caption fields
+Clients keep only the newest revision for each `utterance_id`.
 
-| Field | Type | Description |
-|---|---|---|
-| `caption.previous_line` | string | Last committed short sentence (empty on first interim) |
-| `caption.current_line` | string | Current sentence being recognised and updated |
-| `caption.mode` | string | Always `"two_line"` for v1. Reserved for future modes. |
+## `translation_final`
 
-When `caption` is present, the frontend must display `previous_line` and
-`current_line` as two fixed subtitle lines instead of rendering the full
-`source_text` as one long live paragraph. When `caption` is absent, the frontend
-falls back to `source_text`.
-
-The frontend must never add punctuation, split sentences, or decide line
-boundaries.
-
-Clients replace prior interim content for the same `utterance_id` when a higher
-`revision` arrives.
-
-## translation_final
-
-Broadcast after final/offline ASR, optional translation, and database write.
-
-`payload.source_text` is punctuated text, matching the persisted
-`translation_records.source_text` in the database.
+Published after final ASR and persistence. Clients remove the matching interim
+caption and display the final history record.
 
 ```json
 {
@@ -213,24 +138,21 @@ Broadcast after final/offline ASR, optional translation, and database write.
   "meeting_id": 1,
   "timestamp": 1748700000,
   "payload": {
-    "utterance_id": "utt_1_3_000042",
+    "utterance_id": "utt_1_1_000001",
     "translation_id": 42,
-    "seat_id": 3,
+    "seat_id": 1,
     "source_lang": "zh",
     "target_lang": "en",
-    "source_text": "我认为这个方案需要重新评估。",
-    "translated_text": "I think this plan needs to be re-evaluated.",
-    "source_type": "offline_rescore"
+    "source_text": "Final punctuated source text.",
+    "translated_text": "Final translated text or [translation not available].",
+    "source_type": "speech_ws"
   }
 }
 ```
 
-Clients remove the matching interim entry by `utterance_id` and display the
-final record.
+## `translation_interim_cancelled`
 
-## translation_interim_cancelled
-
-Broadcast when a pending interim utterance is discarded.
+Published when an interim utterance is discarded.
 
 ```json
 {
@@ -238,80 +160,31 @@ Broadcast when a pending interim utterance is discarded.
   "meeting_id": 1,
   "timestamp": 1748700000,
   "payload": {
-    "utterance_id": "utt_1_3_000042",
-    "seat_id": 3,
+    "utterance_id": "utt_1_1_000001",
+    "seat_id": 1,
     "reason": "speaker_seat_changed"
   }
 }
 ```
 
-Clients delete the matching interim entry and do not expect a final record for
-that utterance.
+## Non-Speech Events
 
----
+The meeting broadcast channel also carries:
 
-# 6. Existing Broadcast Events
+- `seat_occupied`
+- `seat_vacant`
+- `checkin_prompt`
+- `check_in`
+- `speaker_seat_set`
+- `speaker_seat_clear`
+- `meeting_started`
+- `meeting_ended`
+- `vote_started`
+- `vote_updated`
+- `vote_closed`
+- `service_call_created`
+- `service_call_resolved`
+- `service_call_cancelled`
 
-The meeting broadcast channel also carries the existing events:
-
-```text
-connected
-seat_occupied
-seat_vacant
-checkin_prompt
-check_in
-speaker_seat_set
-speaker_seat_clear
-meeting_started
-meeting_ended
-vote_started
-vote_updated
-vote_closed
-service_call_created
-service_call_resolved
-service_call_cancelled
-translation_interim
-translation_final
-translation_interim_cancelled
-```
-
-Existing event payloads remain as defined in `docs/EVENT_BUS_SPEC.md`.
-
----
-
-# 7. Speaker Seat Switch
-
-Speaker Seat switching is a hard switch:
-
-* old seat speech WebSocket is closed immediately
-* old `SpeechStreamSession` is cleaned up
-* pending interim text is discarded and not persisted
-* `translation_interim_cancelled` is broadcast with
-  `reason="speaker_seat_changed"`
-* the new Speaker Seat may open `/ws/speech/...`
-
----
-
-# 8. Frontend Refresh Mapping
-
-| Event | Frontend action |
-|---|---|
-| `meeting_started`, `meeting_ended` | refresh active meeting, seats, speaker seat, active vote |
-| `seat_occupied`, `seat_vacant`, `check_in` | refresh seats |
-| `checkin_prompt` | target seat opens check-in dialog, then loads attendees |
-| `speaker_seat_set`, `speaker_seat_clear` | refresh speaker seat; speech client re-checks permission |
-| `vote_started`, `vote_closed` | refresh active vote |
-| `vote_updated` | refresh vote detail; admin also loads statistics |
-| `service_call_created`, `service_call_resolved`, `service_call_cancelled` | refresh service calls |
-| `translation_interim` | update local interim transcript map; render `caption.previous_line` / `caption.current_line` when present, fallback to `source_text` otherwise |
-| `translation_final` | remove matching interim by `utterance_id`; refresh full final transcript list via `GET /api/translations?meeting_id={meeting_id}` |
-| `translation_interim_cancelled` | remove matching interim |
-
----
-
-# 9. Implementation Boundary
-
-Services publish EventBus events. `WebSocketEventHandler` bridges EventBus events
-to the meeting broadcast channel. The speech WebSocket endpoint may receive
-audio/control messages, but speech business decisions belong in service code,
-not in the endpoint.
+The frontend should re-fetch affected HTTP resources after business events.
+Speech interim events update the live transcript directly.

@@ -19,6 +19,10 @@ from sqlalchemy import inspect, text
 from backend.database import Base, SessionLocal
 from backend.events.event_bus import EventBus
 from backend.exceptions import ValidationError
+from backend.services.translation_model_service import (
+    is_translation_model_enabled,
+    NOT_AVAILABLE,
+)
 from backend.services.translation_service import TranslationService
 from tests.conftest import TEST_ENGINE
 
@@ -158,6 +162,11 @@ class TestProcessFinalArray:
             f"'{payload['source_text']}'"
         )
         assert isinstance(payload["translated_text"], str)
+        # Task 123: if real translation model enabled, verify non-placeholder
+        if is_translation_model_enabled():
+            from backend.services.speech_stream_service import stream_service
+            if stream_service.ensure_speech_module():
+                assert payload["translated_text"] != NOT_AVAILABLE
         assert payload["source_type"] == "speech_ws"
 
     def test_asr_empty_result_raises_error(self, tsvc):
@@ -218,6 +227,75 @@ class TestProcessFinalArray:
         latest = history[0]
         assert latest.utterance_id == "utt_1_1_000004"
         assert latest.source_type == "speech_ws"
+
+    def test_process_final_array_with_mocked_translation_model(self, tsvc, event_bus, monkeypatch):
+        """Mock real translation model → DB and payload contain mocked translated_text.
+
+        This test monkeypatches the translation layer at the service level so
+        that the real OPUS-MT model is never loaded. Instead, a fixed string is
+        returned.
+
+        Verifies:
+            - translated_text == mocked value in DB record
+            - translated_text == mocked value in translation_final payload
+            - source_lang/target_lang still correctly detected as zh/en
+        """
+        # Arrange: monkeypatch the two entry points used by TranslationService
+        import backend.services.translation_service as ts
+
+        monkeypatch.setattr(ts, "is_translation_model_enabled", lambda: True)
+
+        mock_result = "Hello, welcome to SmartDesk."
+
+        class _MockModelService:
+            def translate(self, text: str) -> str:
+                return mock_result
+
+        monkeypatch.setattr(
+            ts.TranslationModelService, "get_instance",
+            lambda: _MockModelService(),
+        )
+
+        # Ensure speech ASR is loaded
+        self._ensure_speech_available(tsvc)
+
+        # Subscribe to capture the event
+        received_events = []
+
+        def _capture(event):
+            received_events.append(event)
+
+        event_bus.subscribe("translation_final", _capture)
+
+        # Act
+        audio = _load_real_speech_audio()
+        record = tsvc.process_final_array(
+            audio=audio, sr=16000,
+            meeting_id=1, seat_id=1,
+            utterance_id="utt_1_1_000010",
+            source_type="speech_ws",
+        )
+
+        # Assert DB
+        assert record.translated_text == mock_result, (
+            f"DB translated_text expected '{mock_result}', "
+            f"got '{record.translated_text}'"
+        )
+        assert record.source_lang == "zh"
+        assert record.target_lang == "en"
+
+        # Assert event payload
+        assert len(received_events) == 1, (
+            f"Expected 1 event, got {len(received_events)}"
+        )
+        payload = received_events[0].payload
+        assert payload["translated_text"] == mock_result, (
+            f"Event translated_text expected '{mock_result}', "
+            f"got '{payload['translated_text']}'"
+        )
+        assert payload["source_lang"] == "zh"
+        assert payload["target_lang"] == "en"
+        assert payload["utterance_id"] == "utt_1_1_000010"
 
 
 class TestMigrationIdempotency:

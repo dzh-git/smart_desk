@@ -157,7 +157,7 @@ describe("AdminDashboard - data loading", () => {
     expect(screen.getByText("Financial Review")).toBeInTheDocument();
     expect(screen.getByText(/Coffee.*Seat 2/i)).toBeInTheDocument();
     expect(screen.getByText("Good morning everyone")).toBeInTheDocument();
-    expect(screen.getByText("No vote in progress")).toBeInTheDocument();
+    expect(screen.getByText("No votes yet")).toBeInTheDocument();
   });
 
   it("does not request meeting-dependent resources when no active meeting", async () => {
@@ -174,7 +174,7 @@ describe("AdminDashboard - data loading", () => {
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Waiting for Meeting")).toBeInTheDocument();
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
     });
 
     expect(calls.filter((u) => u.includes("meeting_id"))).toHaveLength(0);
@@ -683,7 +683,7 @@ describe("AdminDashboard - no meeting state", () => {
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Waiting for Meeting")).toBeInTheDocument();
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
     });
 
     const meetingDependent = fetchCalls.filter(
@@ -849,7 +849,7 @@ describe("AdminDashboard - disconnected overlay", () => {
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Waiting for Meeting")).toBeInTheDocument();
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Connection Lost")).not.toBeInTheDocument();
@@ -1792,5 +1792,648 @@ describe("Transcript - language labels", () => {
       const text = el.textContent ?? "";
       expect(text).toMatch(/^(EN|ZH)$/);
     });
+  });
+});
+
+// ── Ended Meeting View Tests ───────────────────────────────────────────────
+
+describe("AdminDashboard - ended meeting view", () => {
+  function mockEndedMeetingScenario(meetingId: number) {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === ("/api/votes?meeting_id=" + meetingId)) {
+        return okResponse([
+          { id: 99, meeting_id: meetingId, title: "Past Vote", options: ["Yes", "No", "Abstain"], status: "closed", is_anonymous: false },
+        ]);
+      }
+      if (url === ("/api/votes/99/statistics")) {
+        return okResponse({ vote_id: 99, title: "Past Vote", is_anonymous: false, status: "closed", total_votes: 5, results: [
+          { option: "Yes", count: 3, attendee_ids: null },
+          { option: "No", count: 1, attendee_ids: null },
+          { option: "Abstain", count: 1, attendee_ids: null },
+        ]});
+      }
+      if (url === ("/api/meetings/" + meetingId + "/attendees")) {
+        return okResponse([{ id: 10, meeting_id: meetingId, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/" + meetingId + "/agendas")) return okResponse([]);
+      if (url === ("/api/service-calls?meeting_id=" + meetingId)) {
+        return okResponse([{ id: 1, meeting_id: meetingId, seat_id: 2, service_type: "coffee", status: "resolved", created_at: "2026-01-01T10:05:00Z" }]);
+      }
+      if (url === ("/api/translations?meeting_id=" + meetingId)) {
+        return okResponse({ meeting_id: meetingId, entries: [{ id: 1, meeting_id: meetingId, seat_id: 1, source_lang: "en", target_lang: "zh", source_text: "Meeting ended", translated_text: "会议结束", created_at: "2026-01-01T10:10:00Z" }] });
+      }
+      return okResponse(null);
+    });
+  }
+
+  beforeEach(() => {
+    sessionStorage.removeItem("endedMeetingId");
+    sessionStorage.removeItem("endedMeetingTitle");
+  });
+
+  it("shows ended meeting view when sessionStorage has endedMeetingId and no active meeting", async () => {
+    sessionStorage.setItem("endedMeetingId", "42");
+    sessionStorage.setItem("endedMeetingTitle", "Past Board Review");
+    mockEndedMeetingScenario(42);
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.getAllByText("Past Board Review").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Past Vote").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("5 votes cast").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Meeting ended")).toBeInTheDocument();
+    expect(screen.getByText("会议结束")).toBeInTheDocument();
+  });
+
+  it("uses endedMeetingId for fetching votes, translations, and service-calls", async () => {
+    const calledUrls: string[] = [];
+    mockFetch.mockImplementation((url: string) => {
+      calledUrls.push(url);
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/votes?meeting_id=77") return okResponse([]);
+      if (url === "/api/meetings/77/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/77/agendas")) return okResponse([]);
+      if (url === "/api/service-calls?meeting_id=77") return okResponse([]);
+      if (url === "/api/translations?meeting_id=77") return okResponse({ meeting_id: 77, entries: [] });
+      return okResponse(null);
+    });
+
+    sessionStorage.setItem("endedMeetingId", "77");
+    sessionStorage.setItem("endedMeetingTitle", "Arch Review");
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(calledUrls).toContain("/api/votes?meeting_id=77");
+    expect(calledUrls).toContain("/api/service-calls?meeting_id=77");
+    expect(calledUrls).toContain("/api/translations?meeting_id=77");
+    expect(calledUrls).toContain("/api/meetings/77/attendees");
+    expect(calledUrls).toContain("/api/meetings/77/agendas");
+
+    sessionStorage.removeItem("endedMeetingId");
+    sessionStorage.removeItem("endedMeetingTitle");
+  });
+
+  it("hides all write operations in ended meeting view", async () => {
+    sessionStorage.setItem("endedMeetingId", "42");
+    sessionStorage.setItem("endedMeetingTitle", "Review");
+    mockEndedMeetingScenario(42);
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.queryByText("End Meeting")).not.toBeInTheDocument();
+    expect(screen.queryByText("Create Vote")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add Attendee")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Attendee name")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Agenda title")).not.toBeInTheDocument();
+    expect(screen.queryByText("Set Speaker")).not.toBeInTheDocument();
+    expect(screen.queryByText("Clear Speaker")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Conference Room.*Seat Overview/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Connection Lost")).not.toBeInTheDocument();
+    expect(screen.queryByText("Resolve")).not.toBeInTheDocument();
+  });
+
+  it("shows read-only panels in ended meeting view", async () => {
+    sessionStorage.setItem("endedMeetingId", "42");
+    sessionStorage.setItem("endedMeetingTitle", "Review");
+    mockEndedMeetingScenario(42);
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.getAllByText("Past Vote").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Meeting Results")).toBeInTheDocument();
+    expect(screen.getAllByText("Coffee — Seat 2").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Meeting ended")).toBeInTheDocument();
+    expect(screen.getAllByText("Alice Wang").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Close Vote")).not.toBeInTheDocument();
+  });
+
+  it("does not show No Active Meeting when ended meeting data is present", async () => {
+    sessionStorage.setItem("endedMeetingId", "42");
+    sessionStorage.setItem("endedMeetingTitle", "Review");
+    mockEndedMeetingScenario(42);
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.queryByText("No Active Meeting")).not.toBeInTheDocument();
+    expect(screen.queryByText("Create Pending Meeting")).not.toBeInTheDocument();
+  });
+
+  it("clearEndedMeeting button returns to No Active Meeting view", async () => {
+    sessionStorage.setItem("endedMeetingId", "42");
+    sessionStorage.setItem("endedMeetingTitle", "Review");
+    mockEndedMeetingScenario(42);
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const newMeetingBtn = screen.getByText("New Meeting");
+    await act(async () => {
+      newMeetingBtn.click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Create Pending Meeting")).toBeInTheDocument();
+    expect(sessionStorage.getItem("endedMeetingId")).toBeNull();
+    expect(sessionStorage.getItem("endedMeetingTitle")).toBeNull();
+  });
+
+  it("still shows No Active Meeting when there is no ended meeting data in sessionStorage", async () => {
+    sessionStorage.removeItem("endedMeetingId");
+    sessionStorage.removeItem("endedMeetingTitle");
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
+    });
+  });
+
+  it("preserves vote results display after meeting ends", async () => {
+    sessionStorage.setItem("endedMeetingId", "42");
+    sessionStorage.setItem("endedMeetingTitle", "Review");
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/votes?meeting_id=42") {
+        return okResponse([
+          { id: 55, meeting_id: 42, title: "Budget Approval", options: ["Approve", "Reject"], status: "closed", is_anonymous: false },
+        ]);
+      }
+      if (url === "/api/votes/55/statistics") {
+        return okResponse({ vote_id: 55, title: "Budget Approval", is_anonymous: false, status: "closed", total_votes: 8, results: [
+          { option: "Approve", count: 6, attendee_ids: null },
+          { option: "Reject", count: 2, attendee_ids: null },
+        ]});
+      }
+      if (url === "/api/meetings/42/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/42/agendas")) return okResponse([]);
+      if (url === "/api/service-calls?meeting_id=42") return okResponse([]);
+      if (url === "/api/translations?meeting_id=42") return okResponse({ meeting_id: 42, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.getAllByText("Budget Approval").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("8 votes cast").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Top: Approve")).toBeInTheDocument();
+    expect(screen.getByText("1/1 closed")).toBeInTheDocument();
+
+    sessionStorage.removeItem("endedMeetingId");
+    sessionStorage.removeItem("endedMeetingTitle");
+  });
+});
+
+// ── UI Phase Tests ─────────────────────────────────────────────────────────
+
+describe("AdminDashboard - uiPhase", () => {
+  function mockActiveMeetingScenario() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Test Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+  }
+
+  it("shows phase selector with default 'general' when meeting is active", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Current Phase:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "General" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agenda Discussion" })).toBeInTheDocument();
+
+    // Default phase should be general — no agenda_discussion badge
+    expect(screen.queryByText(/Agenda Discussion Mode/)).not.toBeInTheDocument();
+  });
+
+  it("does not show phase selector when there is no active meeting", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Current Phase:")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "General" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Agenda Discussion" })).not.toBeInTheDocument();
+  });
+
+  it("does not show phase selector in ended meeting view", async () => {
+    sessionStorage.setItem("endedMeetingId", "42");
+    sessionStorage.setItem("endedMeetingTitle", "Past Meeting");
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/votes?meeting_id=42") return okResponse([]);
+      if (url === "/api/meetings/42/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/42/agendas")) return okResponse([]);
+      if (url === "/api/service-calls?meeting_id=42") return okResponse([]);
+      if (url === "/api/translations?meeting_id=42") return okResponse({ meeting_id: 42, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.queryByText("Current Phase:")).not.toBeInTheDocument();
+
+    sessionStorage.removeItem("endedMeetingId");
+    sessionStorage.removeItem("endedMeetingTitle");
+  });
+
+  it("switches to agenda_discussion and shows phase indicator", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    // Click "Agenda Discussion"
+    const agendaDiscussionBtn = screen.getByRole("button", { name: "Agenda Discussion" });
+    await act(async () => {
+      agendaDiscussionBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Should show agenda discussion indicator
+    expect(screen.getByText(/Agenda Discussion Mode/)).toBeInTheDocument();
+
+    // The phase badge should also be visible
+    const badges = screen.getAllByText("Agenda Discussion");
+    expect(badges.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("switches back to general and hides agenda discussion indicator", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_discussion
+    const agendaDiscussionBtn = screen.getByRole("button", { name: "Agenda Discussion" });
+    await act(async () => {
+      agendaDiscussionBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(screen.getByText(/Agenda Discussion Mode/)).toBeInTheDocument();
+
+    // Switch back to general
+    const generalBtn = screen.getByRole("button", { name: "General" });
+    await act(async () => {
+      generalBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(screen.queryByText(/Agenda Discussion Mode/)).not.toBeInTheDocument();
+  });
+
+  it("phase switch does not trigger any API call", async () => {
+    let callCount = 0;
+    mockFetch.mockImplementation((url: string) => {
+      callCount++;
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Test", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+
+    const initialCalls = callCount;
+
+    // Switch to agenda_discussion
+    const agendaDiscussionBtn = screen.getByRole("button", { name: "Agenda Discussion" });
+    await act(async () => {
+      agendaDiscussionBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Call count should NOT increase
+    expect(callCount).toBe(initialCalls);
+
+    // Switch back to general
+    const generalBtn = screen.getByRole("button", { name: "General" });
+    await act(async () => {
+      generalBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Call count still unchanged
+    expect(callCount).toBe(initialCalls);
+  });
+
+  it("vote creation and display unaffected by uiPhase switch", async () => {
+    let postUrl = "";
+
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/votes" && opts?.method === "POST") {
+        postUrl = url;
+        return okResponse({ id: 99, meeting_id: 1, title: "Phase Vote", options: ["Yes", "No"], status: "open", is_anonymous: false });
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Test", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_discussion first
+    const agendaDiscussionBtn = screen.getByRole("button", { name: "Agenda Discussion" });
+    await act(async () => {
+      agendaDiscussionBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Create vote form should still be accessible
+    expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create vote/i })).toBeInTheDocument();
+
+    // Fill and submit vote
+    const { fireEvent } = await import("@testing-library/react");
+    await act(async () => {
+      fireEvent.input(screen.getByPlaceholderText("Vote title..."), { target: { value: "Phase Vote" } });
+      fireEvent.input(screen.getByPlaceholderText("Option 1"), { target: { value: "Yes" } });
+      fireEvent.input(screen.getByPlaceholderText("Option 2"), { target: { value: "No" } });
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const createBtn = screen.getByRole("button", { name: /create vote/i });
+    await act(async () => {
+      createBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(postUrl).toBe("/api/votes");
+  });
+});
+
+// ── Task 4 — Helper fixes ─────────────────────────────────────────────────
+
+describe("Task 4 — deriveAdminVoteState with closed support", () => {
+  it("returns 'closed' when hasActiveVote is false but voteResults contain closed votes", async () => {
+    const { deriveAdminVoteState } = await import("../utils/uiState");
+
+    expect(deriveAdminVoteState(false, [{ status: "closed" }])).toBe("closed");
+    expect(deriveAdminVoteState(false, [{ status: "open" }])).toBe("none"); // no closed vote in results
+    expect(deriveAdminVoteState(false, [])).toBe("none");
+    expect(deriveAdminVoteState(false)).toBe("none");
+    expect(deriveAdminVoteState(true, [{ status: "closed" }])).toBe("open");
+  });
+});
+
+describe("Task 4 — ended meeting + vote result: Close Vote and Resolve hidden", () => {
+  function mockEndedWithData(meetingId: number) {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === ("/api/votes?meeting_id=" + meetingId)) {
+        return okResponse([
+          { id: 55, meeting_id: meetingId, title: "Past Vote", options: ["Yes", "No"], status: "closed", is_anonymous: false },
+        ]);
+      }
+      if (url === ("/api/votes/55/statistics")) {
+        return okResponse({ vote_id: 55, title: "Past Vote", is_anonymous: false, status: "closed", total_votes: 3, results: [
+          { option: "Yes", count: 2, attendee_ids: null },
+          { option: "No", count: 1, attendee_ids: null },
+        ]});
+      }
+      if (url === ("/api/meetings/" + meetingId + "/attendees")) return okResponse([]);
+      if (url.includes("/api/meetings/" + meetingId + "/agendas")) return okResponse([]);
+      if (url === ("/api/service-calls?meeting_id=" + meetingId)) {
+        return okResponse([{ id: 1, meeting_id: meetingId, seat_id: 1, service_type: "coffee", status: "resolved", created_at: "2026-01-01T10:05:00Z" }]);
+      }
+      if (url === ("/api/translations?meeting_id=" + meetingId)) {
+        return okResponse({ meeting_id: meetingId, entries: [] });
+      }
+      return okResponse(null);
+    });
+  }
+
+  beforeEach(() => {
+    sessionStorage.setItem("endedMeetingId", "55");
+    sessionStorage.setItem("endedMeetingTitle", "Past Review");
+  });
+
+  afterEach(() => {
+    sessionStorage.removeItem("endedMeetingId");
+    sessionStorage.removeItem("endedMeetingTitle");
+  });
+
+  it("does not show Close Vote button in ended meeting", async () => {
+    mockEndedWithData(55);
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.queryByText("Close Vote")).not.toBeInTheDocument();
+  });
+
+  it("does not show Resolve button when no pending service calls", async () => {
+    mockEndedWithData(55);
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.queryByText("Resolve")).not.toBeInTheDocument();
+  });
+});
+
+// ── Speech Preload Tests (Task 6) ───────────────────────────────────────────
+
+describe("AdminDashboard - speech preload button (Task 6)", () => {
+  function mockActiveMeeting() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Test Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+  }
+
+  it("shows Preload Speech Model button when meeting is active", async () => {
+    mockActiveMeeting();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    // Preload button should be visible in active meeting
+    const preloadBtn = screen.getByText("Preload Speech Model");
+    expect(preloadBtn).toBeInTheDocument();
+    expect(preloadBtn).not.toBeDisabled();
+  });
+
+  it("shows preload triggered feedback on successful preload", async () => {
+    mockActiveMeeting();
+
+    // Mock POST /api/speech/preload success
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/speech/preload" && opts?.method === "POST") {
+        return okResponse(null);
+      }
+      // Fall through to existing mocks
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Test Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    // Click Preload Speech Model
+    const preloadBtn = screen.getByText("Preload Speech Model");
+    await act(async () => {
+      preloadBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Should show feedback
+    await waitFor(() => {
+      expect(screen.getByText("Preload triggered")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show preload button when there is no active meeting", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Preload Speech Model")).not.toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@
 //
 // See docs/API_SPEC.md for complete documentation.
 
-import { apiGet, apiPost } from "./client";
+import { apiDelete, apiGet, apiPost } from "./client";
 import type {
   Meeting,
   SeatState,
@@ -25,6 +25,27 @@ export function fetchActiveMeeting(): Promise<Meeting | null> {
   return apiGet<Meeting | null>("/meetings/active");
 }
 
+/** Create a pending meeting. */
+export function createMeeting(
+  title: string,
+  description?: string,
+): Promise<Meeting> {
+  return apiPost<Meeting>("/meetings", {
+    title,
+    description: description?.trim() || null,
+  });
+}
+
+/** Start a pending meeting. */
+export function startMeeting(meetingId: number): Promise<Meeting> {
+  return apiPost<Meeting>(`/meetings/${meetingId}/start`);
+}
+
+/** End an active meeting. */
+export function endMeeting(meetingId: number): Promise<Meeting> {
+  return apiPost<Meeting>(`/meetings/${meetingId}/end`);
+}
+
 // ── Seats ───────────────────────────────────────────────────────────────────
 
 /** Returns all 10 seat states. */
@@ -35,6 +56,16 @@ export function fetchSeats(): Promise<SeatState[]> {
 /** Returns the current speaker seat (or null seat_id). */
 export function fetchSpeakerSeat(): Promise<SpeakerSeat> {
   return apiGet<SpeakerSeat>("/seats/speaker");
+}
+
+/** Set the current speaker seat. */
+export function setSpeakerSeat(seatId: number): Promise<SpeakerSeat> {
+  return apiPost<SpeakerSeat>("/seats/speaker", { seat_id: seatId });
+}
+
+/** Clear the current speaker seat. */
+export function clearSpeakerSeat(): Promise<SpeakerSeat> {
+  return apiDelete<SpeakerSeat>("/seats/speaker");
 }
 
 // ── Votes ───────────────────────────────────────────────────────────────────
@@ -51,6 +82,21 @@ export function fetchVoteStatistics(
   return apiGet<VoteStatistics>(`/votes/${voteId}/statistics`);
 }
 
+/** Returns all votes for a meeting, newest first. */
+export async function fetchVotesForMeeting(
+  meetingId: number,
+): Promise<Vote[]> {
+  return (await apiGet<Vote[] | null>(`/votes?meeting_id=${meetingId}`)) ?? [];
+}
+
+/** Returns statistics for all votes in a meeting, newest first. */
+export async function fetchVoteResultsForMeeting(
+  meetingId: number,
+): Promise<VoteStatistics[]> {
+  const votes = await fetchVotesForMeeting(meetingId);
+  return Promise.all(votes.map((vote) => fetchVoteStatistics(vote.id)));
+}
+
 // ── Meeting Child Resources ─────────────────────────────────────────────────
 
 /** Returns agenda items for a meeting, sorted by sort_order on the backend. */
@@ -63,6 +109,46 @@ export function fetchAttendees(meetingId: number): Promise<Attendee[]> {
   return apiGet<Attendee[]>(`/meetings/${meetingId}/attendees`);
 }
 
+/** Add an attendee to a meeting. */
+export function createAttendee(
+  meetingId: number,
+  name: string,
+  title: string = "",
+): Promise<Attendee> {
+  return apiPost<Attendee>(`/meetings/${meetingId}/attendees`, {
+    name,
+    title,
+  });
+}
+
+/** Delete an attendee from a meeting. */
+export function deleteAttendee(
+  meetingId: number,
+  attendeeId: number,
+): Promise<void> {
+  return apiDelete<void>(`/meetings/${meetingId}/attendees/${attendeeId}`);
+}
+
+/** Add an agenda item to a meeting. */
+export function createAgenda(
+  meetingId: number,
+  title: string,
+  sortOrder: number,
+): Promise<Agenda> {
+  return apiPost<Agenda>(`/meetings/${meetingId}/agendas`, {
+    title,
+    sort_order: sortOrder,
+  });
+}
+
+/** Delete an agenda item from a meeting. */
+export function deleteAgenda(
+  meetingId: number,
+  agendaId: number,
+): Promise<void> {
+  return apiDelete<void>(`/meetings/${meetingId}/agendas/${agendaId}`);
+}
+
 /** Returns service calls for a meeting. */
 export function fetchServiceCalls(meetingId: number): Promise<ServiceCall[]> {
   return apiGet<ServiceCall[]>(
@@ -70,13 +156,16 @@ export function fetchServiceCalls(meetingId: number): Promise<ServiceCall[]> {
   );
 }
 
-/** Returns translation history for a meeting. */
+/** Returns translation history for a meeting, optionally filtered by seat. */
 export function fetchTranslations(
   meetingId: number,
+  seatId?: number,
 ): Promise<TranslationHistoryResponse> {
-  return apiGet<TranslationHistoryResponse>(
-    `/translations?meeting_id=${meetingId}`,
-  );
+  let path = `/translations?meeting_id=${meetingId}`;
+  if (seatId !== undefined) {
+    path += `&seat_id=${seatId}`;
+  }
+  return apiGet<TranslationHistoryResponse>(path);
 }
 
 // ── Seat Check-in ────────────────────────────────────────────────────────────

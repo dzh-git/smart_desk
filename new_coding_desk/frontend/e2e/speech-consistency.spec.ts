@@ -118,6 +118,12 @@ interface Report {
   punctuation_present_on_db: boolean;
   caption_matches_dom: boolean | null;
   no_cumulative_long_text_when_caption: boolean;
+  /** Task 122: whether end_hint was sent. False for auto-final test. */
+  end_hint_sent: boolean;
+  /** Task 122: whether auto-final was triggered by VAD. */
+  auto_final_triggered: boolean;
+  /** Task 122: all utterance_ids seen in this session. */
+  utterance_ids: string[];
 }
 
 // ---- Helpers ---------------------------------------------------------------
@@ -320,8 +326,9 @@ async function sampleDom(page: any): Promise<DomSample> {
     const currentEl = await el.$('[data-testid="live-caption-current"]');
     const previousLine = previousEl ? (await previousEl.textContent())?.trim() ?? "" : "";
     const currentLine = currentEl ? (await currentEl.textContent())?.trim() ?? "" : "";
+    const utteranceId = await el.getAttribute("data-utterance-id") ?? "";
     sample.liveCaptions.push({
-      utteranceId: "", // Not directly available on live-caption; will match by content
+      utteranceId,
       previousLine,
       currentLine,
     });
@@ -376,6 +383,10 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
       punctuation_present_on_db: false,
       caption_matches_dom: null,
       no_cumulative_long_text_when_caption: false,
+      // Task 122: auto-final tracking
+      end_hint_sent: true,
+      auto_final_triggered: false,
+      utterance_ids: [],
     };
 
     test.setTimeout(180_000);
@@ -443,6 +454,7 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     const uid: string = startedMsg.utterance_id;
     expect(uid).toMatch(/^utt_\d+_\d+_\d{6}$/);
     report.utterance_id = uid;
+    report.utterance_ids.push(uid);
     report.latency.start_to_started_ms = tStartedRecv - tStartSend;
     console.log(`[E2E] Started: ${uid} (${report.latency.start_to_started_ms}ms)`);
 
@@ -1012,6 +1024,339 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     await writeReport(report);
   });
 
+  test("auto-final without end_hint: VAD silence triggers translation_final", async ({ page, request }) => {
+    // ---- 0. Report initialisation (subset of fields) ----
+    const autoReport: any = {
+      utterance_id: "",
+      interim_count: 0,
+      latest_interim_source_text: "",
+      final_text: "",
+      persisted_text: "",
+      latency: {
+        start_to_started_ms: null,
+        first_frame_to_first_interim_ms: null,
+        first_frame_to_latest_interim_ms: null,
+        latest_interim_event_to_dom_ms: null,
+        end_hint_to_final_ms: null,
+        final_event_to_final_dom_ms: null,
+      },
+      pass: false,
+      reason: "",
+      dom_samples: [],
+      max_interim_rows_for_utterance: 0,
+      max_final_rows_for_utterance: 0,
+      interim_final_overlap_seen: false,
+      ws_interim_payloads: [],
+      ws_final_payload: null,
+      db_final_record: null,
+      has_mojibake_labels: false,
+      // Phase 05 caption fields (included for writeReport compatibility)
+      ws_caption_samples: [],
+      dom_caption_samples: [],
+      latest_caption: null,
+      caption_seen: false,
+      max_live_caption_line_count: 0,
+      punctuation_present_on_final: false,
+      punctuation_present_on_db: false,
+      caption_matches_dom: null,
+      no_cumulative_long_text_when_caption: false,
+      // Task 112
+      ws_interim_repeated_prefix_detected: false,
+      ws_interim_repeated_prefix: "",
+      ws_interim_failing_revision: null,
+      // Task 122
+      end_hint_sent: false,
+      auto_final_triggered: true,
+      utterance_ids: [],
+    };
+
+    test.setTimeout(180_000);
+
+    // ---- 1. Prepare backend state -------------------------------------------
+    const activeMeeting: any = await apiGet(
+      request, `${BACKEND}/api/meetings/active`, "GET /api/meetings/active",
+    );
+    if (activeMeeting?.data?.id) {
+      await apiPost(
+        request,
+        `${BACKEND}/api/meetings/${activeMeeting.data.id}/end`,
+        undefined,
+        `POST /api/meetings/${activeMeeting.data.id}/end`,
+      );
+    }
+
+    const createResp: any = await apiPost(
+      request, `${BACKEND}/api/meetings`,
+      { title: `E2E AutoFinal ${Date.now()}`, description: "Task 122 no end_hint" },
+      "POST /api/meetings",
+    );
+    meetingId = createResp?.data?.id;
+    expect(meetingId).toBeGreaterThan(0);
+
+    await apiPost(
+      request, `${BACKEND}/api/meetings/${meetingId}/start`,
+      undefined, `POST /api/meetings/${meetingId}/start`,
+    );
+
+    const speakerResp: any = await apiPost(
+      request, `${BACKEND}/api/seats/speaker`,
+      { seat_id: 1 },
+      "POST /api/seats/speaker",
+    );
+    expect(speakerResp?.data?.seat_id).toBe(1);
+    console.log(`[E2E-AF] Meeting ${meetingId} ready, speaker seat=1`);
+
+    // ---- 2. Navigate to admin page -----------------------------------------
+    await page.goto("/");
+    await page.waitForSelector("text=Connected", { timeout: 15_000 });
+    await page.waitForTimeout(1000);
+    console.log("[E2E-AF] Admin page loaded, WS connected");
+
+    // ---- 3. Connect broadcast WS (Node.js) ---------------------------------
+    const broadcastWs = await wsConnect(`ws://localhost:8000/ws/${meetingId}?seat=0`);
+    const connected = await wsReceiveJson(broadcastWs, 5000);
+    expect(connected.event).toBe("connected");
+    console.log("[E2E-AF] Test broadcast WS connected");
+
+    // ---- 4. Connect speech WS (Node.js) ------------------------------------
+    const speechWs = await wsConnect(`ws://localhost:8000/ws/speech/${meetingId}?seat=1`);
+    console.log("[E2E-AF] Speech WS connected");
+
+    // ---- 5. Send start ------------------------------------------------------
+    const tStartSend = Date.now();
+    wsSendJson(speechWs, {
+      type: "start", sample_rate: 16000, encoding: "pcm_s16le", channels: 1,
+    });
+    const startedMsg = await wsReceiveJson(speechWs, 10_000);
+    const tStartedRecv = Date.now();
+    expect(startedMsg.type).toBe("started");
+
+    const uid: string = startedMsg.utterance_id;
+    expect(uid).toMatch(/^utt_\d+_\d+_\d{6}$/);
+    autoReport.utterance_id = uid;
+    autoReport.utterance_ids!.push(uid);
+    autoReport.latency!.start_to_started_ms = tStartedRecv - tStartSend;
+    console.log(`[E2E-AF] Started: ${uid} (${autoReport.latency!.start_to_started_ms}ms)`);
+
+    // ---- 6. Load PCM speech frames + generate silence frames ----------------
+    const speechFrames = loadPcmFrames(15);
+    expect(speechFrames.length).toBeGreaterThan(0);
+
+    // Silence frames: 1.2s VAD threshold → need ~14 frames to be safe
+    const silenceFrameCount = 16;
+    const silenceFrames: Buffer[] = [];
+    for (let i = 0; i < silenceFrameCount; i++) {
+      silenceFrames.push(Buffer.alloc(3200, 0));
+    }
+    console.log(`[E2E-AF] ${speechFrames.length} speech + ${silenceFrames.length} silence frames`);
+
+    // ---- 7. Start continuous DOM sampling + send frames + collect WS --------
+    // Unlike the end_hint test, we collect interims AND final in a single loop
+    // because auto-final fires asynchronously during silence frames.
+
+    let stopSampling = false;
+    const samplingPromise = (async () => {
+      while (!stopSampling) {
+        const sample = await sampleDom(page);
+        autoReport.dom_samples!.push(sample);
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      const finalSample = await sampleDom(page);
+      autoReport.dom_samples!.push(finalSample);
+    })();
+
+    // Send speech frames + silence frames (no end_hint!)
+    const tFirstFrameSend = Date.now();
+    for (const frame of speechFrames) {
+      speechWs.send(frame);
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    // Send silence frames with delay between each to simulate real-time PCM
+    for (let i = 0; i < silenceFrames.length; i++) {
+      speechWs.send(silenceFrames[i]);
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    console.log("[E2E-AF] All frames sent, no end_hint sent");
+
+    let latestInterim: any = null;
+    let interimCount = 0;
+    let firstInterimReceivedAt = 0;
+    let latestInterimReceivedAt = 0;
+    let finalPayload: any = null;
+    const DEADLINE_MS = 45_000;
+    const collectionStart = Date.now();
+
+    while (Date.now() - collectionStart < DEADLINE_MS) {
+      try {
+        const msg = await wsReceiveJson(broadcastWs, 10_000);
+        if (msg.event === "translation_interim" && msg.payload?.utterance_id === uid) {
+          interimCount++;
+          if (interimCount === 1) firstInterimReceivedAt = Date.now();
+
+          autoReport.ws_interim_payloads!.push({
+            utterance_id: msg.payload.utterance_id,
+            revision: msg.payload.revision,
+            source_text: msg.payload.source_text,
+            timestamp: Date.now(),
+          });
+
+          if (!latestInterim || msg.payload.revision > latestInterim.revision) {
+            latestInterim = msg.payload;
+            latestInterimReceivedAt = Date.now();
+          }
+          console.log(
+            `[E2E-AF] Interim #${interimCount}` +
+            ` (rev ${msg.payload.revision}): "${msg.payload.source_text}"`,
+          );
+        } else if (msg.event === "translation_final" && msg.payload?.utterance_id === uid) {
+          finalPayload = msg.payload;
+          autoReport.ws_final_payload = {
+            utterance_id: msg.payload.utterance_id,
+            translation_id: msg.payload.translation_id,
+            source_text: msg.payload.source_text,
+            timestamp: Date.now(),
+          };
+          console.log(
+            `[E2E-AF] Translation final (no end_hint): "${msg.payload.source_text}"`,
+          );
+          break; // Success — final received
+        }
+      } catch {
+        // Timeout — keep waiting unless we already have both interim and final
+        if (interimCount > 0 && finalPayload) break;
+        if (Date.now() - collectionStart > DEADLINE_MS) break;
+      }
+    }
+
+    autoReport.latency!.first_frame_to_first_interim_ms =
+      firstInterimReceivedAt - tFirstFrameSend;
+    autoReport.latency!.first_frame_to_latest_interim_ms =
+      latestInterimReceivedAt - tFirstFrameSend;
+    autoReport.latest_interim_source_text = latestInterim.source_text;
+    autoReport.interim_count = interimCount;
+
+    console.log(
+      `[E2E-AF] Interim stats: firstInterim=${autoReport.latency!.first_frame_to_first_interim_ms}ms` +
+      ` latestInterim=${autoReport.latency!.first_frame_to_latest_interim_ms}ms`,
+    );
+
+    // ---- 8. Fail if no translation_final received -------------------------
+    if (!finalPayload) {
+      autoReport.reason = "No translation_final received within timeout (auto-final)";
+      console.log(`[E2E-AF] ${autoReport.reason}`);
+      stopSampling = true;
+      await samplingPromise;
+      speechWs.close();
+      broadcastWs.close();
+      expect(finalPayload, autoReport.reason).not.toBeNull();
+    }
+
+    const tFinalRecv = Date.now();
+    autoReport.final_text = finalPayload.source_text;
+    console.log(
+      `[E2E-AF] Translation final (no end_hint): "${finalPayload.source_text}"` +
+      ` (${tFinalRecv - tFirstFrameSend}ms from first frame)`,
+    );
+
+    // Wait for final DOM to appear + 1s settle
+    try {
+      await page.waitForSelector(
+        `[data-testid="transcript-final"][data-utterance-id="${uid}"]`,
+        { timeout: 20_000 },
+      );
+    } catch {
+      console.log(`[E2E-AF] Warning: final row not found for ${uid}`);
+    }
+
+    await page.waitForTimeout(1000);
+    stopSampling = true;
+    await samplingPromise;
+
+    // ---- 9. DOM analysis --------------------------------------------------
+    let maxFinalForUid = 0;
+    for (const sample of autoReport.dom_samples!) {
+      const finalCount = sample.finals.filter((f) => f.utteranceId === uid).length;
+      if (finalCount > maxFinalForUid) maxFinalForUid = finalCount;
+    }
+    autoReport.max_final_rows_for_utterance = maxFinalForUid;
+
+    // ---- 10. DOM final text verification ----------------------------------
+    let domFinalSource = "";
+    try {
+      const finalRowSelector = `[data-testid="transcript-final"][data-utterance-id="${uid}"]`;
+      domFinalSource = await page.$eval(
+        `${finalRowSelector} [data-testid="transcript-source"]`,
+        (el: any) => el.textContent?.trim() ?? "",
+      );
+    } catch {
+      console.log("[E2E-AF] Could not find DOM final source text");
+    }
+    console.log(`[E2E-AF] DOM final: src="${domFinalSource}"`);
+
+    // ---- 11. GET /api/translations -- verify persisted record -------------
+    const transResp: any = await apiGet(
+      request,
+      `${BACKEND}/api/translations?meeting_id=${meetingId}`,
+      "GET /api/translations",
+    );
+    const entries: any[] = transResp?.data?.entries ?? [];
+    const matches = entries.filter((e: any) => e.utterance_id === uid);
+    expect(
+      matches.length,
+      `Expected at least 1 DB record for ${uid} after auto-final`,
+    ).toBeGreaterThanOrEqual(1);
+
+    const persisted = matches[0];
+    autoReport.persisted_text = persisted.source_text;
+    autoReport.db_final_record = {
+      id: persisted.id,
+      utterance_id: persisted.utterance_id,
+      source_text: persisted.source_text,
+      created_at: persisted.created_at,
+    };
+
+    console.log(
+      `[E2E-AF] DB source_text: "${persisted.source_text}"` +
+      ` (DOM: "${domFinalSource}")`,
+    );
+
+    // ---- 12. Assertions ---------------------------------------------------
+    // A. end_hint was NOT sent
+    expect(autoReport.end_hint_sent).toBe(false);
+
+    // B. Final payload from WS is non-empty
+    expect(finalPayload.source_text).toBeTruthy();
+
+    // C. DOM final matches WS final
+    expect(domFinalSource, "DOM final must match WS payload").toBe(finalPayload.source_text);
+
+    // D. DB record matches DOM final
+    expect(persisted.source_text, "DB must match DOM final").toBe(domFinalSource);
+
+    // E. Max 1 final row in DOM
+    expect(maxFinalForUid).toBeLessThanOrEqual(1);
+
+    // F. Interim rows cleared after final (last sample should have 0 interims for uid)
+    const finalSampleInterims = autoReport.dom_samples![autoReport.dom_samples!.length - 1]
+      .interims.filter((i: any) => i.utteranceId === uid);
+    expect(
+      finalSampleInterims.length,
+      `Expected 0 interim rows for ${uid} in final sample, got ${finalSampleInterims.length}`,
+    ).toBe(0);
+
+    // ---- 13. Report: PASS -------------------------------------------------
+    autoReport.pass = true;
+    autoReport.reason = "Auto-final without end_hint: VAD silence triggered translation_final, " +
+      "DOM/WS/DB texts consistent, interims cleared after final";
+
+    console.log("[E2E-AF] All assertions passed ✓");
+    console.log(`[E2E-AF] end_hint_sent=${autoReport.end_hint_sent} auto_final_triggered=${autoReport.auto_final_triggered}`);
+
+    speechWs.close();
+    broadcastWs.close();
+    await writeReport(autoReport as Report);
+  });
+
   test.afterAll(async ({ request }) => {
     if (meetingId) {
       try {
@@ -1060,6 +1405,9 @@ async function writeReport(r: Report): Promise<void> {
       punctuation_present_on_db: r.punctuation_present_on_db,
       caption_matches_dom: r.caption_matches_dom,
       no_cumulative_long_text_when_caption: r.no_cumulative_long_text_when_caption,
+      end_hint_sent: r.end_hint_sent,
+      auto_final_triggered: r.auto_final_triggered,
+      utterance_ids: r.utterance_ids,
       latency: r.latency,
       dom_samples_count: r.dom_samples.length,
       ws_caption_samples_count: r.ws_caption_samples.length,

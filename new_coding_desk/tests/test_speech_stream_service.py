@@ -15,7 +15,12 @@ import time
 import numpy as np
 import pytest
 
-from backend.services.speech_stream_service import stream_service
+from backend.services.speech_stream_service import (
+    stream_service,
+    VAD_SILENCE_DURATION_S,
+    UTTERANCE_STATE_IDLE,
+    UTTERANCE_STATE_SPEAKING,
+)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────────
@@ -556,3 +561,189 @@ class TestUtteranceIdUniqueness:
 
         # Clean up S2
         stream_service.remove_session(key2, token2)
+
+
+class TestVadDetection:
+    """VAD silence detection — RMS-based auto-final trigger.
+
+    Uses mock SpeechModule to avoid real model dependency.
+    Save/restores the real _speech_module to prevent test interference.
+    """
+
+    def setup_method(self) -> None:
+        """Create a fresh session and save SpeechModule state."""
+        self.session_key, self.session_token = stream_service.create_session(1, 1)
+        # Save real SpeechModule state (may be None if not loaded)
+        self._saved_speech_module = stream_service._speech_module
+        self._saved_speech_module_error = stream_service._speech_module_error
+
+    def teardown_method(self) -> None:
+        """Clean up session and restore SpeechModule state."""
+        stream_service.remove_session(self.session_key, self.session_token)
+        # Restore SpeechModule state so other tests are unaffected
+        stream_service._speech_module = self._saved_speech_module
+        stream_service._speech_module_error = self._saved_speech_module_error
+
+    def _make_silence(self) -> bytes:
+        """Generate a zero PCM16 frame (100ms of silence)."""
+        return b"\x00" * 3200
+
+    def _make_speech_sine(self) -> bytes:
+        """Generate a PCM16 sine wave frame (non-silent speech)."""
+        return _make_pcm16_sine(amplitude=0.5)
+
+    # ── VAD flag in process_pcm_frame ─────────────────────────────────
+
+    def test_process_pcm_frame_returns_vad_flag_on_silence(
+        self, monkeypatch,
+    ) -> None:
+        """Sustained silence frames trigger vad_should_finalize=True."""
+        mock_sm = _MockSpeechModule()
+        # Direct assignment avoids lazy-loading real models
+        stream_service._speech_module = mock_sm
+        stream_service._speech_module_error = None
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000050")
+
+        # 100ms per frame; VAD_SILENCE_DURATION_S = 1.2s → need 12 frames
+        # Use multiplication to avoid 1.2 / 0.1 floating-point precision issue
+        threshold_frames = int(VAD_SILENCE_DURATION_S * 10)  # 12
+
+        # Just below threshold
+        for i in range(threshold_frames - 1):
+            result = stream_service.process_pcm_frame(
+                self.session_key, self._make_silence(),
+            )
+            assert not result.get("vad_should_finalize"), (
+                f"Frame {i} should not trigger finalize yet"
+            )
+
+        # One more frame should cross the threshold
+        result = stream_service.process_pcm_frame(
+            self.session_key, self._make_silence(),
+        )
+        assert result.get("vad_should_finalize"), (
+            "Silence threshold should trigger auto-final"
+        )
+
+    def test_process_pcm_frame_no_vad_flag_on_speech(
+        self, monkeypatch,
+    ) -> None:
+        """Speech frames (non-zero RMS) do not trigger vad_should_finalize."""
+        mock_sm = _MockSpeechModule()
+        stream_service._speech_module = mock_sm
+        stream_service._speech_module_error = None
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000051")
+
+        # Send many speech frames — silence counter should stay at 0
+        for _ in range(20):
+            result = stream_service.process_pcm_frame(
+                self.session_key, self._make_speech_sine(),
+            )
+            assert not result.get("vad_should_finalize"), (
+                "Speech frames should not trigger VAD"
+            )
+
+    def test_vad_resets_on_speech_after_silence(
+        self, monkeypatch,
+    ) -> None:
+        """Speech after silence resets the VAD counter."""
+        mock_sm = _MockSpeechModule()
+        stream_service._speech_module = mock_sm
+        stream_service._speech_module_error = None
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000052")
+
+        # Some silence
+        for _ in range(5):
+            stream_service.process_pcm_frame(
+                self.session_key, self._make_silence(),
+            )
+
+        # Speech frame resets silence counter
+        result = stream_service.process_pcm_frame(
+            self.session_key, self._make_speech_sine(),
+        )
+        assert not result.get("vad_should_finalize"), (
+            "Speech should reset VAD counter"
+        )
+
+        # Verify silence counter was reset
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        assert session.vad_silence_seconds == 0.0, (
+            "VAD silence counter should be 0 after speech"
+        )
+
+    def test_vad_returns_false_for_unknown_session(self) -> None:
+        """_check_vad_end returns False for non-existent session."""
+        audio = stream_service.pcm16_to_float32(self._make_silence())
+        result = stream_service._check_vad_end("speech_999_99", audio)
+        assert result is False
+
+    # ── VAD state machine transitions ─────────────────────────────────
+
+    def test_start_utterance_resets_vad_state(self) -> None:
+        """start_utterance resets utterance_state to SPEAKING and silence to 0."""
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+
+        # Artificially set VAD state
+        session.utterance_state = UTTERANCE_STATE_IDLE
+        session.vad_silence_seconds = 5.0
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000060")
+        assert session.utterance_state == UTTERANCE_STATE_SPEAKING
+        assert session.vad_silence_seconds == 0.0
+
+    def test_cancel_utterance_resets_vad_state(self) -> None:
+        """cancel_utterance resets utterance_state to IDLE and silence to 0."""
+        stream_service.start_utterance(self.session_key, "utt_1_1_000061")
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        assert session.utterance_state == UTTERANCE_STATE_SPEAKING
+
+        stream_service.cancel_utterance(self.session_key)
+        assert session.utterance_state == UTTERANCE_STATE_IDLE
+        assert session.vad_silence_seconds == 0.0
+
+    def test_prepare_next_utterance_generates_new_id(self) -> None:
+        """prepare_next_utterance generates a new unique utterance_id."""
+        stream_service.start_utterance(self.session_key, "utt_1_1_000062")
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        old_uid = session.current_utterance_id
+
+        new_uid = stream_service.prepare_next_utterance(
+            self.session_key, 1, 1,
+        )
+        assert new_uid is not None
+        assert new_uid != old_uid
+        assert new_uid.startswith("utt_1_1_")
+
+        # Verify session state is reset for new utterance
+        assert session.current_utterance_id == new_uid
+        assert session.revision == 0
+        assert session.utterance_state == UTTERANCE_STATE_SPEAKING
+        assert session.vad_silence_seconds == 0.0
+
+    def test_prepare_next_utterance_unknown_session(self) -> None:
+        """prepare_next_utterance returns None for unknown session."""
+        result = stream_service.prepare_next_utterance(
+            "speech_999_99", 999, 99,
+        )
+        assert result is None
+
+    def test_vad_flag_in_result_dict(self, monkeypatch) -> None:
+        """process_pcm_frame result dict contains vad_should_finalize key."""
+        mock_sm = _MockSpeechModule()
+        stream_service._speech_module = mock_sm
+        stream_service._speech_module_error = None
+
+        stream_service.start_utterance(self.session_key, "utt_1_1_000070")
+        result = stream_service.process_pcm_frame(
+            self.session_key, self._make_silence(),
+        )
+        assert "vad_should_finalize" in result
+        assert isinstance(result["vad_should_finalize"], bool)
