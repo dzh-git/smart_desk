@@ -144,12 +144,12 @@ interface EmptyStateProps {
 export function EmptyState({ icon, title, description }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-10 text-center">
-      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
+      <div className="w-12 h-12 rounded-full bg-techCardSoft flex items-center justify-center text-techMuted mb-3">
         {icon}
       </div>
-      <p className="text-sm font-medium text-slate-600">{title}</p>
+      <p className="text-sm font-medium text-techText">{title}</p>
       {description && (
-        <p className="text-xs text-slate-400 mt-1 max-w-xs">{description}</p>
+        <p className="text-xs text-techMuted mt-1 max-w-xs">{description}</p>
       )}
     </div>
   );
@@ -166,10 +166,10 @@ export function LoadingState({ rows = 3 }: LoadingStateProps) {
     <div className="space-y-3 animate-pulse">
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex gap-3">
-          <div className="w-8 h-8 rounded-full bg-slate-200 flex-shrink-0" />
+          <div className="w-8 h-8 rounded-full bg-techCardSoft flex-shrink-0" />
           <div className="flex-1 space-y-2 pt-1">
-            <div className="h-3 bg-slate-200 rounded w-3/4" />
-            <div className="h-2.5 bg-slate-100 rounded w-1/2" />
+            <div className="h-3 bg-techCardSoft rounded w-3/4" />
+            <div className="h-2.5 bg-techBorder rounded w-1/2" />
           </div>
         </div>
       ))}
@@ -185,18 +185,18 @@ interface DisconnectedOverlayProps {
 
 export function DisconnectedOverlay({ onRetry }: DisconnectedOverlayProps) {
   return (
-    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 rounded-xl">
-      <div className="w-14 h-14 rounded-full bg-red-50 border-2 border-red-200 flex items-center justify-center mb-4">
-        <WifiOff className="text-red-500" size={24} />
+    <div className="absolute inset-0 bg-techBg/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 rounded-xl">
+      <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mb-4">
+        <WifiOff className="text-techRose" size={24} />
       </div>
-      <p className="text-sm font-semibold text-slate-800 mb-1">
+      <p className="text-sm font-semibold text-techText mb-1">
         Connection Lost
       </p>
-      <p className="text-xs text-slate-500 mb-4">Attempting to reconnect...</p>
+      <p className="text-xs text-techMuted mb-4">Attempting to reconnect...</p>
       {onRetry && (
         <button
           onClick={onRetry}
-          className="text-xs font-medium text-sky-600 border border-sky-200 rounded-full px-4 py-1.5 hover:bg-sky-50 transition-colors"
+          className="text-xs font-medium border border-techCyan/30 rounded-full px-4 py-1.5 text-techCyan hover:bg-techCyan/10 transition-colors"
         >
           Retry Now
         </button>
@@ -209,6 +209,7 @@ export function DisconnectedOverlay({ onRetry }: DisconnectedOverlayProps) {
 
 interface SectionCardProps {
   title: string;
+  titleEn?: string;
   children: React.ReactNode;
   className?: string;
   headerRight?: React.ReactNode;
@@ -216,21 +217,463 @@ interface SectionCardProps {
 
 export function SectionCard({
   title,
+  titleEn,
   children,
   className = "",
   headerRight,
 }: SectionCardProps) {
   return (
     <div
-      className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ${className}`}
+      className={`bg-techCard rounded-lg border border-techBorder shadow-card-glow overflow-hidden ${className}`}
     >
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-        <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-          {title}
-        </h3>
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-techBorder">
+        {titleEn ? (
+          <h3 className="inline-flex items-baseline gap-1.5 truncate">
+            <span className="text-sm font-semibold text-techText truncate">
+              {title}
+            </span>
+            <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted truncate">
+              {titleEn}
+            </span>
+          </h3>
+        ) : (
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-techMuted">
+            {title}
+          </h3>
+        )}
         {headerRight}
       </div>
       <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
+// ==========================================
+// SECTION: SMARTDESK VISUAL ATOMS
+// DualLabel, StatusBadge, ActionButton
+// ==========================================
+
+/** Concatenate class names, filtering falsy values. */
+function cx(...classes: (string | boolean | undefined | null)[]): string {
+  return classes.filter(Boolean).join(" ");
+}
+
+// ── DualLabel ─────────────────────────────────────────────────────────────
+
+interface DualLabelProps {
+  cn: string;
+  en?: string;
+  className?: string;
+  cnClassName?: string;
+  enClassName?: string;
+}
+
+export function DualLabel({
+  cn,
+  en,
+  className,
+  cnClassName,
+  enClassName,
+}: DualLabelProps) {
+  return (
+    <span className={cx("inline-flex items-baseline gap-1.5", className)}>
+      <span className={cx("font-semibold text-techText", cnClassName)}>
+        {cn}
+      </span>
+      {en && (
+        <span
+          className={cx(
+            "text-xs font-mono uppercase tracking-wider text-techMuted",
+            enClassName,
+          )}
+        >
+          {en}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// ── StatusBadge ───────────────────────────────────────────────────────────
+
+interface StatusBadgeProps {
+  status:
+    | "online"
+    | "speaking"
+    | "waiting"
+    | "offline"
+    | "success"
+    | "warning"
+    | "danger"
+    | "neutral";
+  labelCn: string;
+  labelEn?: string;
+  icon?: React.ReactNode;
+  className?: string;
+  pulse?: boolean;
+}
+
+const statusBadgeStyles: Record<string, { container: string; dot: string }> = {
+  speaking: { container: "text-techCyan border-techCyan", dot: "bg-techCyan" },
+  online: { container: "text-techGreen border-techGreen", dot: "bg-techGreen" },
+  success: { container: "text-techGreen border-techGreen", dot: "bg-techGreen" },
+  waiting: { container: "text-techAmber border-techAmber", dot: "bg-techAmber" },
+  warning: { container: "text-techAmber border-techAmber", dot: "bg-techAmber" },
+  offline: { container: "text-techMuted border-techBorder", dot: "bg-techMuted" },
+  neutral: { container: "text-techMuted border-techBorder", dot: "bg-techMuted" },
+  danger: { container: "text-techRose border-techRose", dot: "bg-techRose" },
+};
+
+export function StatusBadge({
+  status,
+  labelCn,
+  labelEn,
+  icon,
+  className,
+  pulse,
+}: StatusBadgeProps) {
+  const style = statusBadgeStyles[status] ?? statusBadgeStyles.neutral;
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1.5 text-xs font-medium border rounded-full px-2.5 py-1",
+        style.container,
+        pulse && status === "speaking" && "shadow-cyan-glow",
+        className,
+      )}
+    >
+      <span
+        className={cx(
+          "w-1.5 h-1.5 rounded-full",
+          style.dot,
+          pulse && "animate-pulse",
+        )}
+      />
+      {icon && <span className="shrink-0">{icon}</span>}
+      <span>{labelCn}</span>
+      {labelEn && (
+        <span className="text-[0.7rem] font-mono uppercase tracking-wider opacity-60">
+          {labelEn}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// ── ActionButton ──────────────────────────────────────────────────────────
+
+interface ActionButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "success" | "warning" | "danger" | "ghost";
+  size?: "sm" | "md" | "lg";
+  touch?: boolean;
+  icon?: React.ReactNode;
+  loading?: boolean;
+  children: React.ReactNode;
+}
+
+const actionButtonVariants: Record<string, string> = {
+  primary:
+    "bg-techCyan text-techBg hover:brightness-110 active:brightness-90",
+  secondary:
+    "bg-techCard border border-techBorder text-techText hover:bg-techCardSoft",
+  success:
+    "bg-techGreen text-white hover:brightness-110 active:brightness-90",
+  warning:
+    "bg-techAmber text-white hover:brightness-110 active:brightness-90",
+  danger: "bg-techRose text-white hover:brightness-110 active:brightness-90",
+  ghost: "bg-transparent text-techText hover:bg-techCard",
+};
+
+const actionButtonSizes: Record<string, string> = {
+  sm: "text-xs px-3 py-1.5 min-h-[32px]",
+  md: "text-sm px-4 py-2 min-h-[40px]",
+  lg: "text-base px-5 py-2.5 min-h-[48px]",
+};
+
+export function ActionButton({
+  variant = "primary",
+  size = "md",
+  touch = false,
+  icon,
+  loading = false,
+  children,
+  className,
+  disabled,
+  ...rest
+}: ActionButtonProps) {
+  const isDisabled = disabled || loading;
+  const variantClass =
+    actionButtonVariants[variant] ?? actionButtonVariants.primary;
+  const sizeClass = actionButtonSizes[size] ?? actionButtonSizes.md;
+  const heightClass = touch ? "min-h-[44px]" : undefined;
+
+  return (
+    <button
+      type="button"
+      className={cx(
+        "inline-flex items-center justify-center gap-2 font-medium rounded-lg",
+        "transition-all duration-150 active:scale-95",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-techCyan",
+        variantClass,
+        sizeClass,
+        heightClass,
+        isDisabled && "opacity-40 cursor-not-allowed",
+        className,
+      )}
+      disabled={isDisabled}
+      {...rest}
+    >
+      {loading ? (
+        <Loader2
+          size={size === "sm" ? 14 : size === "lg" ? 18 : 16}
+          className="animate-spin shrink-0"
+        />
+      ) : icon ? (
+        <span className="shrink-0">{icon}</span>
+      ) : null}
+      {children}
+    </button>
+  );
+}
+
+// ==========================================
+// SECTION: SMARTDESK VISUAL CARDS
+// PanelCard, MetricTile, TechEmptyState
+// ==========================================
+
+// ── PanelCard ─────────────────────────────────────────────────────────────
+
+interface PanelCardProps {
+  titleCn?: string;
+  titleEn?: string;
+  icon?: React.ReactNode;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  bodyClassName?: string;
+  variant?: "default" | "active" | "success" | "warning" | "danger";
+}
+
+const panelCardVariants: Record<string, string> = {
+  default: "border-techBorder",
+  active: "border-techCyan shadow-cyan-glow",
+  success: "border-techGreen",
+  warning: "border-techAmber",
+  danger: "border-techRose",
+};
+
+export function PanelCard({
+  titleCn,
+  titleEn,
+  icon,
+  headerRight,
+  children,
+  className,
+  bodyClassName,
+  variant = "default",
+}: PanelCardProps) {
+  const hasHeader = titleCn || titleEn || icon || headerRight;
+  const borderClass =
+    panelCardVariants[variant] ?? panelCardVariants.default;
+
+  return (
+    <div
+      className={cx(
+        "bg-techCard border rounded-lg shadow-card-glow overflow-hidden",
+        borderClass,
+        className,
+      )}
+    >
+      {hasHeader && (
+        <div className="flex items-center justify-between px-4 py-3 border-b border-techBorder">
+          <div className="flex items-center gap-2 min-w-0">
+            {icon && (
+              <span className="text-techMuted shrink-0">{icon}</span>
+            )}
+            {(titleCn || titleEn) && (
+              <span className="inline-flex items-baseline gap-1.5 truncate">
+                {titleCn && (
+                  <span className="text-sm font-semibold text-techText truncate">
+                    {titleCn}
+                  </span>
+                )}
+                {titleEn && (
+                  <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted truncate">
+                    {titleEn}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+          {headerRight && (
+            <div className="shrink-0 ml-2">{headerRight}</div>
+          )}
+        </div>
+      )}
+      <div className={cx("p-4", bodyClassName)}>{children}</div>
+    </div>
+  );
+}
+
+// ── MetricTile ───────────────────────────────────────────────────────────
+
+interface MetricTileProps {
+  labelCn: string;
+  labelEn?: string;
+  value: React.ReactNode;
+  subtext?: React.ReactNode;
+  icon?: React.ReactNode;
+  tone?: "default" | "cyan" | "success" | "warning" | "danger" | "muted";
+  className?: string;
+}
+
+const metricTileTones: Record<string, string> = {
+  default: "text-techText",
+  cyan: "text-techCyan",
+  success: "text-techGreen",
+  warning: "text-techAmber",
+  danger: "text-techRose",
+  muted: "text-techMuted",
+};
+
+export function MetricTile({
+  labelCn,
+  labelEn,
+  value,
+  subtext,
+  icon,
+  tone = "default",
+  className,
+}: MetricTileProps) {
+  return (
+    <div
+      className={cx(
+        "bg-techCard border border-techBorder rounded-lg p-4",
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <div className="inline-flex items-baseline gap-1.5">
+            <span className="text-xs font-medium text-techMuted">
+              {labelCn}
+            </span>
+            {labelEn && (
+              <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted">
+                {labelEn}
+              </span>
+            )}
+          </div>
+          <div
+            className={cx(
+              "text-2xl font-bold",
+              metricTileTones[tone] ?? metricTileTones.default,
+            )}
+          >
+            {value}
+          </div>
+          {subtext && (
+            <div className="text-xs text-techMuted">{subtext}</div>
+          )}
+        </div>
+        {icon && <div className="text-techMuted shrink-0">{icon}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── SectionHeader ────────────────────────────────────────────────────────
+
+interface SectionHeaderProps {
+  titleCn: string;
+  titleEn?: string;
+  icon?: React.ReactNode;
+  right?: React.ReactNode;
+  className?: string;
+}
+
+export function SectionHeader({
+  titleCn,
+  titleEn,
+  icon,
+  right,
+  className,
+}: SectionHeaderProps) {
+  return (
+    <div className={cx("flex items-center justify-between", className)}>
+      <div className="flex items-center gap-2 min-w-0">
+        {icon && <span className="text-techCyan shrink-0">{icon}</span>}
+        <span className="inline-flex items-baseline gap-1.5 truncate">
+          <span className="text-sm font-semibold text-techText truncate">
+            {titleCn}
+          </span>
+          {titleEn && (
+            <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted truncate">
+              {titleEn}
+            </span>
+          )}
+        </span>
+      </div>
+      {right && <div className="shrink-0 ml-2">{right}</div>}
+    </div>
+  );
+}
+
+// ── TechEmptyState ───────────────────────────────────────────────────────
+
+interface TechEmptyStateProps {
+  icon?: React.ReactNode;
+  titleCn: string;
+  titleEn?: string;
+  descriptionCn?: string;
+  descriptionEn?: string;
+  action?: React.ReactNode;
+  className?: string;
+}
+
+export function TechEmptyState({
+  icon,
+  titleCn,
+  titleEn,
+  descriptionCn,
+  descriptionEn,
+  action,
+  className,
+}: TechEmptyStateProps) {
+  return (
+    <div
+      className={cx(
+        "flex flex-col items-center justify-center py-16 px-6 text-center",
+        className,
+      )}
+    >
+      {icon && (
+        <div className="w-14 h-14 rounded-full bg-techCardSoft border border-techBorder flex items-center justify-center text-techMuted mb-4">
+          {icon}
+        </div>
+      )}
+      <span className="inline-flex items-baseline gap-1.5 mb-2">
+        <span className="text-lg font-semibold text-techText">
+          {titleCn}
+        </span>
+        {titleEn && (
+          <span className="text-xs font-mono uppercase tracking-wider text-techMuted">
+            {titleEn}
+          </span>
+        )}
+      </span>
+      {(descriptionCn || descriptionEn) && (
+        <p className="text-sm text-techMuted max-w-sm">
+          {descriptionCn}
+          {descriptionEn && (
+            <span className="block text-[0.65rem] font-mono uppercase tracking-wider mt-0.5 opacity-60">
+              {descriptionEn}
+            </span>
+          )}
+        </p>
+      )}
+      {action && <div className="mt-6">{action}</div>}
     </div>
   );
 }

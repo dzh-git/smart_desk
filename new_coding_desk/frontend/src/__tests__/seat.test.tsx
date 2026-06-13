@@ -1035,7 +1035,7 @@ describe("SeatTablet - checkin_prompt event", () => {
     render(<SeatTablet seatId={3} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Seat 3")).toBeInTheDocument();
+      expect(screen.getByText(/Seat 3/)).toBeInTheDocument();
     });
 
     const initialFetches = fetchCount;
@@ -1883,7 +1883,7 @@ describe("SeatTablet - data fetching", () => {
     render(<SeatTablet seatId={3} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Seat 3")).toBeInTheDocument();
+      expect(screen.getByText(/Seat 3/)).toBeInTheDocument();
     });
   });
 });
@@ -2215,7 +2215,7 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Seat 1")).toBeInTheDocument();
+      expect(screen.getByText(/Seat 1/)).toBeInTheDocument();
     });
 
     const translationUrl = fetchedUrls.find((u) => u.includes("/api/translations"));
@@ -2252,7 +2252,7 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
     render(<SeatTablet seatId={2} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Seat 2")).toBeInTheDocument();
+      expect(screen.getByText(/Seat 2/)).toBeInTheDocument();
     });
 
     const translationUrl = fetchedUrls.find((u) => u.includes("/api/translations"));
@@ -2289,7 +2289,7 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
     render(<SeatTablet seatId={3} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Seat 3")).toBeInTheDocument();
+      expect(screen.getByText(/Seat 3/)).toBeInTheDocument();
     });
 
     const translationUrl = fetchedUrls.find((u) => u.includes("/api/translations"));
@@ -2342,7 +2342,7 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Seat 1")).toBeInTheDocument();
+      expect(screen.getByText(/Seat 1/)).toBeInTheDocument();
     });
 
     // Send translation_final to trigger refresh
@@ -2419,7 +2419,7 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
     render(<SeatTablet seatId={2} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Seat 2")).toBeInTheDocument();
+      expect(screen.getByText(/Seat 2/)).toBeInTheDocument();
     });
 
     // Send translation_final to trigger refresh

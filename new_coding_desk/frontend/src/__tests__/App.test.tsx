@@ -307,6 +307,6 @@ describe("App - display vote results", () => {
 
     expect(screen.getByText("Approve Roadmap")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("2 votes / 67%")).toBeInTheDocument();
+    expect(screen.getByText(/2 票 \/ 67/)).toBeInTheDocument();
   });
 });

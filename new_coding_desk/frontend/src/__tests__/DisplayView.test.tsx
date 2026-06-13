@@ -183,7 +183,7 @@ describe("DisplayView — Task 2 ended meeting", () => {
 
     // Should show no-votes state
     await waitFor(() => {
-      expect(screen.getByText("No votes yet")).toBeInTheDocument();
+      expect(screen.getByText("暂无投票")).toBeInTheDocument();
     });
 
     // Should NOT show Meeting Ended
@@ -239,7 +239,7 @@ describe("DisplayView — Task 2 ended meeting", () => {
 
     // The "preserved" message should appear
     await waitFor(() => {
-      expect(screen.getByText(/Results are preserved below/)).toBeInTheDocument();
+      expect(screen.getByText(/Results Preserved/)).toBeInTheDocument();
     });
   });
 
@@ -532,7 +532,7 @@ describe("DisplayView — Task 6 polling for active meeting", () => {
     });
 
     // Polling should not overwrite the ended meeting view when no new meeting
-    expect(screen.getByText(/Results are preserved below/)).toBeInTheDocument();
+    expect(screen.getByText(/Results Preserved/)).toBeInTheDocument();
     expect(screen.queryByText("Waiting for Meeting")).not.toBeInTheDocument();
 
     sessionStorage.removeItem("smartdesk.display.endedMeetingId");

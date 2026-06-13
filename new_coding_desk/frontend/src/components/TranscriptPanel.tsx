@@ -1,13 +1,13 @@
-import { MessageSquare, Loader2 } from "lucide-react";
-import { SectionCard, EmptyState, LoadingState } from "./shared";
+import { MessageSquare, Loader2, Mic } from "lucide-react";
+import { PanelCard, TechEmptyState, SectionHeader } from "./shared";
 import type { TranslationRecord } from "../api/types";
 
 const avatarColors = [
-  "bg-sky-600",
-  "bg-teal-600",
-  "bg-rose-600",
-  "bg-amber-600",
-  "bg-emerald-600",
+  "bg-techCyan",
+  "bg-techGreen",
+  "bg-techRose",
+  "bg-techAmber",
+  "bg-techBlue",
   "bg-cyan-700",
   "bg-blue-700",
   "bg-orange-600",
@@ -193,22 +193,47 @@ export function TranscriptPanel({
   const isEmpty = !loading && !hasEntries && !hasInterims;
 
   return (
-    <SectionCard
-      title="Bilingual Transcript"
+    <PanelCard
+      titleCn="会议记录"
+      titleEn="Transcript"
+      variant={hasInterims ? "active" : "default"}
       headerRight={
-        <span className="text-xs text-slate-400 font-medium">EN / ZH</span>
+        <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted">
+          EN / ZH
+        </span>
       }
     >
       {loading ? (
-        <LoadingState rows={3} />
+        <div className="space-y-3 animate-pulse">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-8 h-8 rounded-full bg-techCardSoft flex-shrink-0" />
+              <div className="flex-1 space-y-2 pt-1">
+                <div className="h-3 bg-techCardSoft rounded w-3/4" />
+                <div className="h-2.5 bg-techBorder rounded w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : isEmpty ? (
-        <EmptyState
+        <TechEmptyState
           icon={<MessageSquare size={20} />}
-          title="No transcript yet"
-          description="Recognized speech will appear here in real time."
+          titleCn="暂无字幕"
+          titleEn="No Transcript"
+          descriptionCn="实时转写内容将在此显示"
+          descriptionEn="Recognized speech appears here in real time"
         />
       ) : (
         <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1 md:max-h-72">
+          {/* Live section header when interims are present */}
+          {hasInterims && (
+            <SectionHeader
+              titleCn="实时识别"
+              titleEn="Live Speech"
+              icon={<Mic size={14} />}
+            />
+          )}
+
           {/* Live caption blocks (interims with caption) */}
           {captionInterims.map((interim) => (
             <LiveCaptionBlock
@@ -231,6 +256,15 @@ export function TranscriptPanel({
             />
           ))}
 
+          {/* History section header when there are entries */}
+          {hasEntries && (
+            <SectionHeader
+              titleCn="历史记录"
+              titleEn="History"
+              className={hasInterims ? "mt-2 pt-2 border-t border-techBorder" : ""}
+            />
+          )}
+
           {/* Final entries (persisted) */}
           {dedupedEntries.map((entry) => (
             <TranscriptRow
@@ -243,7 +277,7 @@ export function TranscriptPanel({
           ))}
         </div>
       )}
-    </SectionCard>
+    </PanelCard>
   );
 }
 
@@ -277,27 +311,27 @@ function TranscriptRow({
       data-created-at={entry.created_at}
     >
       <div
-        className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold ${color}`}
+        className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-techBg text-xs font-bold ${color}`}
       >
         {initials(speakerName)}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-xs font-semibold text-slate-700">
+          <span className="text-xs font-semibold text-techText">
             {speakerName}
           </span>
-          <span className="text-[10px] text-slate-400">{time}</span>
+          <span className="text-[10px] text-techMuted">{time}</span>
           <span
-            className="text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-1.5 py-0.5"
+            className="text-[10px] font-medium text-techCyan bg-techCardSoft border border-techCyan/30 rounded-full px-1.5 py-0.5"
             data-testid="transcript-lang-label"
           >
             {langLabel}
           </span>
         </div>
-        <p className="text-sm text-slate-700 leading-relaxed" data-testid="transcript-source">
+        <p className="text-sm text-techText leading-relaxed" data-testid="transcript-source">
           {entry.source_text}
         </p>
-        <p className="text-xs text-slate-500 mt-1 leading-relaxed border-l-2 border-slate-200 pl-2" data-testid="transcript-target">
+        <p className="text-xs text-techMuted mt-1 leading-relaxed border-l-2 border-techBorder pl-2" data-testid="transcript-target">
           {entry.translated_text}
         </p>
       </div>
@@ -324,23 +358,26 @@ function LiveCaptionBlock({
       data-utterance-id={interim.utteranceId}
       data-seat-id={interim.seatId}
       data-revision={interim.revision}
-      className="bg-sky-50 border border-sky-200 rounded-lg p-3"
+      className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow"
     >
       <div className="flex items-baseline gap-2 mb-1.5">
-        <span className="text-xs font-semibold text-slate-600">
+        <span className="text-xs font-semibold text-techCyan">
           {speakerName}
         </span>
-        <Loader2 size={10} className="animate-spin text-sky-400" />
+        <Loader2 size={10} className="animate-spin text-techCyan" />
+        <span className="text-[0.6rem] font-mono uppercase tracking-wider text-techCyan/50 ml-auto">
+          实时 / Live
+        </span>
       </div>
       <div
         data-testid="live-caption-previous"
-        className="min-h-[1.25rem] max-h-[1.25rem] overflow-hidden break-words text-sm text-slate-500 leading-snug"
+        className="min-h-[1.25rem] max-h-[1.25rem] overflow-hidden break-words text-sm text-techMuted leading-snug"
       >
         {caption.previousLine}
       </div>
       <div
         data-testid="live-caption-current"
-        className="min-h-[1.5rem] max-h-[1.5rem] overflow-hidden break-words text-base text-slate-800 font-medium leading-snug"
+        className="min-h-[1.5rem] max-h-[1.5rem] overflow-hidden break-words text-base text-techText font-medium leading-snug"
       >
         {caption.currentLine}
       </div>
@@ -364,38 +401,38 @@ function InterimRow({
 
   return (
     <div
-      className="flex gap-3 opacity-80"
+      className="flex gap-3 opacity-70"
       data-testid="transcript-interim"
       data-utterance-id={interim.utteranceId}
       data-seat-id={interim.seatId}
       data-revision={interim.revision}
     >
       <div
-        className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold ${color}`}
+        className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-techBg text-xs font-bold ${color}`}
       >
         {initials(speakerName)}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-xs font-semibold text-slate-600">
+          <span className="text-xs font-semibold text-techText">
             {speakerName}
           </span>
           <Loader2
             size={10}
-            className="animate-spin text-sky-400"
+            className="animate-spin text-techCyan"
           />
           <span
-            className="text-[10px] font-medium text-sky-500 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5"
+            className="text-[10px] font-medium text-techCyan bg-techCardSoft border border-techCyan/30 rounded-full px-1.5 py-0.5"
             data-testid="transcript-lang-label"
           >
             {langLabel}
           </span>
         </div>
-        <p className="text-sm text-slate-500 leading-relaxed italic" data-testid="transcript-source">
+        <p className="text-sm text-techMuted leading-relaxed italic" data-testid="transcript-source">
           {interim.sourceText}
         </p>
         {interim.translatedText && (
-          <p className="text-xs text-slate-400 mt-1 leading-relaxed border-l-2 border-sky-200 pl-2 italic" data-testid="transcript-target">
+          <p className="text-xs text-techMuted/70 mt-1 leading-relaxed border-l-2 border-techCyan/30 pl-2 italic" data-testid="transcript-target">
             {interim.translatedText}
           </p>
         )}

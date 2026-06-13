@@ -12,6 +12,7 @@ import {
   Trash2,
   Mic,
   MicOff,
+  WifiOff,
 } from "lucide-react";
 import { useAdminData } from "../hooks/useAdminData";
 
@@ -22,7 +23,10 @@ import { VotePanel } from "./VotePanel";
 import { ServicePanel } from "./ServicePanel";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { MeetingResultPanel } from "./MeetingResultPanel";
-import { SectionCard } from "./shared";
+import {
+  SectionCard,
+  ActionButton,
+} from "./shared";
 import { formatDuration, isDemoControlsEnabled } from "./shared";
 import {
   createVote,
@@ -39,7 +43,7 @@ import {
   deleteAgenda,
   triggerSpeechPreload,
 } from "../api/resources";
-import type { Meeting } from "../api/types";
+import type { Meeting, Attendee } from "../api/types";
 import {
   deriveMeetingLifecycleStatus,
   deriveAdminVoteState,
@@ -104,10 +108,6 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
   const [agendaTitle, setAgendaTitle] = useState("");
   const [agendaBusy, setAgendaBusy] = useState(false);
 
-  // ── Speech preload state ──────────────────────────────────────────────────
-  const [preloadingModel, setPreloadingModel] = useState(false);
-  const [preloadResult, setPreloadResult] = useState<"idle" | "success" | "error">("idle");
-
   // ── Derived meeting lifecycle & vote state (Task 4) ─────────────────────
   const meetingStatus = deriveMeetingLifecycleStatus(meeting, pendingMeeting, isEndedMeeting);
   const voteState = deriveAdminVoteState(hasActiveVote, voteResults);
@@ -125,6 +125,25 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
       prevMeetingIdRef.current = meeting.id;
     }
   }, [meeting?.id]);
+
+  // ── Ended Meeting Snapshot ────────────────────────────────────────────────
+  // Keep a ref to the latest attendees so handleEndMeeting can snapshot
+  // the seat→attendee binding before the backend clears seat_id.
+  const attendeesRef = useRef(attendees);
+  useEffect(() => { attendeesRef.current = attendees; }, [attendees]);
+
+  // ── Auto speech model preload ───────────────────────────────────────────
+  const preloadedMeetingIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (meetingStatus !== "meeting_active" || !meeting?.id) return;
+    if (preloadedMeetingIdRef.current === meeting.id) return;
+
+    preloadedMeetingIdRef.current = meeting.id;
+    triggerSpeechPreload().catch((error) => {
+      console.warn("Speech model preload failed", error);
+    });
+  }, [meetingStatus, meeting?.id]);
 
   // ── Admin action handlers ──────────────────────────────────────────────
 
@@ -228,6 +247,8 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
     setMeetingActionBusy(true);
     setAdminActionError(null);
     try {
+      // Save seat→attendee snapshot BEFORE ending the meeting (backend may clear seat_id)
+      saveEndedSnapshot(meeting.id, attendeesRef.current);
       await endMeeting(meeting.id);
       // Save ended meeting data so the hook can restore it when fetchActiveMeeting returns null
       try {
@@ -267,6 +288,16 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
       setSpeakerBusy(false);
     }
   }, [refresh]);
+
+  const handleClearEndedMeeting = useCallback(() => {
+    // Clear the snapshot for this meeting too
+    if (meeting?.id) {
+      try {
+        sessionStorage.removeItem(`smartdesk.admin.endedMeetingSnapshot.${meeting.id}`);
+      } catch { /* sessionStorage may throw */ }
+    }
+    clearEndedMeeting();
+  }, [meeting?.id, clearEndedMeeting]);
 
   const handleCreateAttendee = useCallback(async () => {
     if (!meeting) return;
@@ -337,41 +368,31 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
     }
   }, [meeting, refresh]);
 
-  async function handlePreloadSpeechModel() {
-    setPreloadingModel(true);
-    setPreloadResult("idle");
-    setAdminActionError(null);
-    try {
-      await triggerSpeechPreload();
-      setPreloadResult("success");
-    } catch (err: unknown) {
-      setPreloadResult("error");
-      setAdminActionError(
-        err instanceof Error ? err.message : "Failed to preload speech model",
-      );
-    } finally {
-      setPreloadingModel(false);
-      // Auto-reset feedback after 3 seconds
-      setTimeout(() => setPreloadResult("idle"), 3000);
-    }
-  }
-
   function handleSeatClick(seatId: number) {
     setActiveSeatId((prev) => (prev === seatId ? undefined : seatId));
   }
 
-  // Build seat → name map for service calls and transcript
-  const seatNameMap: Record<number, string> = {};
-  for (const a of attendees) {
+  // ── Ended meeting snapshot merge ─────────────────────────────────────────
+  // When the meeting ends, the backend may set attendee.seat_id to null.
+  // Restore the seat→attendee binding from a snapshot saved before endMeeting.
+  const endedSnapshot: EndedSnapshot | null =
+    isEndedMeeting && meeting?.id ? loadEndedSnapshot(meeting.id) : null;
+  const displayAttendees = isEndedMeeting && endedSnapshot
+    ? mergeAttendeesWithSnapshot(attendees, endedSnapshot)
+    : attendees;
+
+  // Build seat → name map from (possibly merged) attendees
+  const displaySeatNameMap: Record<number, string> = {};
+  for (const a of displayAttendees) {
     if (a.seat_id != null) {
-      seatNameMap[a.seat_id] = a.name;
+      displaySeatNameMap[a.seat_id] = a.name;
     }
   }
 
   // Metric card data
-  const checkedIn = attendees.filter((a) => a.checked_in).length;
+  const checkedIn = displayAttendees.filter((a) => a.checked_in).length;
   const speakerAttendee =
-    speakerSeatId != null ? seatNameMap[speakerSeatId] ?? null : null;
+    speakerSeatId != null ? displaySeatNameMap[speakerSeatId] ?? null : null;
   const pendingRequests = serviceCalls.filter(
     (c) => c.status === "pending",
   ).length;
@@ -386,7 +407,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
   // ── Loading State ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
+      <div className="min-h-screen bg-techBg flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -396,8 +417,8 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
-            <Loader2 size={32} className="animate-spin text-sky-500 mx-auto" />
-            <p className="text-sm font-medium text-slate-600">
+            <Loader2 size={32} className="animate-spin text-techCyan mx-auto" />
+            <p className="text-sm font-medium text-techMuted">
               Loading meeting data...
             </p>
           </div>
@@ -409,7 +430,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
   // ── Error State ────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
+      <div className="min-h-screen bg-techBg flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -419,20 +440,21 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md">
-            <div className="w-14 h-14 rounded-full bg-red-50 border-2 border-red-200 flex items-center justify-center mx-auto">
-              <AlertCircle className="text-red-500" size={24} />
+            <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mx-auto">
+              <AlertCircle className="text-techRose" size={24} />
             </div>
-            <p className="text-sm font-semibold text-slate-800">
+            <p className="text-sm font-semibold text-techText">
               Failed to load data
             </p>
-            <p className="text-xs text-slate-500">{error}</p>
-            <button
+            <p className="text-xs text-techMuted">{error}</p>
+            <ActionButton
+              variant="primary"
+              size="md"
+              icon={<RefreshCw size={14} />}
               onClick={refresh}
-              className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors"
             >
-              <RefreshCw size={14} />
               Retry
-            </button>
+            </ActionButton>
           </div>
         </div>
       </div>
@@ -442,7 +464,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
   // ── No Meeting State ───────────────────────────────────────────────────
   if (noMeeting) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
+      <div className="min-h-screen bg-techBg flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -452,98 +474,104 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="w-full max-w-lg space-y-4">
-            <div className="w-16 h-16 rounded-full bg-sky-50 border-2 border-sky-200 flex items-center justify-center mx-auto">
-              <Cpu className="text-sky-500" size={28} />
+            <div className="w-16 h-16 rounded-full bg-techCyan/10 border-2 border-techCyan/30 flex items-center justify-center mx-auto">
+              <Cpu className="text-techCyan" size={28} />
             </div>
             <div className="text-center">
-              <p className="text-base font-bold text-slate-800">
+              <p className="text-base font-bold text-techText">
                 No Active Meeting
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-techMuted">
                 Create a pending meeting, then start it when the room is ready.
               </p>
             </div>
 
             {adminActionError && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-center gap-2">
-                <AlertCircle size={14} className="text-rose-500 flex-shrink-0" />
-                <p className="text-xs text-rose-700">{adminActionError}</p>
+              <div className="bg-techRose/10 border border-techRose/30 rounded-xl px-4 py-3 flex items-center gap-2">
+                <AlertCircle size={14} className="text-techRose flex-shrink-0" />
+                <p className="text-xs text-techRose">{adminActionError}</p>
                 <button
                   onClick={() => setAdminActionError(null)}
-                  className="ml-auto text-rose-400 hover:text-rose-600"
+                  className="ml-auto text-techRose/60 hover:text-techRose"
                 >
                   <XCircle size={14} />
                 </button>
               </div>
             )}
 
-            <SectionCard title="Create Meeting">
+            <SectionCard title="创建会议" titleEn="CREATE MEETING">
               <div className="space-y-3">
                 <input
                   type="text"
                   value={meetingTitle}
                   onChange={(e) => setMeetingTitle(e.target.value)}
                   placeholder="Meeting title"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                  className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                 />
                 <textarea
                   value={meetingDescription}
                   onChange={(e) => setMeetingDescription(e.target.value)}
                   placeholder="Optional description"
                   rows={3}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                  className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                 />
-                <button
+                <ActionButton
+                  variant="primary"
+                  size="md"
                   onClick={handleCreateMeeting}
                   disabled={!canCreateMeeting(meetingStatus, !meetingTitle.trim(), meetingActionBusy)}
-                  className="w-full inline-flex items-center justify-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full"
+                  icon={meetingActionBusy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                 >
-                  {meetingActionBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={14} />}
                   Create Pending Meeting
-                </button>
+                </ActionButton>
               </div>
             </SectionCard>
 
             {pendingMeeting && (
               <SectionCard
-                title="Pending Meeting"
+                title="待启动会议"
+                titleEn="PENDING MEETING"
                 headerRight={
-                  <span className="text-xs font-medium text-amber-600">
+                  <span className="text-xs font-medium text-techAmber">
                     Ready to start
                   </span>
                 }
               >
                 <div className="space-y-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">
+                    <p className="text-sm font-semibold text-techText">
                       {pendingMeeting.title}
                     </p>
                     {pendingMeeting.description && (
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-xs text-techMuted mt-1">
                         {pendingMeeting.description}
                       </p>
                     )}
                   </div>
-                  <button
+                  <ActionButton
+                    variant="success"
+                    size="md"
                     onClick={handleStartPendingMeeting}
                     disabled={!canStartMeeting(meetingStatus, !!pendingMeeting, meetingActionBusy)}
-                    className="w-full inline-flex items-center justify-center gap-2 text-xs font-medium bg-emerald-600 text-white rounded-lg px-4 py-2 hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full"
+                    icon={meetingActionBusy ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                   >
-                    {meetingActionBusy ? <Loader2 size={12} className="animate-spin" /> : <Play size={14} />}
                     Start Meeting
-                  </button>
+                  </ActionButton>
                 </div>
               </SectionCard>
             )}
 
             <div className="text-center">
-              <button
+              <ActionButton
+                variant="secondary"
+                size="sm"
+                icon={<RefreshCw size={14} />}
                 onClick={refresh}
-                className="inline-flex items-center gap-2 text-xs font-medium bg-sky-100 text-sky-700 border border-sky-200 rounded-lg px-4 py-2 hover:bg-sky-200 transition-colors"
               >
-                <RefreshCw size={14} />
                 Refresh
-              </button>
+              </ActionButton>
             </div>
           </div>
         </div>
@@ -553,19 +581,26 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
 
   // ── Active Meeting ─────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col relative">
+    <div className="min-h-screen bg-techSurface flex flex-col relative">
       <AdminHeader
         title={meeting?.title ?? ""}
         meetingStatus={meeting?.status ?? "pending"}
         connection={connection}
         onModeSwitch={isDemoControlsEnabled() ? () => onSwitchToSeat(previewSeat) : undefined}
         previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
+        checkedInCount={checkedIn}
+        totalSeats={seats.length}
+        speakerSeatId={speakerSeatId}
+        speakerName={speakerAttendee}
+        elapsedMs={elapsedMs}
+        pendingRequestCount={pendingRequests}
+        hasActiveVote={hasActiveVote}
       />
 
       {/* Seat preview selector — only visible in demo mode */}
       {isDemoControlsEnabled() && (
-        <div className="bg-slate-900 border-t border-slate-800 px-4 sm:px-6 py-2 flex flex-wrap items-center gap-3">
-          <span className="shrink-0 text-xs text-slate-500 font-medium">
+        <div className="bg-techSurface border-t border-techBorder px-4 sm:px-6 py-2 flex flex-wrap items-center gap-3">
+          <span className="shrink-0 text-xs text-techMuted font-medium">
             Preview seat:
           </span>
           <div className="flex flex-wrap gap-1.5">
@@ -575,20 +610,21 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                 onClick={() => setPreviewSeat(n)}
                 className={`w-7 h-7 rounded-md text-xs font-semibold transition-colors ${
                   previewSeat === n
-                    ? "bg-sky-500 text-white"
-                    : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-300"
+                    ? "bg-techCyan text-techBg"
+                    : "bg-techCard text-techMuted hover:bg-techCardSoft hover:text-techText"
                 }`}
               >
                 {n}
               </button>
             ))}
           </div>
-          <button
+          <ActionButton
+            variant="secondary"
+            size="sm"
             onClick={() => onSwitchToSeat(previewSeat)}
-            className="w-full sm:w-auto sm:ml-auto text-xs font-medium text-sky-400 border border-sky-800 hover:bg-sky-900/50 transition-colors rounded-lg px-3 py-1"
           >
             Open Seat Tablet View
-          </button>
+          </ActionButton>
         </div>
       )}
 
@@ -596,57 +632,58 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         {/* Summary row / Ended meeting banner */}
         {isEndedMeeting ? (
           <div className="mb-6">
-            <div className="rounded-xl border-2 border-slate-300 bg-slate-100 p-4 text-center">
-              <p className="text-lg font-bold text-slate-600">Meeting Ended</p>
-              <p className="text-sm text-slate-500 mt-1">{meeting?.title}</p>
+            <div className="rounded-xl border border-techBorder bg-techCard p-4 text-center shadow-card-glow">
+              <p className="text-lg font-bold text-techMuted">Meeting Ended</p>
+              <p className="text-sm text-techMuted/70 mt-1">{meeting?.title}</p>
             </div>
           </div>
         ) : (
           <div className="mb-6 space-y-3">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <MetricCard
-                label="Elapsed"
+                label="Meeting time"
                 value={elapsedMs > 0 ? formatDuration(elapsedMs) : "—"}
-                sub="Meeting time"
-                accent="text-sky-700"
+                sub="Elapsed"
+                accent="text-techCyan"
               />
               <MetricCard
-                label="Attendees"
+                label="Checked in"
                 value={`${checkedIn}/10`}
-                sub="Checked in"
+                sub="Attendees"
                 accent={
-                  checkedIn >= 9 ? "text-emerald-700" : "text-amber-600"
+                  checkedIn >= 9 ? "text-techGreen" : "text-techAmber"
                 }
               />
               <MetricCard
                 label="Speaker"
                 value={speakerAttendee?.split(" ")[0] ?? "—"}
                 sub={speakerAttendee ?? "No active speaker"}
-                accent="text-emerald-700"
+                accent="text-techGreen"
               />
               <MetricCard
-                label="Requests"
+                label="Pending service"
                 value={pendingRequests}
-                sub="Pending service"
+                sub="Requests"
                 accent={
-                  pendingRequests > 0 ? "text-rose-600" : "text-slate-600"
+                  pendingRequests > 0 ? "text-techRose" : "text-techMuted"
                 }
               />
             </div>
 
             {/* Phase selector — only in active meeting */}
             {canUsePhaseSelector(meetingStatus) && (
-            <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
-              <span className="text-xs font-semibold text-slate-600">
-                Current Phase:
+            <div className="flex flex-wrap items-center gap-3 bg-techCard border border-techBorder rounded-lg shadow-card-glow px-4 py-3">
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="text-sm font-semibold text-techText">当前阶段</span>
+                <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted">CURRENT PHASE</span>
               </span>
-              <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+              <div className="flex rounded-lg border border-techBorder overflow-hidden">
                 <button
                   onClick={() => setUiPhase("general")}
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     uiPhase === "general"
-                      ? "bg-sky-600 text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-50"
+                      ? "bg-techCyan text-techBg"
+                      : "bg-techSurface text-techMuted hover:bg-techCardSoft"
                   }`}
                 >
                   General
@@ -655,104 +692,80 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                   onClick={() => setUiPhase("agenda_discussion")}
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     uiPhase === "agenda_discussion"
-                      ? "bg-sky-600 text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-50"
+                      ? "bg-techCyan text-techBg"
+                      : "bg-techSurface text-techMuted hover:bg-techCardSoft"
                   }`}
                 >
                   Agenda Discussion
                 </button>
               </div>
               {uiPhase === "agenda_discussion" && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                <span className="inline-flex items-center gap-1 rounded-full bg-techAmber/10 border border-techAmber/30 px-2.5 py-0.5 text-[10px] font-semibold text-techAmber">
                   Agenda Discussion
                 </span>
               )}
             </div>
           )}
 
-          {/* Speech Model Preload — only in active meeting */}
-          {canUsePhaseSelector(meetingStatus) && (
-            <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
-              <span className="text-xs font-semibold text-slate-600">
-                Speech Model:
-              </span>
-              <button
-                onClick={handlePreloadSpeechModel}
-                disabled={preloadingModel}
-                className="inline-flex items-center gap-2 text-xs font-medium bg-amber-600 text-white rounded-lg px-4 py-2 hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {preloadingModel ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Cpu size={13} />
-                )}
-                {preloadingModel ? "Preloading..." : "Preload Speech Model"}
-              </button>
-              {preloadResult === "success" && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                  Preload triggered
-                </span>
-              )}
-              {preloadResult === "error" && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-[10px] font-semibold text-rose-700">
-                  Preload failed
-                </span>
-              )}
-            </div>
-          )}
           </div>
         )}
 
         {isEndedMeeting ? (
           <SectionCard
-            title="Meeting Ended"
+            title="会议已结束"
+            titleEn="MEETING ENDED"
             headerRight={
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-techMuted">
                 ID {meeting?.id}
               </span>
             }
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm text-slate-600">
-                  This meeting has ended. Results are shown below.
-                </p>
+                <span className="inline-flex items-baseline gap-1.5">
+                  <span className="text-sm text-techMuted">会议已结束，下方显示结果。</span>
+                  <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted/60">MEETING ENDED — RESULTS BELOW</span>
+                </span>
               </div>
-              <button
-                onClick={clearEndedMeeting}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-sky-200 bg-white px-3 py-2 text-xs font-medium text-sky-600 transition-colors hover:bg-sky-50"
+              <ActionButton
+                variant="secondary"
+                size="sm"
+                icon={<Plus size={13} />}
+                onClick={handleClearEndedMeeting}
               >
-                <Plus size={13} />
-                New Meeting
-              </button>
+                新会议 / NEW MEETING
+              </ActionButton>
             </div>
           </SectionCard>
         ) : (
           <SectionCard
-            title="Meeting Control"
+            title="会议控制"
+            titleEn="MEETING CONTROL"
             headerRight={
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-techMuted">
                 ID {meeting?.id}
               </span>
             }
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-800">
-                  Active meeting controls
+                <p className="truncate text-sm font-semibold text-techText">
+                  会议控制面板 / ACTIVE MEETING CONTROLS
                 </p>
-                <p className="text-xs text-slate-500">
-                  Status: {meeting?.status}
+                <p className="text-xs text-techMuted">
+                  状态: {meeting?.status === "active" ? "进行中" : meeting?.status} / STATUS: {meeting?.status}
                 </p>
               </div>
-              <button
+              <ActionButton
+                variant="danger"
+                size="sm"
+                icon={meetingActionBusy ? <Loader2 size={12} className="animate-spin" /> : <Square size={13} />}
                 onClick={handleEndMeeting}
                 disabled={!canEndMeeting(meetingStatus, meetingActionBusy)}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                loading={meetingActionBusy}
               >
-                {meetingActionBusy ? <Loader2 size={12} className="animate-spin" /> : <Square size={13} />}
-                End Meeting
-              </button>
+                结束会议 / END MEETING
+              </ActionButton>
             </div>
           </SectionCard>
         )}
@@ -762,9 +775,9 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           {/* Conference table — wide (hidden for ended meetings) */}
           {!isEndedMeeting && (
             <div className="col-span-12 xl:col-span-8">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-                <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5">
-                  Conference Room — Seat Overview
+              <div className="bg-techCard border border-techBorder rounded-lg shadow-card-glow p-6">
+                <h3 className="text-xs font-semibold uppercase tracking-widest text-techMuted mb-5">
+                  会议桌总览 / Conference Room — Seat Overview
                 </h3>
                 <ConferenceTable
                   seats={seats}
@@ -773,13 +786,13 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                   onSeatClick={handleSeatClick}
                 />
                 {selectedSeat && (
-                  <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mt-5 rounded-lg border border-techBorder bg-techCardSoft p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800">
-                          Seat {selectedSeat.seatId}
+                        <p className="text-sm font-semibold text-techText">
+                          座位 {selectedSeat.seatId} / Seat {selectedSeat.seatId}
                         </p>
-                        <p className="truncate text-xs text-slate-500">
+                        <p className="truncate text-xs text-techMuted">
                           {selectedSeat.attendeeName
                             ? `${selectedSeat.attendeeName}${selectedSeat.attendeeTitle ? ` · ${selectedSeat.attendeeTitle}` : ""}`
                             : "No attendee checked in"}
@@ -789,18 +802,18 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                         <button
                           onClick={() => handleSetSpeaker(selectedSeat.seatId)}
                           disabled={!canControlSpeaker(meetingStatus) || speakerBusy || speakerSeatId === selectedSeat.seatId}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-techCyan/20 border border-techCyan/40 px-3 py-1.5 text-xs font-medium text-techCyan transition-colors hover:bg-techCyan/30 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {speakerBusy ? <Loader2 size={12} className="animate-spin" /> : <Mic size={13} />}
-                          Set Speaker
+                          设为发言 / Set Speaker
                         </button>
                         <button
                           onClick={handleClearSpeaker}
                           disabled={!canControlSpeaker(meetingStatus) || speakerBusy || speakerSeatId == null}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-techBorder bg-techCard px-3 py-1.5 text-xs font-medium text-techMuted transition-colors hover:bg-techCardSoft disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {speakerBusy ? <Loader2 size={12} className="animate-spin" /> : <MicOff size={13} />}
-                          Clear Speaker
+                          清除发言 / Clear
                         </button>
                       </div>
                     </div>
@@ -813,10 +826,11 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           {/* Right column — full width when conference table is hidden */}
           <div className={`col-span-12 flex flex-col gap-6 ${isEndedMeeting ? '' : 'xl:col-span-4'}`}>
             <SectionCard
-              title="Attendees"
+              title="参会人员"
+              titleEn="ATTENDEES"
               headerRight={
-                <span className="text-xs text-slate-400 font-medium">
-                  {attendees.length} people
+                <span className="text-xs text-techMuted font-medium">
+                  {displayAttendees.length} 人 / PEOPLE
                 </span>
               }
             >
@@ -829,46 +843,49 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                         value={attendeeName}
                         onChange={(e) => setAttendeeName(e.target.value)}
                         placeholder="Attendee name"
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                        className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                       />
                       <input
                         type="text"
                         value={attendeeTitle}
                         onChange={(e) => setAttendeeTitle(e.target.value)}
                         placeholder="Title"
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                        className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                       />
                     </div>
-                    <button
+                    <ActionButton
+                      variant="primary"
+                      size="md"
+                      icon={attendeeBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
                       onClick={handleCreateAttendee}
                       disabled={!canManageAttendees(meetingStatus) || attendeeBusy}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      loading={attendeeBusy}
+                      className="w-full"
                     >
-                      {attendeeBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
-                      Add Attendee
-                    </button>
+                      添加参会人 / ADD ATTENDEE
+                    </ActionButton>
                   </>
                 )}
                 <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
-                  {attendees.map((attendee) => (
+                  {displayAttendees.map((attendee) => (
                     <div
                       key={attendee.id}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-techCardSoft"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-700">
+                        <p className="truncate text-sm font-medium text-techText">
                           {attendee.name}
-                        </p>
-                        <p className="truncate text-xs text-slate-400">
-                          {attendee.title || "No title"}
                           {attendee.seat_id != null ? ` · Seat ${attendee.seat_id}` : ""}
+                        </p>
+                        <p className="truncate text-xs text-techMuted">
+                          {attendee.title || "No title"}
                         </p>
                       </div>
                       {canManageAttendees(meetingStatus) && (
                         <button
                           onClick={() => handleDeleteAttendee(attendee.id)}
                           disabled={attendeeBusy}
-                          className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                          className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-techMuted transition-colors hover:bg-techRose/20 hover:text-techRose disabled:opacity-50 min-h-[32px] min-w-[32px]"
                           aria-label={`Delete attendee ${attendee.name}`}
                         >
                           <Trash2 size={13} />
@@ -880,31 +897,34 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
               </div>
             </SectionCard>
 
-            <div className={uiPhase === "agenda_discussion" ? "border-2 border-amber-300 rounded-xl bg-amber-50 p-3 space-y-3" : "space-y-3"}>
+            <div className={uiPhase === "agenda_discussion" ? "border border-techAmber/30 rounded-lg bg-techAmber/5 p-3 space-y-3" : "space-y-3"}>
               {uiPhase === "agenda_discussion" && (
-                <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
-                  Agenda Discussion Mode — Agenda items are emphasised below.
+                <p className="text-xs font-semibold text-techAmber flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full bg-techAmber" />
+                  议题讨论模式 — 以下议题项高亮显示 / AGENDA DISCUSSION MODE
                 </p>
               )}
               {canManageAgenda(meetingStatus) && (
-                <SectionCard title="Add Agenda">
+                <SectionCard title="新增议程" titleEn="ADD AGENDA">
                   <div className="space-y-3">
                     <input
                       type="text"
                       value={agendaTitle}
                       onChange={(e) => setAgendaTitle(e.target.value)}
                       placeholder="Agenda title"
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                      className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                     />
-                    <button
+                    <ActionButton
+                      variant="primary"
+                      size="md"
+                      icon={agendaBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
                       onClick={handleCreateAgenda}
                       disabled={!canManageAgenda(meetingStatus) || agendaBusy}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      loading={agendaBusy}
+                      className="w-full"
                     >
-                      {agendaBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
-                      Add Agenda
-                    </button>
+                      添加议程 / ADD AGENDA
+                    </ActionButton>
                   </div>
                 </SectionCard>
               )}
@@ -918,12 +938,12 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
 
             {/* Admin action error */}
             {adminActionError && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-center gap-2">
-                <AlertCircle size={14} className="text-rose-500 flex-shrink-0" />
-                <p className="text-xs text-rose-700">{adminActionError}</p>
+              <div className="bg-techRose/10 border border-techRose/30 rounded-xl px-4 py-3 flex items-center gap-2">
+                <AlertCircle size={14} className="text-techRose flex-shrink-0" />
+                <p className="text-xs text-techRose">{adminActionError}</p>
                 <button
                   onClick={() => setAdminActionError(null)}
-                  className="ml-auto text-rose-400 hover:text-rose-600"
+                  className="ml-auto text-techRose/60 hover:text-techRose"
                 >
                   <XCircle size={14} />
                 </button>
@@ -932,14 +952,14 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
 
             {/* Create Vote form — only when no active vote and meeting is active */}
             {canCreateVote(meetingStatus, voteState, false) && (
-              <SectionCard title="Create Vote">
+              <SectionCard title="创建投票" titleEn="CREATE VOTE">
                 <div className="space-y-3">
                   <input
                     type="text"
                     value={createVoteTitle}
                     onChange={(e) => setCreateVoteTitle(e.target.value)}
                     placeholder="Vote title..."
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                    className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                   />
                   {createVoteOptions.map((opt, i) => (
                     <input
@@ -952,36 +972,35 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                         setCreateVoteOptions(next);
                       }}
                       placeholder={`Option ${i + 1}`}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                      className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                     />
                   ))}
                   <button
                     onClick={() => setCreateVoteOptions([...createVoteOptions, ""])}
-                    className="text-xs font-medium text-sky-600 hover:text-sky-700"
+                    className="text-xs font-medium text-techCyan hover:text-techCyan/80"
                   >
                     + Add option
                   </button>
-                  <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <label className="flex items-center gap-2 text-xs text-techMuted">
                     <input
                       type="checkbox"
                       checked={createVoteAnonymous}
                       onChange={(e) => setCreateVoteAnonymous(e.target.checked)}
-                      className="rounded border-slate-300"
+                      className="rounded border-techBorder bg-techSurface text-techCyan focus:ring-techCyan"
                     />
                     Anonymous vote
                   </label>
-                  <button
+                  <ActionButton
+                    variant="primary"
+                    size="md"
+                    icon={creatingVote ? <Loader2 size={14} className="animate-spin" /> : <Vote size={14} />}
                     onClick={handleCreateVote}
                     disabled={!canCreateVote(meetingStatus, voteState, creatingVote)}
-                    className="w-full inline-flex items-center justify-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    loading={creatingVote}
+                    className="w-full"
                   >
-                    {creatingVote ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <Vote size={14} />
-                    )}
                     {creatingVote ? "Creating..." : "Create Vote"}
-                  </button>
+                  </ActionButton>
                 </div>
               </SectionCard>
             )}
@@ -996,7 +1015,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
               closingVote={closingVote}
             />
             <MeetingResultPanel voteResults={voteResults} />
-            <ServicePanel calls={serviceCalls} seatNameMap={seatNameMap} onResolve={canResolveServiceCall(meetingStatus, serviceCalls.some(c => c.status === "pending")) ? handleResolveCall : undefined} resolvingId={resolvingId} />
+            <ServicePanel calls={serviceCalls} seatNameMap={displaySeatNameMap} onResolve={canResolveServiceCall(meetingStatus, serviceCalls.some(c => c.status === "pending")) ? handleResolveCall : undefined} resolvingId={resolvingId} />
           </div>
         </div>
 
@@ -1005,50 +1024,31 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           <TranscriptPanel
             entries={translations}
             interims={Object.values(interimMap)}
-            seatNameMap={seatNameMap}
+            seatNameMap={displaySeatNameMap}
           />
         </div>
       </main>
 
       {/* Disconnected overlay — not shown for ended meetings (no WS needed) */}
       {!isEndedMeeting && connection === "disconnected" && (
-        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
-          <div className="w-14 h-14 rounded-full bg-red-50 border-2 border-red-200 flex items-center justify-center mb-4">
-            <div className="text-red-500">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="1" y1="1" x2="23" y2="23" />
-                <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
-                <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
-                <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
-                <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
-                <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-                <line x1="12" y1="20" x2="12.01" y2="20" />
-              </svg>
-            </div>
+        <div className="fixed inset-0 bg-techBg/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+          <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mb-4">
+            <WifiOff className="text-techRose" size={24} />
           </div>
-          <p className="text-sm font-semibold text-slate-800 mb-1">
+          <p className="text-sm font-semibold text-techText mb-1">
             Connection Lost
           </p>
-          <p className="text-xs text-slate-500 mb-4">
+          <p className="text-xs text-techMuted mb-4">
             Attempting to reconnect...
           </p>
-          <button
+          <ActionButton
+            variant="secondary"
+            size="sm"
+            icon={<RefreshCw size={12} />}
             onClick={refresh}
-            className="inline-flex items-center gap-2 text-xs font-medium text-sky-600 border border-sky-200 rounded-full px-4 py-1.5 hover:bg-sky-50 transition-colors"
           >
-            <RefreshCw size={12} />
             Retry Now
-          </button>
+          </ActionButton>
         </div>
       )}
     </div>
@@ -1068,13 +1068,79 @@ function MetricCard({
   label,
   value,
   sub,
-  accent = "text-slate-800",
+  accent = "text-techCyan",
 }: MetricCardProps) {
   return (
-    <div className="min-w-0 bg-white rounded-xl border border-slate-200 shadow-sm px-3 sm:px-4 py-3 text-center">
+    <div className="min-w-0 bg-techCard border border-techBorder rounded-lg shadow-card-glow px-3 sm:px-4 py-3 text-center">
       <p className={`truncate text-xl sm:text-2xl font-bold leading-none ${accent}`}>{value}</p>
-      <p className="text-xs font-medium text-slate-500 mt-1">{label}</p>
-      {sub && <p className="truncate text-[10px] text-slate-400 mt-0.5">{sub}</p>}
+      <p className="text-xs font-medium text-techMuted mt-1">{label}</p>
+      {sub && <p className="truncate text-[10px] text-techMuted/60 mt-0.5">{sub}</p>}
     </div>
   );
+}
+
+// ── Ended Meeting Snapshot Helpers ──────────────────────────────────────────
+// These are used to preserve seat→attendee bindings when the meeting ends,
+// because the backend may set attendee.seat_id to null on endMeeting.
+
+export interface EndedSnapshot {
+  meetingId: number;
+  attendees: Array<{
+    id: number;
+    name: string;
+    title: string | null;
+    seat_id: number | null;
+  }>;
+}
+
+function saveEndedSnapshot(meetingId: number, attendees: Attendee[]): void {
+  const snapshot: EndedSnapshot = {
+    meetingId,
+    attendees: attendees.map(a => ({
+      id: a.id,
+      name: a.name,
+      title: a.title,
+      seat_id: a.seat_id,
+    })),
+  };
+  try {
+    sessionStorage.setItem(
+      `smartdesk.admin.endedMeetingSnapshot.${meetingId}`,
+      JSON.stringify(snapshot),
+    );
+  } catch { /* sessionStorage may not be available */ }
+}
+
+function loadEndedSnapshot(meetingId: number): EndedSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(
+      `smartdesk.admin.endedMeetingSnapshot.${meetingId}`,
+    );
+    if (raw) return JSON.parse(raw) as EndedSnapshot;
+  } catch { /* ignore parse errors */ }
+  return null;
+}
+
+function mergeAttendeesWithSnapshot(
+  apiAttendees: Attendee[],
+  snapshot: EndedSnapshot,
+): Attendee[] {
+  return apiAttendees.map(apiA => {
+    // If API already returned seat_id, prefer it (e.g. backend didn't clear it)
+    if (apiA.seat_id != null) return apiA;
+
+    // Match by attendee id (most reliable)
+    const byId = snapshot.attendees.find(s => s.id === apiA.id);
+    if (byId && byId.seat_id != null) {
+      return { ...apiA, seat_id: byId.seat_id };
+    }
+
+    // Match by name (fallback, e.g. if the attendee was re-created with a new id)
+    const byName = snapshot.attendees.find(s => s.name === apiA.name && s.seat_id != null);
+    if (byName) {
+      return { ...apiA, seat_id: byName.seat_id };
+    }
+
+    return apiA;
+  });
 }

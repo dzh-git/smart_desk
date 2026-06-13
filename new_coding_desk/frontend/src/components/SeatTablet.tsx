@@ -10,6 +10,7 @@ import {
   User,
   UserCheck,
   Mic,
+  MicOff,
   Coffee,
   Droplets,
   Leaf,
@@ -46,6 +47,21 @@ import {
   canCancelService,
   canStartSpeech,
 } from "../utils/uiState";
+
+// Shared dark-theme components
+import {
+  PanelCard,
+  StatusBadge,
+  ActionButton,
+  DualLabel,
+  SectionHeader,
+} from "./shared";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function cx(...classes: (string | boolean | undefined | null)[]): string {
+  return classes.filter(Boolean).join(" ");
+}
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -251,7 +267,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
+      <div className="min-h-screen bg-techBg flex flex-col">
         <SeatHeader
           seatId={seatId}
           connection={connection}
@@ -261,9 +277,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           <div className="text-center space-y-4">
             <Loader2
               size={32}
-              className="animate-spin text-sky-500 mx-auto"
+              className="animate-spin text-techCyan mx-auto"
             />
-            <p className="text-sm font-medium text-slate-600">
+            <p className="text-sm font-medium text-techMuted">
               Loading seat data...
             </p>
           </div>
@@ -276,7 +292,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
+      <div className="min-h-screen bg-techBg flex flex-col">
         <SeatHeader
           seatId={seatId}
           connection={connection}
@@ -284,20 +300,21 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md">
-            <div className="w-14 h-14 rounded-full bg-red-50 border-2 border-red-200 flex items-center justify-center mx-auto">
-              <AlertCircle className="text-red-500" size={24} />
+            <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mx-auto">
+              <AlertCircle className="text-techRose" size={24} />
             </div>
-            <p className="text-sm font-semibold text-slate-800">
+            <p className="text-sm font-semibold text-techText">
               Failed to load data
             </p>
-            <p className="text-xs text-slate-500">{error}</p>
-            <button
+            <p className="text-xs text-techMuted">{error}</p>
+            <ActionButton
+              variant="primary"
+              size="md"
+              icon={<RefreshCw size={14} />}
               onClick={refresh}
-              className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors"
             >
-              <RefreshCw size={14} />
               Retry
-            </button>
+            </ActionButton>
           </div>
         </div>
       </div>
@@ -308,7 +325,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   if (noMeeting) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
+      <div className="min-h-screen bg-techBg flex flex-col">
         <SeatHeader
           seatId={seatId}
           connection={connection}
@@ -316,22 +333,23 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md">
-            <div className="w-16 h-16 rounded-full bg-sky-50 border-2 border-sky-200 flex items-center justify-center mx-auto">
-              <Cpu className="text-sky-500" size={28} />
+            <div className="w-16 h-16 rounded-full bg-techCardSoft border-2 border-techBorder flex items-center justify-center mx-auto">
+              <Cpu className="text-techCyan" size={28} />
             </div>
-            <p className="text-base font-bold text-slate-800">
+            <p className="text-base font-bold text-techText">
               Waiting for Meeting
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-techMuted">
               The seat interface will activate once a meeting starts.
             </p>
-            <button
+            <ActionButton
+              variant="secondary"
+              size="md"
+              icon={<RefreshCw size={14} />}
               onClick={refresh}
-              className="inline-flex items-center gap-2 text-xs font-medium bg-sky-100 text-sky-700 border border-sky-200 rounded-lg px-4 py-2 hover:bg-sky-200 transition-colors"
             >
-              <RefreshCw size={14} />
               Refresh
-            </button>
+            </ActionButton>
           </div>
         </div>
       </div>
@@ -341,48 +359,24 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   // ── Active Meeting ─────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col relative">
+    <div className="min-h-screen bg-techBg bg-tech-radial flex flex-col relative">
       <SeatHeader
         seatId={seatId}
         connection={connection}
         onBack={onSwitchToAdmin}
         meetingTitle={meeting?.title ?? undefined}
+        elapsedMs={elapsedMs}
       />
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-        {/* Meeting info bar */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-slate-500 font-medium">
-                {meeting?.title ?? "Meeting"}
-              </p>
-              {elapsedMs > 0 && (
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {formatDuration(elapsedMs)} elapsed
-                </p>
-              )}
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-              {isSpeaker && (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
-                  <Mic size={12} />
-                  Speaking
-                </span>
-              )}
-              <ConnectionBadge status={connection} />
-            </div>
-          </div>
-        </div>
-
+      <main className="flex-1 overflow-y-auto p-4 space-y-4 max-w-[900px] mx-auto w-full">
         {/* Action error */}
         {actionError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-2">
-            <AlertCircle size={14} className="text-red-500 flex-shrink-0" />
-            <p className="text-xs text-red-700">{actionError}</p>
+          <div className="bg-techRose/10 border border-techRose/30 rounded-lg px-4 py-3 flex items-center gap-2">
+            <AlertCircle size={14} className="text-techRose flex-shrink-0" />
+            <p className="text-xs text-techRose flex-1">{actionError}</p>
             <button
               onClick={() => setActionError(null)}
-              className="ml-auto text-red-400 hover:text-red-600"
+              className="text-techRose/60 hover:text-techRose transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               <XCircle size={14} />
             </button>
@@ -456,23 +450,24 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
       {/* Disconnected overlay */}
       {connection === "disconnected" && (
-        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
-          <div className="w-14 h-14 rounded-full bg-red-50 border-2 border-red-200 flex items-center justify-center mb-4">
-            <WifiOff className="text-red-500" size={24} />
+        <div className="fixed inset-0 bg-techBg/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+          <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mb-4">
+            <WifiOff className="text-techRose" size={24} />
           </div>
-          <p className="text-sm font-semibold text-slate-800 mb-1">
+          <p className="text-sm font-semibold text-techText mb-1">
             Connection Lost
           </p>
-          <p className="text-xs text-slate-500 mb-4">
+          <p className="text-xs text-techMuted mb-4">
             Attempting to reconnect...
           </p>
-          <button
+          <ActionButton
+            variant="secondary"
+            size="sm"
+            icon={<RefreshCw size={12} />}
             onClick={refresh}
-            className="inline-flex items-center gap-2 text-xs font-medium text-sky-600 border border-sky-200 rounded-full px-4 py-1.5 hover:bg-sky-50 transition-colors"
           >
-            <RefreshCw size={12} />
             Retry Now
-          </button>
+          </ActionButton>
         </div>
       )}
     </div>
@@ -486,6 +481,7 @@ interface SeatHeaderProps {
   connection: "connecting" | "connected" | "disconnected";
   onBack?: () => void;
   meetingTitle?: string;
+  elapsedMs?: number;
 }
 
 function SeatHeader({
@@ -493,43 +489,53 @@ function SeatHeader({
   connection,
   onBack,
   meetingTitle,
+  elapsedMs,
 }: SeatHeaderProps) {
   const now = useClock();
 
   return (
-    <header className="bg-slate-900 text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg flex-shrink-0">
+    <header className="bg-techSurface border-b border-techBorder px-4 py-3 flex flex-wrap items-center justify-between gap-2 shadow-card-glow flex-shrink-0">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {onBack && (
           <>
             <button
               onClick={onBack}
-              className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white transition-colors"
+              className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-techMuted hover:text-techText transition-colors min-h-[44px]"
             >
               <ArrowLeft size={14} />
               Back
             </button>
-            <div className="w-px h-5 bg-slate-700 shrink-0" />
+            <div className="w-px h-5 bg-techBorder shrink-0" />
           </>
         )}
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-sky-500 flex shrink-0 items-center justify-center">
-            <Cpu size={14} className="text-white" />
-          </div>
-          <span className="text-sm font-bold text-white">Seat {seatId}</span>
+        <div className="w-8 h-8 rounded-lg bg-techCyan/20 border border-techCyan/30 flex shrink-0 items-center justify-center">
+          <Cpu size={14} className="text-techCyan" />
         </div>
-        {meetingTitle && (
-          <>
-            <div className="hidden sm:block w-px h-5 bg-slate-700 shrink-0" />
-            <p className="min-w-0 max-w-[35vw] truncate text-xs text-slate-400 sm:max-w-[240px]">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-sm font-bold text-techText">
+              座位 {seatId}
+            </span>
+            <span className="text-[0.6rem] font-mono uppercase tracking-wider text-techMuted">
+              / Seat {seatId}
+            </span>
+          </div>
+          {meetingTitle && (
+            <p className="text-xs text-techMuted truncate max-w-[200px] sm:max-w-[300px] leading-tight">
               {meetingTitle}
             </p>
-          </>
-        )}
+          )}
+          {elapsedMs != null && elapsedMs > 0 && (
+            <p className="text-[0.6rem] text-techMuted/70 mt-0.5">
+              {formatDuration(elapsedMs)} 已进行 / Elapsed
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
         <ConnectionBadge status={connection} />
-        <span className="text-xs font-mono text-slate-400">
+        <span className="text-xs font-mono text-techMuted">
           {formatTime(now)}
         </span>
       </div>
@@ -546,24 +552,24 @@ function ConnectionBadge({
 }) {
   if (status === "connected") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50/10 border border-emerald-800/30 rounded-full px-2 py-0.5">
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-techGreen bg-techGreen/10 border border-techGreen/30 rounded-full px-2.5 py-1">
         <Wifi size={10} />
-        Online
+        在线 / Online
       </span>
     );
   }
   if (status === "connecting") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-500 bg-amber-50/10 border border-amber-800/30 rounded-full px-2 py-0.5">
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-techAmber bg-techAmber/10 border border-techAmber/30 rounded-full px-2.5 py-1">
         <Loader2 size={10} className="animate-spin" />
-        Connecting
+        连接中 / Connecting
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400 bg-red-50/10 border border-red-800/30 rounded-full px-2 py-0.5">
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-techRose bg-techRose/10 border border-techRose/30 rounded-full px-2.5 py-1">
       <WifiOff size={10} />
-      Offline
+      离线 / Offline
     </span>
   );
 }
@@ -606,25 +612,33 @@ function SeatStatusCard({
   // ── Vacant ────────────────────────────────────────────────────────────
   if (isVacant) {
     return (
-      <div className="bg-white rounded-2xl border border-dashed border-slate-300 shadow-sm p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-          <User size={28} className="text-slate-400" />
+      <div className="bg-techCard border border-dashed border-techBorder rounded-lg p-6 text-center shadow-card-glow">
+        <div className="w-16 h-16 rounded-full bg-techCardSoft flex items-center justify-center mx-auto mb-4">
+          <User size={28} className="text-techMuted" />
         </div>
-        <p className="text-base font-semibold text-slate-600 mb-1">
-          Seat {seatId} — Vacant
-        </p>
-        <p className="text-xs text-slate-400 mb-4">
+        <div className="mb-1">
+          <DualLabel
+            cn={`座位 ${seatId} · 空座`}
+            en="Vacant"
+            className="justify-center"
+            cnClassName="text-base font-semibold text-techMuted"
+            enClassName="text-xs"
+          />
+        </div>
+        <p className="text-xs text-techMuted/70 mb-4">
           Waiting for occupant
         </p>
         {demoControlsEnabled && (
-          <button
+          <ActionButton
+            variant="primary"
+            size="lg"
+            touch
+            icon={<User size={16} />}
             onClick={onOccupy}
             disabled={!canOccupySeat(meetingStatus, isVacant, writesAllowed)}
-            className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <User size={14} />
             Occupy Seat (Demo)
-          </button>
+          </ActionButton>
         )}
       </div>
     );
@@ -633,16 +647,19 @@ function SeatStatusCard({
   // ── Occupied Unchecked (needs check-in) ──────────────────────────────
   if (isOccupiedUnchecked) {
     return (
-      <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-5">
+      <PanelCard variant="warning" className="shadow-card-glow">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-full bg-amber-50 border-2 border-amber-200 flex items-center justify-center">
-            <User size={20} className="text-amber-500" />
+          <div className="w-12 h-12 rounded-full bg-techAmber/10 border-2 border-techAmber/30 flex items-center justify-center">
+            <User size={20} className="text-techAmber" />
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-800">
-              Seat {seatId} — Check-in Required
-            </p>
-            <p className="text-xs text-slate-500">
+            <DualLabel
+              cn={`座位 ${seatId} · 待签到`}
+              en="Check-in Required"
+              cnClassName="text-sm font-bold text-techText"
+              enClassName="text-xs"
+            />
+            <p className="text-xs text-techMuted mt-0.5">
               Select an attendee to bind to this seat
             </p>
           </div>
@@ -651,7 +668,7 @@ function SeatStatusCard({
         {/* Attendee selection */}
         {unboundAttendees.length > 0 ? (
           <div className="mb-4">
-            <p className="text-xs font-medium text-slate-600 mb-2">
+            <p className="text-xs font-medium text-techMuted mb-2">
               Select attendee:
             </p>
             <div className="space-y-1.5">
@@ -663,18 +680,20 @@ function SeatStatusCard({
                       checkinAttendeeId === a.id ? null : a.id,
                     )
                   }
-                  className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                  className={cx(
+                    "w-full flex items-center gap-3 rounded-lg border px-4 py-3 min-h-[48px] text-left transition-colors",
                     checkinAttendeeId === a.id
-                      ? "border-sky-300 bg-sky-50"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
+                      ? "border-techCyan bg-techCyan/10"
+                      : "border-techBorder bg-techCard hover:bg-techCardSoft",
+                  )}
                 >
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                    className={cx(
+                      "w-8 h-8 rounded-full flex items-center justify-center text-techBg text-xs font-bold",
                       checkinAttendeeId === a.id
-                        ? "bg-sky-500"
-                        : "bg-slate-400"
-                    }`}
+                        ? "bg-techCyan"
+                        : "bg-techMuted",
+                    )}
                   >
                     {a.name
                       .split(" ")
@@ -683,15 +702,15 @@ function SeatStatusCard({
                       .join("")}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-800">
+                    <p className="text-sm font-semibold text-techText">
                       {a.name}
                     </p>
-                    <p className="text-xs text-slate-500">{a.title}</p>
+                    <p className="text-xs text-techMuted">{a.title}</p>
                   </div>
                   {checkinAttendeeId === a.id && (
                     <CheckCircle2
                       size={16}
-                      className="text-sky-500 flex-shrink-0"
+                      className="text-techCyan flex-shrink-0"
                     />
                   )}
                 </button>
@@ -699,44 +718,56 @@ function SeatStatusCard({
             </div>
           </div>
         ) : (
-          <p className="text-xs text-amber-600 mb-4">
+          <p className="text-xs text-techAmber mb-4">
             No unbound attendees available for check-in.
           </p>
         )}
 
         <div className="flex items-center gap-2">
-          <button
+          <ActionButton
+            variant="primary"
+            size="md"
+            touch
+            icon={<UserCheck size={14} />}
             onClick={onCheckin}
             disabled={!canCheckIn(meetingStatus, isOccupiedUnchecked, !!checkinAttendeeId, writesAllowed)}
-            className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <UserCheck size={14} />
             Confirm Check-in
-          </button>
+          </ActionButton>
           {demoControlsEnabled && (
-            <button
+            <ActionButton
+              variant="secondary"
+              size="md"
+              touch
               onClick={onVacate}
               disabled={!canVacateSeat(meetingStatus, !isVacant, writesAllowed)}
-              className="inline-flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-4 py-2 hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Vacate (Demo)
-            </button>
+            </ActionButton>
           )}
         </div>
-      </div>
+      </PanelCard>
     );
   }
 
   // ── Checked In ───────────────────────────────────────────────────────
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+    <div
+      className={cx(
+        "bg-techCard border rounded-lg p-5 shadow-card-glow",
+        isSpeaker
+          ? "border-techCyan shadow-cyan-glow"
+          : "border-techBorder",
+      )}
+    >
       <div className="flex flex-wrap items-center gap-3">
         <div
-          className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+          className={cx(
+            "w-14 h-14 rounded-full flex items-center justify-center text-techBg text-sm font-bold",
             isSpeaker
-              ? "bg-emerald-500 ring-2 ring-emerald-300"
-              : "bg-sky-600"
-          }`}
+              ? "bg-techCyan ring-2 ring-techCyan/50 shadow-cyan-glow"
+              : "bg-techGreen",
+          )}
         >
           {myAttendee?.name
             ? myAttendee.name
@@ -747,36 +778,42 @@ function SeatStatusCard({
             : seatId}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-slate-800">
+          <p className="text-base font-bold text-techText">
             {myAttendee?.name ?? `Seat ${seatId}`}
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-sm text-techMuted">
             {myAttendee?.title ?? "Attendee"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {isSpeaker && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
-              <Mic size={12} />
-              Speaker
-            </span>
+            <StatusBadge
+              status="speaking"
+              labelCn="发言中"
+              labelEn="Speaking"
+              icon={<Mic size={12} />}
+              pulse
+            />
           )}
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2.5 py-1">
-            <UserCheck size={12} />
-            Checked In
-          </span>
+          <StatusBadge
+            status="success"
+            labelCn="已签到"
+            labelEn="Checked In"
+            icon={<UserCheck size={12} />}
+          />
         </div>
       </div>
 
       {demoControlsEnabled && (
-        <div className="mt-3 pt-3 border-t border-slate-100">
-          <button
+        <div className="mt-4 pt-4 border-t border-techBorder">
+          <ActionButton
+            variant="secondary"
+            size="sm"
             onClick={onVacate}
             disabled={!canVacateSeat(meetingStatus, !isVacant, writesAllowed)}
-            className="text-xs font-medium text-slate-500 bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Vacate Seat (Demo)
-          </button>
+          </ActionButton>
         </div>
       )}
     </div>
@@ -818,23 +855,22 @@ function SeatVoteSection({
 }: SeatVoteSectionProps) {
   const hasVoted = currentVote != null;
   const isClosed = vote.status === "closed";
-  const statusLabel = isClosed ? "Final Result" : "Active Vote";
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm p-5 ${isClosed ? "border-slate-200" : "border-sky-200"}`}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Vote size={16} className={isClosed ? "text-slate-500" : "text-sky-500"} />
-          <p className={`text-xs font-semibold uppercase tracking-widest ${isClosed ? "text-slate-500" : "text-sky-600"}`}>
-            {statusLabel}
-          </p>
-        </div>
-        <span className={`text-xs font-medium rounded-full border px-2 py-0.5 ${isClosed ? "border-slate-200 bg-slate-100 text-slate-600" : "border-sky-200 bg-sky-50 text-sky-700"}`}>
-          {isClosed ? "Closed" : vote.is_anonymous ? "Anonymous" : "Open"}
-        </span>
-      </div>
-
-      <p className="text-sm font-semibold text-slate-800 mb-3">
+    <PanelCard
+      titleCn={isClosed ? "投票结果" : "当前投票"}
+      titleEn={isClosed ? "Final Result" : "Active Vote"}
+      icon={<Vote size={16} />}
+      variant={isClosed ? "default" : "active"}
+      headerRight={
+        <StatusBadge
+          status={isClosed ? "neutral" : "waiting"}
+          labelCn={isClosed ? "已关闭" : vote.is_anonymous ? "匿名" : "公开"}
+          labelEn={isClosed ? "Closed" : vote.is_anonymous ? "Anonymous" : "Open"}
+        />
+      }
+    >
+      <p className="text-sm font-semibold text-techText mb-3">
         {vote.title}
       </p>
 
@@ -850,16 +886,19 @@ function SeatVoteSection({
               key={opt.option}
               className="flex items-center gap-2 text-xs"
             >
-              <span className="w-20 min-w-0 truncate text-slate-600 font-medium text-right sm:w-24">
+              <span className="w-20 min-w-0 truncate text-techText font-medium text-right sm:w-24">
                 {opt.option}
               </span>
-              <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="flex-1 h-2 bg-techCardSoft rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${isClosed ? "bg-slate-500" : "bg-sky-400"}`}
+                  className={cx(
+                    "h-full rounded-full transition-all duration-500",
+                    isClosed ? "bg-techMuted" : "bg-techCyan",
+                  )}
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <span className="w-20 shrink-0 text-slate-500">
+              <span className="w-20 shrink-0 text-techMuted">
                 {opt.count} / {pct}%
               </span>
             </div>
@@ -868,11 +907,14 @@ function SeatVoteSection({
       </div>
 
       {voteStatsError && (
-        <p className="text-xs text-amber-600 mb-3">{voteStatsError}</p>
+        <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-2 flex items-center gap-2">
+          <AlertCircle size={12} className="text-techAmber flex-shrink-0" />
+          <p className="text-xs text-techAmber">{voteStatsError}</p>
+        </div>
       )}
 
-      <p className="mb-3 text-xs text-slate-400">
-        {voteStats.total_votes} vote{voteStats.total_votes !== 1 ? "s" : ""} cast
+      <p className="mb-4 text-xs text-techMuted">
+        共 {voteStats.total_votes} 票 / {voteStats.total_votes} vote{voteStats.total_votes !== 1 ? "s" : ""} cast
       </p>
 
       {/* Vote option selection */}
@@ -885,37 +927,41 @@ function SeatVoteSection({
               key={option}
               onClick={() => onSelectOption(isSelected ? null : option)}
               disabled={!canSelectVoteOption(meetingStatus, vote.status, writesAllowed)}
-              className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+              className={cx(
+                "w-full flex items-center gap-3 rounded-lg border px-4 py-3 min-h-[48px] text-left transition-all duration-150 active:scale-[0.98]",
                 isSelected
-                  ? "border-sky-300 bg-sky-50"
+                  ? "border-techCyan bg-techCyan/10"
                   : isMyVote
-                    ? "border-emerald-200 bg-emerald-50"
-                    : "border-slate-200 bg-white hover:bg-slate-50"
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    ? "border-techGreen bg-techGreen/10"
+                    : "border-techBorder bg-techCard hover:bg-techCardSoft",
+                "disabled:opacity-40 disabled:cursor-not-allowed",
+              )}
             >
               <div
-                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                className={cx(
+                  "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0",
                   isSelected
-                    ? "border-sky-500"
+                    ? "border-techCyan"
                     : isMyVote
-                      ? "border-emerald-400"
-                      : "border-slate-300"
-                }`}
+                      ? "border-techGreen"
+                      : "border-techMuted",
+                )}
               >
                 {(isSelected || isMyVote) && (
                   <div
-                    className={`w-2.5 h-2.5 rounded-full ${
-                      isSelected ? "bg-sky-500" : "bg-emerald-400"
-                    }`}
+                    className={cx(
+                      "w-2.5 h-2.5 rounded-full",
+                      isSelected ? "bg-techCyan" : "bg-techGreen",
+                    )}
                   />
                 )}
               </div>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-techText">
                 {option}
               </span>
               {isMyVote && (
-                <span className="shrink-0 text-xs text-emerald-600 font-medium">
-                  Your vote
+                <span className="shrink-0 text-xs text-techGreen font-medium">
+                  已投 / Your vote
                 </span>
               )}
             </button>
@@ -925,31 +971,30 @@ function SeatVoteSection({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         {!isClosed && (
-          <button
+          <ActionButton
+            variant="primary"
+            size="lg"
+            touch
+            icon={submitting ? undefined : <CheckCircle2 size={16} />}
             onClick={onSubmit}
             disabled={!canSubmitVote(meetingStatus, vote.status, true, !!selectedOption, writesAllowed) || submitting}
-            className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            loading={submitting}
           >
-            {submitting ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <CheckCircle2 size={14} />
-            )}
             {hasVoted ? "Update Vote" : "Submit Vote"}
-          </button>
+          </ActionButton>
         )}
         {hasVoted && (
-          <p className="min-w-0 truncate text-xs text-slate-400">
-            Your choice: <span className="font-semibold">{currentVote}</span>
+          <p className="text-xs text-techMuted">
+            Your choice: <span className="font-semibold text-techText">{currentVote}</span>
           </p>
         )}
         {isClosed && !hasVoted && (
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-techMuted">
             Your choice is unavailable for this result.
           </p>
         )}
       </div>
-    </div>
+    </PanelCard>
   );
 }
 
@@ -958,32 +1003,37 @@ function SeatVoteSection({
 const SERVICE_TYPES: Array<{
   type: ServiceType;
   label: string;
+  labelCn: string;
   icon: React.ReactNode;
   color: string;
 }> = [
   {
     type: "coffee",
     label: "Coffee",
-    icon: <Coffee size={16} />,
-    color: "text-amber-600 bg-amber-50 border-amber-200 hover:bg-amber-100",
+    labelCn: "咖啡",
+    icon: <Coffee size={18} />,
+    color: "text-techAmber border-techAmber/30 hover:bg-techAmber/10",
   },
   {
     type: "tea",
     label: "Tea",
-    icon: <Leaf size={16} />,
-    color: "text-green-600 bg-green-50 border-green-200 hover:bg-green-100",
+    labelCn: "茶水",
+    icon: <Leaf size={18} />,
+    color: "text-techGreen border-techGreen/30 hover:bg-techGreen/10",
   },
   {
     type: "water",
     label: "Water",
-    icon: <Droplets size={16} />,
-    color: "text-sky-600 bg-sky-50 border-sky-200 hover:bg-sky-100",
+    labelCn: "矿泉水",
+    icon: <Droplets size={18} />,
+    color: "text-techCyan border-techCyan/30 hover:bg-techCyan/10",
   },
   {
     type: "other",
     label: "Other",
-    icon: <MoreHorizontal size={16} />,
-    color: "text-slate-600 bg-slate-50 border-slate-200 hover:bg-slate-100",
+    labelCn: "其他",
+    icon: <MoreHorizontal size={18} />,
+    color: "text-techMuted border-techBorder hover:bg-techCardSoft",
   },
 ];
 
@@ -1013,47 +1063,41 @@ function SeatServiceSection({
   const hasPending = currentCall?.status === "pending";
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <div className="flex items-center gap-2 mb-3">
-        <Coffee size={16} className="text-slate-500" />
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-          Service Request
-        </p>
-      </div>
-
+    <PanelCard
+      titleCn="服务请求"
+      titleEn="Service Request"
+      icon={<Coffee size={16} />}
+    >
       {hasPending ? (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-            <Clock size={16} className="text-amber-500" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-slate-800">
-                {SERVICE_TYPES.find(
-                  (s) => s.type === currentCall.service_type,
-                )?.label ?? currentCall.service_type}{" "}
-                — Pending
-              </p>
-              <p className="text-xs text-slate-500">
-                Your request has been sent
-              </p>
-            </div>
-            <button
-              onClick={onCancel}
-              disabled={!canCancelService(meetingStatus, hasPending, writesAllowed) || cancelling}
-              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rose-600 bg-white border border-rose-200 rounded-lg px-3 py-1.5 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {cancelling ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <XCircle size={12} />
-              )}
-              Cancel
-            </button>
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-techAmber/30 bg-techAmber/10 px-4 py-3 min-h-[48px]">
+          <Clock size={18} className="text-techAmber flex-shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-techText">
+              {SERVICE_TYPES.find(
+                (s) => s.type === currentCall.service_type,
+              )?.labelCn ?? currentCall.service_type}{" "}
+              — <span className="text-techAmber">Pending</span>
+            </p>
+            <p className="text-xs text-techMuted">
+              请求已发送 / Your request has been sent
+            </p>
           </div>
+          <ActionButton
+            variant="danger"
+            size="md"
+            touch
+            icon={cancelling ? undefined : <XCircle size={14} />}
+            onClick={onCancel}
+            disabled={!canCancelService(meetingStatus, hasPending, writesAllowed) || cancelling}
+            loading={cancelling}
+          >
+            Cancel
+          </ActionButton>
         </div>
       ) : (
         <>
-          <p className="text-xs text-slate-500 mb-3">
-            Request a service:
+          <p className="text-xs text-techMuted mb-3">
+            选择服务 / Request a service:
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {SERVICE_TYPES.map((svc) => (
@@ -1061,16 +1105,27 @@ function SeatServiceSection({
                 key={svc.type}
                 onClick={() => onRequest(svc.type)}
                 disabled={!canCallService(meetingStatus, true, hasPending, writesAllowed) || creating}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${svc.color} disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={cx(
+                  "flex items-center gap-3 rounded-lg border px-4 py-3 min-h-[48px]",
+                  "text-sm font-medium transition-all duration-150 active:scale-[0.98]",
+                  "bg-techCard",
+                  svc.color,
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                )}
               >
                 {svc.icon}
-                {svc.label}
+                <span className="flex items-baseline gap-1.5">
+                  <span>{svc.labelCn}</span>
+                  <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">
+                    {svc.label}
+                  </span>
+                </span>
               </button>
             ))}
           </div>
         </>
       )}
-    </div>
+    </PanelCard>
   );
 }
 
@@ -1139,63 +1194,64 @@ function SpeechControl({
   // ── Non-speaker seat: read-only hint ────────────────────────────────────
   if (!isSpeaker) {
     return (
-      <div className="bg-white rounded-2xl border border-dashed border-slate-300 shadow-sm p-5">
-        <div className="flex items-center gap-2 mb-2">
-          <Mic size={16} className="text-slate-400" />
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Voice Recognition
-          </p>
-        </div>
-        <p className="text-xs text-slate-500">
+      <PanelCard
+        icon={<MicOff size={16} />}
+        className="border-dashed"
+      >
+        <SectionHeader
+          titleCn="语音识别"
+          titleEn="Speech Recognition"
+          icon={<Mic size={14} />}
+        />
+        <p className="text-xs text-techMuted mt-2">
           Only speaker seat can stream audio
         </p>
-      </div>
+      </PanelCard>
     );
   }
 
   // ── Speaker seat: controls ─────────────────────────────────────────────
   return (
-    <div className="bg-white rounded-2xl border border-sky-200 shadow-sm p-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <Mic
-          size={16}
-          className={
-            status === "recording" ? "text-rose-500" : "text-sky-500"
-          }
-        />
-        <p className="text-xs font-semibold uppercase tracking-widest text-sky-600">
-          Voice Recognition
-        </p>
-        <div className="ml-auto flex flex-wrap justify-end gap-1">
+    <PanelCard
+      titleCn="语音识别"
+      titleEn="Speech Recognition"
+      icon={<Mic size={16} />}
+      variant={status === "recording" ? "active" : "default"}
+      headerRight={
+        <div className="flex flex-wrap justify-end gap-1">
           {status === "recording" && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2.5 py-0.5">
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-              Recording
-            </span>
+            <StatusBadge
+              status="danger"
+              labelCn="正在识别"
+              labelEn="Recording"
+              icon={<Mic size={10} />}
+              pulse
+            />
           )}
           {modelsPreloading && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
-              <Loader2 size={10} className="animate-spin" />
-              Loading models
-            </span>
+            <StatusBadge
+              status="waiting"
+              labelCn="模型加载中"
+              labelEn="Loading models"
+              icon={<Loader2 size={10} />}
+            />
           )}
         </div>
-      </div>
-
+      }
+    >
       {/* Speech status error (API fetch failure) */}
       {speechStatusError && (
-        <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-2">
-          <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-700">{speechStatusError}</p>
+        <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-2 flex items-start gap-2">
+          <AlertCircle size={14} className="text-techAmber flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-techAmber">{speechStatusError}</p>
         </div>
       )}
 
       {/* Speech module not ready */}
       {!modelsReady && !modelsPreloading && status === "idle" && (
-        <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-2">
-          <Loader2 size={14} className="text-amber-500 flex-shrink-0 mt-0.5 animate-spin" />
-          <p className="text-xs text-amber-700">
+        <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-2 flex items-start gap-2">
+          <Loader2 size={14} className="text-techAmber flex-shrink-0 mt-0.5 animate-spin" />
+          <p className="text-xs text-techAmber">
             Speech models loading...
           </p>
         </div>
@@ -1203,9 +1259,9 @@ function SpeechControl({
 
       {/* Punctuation fallback hint (non-blocking) */}
       {punctuationFallback && status !== "recording" && status !== "error" && status !== "requesting_microphone" && status !== "connecting_speech_ws" && (
-        <div className="mb-3 bg-amber-50/50 border border-amber-200/50 rounded-xl px-3 py-1.5 flex items-start gap-2">
-          <AlertCircle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-[11px] text-amber-600">
+        <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-1.5 flex items-start gap-2">
+          <AlertCircle size={12} className="text-techAmber flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-techAmber">
             Punctuation model unavailable — basic fallback active
           </p>
         </div>
@@ -1213,13 +1269,13 @@ function SpeechControl({
 
       {/* Error */}
       {status === "error" && error && (
-        <div className="mb-3 bg-red-50 border border-red-200 rounded-xl px-3 py-2 flex items-start gap-2">
-          <AlertCircle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+        <div className="mb-3 bg-techRose/10 border border-techRose/30 rounded-lg px-3 py-2 flex items-start gap-2">
+          <AlertCircle size={14} className="text-techRose flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-red-700">{error}</p>
+            <p className="text-xs text-techRose">{error}</p>
             <button
               onClick={cancel}
-              className="text-xs font-medium text-red-600 underline mt-1 hover:text-red-800"
+              className="text-xs font-medium text-techRose underline mt-1 hover:text-techRose/80"
             >
               Dismiss
             </button>
@@ -1228,81 +1284,114 @@ function SpeechControl({
       )}
 
       {/* Status text */}
-      <div className="mb-3 text-xs text-slate-500 space-y-1">
-        {status === "idle" && modelsReady && <p>Click Start to begin speaking</p>}
-        {status === "idle" && !modelsReady && <p>Waiting for speech models...</p>}
+      <div className="mb-3 text-xs text-techMuted space-y-1">
+        {status === "idle" && modelsReady && (
+          <p>
+            <span className="text-techGreen font-medium">
+              准备就绪 / Ready
+            </span>{" "}
+            — Click Start to begin speaking
+          </p>
+        )}
+        {status === "idle" && !modelsReady && (
+          <p className="text-techAmber">
+            Waiting for speech models...
+          </p>
+        )}
         {status === "requesting_microphone" && (
-          <p className="text-amber-600">
+          <p className="text-techAmber">
             Requesting microphone access...
           </p>
         )}
         {status === "connecting_speech_ws" && (
-          <p className="text-amber-600">
+          <p className="text-techAmber">
             Connecting to speech service...
           </p>
         )}
         {status === "recording" && (
-          <p className="text-emerald-600">Streaming audio...</p>
+          <p className="text-techGreen font-medium">
+            Streaming audio...
+          </p>
         )}
         {status === "stopping" && (
-          <p className="text-slate-400">Stopping...</p>
+          <p className="text-techMuted">Stopping...</p>
         )}
       </div>
 
       {/* Action buttons */}
       <div className="flex flex-wrap items-center gap-2">
         {status === "idle" && (
-          <button
+          <ActionButton
+            variant="primary"
+            size="lg"
+            touch
+            icon={<Mic size={16} />}
             onClick={start}
             disabled={startDisabled}
-            className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Mic size={14} />
-            Start
-          </button>
+            <span className="flex items-baseline gap-1.5">
+              <span>开始识别</span>
+              <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Start</span>
+            </span>
+          </ActionButton>
         )}
         {status === "recording" && (
           <>
-            <button
+            <ActionButton
+              variant="secondary"
+              size="lg"
+              touch
+              icon={<Square size={16} />}
               onClick={stop}
-              className="inline-flex items-center gap-2 text-xs font-medium bg-slate-700 text-white rounded-lg px-4 py-2 hover:bg-slate-800 transition-colors"
             >
-              <Square size={14} />
-              Stop
-            </button>
-            <button
+              <span className="flex items-baseline gap-1.5">
+                <span>停止</span>
+                <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Stop</span>
+              </span>
+            </ActionButton>
+            <ActionButton
+              variant="danger"
+              size="lg"
+              touch
+              icon={<XCircle size={16} />}
               onClick={cancel}
-              className="inline-flex items-center gap-2 text-xs font-medium text-rose-600 bg-white border border-rose-200 rounded-lg px-4 py-2 hover:bg-rose-50 transition-colors"
             >
-              <XCircle size={14} />
-              Cancel
-            </button>
+              <span className="flex items-baseline gap-1.5">
+                <span>取消</span>
+                <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Cancel</span>
+              </span>
+            </ActionButton>
           </>
         )}
         {status === "error" && (
-          <button
+          <ActionButton
+            variant="primary"
+            size="lg"
+            touch
+            icon={<RefreshCw size={16} />}
             onClick={cancel}
-            className="inline-flex items-center gap-2 text-xs font-medium bg-sky-600 text-white rounded-lg px-4 py-2 hover:bg-sky-700 transition-colors"
           >
-            <RefreshCw size={14} />
-            Retry
-          </button>
+            <span className="flex items-baseline gap-1.5">
+              <span>重试</span>
+              <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Retry</span>
+            </span>
+          </ActionButton>
         )}
       </div>
 
       {/* Model not ready tooltip */}
       {status === "idle" && !modelsReady && !modelsPreloading && (
-        <p className="mt-2 text-xs text-amber-600">
+        <p className="mt-2 text-xs text-techAmber">
           Speech recognition models are being loaded. Start will be available once ready.
         </p>
       )}
 
       {/* Mic not supported warning */}
       {!browserSupportsMic && (
-        <p className="mt-2 text-xs text-amber-600">
+        <p className="mt-2 text-xs text-techAmber">
           Microphone not supported in this browser
         </p>
       )}
-    </div>
+    </PanelCard>
   );
 }

@@ -50,6 +50,9 @@ lerna-debug.log*
 # Working artifacts
 working/
 
+# Runtime state
+.smartdesk-runtime/
+
 # Test and browser artifacts
 frontend/test-results/
 .pytest_cache/

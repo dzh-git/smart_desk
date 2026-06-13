@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Monitor, RefreshCw, Vote as VoteIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Loader2,
+  Monitor,
+  RefreshCw,
+  Vote as VoteIcon,
+} from "lucide-react";
 import {
   fetchActiveMeeting,
   fetchActiveVote,
@@ -9,6 +17,13 @@ import {
 import { useWebSocket } from "../hooks/useWebSocket";
 import type { WSMessage } from "../hooks/useWebSocket";
 import type { Meeting, VoteStatistics } from "../api/types";
+import {
+  ActionButton,
+  DualLabel,
+  StatusBadge,
+  useClock,
+  formatTime,
+} from "./shared";
 
 const STORAGE_KEY = "smartdesk.display.endedMeetingId";
 
@@ -231,68 +246,184 @@ export function DisplayView() {
     state.voteResults.find((vote) => vote.status === "closed") ??
     null;
 
+  // ── Live clock for header ────────────────────────────────────────────────
+  const now = useClock();
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 px-8 py-6">
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900">
-            <Monitor size={24} className="text-sky-400" />
+    <div className="min-h-screen bg-techBg text-techText">
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <header className="flex flex-wrap items-center justify-between gap-6 border-b border-techBorder px-10 py-8">
+        <div className="flex min-w-0 items-center gap-5">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-techCyan/30 bg-techCyan/10 shadow-cyan-glow">
+            <Monitor size={30} className="text-techCyan" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-              SmartDesk Display
-            </p>
-            <h1 className="truncate text-2xl font-bold">
-              {isEndedMeeting
-                ? "Meeting Ended"
-                : state.meeting?.title ?? "Waiting for Meeting"}
+            <DualLabel
+              cn="会议大屏"
+              en="Command Display"
+              className="mb-1"
+              cnClassName="text-xs font-semibold uppercase tracking-[0.3em] text-techCyan"
+              enClassName="text-[0.65rem] opacity-70"
+            />
+            <h1 className="truncate text-4xl font-bold text-techText">
+              {isEndedMeeting ? (
+                <>
+                  会议已结束{" "}
+                  <span className="text-2xl font-mono tracking-wider text-techMuted">
+                    Meeting Ended
+                  </span>
+                </>
+              ) : state.meeting?.title ? (
+                state.meeting.title
+              ) : (
+                <>
+                  等待会议开始{" "}
+                  <span className="text-2xl font-mono tracking-wider text-techMuted">
+                    Waiting for Meeting
+                  </span>
+                </>
+              )}
             </h1>
           </div>
         </div>
-        <button
-          onClick={load}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-900"
-        >
-          <RefreshCw size={14} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-6">
+          {!state.loading && !state.error && (
+            <>
+              {state.meeting && (
+                <StatusBadge
+                  status="speaking"
+                  labelCn="进行中"
+                  labelEn="In Progress"
+                  pulse
+                />
+              )}
+              {isEndedMeeting && (
+                <StatusBadge
+                  status="warning"
+                  labelCn="已结束"
+                  labelEn="Ended"
+                />
+              )}
+            </>
+          )}
+          <div className="flex items-center gap-2 text-techMuted">
+            <Clock size={20} />
+            <span className="text-lg font-mono tabular-nums">
+              {formatTime(now)}
+            </span>
+          </div>
+          <ActionButton
+            variant="secondary"
+            size="lg"
+            icon={<RefreshCw size={18} />}
+            onClick={load}
+          >
+            <span>刷新</span>
+            <span>Refresh</span>
+          </ActionButton>
+        </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-8 py-10">
-        {state.loading && (
-          <div className="flex items-center justify-center gap-3 rounded-3xl border border-slate-800 bg-slate-900/60 p-12 text-slate-300">
-            <Loader2 size={22} className="animate-spin" />
-            Loading display...
-          </div>
-        )}
+      {/* ── Main content ──────────────────────────────────────── */}
+      <main className="mx-auto max-w-7xl px-10 py-10">
+        <div className="space-y-8">
+          {/* ── Loading state ──────────────────────────────────── */}
+          {state.loading && (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-techBorder bg-techCard p-16 shadow-card-glow">
+              <Loader2 size={48} className="animate-spin text-techCyan" />
+              <div className="mt-6 text-center">
+                <p className="text-2xl font-semibold text-techText">
+                  正在加载大屏数据
+                </p>
+                <p className="mt-1 text-sm font-mono tracking-wider text-techMuted">
+                  Loading Display
+                </p>
+              </div>
+            </div>
+          )}
 
-        {state.error && (
-          <div className="rounded-3xl border border-rose-800 bg-rose-950/40 p-8 text-rose-200">
-            {state.error}
-          </div>
-        )}
+          {/* ── Error state ────────────────────────────────────── */}
+          {!state.loading && state.error && (
+            <div className="rounded-xl border border-techRose/30 bg-techRose/10 p-10 shadow-card-glow">
+              <div className="mb-4 flex items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-techRose/20">
+                  <AlertTriangle size={28} className="text-techRose" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-techRose">
+                    大屏数据加载失败
+                  </p>
+                  <p className="mt-0.5 text-sm font-mono tracking-wider text-techMuted">
+                    Display Load Failed
+                  </p>
+                </div>
+              </div>
+              <p className="mb-6 text-base text-techMuted/80">
+                {state.error}
+              </p>
+              <ActionButton
+                variant="danger"
+                icon={<RefreshCw size={18} />}
+                onClick={load}
+              >
+                <span>刷新重试</span>
+                <span>Retry</span>
+              </ActionButton>
+            </div>
+          )}
 
-        {isEndedMeeting && !state.loading && !state.error && (
-          <div className="rounded-3xl border border-amber-800 bg-amber-950/40 p-6 text-center">
-            <p className="text-lg font-semibold text-amber-300">
-              This meeting has ended. Results are preserved below.
-            </p>
-          </div>
-        )}
+          {/* ── Normal content (not loading, no error) ─────────── */}
+          {!state.loading && !state.error && (
+            <>
+              {/* ── Ended meeting banner ──────────────────────────── */}
+              {isEndedMeeting && (
+                <div className="rounded-xl border border-techAmber/30 bg-techAmber/10 p-8 text-center shadow-card-glow">
+                  <div className="mb-2 flex items-center justify-center gap-3">
+                    <span className="relative flex h-3 w-3">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-techAmber opacity-75" />
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-techAmber" />
+                    </span>
+                    <span className="text-2xl font-bold text-techAmber">
+                      会议已结束
+                    </span>
+                  </div>
+                  <p className="text-lg text-techMuted">
+                    <span>结果保留</span>
+                    <span className="ml-2 text-base font-mono tracking-wider">
+                      Results Preserved
+                    </span>
+                  </p>
+                </div>
+              )}
 
-        {!state.loading && !state.error && !displayVote && (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-800 bg-slate-900/60 p-12 text-center">
-            <VoteIcon size={36} className="mb-4 text-slate-500" />
-            <p className="text-2xl font-bold">No votes yet</p>
-            <p className="mt-2 text-sm text-slate-400">
-              Voting results will appear here during or after a vote.
-            </p>
-          </div>
-        )}
+              {/* ── Vote results ─────────────────────────────────── */}
+              {displayVote && <DisplayVoteResult vote={displayVote} />}
 
-        {!state.loading && !state.error && displayVote && (
-          <DisplayVoteResult vote={displayVote} />
-        )}
+              {/* ── No vote empty state ──────────────────────────── */}
+              {!displayVote && (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-techBorder bg-techCard p-16 text-center shadow-card-glow">
+                  <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-techBorder bg-techCardSoft text-techMuted">
+                    <VoteIcon size={40} />
+                  </div>
+                  <span className="mb-3 inline-flex items-baseline gap-3">
+                    <span className="text-3xl font-bold text-techText">
+                      暂无投票
+                    </span>
+                    <span className="text-lg font-mono tracking-wider text-techMuted">
+                      No Vote
+                    </span>
+                  </span>
+                  <p className="max-w-lg text-base text-techMuted">
+                    投票结果将在会议投票开始后显示。
+                  </p>
+                  <p className="mt-1 text-xs font-mono text-techMuted/60">
+                    Voting results will appear here once available.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </main>
     </div>
   );
@@ -327,50 +458,85 @@ function clearStoredEndedId(): void {
   }
 }
 
+// ── Vote result display ──────────────────────────────────────────────────────
+
 function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
   const maxCount = Math.max(...vote.results.map((item) => item.count), 1);
-  const statusLabel =
-    vote.status === "open" ? "Vote In Progress" : "Vote Result";
+  const isOpen = vote.status === "open";
+
+  // Find the winning option for visual highlight (display only, no data change)
+  const topOption = vote.results.reduce(
+    (best, curr) => (curr.count > best.count ? curr : best),
+    vote.results[0],
+  );
 
   return (
-    <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-8 shadow-2xl">
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+    <section className="rounded-xl border border-techBorder bg-techCard p-10 shadow-card-glow">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-6">
         <div className="min-w-0">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-sky-400">
-            {statusLabel}
-          </p>
-          <h2 className="mt-2 text-4xl font-bold leading-tight">
+          <div className="mb-3">
+            <StatusBadge
+              status={isOpen ? "speaking" : "success"}
+              labelCn={isOpen ? "投票中" : "投票结果"}
+              labelEn={isOpen ? "Vote In Progress" : "Vote Result"}
+              pulse={isOpen}
+            />
+          </div>
+          <h2 className="break-words text-5xl font-bold leading-tight text-techText">
             {vote.title}
           </h2>
         </div>
-        <div className="rounded-2xl border border-slate-700 bg-slate-950 px-5 py-3 text-right">
-          <p className="text-3xl font-bold">{vote.total_votes}</p>
-          <p className="text-xs uppercase tracking-widest text-slate-500">
-            Total Votes
+        <div className="min-w-[140px] rounded-xl border border-techBorder bg-techCardSoft px-8 py-5 text-center">
+          <p className="text-5xl font-bold text-techCyan">
+            {vote.total_votes}
+          </p>
+          <p className="mt-1 text-xs font-mono uppercase tracking-wider text-techMuted">
+            总票数 Total Votes
           </p>
         </div>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-6">
         {vote.results.map((option) => {
           const pct =
             vote.total_votes > 0
               ? Math.round((option.count / vote.total_votes) * 100)
               : 0;
           const barWidth = maxCount > 0 ? (option.count / maxCount) * 100 : 0;
+          const isWinner =
+            option.option === topOption.option && option.count > 0 && !isOpen;
+
           return (
             <div key={option.option}>
-              <div className="mb-2 flex items-center justify-between gap-4">
-                <p className="min-w-0 truncate text-2xl font-semibold">
-                  {option.option}
-                </p>
-                <p className="shrink-0 text-xl text-slate-300">
-                  {option.count} votes / {pct}%
-                </p>
+              <div className="mb-3 flex items-center justify-between gap-4">
+                <span className="flex min-w-0 items-center gap-3">
+                  {isWinner && (
+                    <span className="shrink-0 text-techCyan">
+                      <CheckCircle size={24} />
+                    </span>
+                  )}
+                  <span
+                    className={`truncate text-3xl font-semibold ${
+                      isWinner ? "text-techCyan" : "text-techText"
+                    }`}
+                  >
+                    {option.option}
+                  </span>
+                  {isWinner && (
+                    <span className="shrink-0 text-xs font-mono uppercase tracking-wider text-techCyan">
+                      领先 Leading
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 text-2xl tabular-nums text-techMuted">
+                  {option.count} 票 / {pct}%
+                </span>
               </div>
-              <div className="h-4 overflow-hidden rounded-full bg-slate-800">
+              <div className="h-4 overflow-hidden rounded-full bg-techCardSoft">
                 <div
-                  className="h-full rounded-full bg-sky-400 transition-all duration-700"
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    isWinner ? "bg-techCyan" : "bg-techBlue/60"
+                  }`}
                   style={{ width: `${barWidth}%` }}
                 />
               </div>

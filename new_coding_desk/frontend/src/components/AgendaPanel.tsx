@@ -15,9 +15,10 @@ export function AgendaPanel({ agenda, onDelete, deleting = false }: AgendaPanelP
 
   return (
     <SectionCard
-      title="Agenda"
+      title="议程"
+      titleEn="AGENDA"
       headerRight={
-        <span className="text-xs text-slate-400 font-medium">
+        <span className="text-xs text-techMuted font-medium">
           {sorted.length} items
         </span>
       }
@@ -56,10 +57,10 @@ function AgendaRow({
   return (
     <div className="flex items-start gap-3 rounded-xl px-3 py-2.5">
       <div className="mt-0.5 flex-shrink-0">
-        <Circle size={16} className="text-slate-300" />
+        <Circle size={16} className="text-techMuted" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-slate-700 leading-snug">
+        <p className="text-sm font-medium text-techText leading-snug">
           {item.title}
         </p>
       </div>
@@ -67,7 +68,7 @@ function AgendaRow({
         <button
           onClick={() => onDelete(item.id)}
           disabled={deleting}
-          className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-techMuted transition-colors hover:bg-techRose/20 hover:text-techRose disabled:opacity-50"
           aria-label={`Delete agenda ${item.title}`}
         >
           <Trash2 size={13} />

@@ -1,5 +1,5 @@
 import { Vote as VoteIcon, AlertCircle, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
-import { SectionCard, EmptyState } from "./shared";
+import { PanelCard, TechEmptyState, StatusBadge, ActionButton, DualLabel } from "./shared";
 import type { VoteStatistics } from "../api/types";
 
 interface VotePanelProps {
@@ -29,28 +29,29 @@ export function VotePanel({
 }: VotePanelProps) {
   if (hasActiveVote && !vote && voteStatsError) {
     return (
-      <SectionCard title="Active Vote">
+      <PanelCard titleCn="投票" titleEn="Vote" variant="warning">
         <div className="flex flex-col items-center justify-center py-8 text-center">
-          <div className="w-12 h-12 rounded-full bg-amber-50 border-2 border-amber-200 flex items-center justify-center text-amber-500 mb-3">
+          <div className="w-12 h-12 rounded-full bg-techCardSoft border border-techAmber/30 flex items-center justify-center text-techAmber mb-3">
             <AlertCircle size={20} />
           </div>
-          <p className="text-sm font-semibold text-slate-800 mb-1">
-            Vote statistics unavailable
+          <p className="text-sm font-semibold text-techText mb-1">
+            投票统计数据不可用 / Vote Statistics Unavailable
           </p>
-          <p className="text-xs text-slate-500 mb-4 max-w-xs">
+          <p className="text-xs text-techMuted mb-4 max-w-xs">
             {voteStatsError}
           </p>
           {onRetryStats && (
-            <button
+            <ActionButton
+              variant="secondary"
+              size="sm"
+              icon={<RefreshCw size={12} />}
               onClick={onRetryStats}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-sky-600 border border-sky-200 rounded-lg px-3 py-1.5 hover:bg-sky-50 transition-colors"
             >
-              <RefreshCw size={12} />
               Retry
-            </button>
+            </ActionButton>
           )}
         </div>
-      </SectionCard>
+      </PanelCard>
     );
   }
 
@@ -61,38 +62,43 @@ export function VotePanel({
 
   if (!displayVote) {
     return (
-      <SectionCard title="Vote Results">
-        <EmptyState
+      <PanelCard titleCn="投票" titleEn="Vote">
+        <TechEmptyState
           icon={<VoteIcon size={20} />}
-          title="No votes yet"
-          description="Votes and final results will appear here when initiated by the chair."
+          titleCn="暂无投票"
+          titleEn="No Vote"
+          descriptionCn="主持人发起投票后将在此显示"
+          descriptionEn="Votes and results appear when initiated"
         />
-      </SectionCard>
+      </PanelCard>
     );
   }
 
   const maxCount = Math.max(...displayVote.results.map((o) => o.count), 1);
-  const statusLabel =
-    displayVote.status === "open" ? "In Progress" : "Closed";
 
   return (
-    <SectionCard
-      title={isRecentResult ? "Recent Vote Result" : "Active Vote"}
+    <PanelCard
+      titleCn={isRecentResult ? "投票结果" : "当前投票"}
+      titleEn={isRecentResult ? "Vote Results" : "Active Vote"}
+      variant={displayVote.status === "open" ? "active" : "default"}
       headerRight={
-        <span
-          className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-            displayVote.status === "open"
-              ? "bg-sky-100 text-sky-700"
-              : "bg-slate-100 text-slate-500"
-          }`}
-        >
-          {statusLabel}
-        </span>
+        displayVote.status === "open" ? (
+          <StatusBadge
+            status="online"
+            labelCn="进行中"
+            labelEn="Open"
+            pulse
+          />
+        ) : (
+          <StatusBadge
+            status="neutral"
+            labelCn="已关闭"
+            labelEn="Closed"
+          />
+        )
       }
     >
-      <p className="font-semibold text-slate-800 text-sm mb-3">
-        {displayVote.title}
-      </p>
+      <DualLabel cn={displayVote.title} className="mb-4" cnClassName="text-base" />
 
       <div className="space-y-3 mb-4">
         {displayVote.results.map((option, idx) => {
@@ -104,59 +110,60 @@ export function VotePanel({
             maxCount > 0 ? (option.count / maxCount) * 100 : 0;
           const barColor =
             idx === 0
-              ? "bg-emerald-500"
+              ? "bg-techCyan"
               : idx === 1
-                ? "bg-rose-500"
-                : "bg-slate-400";
+                ? "bg-techGreen"
+                : "bg-techMuted";
 
           return (
             <div
               key={option.option}
-              className="relative rounded-xl border border-slate-200 p-2.5"
+              className="relative rounded-lg border border-techBorder bg-techCardSoft p-3"
             >
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="min-w-0 truncate font-semibold text-sm text-slate-800">
+                <span className="min-w-0 truncate font-semibold text-sm text-techText">
                   {option.option}
                 </span>
-                <span className="shrink-0 text-sm font-bold text-slate-700">
+                <span className="shrink-0 text-sm font-bold text-techCyan">
                   {pct}%
                 </span>
               </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-2 bg-techCard rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${barColor}`}
                   style={{ width: `${barWidth}%` }}
                 />
               </div>
-              <p className="text-xs text-slate-400 mt-1.5">
-                {option.count} vote{option.count !== 1 ? "s" : ""}
+              <p className="text-xs text-techMuted mt-1.5">
+                {option.count} 票 / {option.count} vote{option.count !== 1 ? "s" : ""}
               </p>
             </div>
           );
         })}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100">
-        <p className="min-w-0 truncate text-xs text-slate-400">
-          {displayVote.total_votes} vote
-          {displayVote.total_votes !== 1 ? "s" : ""} cast
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-techBorder">
+        <span className="min-w-0 truncate text-xs text-techMuted">
+          {displayVote.total_votes} 票已投
+          {displayVote.is_anonymous ? " (匿名)" : ""}
+        </span>
+        <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted/50 self-end">
+          {displayVote.total_votes} vote{displayVote.total_votes !== 1 ? "s" : ""} cast
           {displayVote.is_anonymous ? " (anonymous)" : ""}
-        </p>
+        </span>
         {displayVote.status === "open" && onCloseVote && (
-          <button
+          <ActionButton
+            variant="danger"
+            size="sm"
+            icon={closingVote ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+            loading={closingVote}
             onClick={() => onCloseVote(displayVote.vote_id)}
-            disabled={closingVote}
-            className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-rose-600 bg-white border border-rose-200 rounded-lg px-3 py-1.5 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="ml-auto"
           >
-            {closingVote ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <CheckCircle2 size={12} />
-            )}
             Close Vote
-          </button>
+          </ActionButton>
         )}
       </div>
-    </SectionCard>
+    </PanelCard>
   );
 }
