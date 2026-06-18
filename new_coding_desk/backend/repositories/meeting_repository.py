@@ -18,6 +18,7 @@ class MeetingRepository(BaseRepository[Meeting]):
     Extends BaseRepository[Meeting] with:
         - Active meeting lookup
         - Agenda CRUD
+        - Agenda state machine queries (Phase 1)
     """
 
     model = Meeting
@@ -59,3 +60,37 @@ class MeetingRepository(BaseRepository[Meeting]):
         """Delete an agenda item. Commits."""
         self.db.delete(agenda)
         self.db.commit()
+
+    # ── Agenda state machine queries (Phase 1) ──────────────────────────────
+
+    def get_active_agenda(self, meeting_id: int) -> Agenda | None:
+        """Return the active agenda for a meeting, or None."""
+        return (
+            self.db.query(Agenda)
+            .filter(
+                Agenda.meeting_id == meeting_id,
+                Agenda.status == "active",
+            )
+            .first()
+        )
+
+    def get_next_pending_agenda(
+        self, meeting_id: int, after_sort_order: int,
+    ) -> Agenda | None:
+        """Return the next pending agenda with sort_order > after_sort_order."""
+        return (
+            self.db.query(Agenda)
+            .filter(
+                Agenda.meeting_id == meeting_id,
+                Agenda.status == "pending",
+                Agenda.sort_order > after_sort_order,
+            )
+            .order_by(Agenda.sort_order)
+            .first()
+        )
+
+    def save_agenda(self, agenda: Agenda) -> Agenda:
+        """Persist changes to an agenda item."""
+        self.db.commit()
+        self.db.refresh(agenda)
+        return agenda

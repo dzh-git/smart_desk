@@ -33,11 +33,17 @@ export interface Meeting {
 
 // ── Agenda ────────────────────────────────────────────────────────────────
 
+export type AgendaStatus = "pending" | "active" | "completed" | "skipped";
+
 export interface Agenda {
   id: number;
   meeting_id: number;
   title: string;
   sort_order: number;
+  status: AgendaStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  skipped_at: string | null;
 }
 
 // ── Attendee ──────────────────────────────────────────────────────────────

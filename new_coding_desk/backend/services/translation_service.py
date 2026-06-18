@@ -14,6 +14,7 @@ Business rules:
 from __future__ import annotations
 
 import logging
+import time
 
 import numpy as np
 from sqlalchemy.orm import Session
@@ -30,6 +31,7 @@ from backend.services.translation_model_service import (
 )
 from backend.speech_module.punctuation import add_punctuation
 from backend.speech_module.text_utils import detect_language
+from backend.websocket.speech_trace import trace
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +166,12 @@ class TranslationService(BaseService):
         self._ensure_preloaded()
         speech = _get_speech()
 
+        trace("finalization_start_at",
+              utterance_id=utterance_id,
+              meeting_id=meeting_id, seat_id=seat_id)
+
         # 1. Full offline ASR rescore
+        _offline_t0 = time.monotonic()
         try:
             source_text = speech.transcribe_array(audio, sr)
         except Exception as exc:
@@ -172,6 +179,7 @@ class TranslationService(BaseService):
                 f"Transcription failed: {exc}",
                 "TRANSLATION_FAILED",
             ) from exc
+        _offline_ms = round((time.monotonic() - _offline_t0) * 1000)
 
         if not source_text or not source_text.strip():
             raise ValidationError(
@@ -191,6 +199,7 @@ class TranslationService(BaseService):
             target_lang = "zh"
 
         # 3. Translate (real model if enabled, otherwise placeholder)
+        _trans_t0 = time.monotonic()
         if source_lang == "zh" and is_translation_model_enabled():
             # Use real OPUS-MT zh-en model
             model_svc = TranslationModelService.get_instance()
@@ -213,6 +222,7 @@ class TranslationService(BaseService):
                 translated_text = en_str  # placeholder
             else:
                 translated_text = zh_str  # placeholder
+        _trans_ms = round((time.monotonic() - _trans_t0) * 1000)
 
         # 4. Persist to translation_records (with new fields)
         record = self.repo.create(
@@ -225,6 +235,13 @@ class TranslationService(BaseService):
             utterance_id=utterance_id,
             source_type=source_type,
         )
+
+        trace("offline_rescore_complete_at",
+              utterance_id=utterance_id,
+              meeting_id=meeting_id, seat_id=seat_id,
+              offline_asr_ms=_offline_ms,
+              translation_ms=_trans_ms,
+              translation_id=record.id)
 
         # 5. Publish event (DB committed inside repo.create())
         payload: dict = {

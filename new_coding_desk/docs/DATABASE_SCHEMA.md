@@ -12,7 +12,7 @@ own database access; services own business rules and event publication.
 | `id` | integer | Primary key. |
 | `title` | string | Meeting title. |
 | `description` | text | Optional description. |
-| `status` | string | `pending`, `active`, or `ended`. |
+| `status` | string | `pending`, `active`, or `finished`. |
 | `created_at` | datetime | Creation time. |
 | `started_at` | datetime nullable | Start time. |
 | `ended_at` | datetime nullable | End time. |
@@ -27,6 +27,13 @@ Only one active meeting is supported.
 | `meeting_id` | integer | FK to `meetings.id`. |
 | `title` | string | Agenda title. |
 | `sort_order` | integer | Display order. |
+| `status` | string | `pending`, `active`, `completed`, or `skipped`. |
+| `started_at` | datetime nullable | Set when the item becomes active. |
+| `completed_at` | datetime nullable | Set when the item is completed. |
+| `skipped_at` | datetime nullable | Set when the item is skipped. |
+
+Agenda state is backend persisted. Only one agenda item may be active for a
+meeting. Status mutation rules are documented in `API_SPEC.md`.
 
 ### `attendees`
 

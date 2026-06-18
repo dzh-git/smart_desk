@@ -182,9 +182,48 @@ The meeting broadcast channel also carries:
 - `vote_started`
 - `vote_updated`
 - `vote_closed`
+- `agenda_updated`
 - `service_call_created`
 - `service_call_resolved`
 - `service_call_cancelled`
 
 The frontend should re-fetch affected HTTP resources after business events.
 Speech interim events update the live transcript directly.
+
+## `agenda_updated`
+
+Published after agenda creation, deletion, or agenda state changes. Clients do
+not perform agenda writes over WebSocket; they re-fetch
+`GET /api/meetings/{meeting_id}/agendas` after receiving this event.
+
+```json
+{
+  "event": "agenda_updated",
+  "meeting_id": 1,
+  "timestamp": 1781344800,
+  "payload": {
+    "meeting_id": 1,
+    "agenda_id": 2,
+    "action": "set_current",
+    "current_agenda_id": 2
+  }
+}
+```
+
+`payload.action` values:
+
+- `create`
+- `delete`
+- `set_current`
+- `advance`
+- `complete`
+- `skip`
+
+Frontend handling:
+
+- Ignore the event if `message.meeting_id` does not match the current effective
+  meeting id.
+- For `/display`, the effective meeting id may be the active meeting id or the
+  ended meeting id used for preserved results.
+- On a matching event, re-fetch agendas and derive current topic/progress from
+  the returned `Agenda[]`.

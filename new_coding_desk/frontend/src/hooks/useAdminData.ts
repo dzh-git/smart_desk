@@ -29,6 +29,7 @@ import {
 import { buildSeatDisplays } from "../api/adapters";
 import { useWebSocket } from "./useWebSocket";
 import type { WSMessage } from "./useWebSocket";
+import { trace } from "../audio/speechTrace";
 import type { ConnectionStatus, SeatDisplay, InterimTranslation } from "../types";
 import type {
   Meeting,
@@ -83,6 +84,14 @@ export interface AdminData {
 
   /** Clear ended meeting state and return to the "No Active Meeting" view. */
   clearEndedMeeting: () => void;
+
+  /**
+   * Immediately terminate an utterance: remove from interimMap and mark
+   * terminal so late interims for this utterance_id are ignored.
+   * Called locally (Cancel / Stop timeout) without waiting for the
+   * backend WebSocket event. Does NOT broadcast or write to the database.
+   */
+  terminateUtterance: (utteranceId: string) => void;
 }
 
 // ── Internal state ──────────────────────────────────────────────────────────
@@ -147,6 +156,40 @@ export function useAdminData(): AdminData {
   const fetchingRef = useRef(false);
   // Track if a refresh was requested while one was already in flight
   const needsRefreshRef = useRef(false);
+  // Track effective meeting ID for agenda_updated filtering
+  const effectiveMeetingIdRef = useRef<number | null>(null);
+
+  // ── Task 126: terminal utterance ID tracking ──────────────────────────
+  // Prevents late translation_interim from re-creating live caption after
+  // a translation_final or translation_interim_cancelled for the same
+  // utterance_id. Uses Map<utteranceId, timestamp>; keeps last 200 entries.
+  const terminalUtteranceIdsRef = useRef<Map<string, number>>(new Map());
+  const MAX_TERMINAL_IDS = 200;
+
+  const recordTerminalId = useCallback((uid: string) => {
+    const map = terminalUtteranceIdsRef.current;
+    map.set(uid, Date.now());
+    // Trim oldest entry when over capacity (Map iterates in insertion order)
+    if (map.size > MAX_TERMINAL_IDS) {
+      const firstKey = map.keys().next().value;
+      if (firstKey !== undefined) map.delete(firstKey);
+    }
+  }, []);
+
+  // ── Task 127A: local utterance termination (Cancel / Stop timeout) ────
+  // Immediately removes the utterance from interimMap and marks it terminal
+  // so late interims don't re-create live caption. Does NOT broadcast.
+  const terminateUtterance = useCallback((utteranceId: string) => {
+    if (!utteranceId) return;
+    recordTerminalId(utteranceId);
+    setInterimMap((prev) => {
+      if (!(utteranceId in prev)) return prev;
+      const next = { ...prev };
+      delete next[utteranceId];
+      trace("interim_removed_at", { utteranceId, reason: "local_cleanup" });
+      return next;
+    });
+  }, [recordTerminalId]);
 
   // ── Core fetch function ────────────────────────────────────────────────
 
@@ -217,6 +260,7 @@ export function useAdminData(): AdminData {
           : null
       );
       const effectiveMeetingId = effectiveMeeting?.id ?? null;
+      effectiveMeetingIdRef.current = effectiveMeetingId;
 
       const voteExists = rawActiveVote != null && !isEnded;
       setHasActiveVote(voteExists);
@@ -306,6 +350,22 @@ export function useAdminData(): AdminData {
         if (!uid) return;
         const revision = p.revision as number;
 
+        // Task 126: skip late interim for already-terminal utterance_id
+        if (terminalUtteranceIdsRef.current.has(uid)) {
+          trace("frontend_interim_skipped_at", {
+            utteranceId: uid,
+            revision,
+            reason: "utterance_terminal",
+          });
+          return;
+        }
+
+        trace("frontend_interim_received_at", {
+          utteranceId: uid,
+          revision,
+          seatId: p.seat_id,
+        });
+
         setInterimMap((prev) => {
           const existing = prev[uid];
           // Only accept equal or higher revision (protect against stale frames)
@@ -344,10 +404,15 @@ export function useAdminData(): AdminData {
       if (event === "translation_interim_cancelled") {
         const uid = message.payload.utterance_id as string;
         if (!uid) return;
+        // Task 126: mark as terminal and skip if already recorded
+        if (terminalUtteranceIdsRef.current.has(uid)) return;
+        recordTerminalId(uid);
+        trace("frontend_cancel_received_at", { utteranceId: uid, reason: message.payload.reason });
         setInterimMap((prev) => {
           if (!(uid in prev)) return prev;
           const next = { ...prev };
           delete next[uid];
+          trace("interim_removed_at", { utteranceId: uid, reason: "cancelled" });
           return next;
         });
         return;
@@ -356,11 +421,17 @@ export function useAdminData(): AdminData {
       // translation_final: remove interim, then refresh translations via full re-fetch
       if (event === "translation_final") {
         const uid = message.payload.utterance_id as string;
+        trace("frontend_final_received_at", { utteranceId: uid ?? undefined, translationId: message.payload.translation_id });
         if (uid) {
+          // Task 126: mark as terminal (skip if already recorded)
+          if (!terminalUtteranceIdsRef.current.has(uid)) {
+            recordTerminalId(uid);
+          }
           setInterimMap((prev) => {
             if (!(uid in prev)) return prev;
             const next = { ...prev };
             delete next[uid];
+            trace("interim_removed_at", { utteranceId: uid, reason: "final" });
             return next;
           });
         }
@@ -369,10 +440,17 @@ export function useAdminData(): AdminData {
         return;
       }
 
+      // agenda_updated: only refresh if meeting_id matches current meeting
+      if (event === "agenda_updated") {
+        if (message.meeting_id !== effectiveMeetingIdRef.current) return;
+        doFetch(false);
+        return;
+      }
+
       // All other events: full HTTP refresh (existing behaviour)
       doFetch(false);
     },
-    [doFetch],
+    [doFetch, recordTerminalId],
   );
 
   const connection = useWebSocket(connectMeetingId, handleWSEvent);
@@ -412,5 +490,6 @@ export function useAdminData(): AdminData {
     isEndedMeeting,
     refresh: () => doFetch(false),
     clearEndedMeeting,
+    terminateUtterance,
   };
 }

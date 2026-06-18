@@ -45,6 +45,7 @@ from backend.repositories.seat_repository import SeatRepository
 from backend.services.meeting_service import MeetingService
 from backend.services.speech_stream_service import stream_service
 from backend.websocket.speech_registry import speech_registry
+from backend.websocket.speech_trace import trace
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +243,9 @@ async def _handle_text_message(
         # Phase 3: register utterance and reset SpeechModule for this session
         stream_service.start_utterance(session_key, utterance_id)
 
+        trace("utterance_started_at", utterance_id=utterance_id,
+              meeting_id=meeting_id, seat_id=seat_id)
+
         await ws.send_json({
             "type": "started",
             "utterance_id": utterance_id,
@@ -263,6 +267,14 @@ async def _handle_text_message(
             )
             return
 
+        trace("end_hint_received_at",
+              utterance_id=finalized.get("utterance_id"),
+              meeting_id=meeting_id, seat_id=seat_id,
+              buffer_duration_ms=(
+                  len(finalized.get("audio", [])) / 16
+                  if "audio" in finalized else 0
+              ))
+
         try:
             from backend.database import SessionLocal
             from backend.services.translation_service import TranslationService
@@ -280,6 +292,14 @@ async def _handle_text_message(
                 )
                 # Phase 02: reset caption formatter after successful finalization
                 stream_service.reset_caption_formatter(session_key)
+                # Task 126: mark utterance as terminal after successful final
+                stream_service.mark_utterance_terminal(
+                    session_key, finalized["utterance_id"],
+                )
+                trace("final_event_created_at",
+                      utterance_id=finalized["utterance_id"],
+                      translation_id=record.id,
+                      meeting_id=meeting_id, seat_id=seat_id)
                 logger.info(
                     "Speech final: meeting=%d seat=%d utterance=%s record=%d",
                     meeting_id, seat_id, finalized["utterance_id"], record.id,
@@ -289,16 +309,47 @@ async def _handle_text_message(
         except Exception as exc:
             # Map known exceptions to WS error responses
             exc_str = str(exc)
+            utterance_id = finalized.get("utterance_id") if finalized else None
             if "ASR_EMPTY_RESULT" in exc_str or "empty text" in exc_str.lower():
                 try:
                     await ws.send_json(ERROR_ASR_EMPTY_RESULT)
                 except Exception:
                     pass
+                # Task 126: publish terminal cleanup for failed finalization
+                if utterance_id and not stream_service.is_utterance_terminal(
+                    session_key, utterance_id,
+                ):
+                    stream_service.mark_utterance_terminal(
+                        session_key, utterance_id,
+                    )
+                    event_bus.publish(TranslationInterimCancelledEvent(
+                        meeting_id=meeting_id,
+                        payload={
+                            "utterance_id": utterance_id,
+                            "seat_id": seat_id,
+                            "reason": "asr_empty_result",
+                        },
+                    ))
             elif "model not loaded" in exc_str.lower() or "speech module" in exc_str.lower():
                 try:
                     await ws.send_json(ERROR_MODEL_NOT_LOADED)
                 except Exception:
                     pass
+                # Task 126: publish terminal cleanup for model_not_loaded error
+                if utterance_id and not stream_service.is_utterance_terminal(
+                    session_key, utterance_id,
+                ):
+                    stream_service.mark_utterance_terminal(
+                        session_key, utterance_id,
+                    )
+                    event_bus.publish(TranslationInterimCancelledEvent(
+                        meeting_id=meeting_id,
+                        payload={
+                            "utterance_id": utterance_id,
+                            "seat_id": seat_id,
+                            "reason": "model_not_loaded",
+                        },
+                    ))
             else:
                 logger.exception(
                     "Finalize error (meeting=%d seat=%d): %s",
@@ -312,12 +363,30 @@ async def _handle_text_message(
                     })
                 except Exception:
                     pass
+                # Task 126: publish terminal cleanup for failed finalization
+                if utterance_id and not stream_service.is_utterance_terminal(
+                    session_key, utterance_id,
+                ):
+                    stream_service.mark_utterance_terminal(
+                        session_key, utterance_id,
+                    )
+                    event_bus.publish(TranslationInterimCancelledEvent(
+                        meeting_id=meeting_id,
+                        payload={
+                            "utterance_id": utterance_id,
+                            "seat_id": seat_id,
+                            "reason": "finalization_failed",
+                        },
+                    ))
 
     elif msg_type == "cancel":
         # Phase 3: cancel current utterance and broadcast cancelled event
         cancelled_uid = stream_service.cancel_utterance(session_key)
 
         if cancelled_uid:
+            trace("cancel_event_created_at",
+                  utterance_id=cancelled_uid, meeting_id=meeting_id,
+                  seat_id=seat_id)
             event_bus.publish(TranslationInterimCancelledEvent(
                 meeting_id=meeting_id,
                 payload={
@@ -378,6 +447,12 @@ async def _handle_binary_message(
             pass
         return
 
+    trace("backend_pcm_received_at", session_key=session_key,
+          meeting_id=meeting_id, seat_id=seat_id, size_bytes=len(data))
+
+    trace("backend_process_pcm_start_at",
+          utterance_id=session.current_utterance_id,
+          meeting_id=meeting_id, seat_id=seat_id)
     try:
         result = stream_service.process_pcm_frame(session_key, data)
     except RuntimeError as exc:
@@ -420,10 +495,21 @@ async def _handle_binary_message(
         if "caption" in result:
             payload["caption"] = result["caption"]
 
+        trace("interim_event_created_at",
+              utterance_id=result["utterance_id"],
+              meeting_id=meeting_id, seat_id=seat_id,
+              revision=result["revision"],
+              source_text_len=len(source_text))
+
         event_bus.publish(TranslationInterimEvent(
             meeting_id=meeting_id,
             payload=payload,
         ))
+
+        trace("interim_event_broadcast_at",
+              utterance_id=result["utterance_id"],
+              meeting_id=meeting_id, seat_id=seat_id,
+              revision=result["revision"])
 
     # ── Task 122: VAD auto-final ──────────────────────────────────────────
     # Check VAD even when source_text is empty (silence frames).
@@ -454,6 +540,10 @@ async def _handle_binary_message(
                         source_type="speech_ws",
                     )
                     stream_service.reset_caption_formatter(session_key)
+                    # Task 126: mark utterance as terminal after successful final
+                    stream_service.mark_utterance_terminal(
+                        session_key, finalized["utterance_id"],
+                    )
                     logger.info(
                         "Speech auto-final: meeting=%d seat=%d utterance=%s "
                         "record=%d",
@@ -464,16 +554,46 @@ async def _handle_binary_message(
                     db.close()
             except Exception as exc:
                 exc_str = str(exc)
+                # Task 126: publish cancelled on VAD auto-final failure
+                _vad_uid = finalized.get("utterance_id") if finalized else None
                 if "ASR_EMPTY_RESULT" in exc_str or "empty text" in exc_str.lower():
                     logger.debug(
                         "VAD auto-final ASR empty (meeting=%d seat=%d): %s",
                         meeting_id, seat_id, exc,
                     )
+                    if _vad_uid and not stream_service.is_utterance_terminal(
+                        session_key, _vad_uid,
+                    ):
+                        stream_service.mark_utterance_terminal(
+                            session_key, _vad_uid,
+                        )
+                        event_bus.publish(TranslationInterimCancelledEvent(
+                            meeting_id=meeting_id,
+                            payload={
+                                "utterance_id": _vad_uid,
+                                "seat_id": seat_id,
+                                "reason": "asr_empty_result",
+                            },
+                        ))
                 else:
                     logger.exception(
                         "VAD auto-final error (meeting=%d seat=%d): %s",
                         meeting_id, seat_id, exc,
                     )
+                    if _vad_uid and not stream_service.is_utterance_terminal(
+                        session_key, _vad_uid,
+                    ):
+                        stream_service.mark_utterance_terminal(
+                            session_key, _vad_uid,
+                        )
+                        event_bus.publish(TranslationInterimCancelledEvent(
+                            meeting_id=meeting_id,
+                            payload={
+                                "utterance_id": _vad_uid,
+                                "seat_id": seat_id,
+                                "reason": "finalization_failed",
+                            },
+                        ))
                 # Even if auto-final fails, prepare next utterance so the
                 # speech WS can continue streaming.
         else:

@@ -10,16 +10,24 @@ Covers:
 """
 from __future__ import annotations
 
+import json
 import time
+from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
 
+from backend.events import event_bus
+from backend.services import translation_service as translation_service_mod
 from backend.services.speech_stream_service import (
     stream_service,
     VAD_SILENCE_DURATION_S,
     UTTERANCE_STATE_IDLE,
     UTTERANCE_STATE_SPEAKING,
+)
+from backend.websocket.speech_ws import (
+    _handle_text_message,
+    ERROR_MODEL_NOT_LOADED,
 )
 
 
@@ -747,3 +755,535 @@ class TestVadDetection:
         )
         assert "vad_should_finalize" in result
         assert isinstance(result["vad_should_finalize"], bool)
+
+
+# ── Task 126: Terminal utterance tracking ──────────────────────────────────
+
+
+class TestTerminalUtteranceTracking:
+    """Terminal utterance_id tracking prevents duplicate final/cancel.
+
+    Task 126: each utterance_id can only be finalized/cancelled once.
+    Terminal set is maintained per session and tracks all utterance_ids
+    that have been finalized, cancelled, or failed finalization.
+    """
+
+    def setup_method(self) -> None:
+        self.session_key, self.session_token = stream_service.create_session(1, 1)
+
+    def teardown_method(self) -> None:
+        stream_service.remove_session(self.session_key, self.session_token)
+
+    def test_cancel_marks_as_terminal(self) -> None:
+        """cancel_utterance adds the utterance_id to the terminal set."""
+        stream_service.start_utterance(self.session_key, "utt_term_cancel_001")
+        uid = stream_service.cancel_utterance(self.session_key)
+        assert uid == "utt_term_cancel_001"
+
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        assert "utt_term_cancel_001" in session.terminal_utterance_ids
+
+    def test_cancel_without_start_does_not_add_none(self) -> None:
+        """cancel_utterance with no active utterance does not add to terminal."""
+        uid = stream_service.cancel_utterance(self.session_key)
+        assert uid is None
+
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        assert len(session.terminal_utterance_ids) == 0
+
+    def test_finalize_terminal_utterance_returns_none(self) -> None:
+        """finalize_utterance skips already-terminal utterance.
+
+        After cancel, trying to finalize the same utterance returns None
+        instead of attempting duplicate finalization.
+        """
+        stream_service.start_utterance(self.session_key, "utt_term_final_001")
+        stream_service.append_audio(self.session_key, b"\x00" * 3200)
+
+        # Cancel first (marks terminal)
+        cancelled_uid = stream_service.cancel_utterance(self.session_key)
+        assert cancelled_uid == "utt_term_final_001"
+
+        # Start a new utterance so there's a current_utterance_id
+        stream_service.start_utterance(self.session_key, "utt_term_final_002")
+        stream_service.append_audio(self.session_key, b"\x01" * 3200)
+
+        # Try to finalize the *new* utterance — should succeed
+        result = stream_service.finalize_utterance(self.session_key)
+        assert result is not None
+        assert result["utterance_id"] == "utt_term_final_002"
+
+    def test_mark_utterance_terminal_idempotent(self) -> None:
+        """mark_utterance_terminal can be called multiple times safely."""
+        stream_service.mark_utterance_terminal(self.session_key, "utt_term_idem_001")
+
+        # Second call should not raise
+        stream_service.mark_utterance_terminal(self.session_key, "utt_term_idem_001")
+
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        assert "utt_term_idem_001" in session.terminal_utterance_ids
+        # Only one entry for the same utterance_id
+        matches = [
+            uid for uid in session.terminal_utterance_ids
+            if uid == "utt_term_idem_001"
+        ]
+        assert len(matches) == 1
+
+    def test_is_utterance_terminal_true_after_mark(self) -> None:
+        """is_utterance_terminal returns True for marked utterance."""
+        stream_service.mark_utterance_terminal(
+            self.session_key, "utt_term_check_001",
+        )
+        assert stream_service.is_utterance_terminal(
+            self.session_key, "utt_term_check_001",
+        ) is True
+
+    def test_is_utterance_terminal_false_for_new(self) -> None:
+        """is_utterance_terminal returns False for unmarked utterance."""
+        assert stream_service.is_utterance_terminal(
+            self.session_key, "utt_term_nonexistent",
+        ) is False
+
+    def test_is_utterance_terminal_unknown_session(self) -> None:
+        """is_utterance_terminal returns False for unknown session."""
+        assert stream_service.is_utterance_terminal(
+            "speech_999_99", "utt_term_unknown",
+        ) is False
+
+    def test_terminal_set_preserves_other_utterances(self) -> None:
+        """Terminating one utterance does not affect other utterances."""
+        stream_service.start_utterance(self.session_key, "utt_term_a_001")
+        stream_service.cancel_utterance(self.session_key)
+
+        stream_service.start_utterance(self.session_key, "utt_term_b_001")
+        stream_service.append_audio(self.session_key, b"\x00" * 3200)
+        result = stream_service.finalize_utterance(self.session_key)
+
+        # Utterance B should finalize normally despite A being terminal
+        assert result is not None
+        assert result["utterance_id"] == "utt_term_b_001"
+
+    def test_terminal_set_cleared_on_new_session(self) -> None:
+        """New session has empty terminal set."""
+        # First session has terminal entries
+        stream_service.start_utterance(self.session_key, "utt_term_s1_001")
+        stream_service.cancel_utterance(self.session_key)
+        assert len(stream_service.get_session(self.session_key).terminal_utterance_ids) > 0
+
+        # Create second session with same key
+        new_key, new_token = stream_service.create_session(1, 1)
+        try:
+            new_session = stream_service.get_session(new_key)
+            assert new_session is not None
+            assert len(new_session.terminal_utterance_ids) == 0
+        finally:
+            stream_service.remove_session(new_key, new_token)
+
+# ── Task 126: end_hint error path integration tests ─────────────────────────
+
+
+class TestEndHintErrorPaths:
+    """Verify that end_hint finalization failures publish
+    TranslationInterimCancelledEvent, mark the utterance terminal, and
+    send the correct WS error code.
+
+    These test the ``_handle_text_message`` handler in ``speech_ws.py``
+    by monkeypatching ``TranslationService.process_final_array`` to raise
+    the relevant exception — no real ASR models are involved.
+    """
+
+    def _remove_session(self, key: str, token: str) -> None:
+        stream_service.remove_session(key, token)
+
+    # ── model_not_loaded ──────────────────────────────────────────────────
+
+    @pytest.mark.anyio
+    async def test_end_hint_model_not_loaded_publishes_cancelled(self) -> None:
+        """model_not_loaded -> ERROR_MODEL_NOT_LOADED +
+        TranslationInterimCancelledEvent + terminal."""
+        key, token = stream_service.create_session(1, 1)
+        try:
+            stream_service.start_utterance(key, "utt_err_mnl_001")
+            stream_service.append_audio(key, b"\x00" * 3200)
+
+            _original = (
+                translation_service_mod.TranslationService.process_final_array
+            )
+
+            def _mock_raise(*args: object, **kwargs: object) -> object:
+                raise RuntimeError("speech module not loaded")
+
+            translation_service_mod.TranslationService.process_final_array = (
+                _mock_raise  # type: ignore[assignment]
+            )
+
+            events: list[object] = []
+            _handler = lambda e: events.append(e)
+            event_bus.subscribe(
+                "translation_interim_cancelled", _handler,
+            )
+
+            try:
+                ws = AsyncMock()
+                await _handle_text_message(
+                    ws, json.dumps({"type": "end_hint"}),
+                    1, 1, key,
+                )
+            finally:
+                translation_service_mod.TranslationService.process_final_array = (
+                    _original
+                )
+                event_bus.unsubscribe(
+                    "translation_interim_cancelled", _handler,
+                )
+
+            # 1. ERROR_MODEL_NOT_LOADED sent to speech WS
+            ws.send_json.assert_any_call(ERROR_MODEL_NOT_LOADED)
+
+            # 2. Utterance is terminal
+            assert stream_service.is_utterance_terminal(key, "utt_err_mnl_001")
+
+            # 3. Cancelled event published
+            assert len(events) == 1, (
+                f"Expected 1 TranslationInterimCancelledEvent, got {len(events)}"
+            )
+            cancelled = events[0]
+            assert cancelled.payload["utterance_id"] == "utt_err_mnl_001"
+            assert cancelled.payload["seat_id"] == 1
+            assert cancelled.payload["reason"] == "model_not_loaded"
+        finally:
+            self._remove_session(key, token)
+
+    # ── generic RuntimeError ──────────────────────────────────────────────
+
+    @pytest.mark.anyio
+    async def test_end_hint_generic_error_publishes_cancelled(self) -> None:
+        """Generic RuntimeError -> TRANSLATION_FAILED +
+        TranslationInterimCancelledEvent + terminal."""
+        key, token = stream_service.create_session(1, 1)
+        try:
+            stream_service.start_utterance(key, "utt_err_gen_001")
+            stream_service.append_audio(key, b"\x00" * 3200)
+
+            _original = (
+                translation_service_mod.TranslationService.process_final_array
+            )
+
+            def _mock_raise(*args: object, **kwargs: object) -> object:
+                raise RuntimeError("transcription failed: internal error")
+
+            translation_service_mod.TranslationService.process_final_array = (
+                _mock_raise  # type: ignore[assignment]
+            )
+
+            events: list[object] = []
+            _handler = lambda e: events.append(e)
+            event_bus.subscribe(
+                "translation_interim_cancelled", _handler,
+            )
+
+            try:
+                ws = AsyncMock()
+                await _handle_text_message(
+                    ws, json.dumps({"type": "end_hint"}),
+                    1, 1, key,
+                )
+            finally:
+                translation_service_mod.TranslationService.process_final_array = (
+                    _original
+                )
+                event_bus.unsubscribe(
+                    "translation_interim_cancelled", _handler,
+                )
+
+            # 1. TRANSLATION_FAILED error sent (generic fallback)
+            ws.send_json.assert_any_call({
+                "type": "error",
+                "code": "TRANSLATION_FAILED",
+                "message": "transcription failed: internal error",
+            })
+
+            # 2. Utterance is terminal
+            assert stream_service.is_utterance_terminal(key, "utt_err_gen_001")
+
+            # 3. Cancelled event published
+            assert len(events) == 1
+            assert events[0].payload["utterance_id"] == "utt_err_gen_001"
+            assert events[0].payload["reason"] == "finalization_failed"
+        finally:
+            self._remove_session(key, token)
+
+    # ── ASR_EMPTY_RESULT (regression check) ────────────────────────────────
+
+    @pytest.mark.anyio
+    async def test_end_hint_asr_empty_publishes_cancelled(self) -> None:
+        """ASR_EMPTY_RESULT -> ERROR_ASR_EMPTY_RESULT +
+        TranslationInterimCancelledEvent + terminal."""
+        key, token = stream_service.create_session(1, 1)
+        try:
+            stream_service.start_utterance(key, "utt_err_asr_001")
+            stream_service.append_audio(key, b"\x00" * 3200)
+
+            _original = (
+                translation_service_mod.TranslationService.process_final_array
+            )
+
+            def _mock_raise(*args: object, **kwargs: object) -> object:
+                raise RuntimeError(
+                    "Transcription returned empty text (ASR_EMPTY_RESULT)"
+                )
+
+            translation_service_mod.TranslationService.process_final_array = (
+                _mock_raise  # type: ignore[assignment]
+            )
+
+            events: list[object] = []
+            _handler = lambda e: events.append(e)
+            event_bus.subscribe(
+                "translation_interim_cancelled", _handler,
+            )
+
+            try:
+                ws = AsyncMock()
+                await _handle_text_message(
+                    ws, json.dumps({"type": "end_hint"}),
+                    1, 1, key,
+                )
+            finally:
+                translation_service_mod.TranslationService.process_final_array = (
+                    _original
+                )
+                event_bus.unsubscribe(
+                    "translation_interim_cancelled", _handler,
+                )
+
+            # 1. ASR_EMPTY_RESULT error sent
+            ws.send_json.assert_any_call({
+                "type": "error",
+                "code": "ASR_EMPTY_RESULT",
+                "message": "No speech recognized in the audio",
+            })
+
+            # 2. Utterance is terminal
+            assert stream_service.is_utterance_terminal(key, "utt_err_asr_001")
+
+            # 3. Cancelled event published
+            assert len(events) == 1
+            assert events[0].payload["utterance_id"] == "utt_err_asr_001"
+            assert events[0].payload["reason"] == "asr_empty_result"
+        finally:
+            self._remove_session(key, token)
+
+
+# ── Task 129-lite: Duplicate finalization guard tests ──────────────────────────
+
+
+class TestDuplicateFinalization:
+    """Verify that finalize_utterance returns None when utterance is terminal.
+
+    Task 129-lite: end_hint after successful final or cancel should not
+    result in duplicate DB writes. The guard is in ``finalize_utterance``
+    which checks ``terminal_utterance_ids`` before processing.
+    """
+
+    def setup_method(self) -> None:
+        self.session_key, self.session_token = stream_service.create_session(1, 1)
+
+    def teardown_method(self) -> None:
+        stream_service.remove_session(self.session_key, self.session_token)
+
+    def test_end_hint_after_successful_final_returns_none(self) -> None:
+        """end_hint after successful final returns None (terminal guard)."""
+        stream_service.start_utterance(self.session_key, "utt_dup_final_001")
+        stream_service.append_audio(self.session_key, b"\x00" * 3200)
+
+        # Mark as terminal (simulating successful finalization)
+        stream_service.mark_utterance_terminal(
+            self.session_key, "utt_dup_final_001",
+        )
+
+        # finalize_utterance must return None because utterance is terminal
+        result = stream_service.finalize_utterance(self.session_key)
+        assert result is None, (
+            "finalize_utterance should return None for terminal utterance"
+        )
+
+    def test_end_hint_after_cancel_returns_none(self) -> None:
+        """end_hint after cancel returns None (utterance cancelled)."""
+        stream_service.start_utterance(self.session_key, "utt_dup_cancel_001")
+        stream_service.append_audio(self.session_key, b"\x00" * 3200)
+
+        # Cancel marks terminal AND clears the buffer
+        cancelled_uid = stream_service.cancel_utterance(self.session_key)
+        assert cancelled_uid == "utt_dup_cancel_001"
+
+        # finalize_utterance should return None (terminal + no buffer)
+        result = stream_service.finalize_utterance(self.session_key)
+        assert result is None
+
+    def test_duplicate_mark_terminal_is_idempotent(self) -> None:
+        """Calling mark_utterance_terminal twice is safe."""
+        stream_service.mark_utterance_terminal(
+            self.session_key, "utt_dup_idem_001",
+        )
+        # Second call — must not raise
+        stream_service.mark_utterance_terminal(
+            self.session_key, "utt_dup_idem_001",
+        )
+        assert stream_service.is_utterance_terminal(
+            self.session_key, "utt_dup_idem_001",
+        )
+
+    def test_duplicate_is_terminal_check_not_add_to_set(self) -> None:
+        """is_utterance_terminal does not modify the terminal set."""
+        stream_service.start_utterance(self.session_key, "utt_dup_noadd_001")
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        before_count = len(session.terminal_utterance_ids)
+
+        # Calling is_utterance_terminal should NOT add to the set
+        result = stream_service.is_utterance_terminal(
+            self.session_key, "utt_dup_noadd_001",
+        )
+        assert result is False
+        assert len(session.terminal_utterance_ids) == before_count
+
+
+# ── Task 129-lite: VAD auto-final error path tests ────────────────────────────
+
+
+class TestVadAutoFinalErrorPaths:
+    """Verify that VAD auto-final failures publish
+    TranslationInterimCancelledEvent and mark the utterance terminal.
+
+    Unlike end_hint (3 exception branches), the VAD auto-final path in
+    ``_handle_binary_message`` only has 2 branches because
+    ``model_not_loaded`` is caught earlier at the ``process_pcm_frame``
+    level, before the VAD check is reached.
+    """
+
+    def setup_method(self) -> None:
+        self.session_key, self.session_token = stream_service.create_session(1, 1)
+
+    def teardown_method(self) -> None:
+        stream_service.remove_session(self.session_key, self.session_token)
+
+    @pytest.mark.anyio
+    async def test_vad_auto_final_asr_empty_publishes_cancelled(self) -> None:
+        """VAD auto-final ASR_EMPTY_RESULT -> cancelled event + terminal."""
+        stream_service.start_utterance(self.session_key, "utt_vad_asr_001")
+        stream_service.append_audio(self.session_key, b"\x00" * 3200)
+
+        _original_process = stream_service.process_pcm_frame
+        _original_final = (
+            translation_service_mod.TranslationService.process_final_array
+        )
+
+        # Mock process_pcm_frame to trigger VAD auto-final
+        stream_service.process_pcm_frame = lambda sk, data: {  # type: ignore[method-assign]
+            "utterance_id": "utt_vad_asr_001",
+            "revision": 1,
+            "source_text": "test",
+            "caption": {
+                "previous_line": "", "current_line": "test", "mode": "two_line",
+            },
+            "vad_should_finalize": True,
+        }
+
+        def _mock_raise(*args: object, **kwargs: object) -> object:
+            raise RuntimeError(
+                "Transcription returned empty text (ASR_EMPTY_RESULT)"
+            )
+
+        translation_service_mod.TranslationService.process_final_array = (
+            _mock_raise  # type: ignore[assignment]
+        )
+
+        events: list[object] = []
+        _handler = lambda e: events.append(e)
+        event_bus.subscribe("translation_interim_cancelled", _handler)
+
+        try:
+            ws = AsyncMock()
+            from backend.websocket.speech_ws import _handle_binary_message
+            await _handle_binary_message(
+                ws, b"\x00" * 3200, 1, 1, self.session_key,
+            )
+        finally:
+            stream_service.process_pcm_frame = _original_process
+            translation_service_mod.TranslationService.process_final_array = (
+                _original_final
+            )
+            event_bus.unsubscribe(
+                "translation_interim_cancelled", _handler,
+            )
+
+        # 1. Cancelled event published
+        assert len(events) == 1, (
+            f"Expected 1 TranslationInterimCancelledEvent, got {len(events)}"
+        )
+        assert events[0].payload["utterance_id"] == "utt_vad_asr_001"
+        assert events[0].payload["seat_id"] == 1
+        assert events[0].payload["reason"] == "asr_empty_result"
+
+        # 2. Utterance is terminal
+        assert stream_service.is_utterance_terminal(
+            self.session_key, "utt_vad_asr_001",
+        ), "VAD ASR_EMPTY_RESULT should mark terminal"
+
+    @pytest.mark.anyio
+    async def test_vad_auto_final_generic_error_publishes_cancelled(self) -> None:
+        """VAD auto-final generic error -> cancelled event + terminal."""
+        stream_service.start_utterance(self.session_key, "utt_vad_gen_001")
+        stream_service.append_audio(self.session_key, b"\x00" * 3200)
+
+        _original_process = stream_service.process_pcm_frame
+        _original_final = (
+            translation_service_mod.TranslationService.process_final_array
+        )
+
+        stream_service.process_pcm_frame = lambda sk, data: {  # type: ignore[method-assign]
+            "utterance_id": "utt_vad_gen_001",
+            "revision": 1,
+            "source_text": "test",
+            "caption": {
+                "previous_line": "", "current_line": "test", "mode": "two_line",
+            },
+            "vad_should_finalize": True,
+        }
+
+        def _mock_raise(*args: object, **kwargs: object) -> object:
+            raise RuntimeError("VAD finalization failed: internal error")
+
+        translation_service_mod.TranslationService.process_final_array = (
+            _mock_raise  # type: ignore[assignment]
+        )
+
+        events: list[object] = []
+        _handler = lambda e: events.append(e)
+        event_bus.subscribe("translation_interim_cancelled", _handler)
+
+        try:
+            ws = AsyncMock()
+            from backend.websocket.speech_ws import _handle_binary_message
+            await _handle_binary_message(
+                ws, b"\x00" * 3200, 1, 1, self.session_key,
+            )
+        finally:
+            stream_service.process_pcm_frame = _original_process
+            translation_service_mod.TranslationService.process_final_array = (
+                _original_final
+            )
+            event_bus.unsubscribe(
+                "translation_interim_cancelled", _handler,
+            )
+
+        assert len(events) == 1
+        assert events[0].payload["utterance_id"] == "utt_vad_gen_001"
+        assert events[0].payload["reason"] == "finalization_failed"
+        assert stream_service.is_utterance_terminal(
+            self.session_key, "utt_vad_gen_001",
+        )

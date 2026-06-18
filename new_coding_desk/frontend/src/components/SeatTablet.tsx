@@ -20,6 +20,7 @@ import {
   Vote,
   CheckCircle2,
   Square,
+  List,
 } from "lucide-react";
 import { useSeatData } from "../hooks/useSeatData";
 import { useClock, formatTime, formatDuration } from "./shared";
@@ -47,6 +48,7 @@ import {
   canCancelService,
   canStartSpeech,
 } from "../utils/uiState";
+import { deriveAgendaState } from "../utils/agendaState";
 
 // Shared dark-theme components
 import {
@@ -81,6 +83,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     speakerSeatId,
     attendees,
     unboundAttendees,
+    agenda,
     activeVote,
     voteStats,
     voteResults,
@@ -91,6 +94,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     connection,
     noMeeting,
     refresh,
+    terminateUtterance,
   } = useSeatData(seatId);
 
   // Local UI state
@@ -126,6 +130,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         }
       : null);
 
+  const agendaState = deriveAgendaState(agenda);
   const isOccupiedUnchecked =
     !isVacant && !isCheckedIn;
 
@@ -401,6 +406,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           meetingStatus={meetingStatus}
         />
 
+        {/* Current Topic Card (read-only) */}
+        <CurrentTopicCard agendaState={agendaState} />
+
         {/* Voting Section: open votes are writable; closed votes remain visible as final results. */}
         {isCheckedIn && displayVote && displayVoteStats && (
           <SeatVoteSection
@@ -438,6 +446,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           isCheckedIn={isCheckedIn}
           writesAllowed={writesAllowed}
           meetingStatus={meetingStatus}
+          onLocalTerminalUtterance={terminateUtterance}
         />
 
         {/* Bilingual Transcript */}
@@ -571,6 +580,84 @@ function ConnectionBadge({
       <WifiOff size={10} />
       离线 / Offline
     </span>
+  );
+}
+
+// ── Current Topic Card (read-only) ─────────────────────────────────────────────
+
+function CurrentTopicCard({
+  agendaState,
+}: {
+  agendaState: ReturnType<typeof deriveAgendaState>;
+}) {
+  const { current, progress, isFlowDone } = agendaState;
+
+  let statusLabelCn: string;
+  let statusLabelEn: string;
+
+  if (current) {
+    statusLabelCn = "进行中";
+    statusLabelEn = "ACTIVE";
+  } else if (isFlowDone) {
+    statusLabelCn = "所有议题已处理";
+    statusLabelEn = "ALL TOPICS PROCESSED";
+  } else {
+    statusLabelCn = "暂无当前议题";
+    statusLabelEn = "NO ACTIVE TOPIC";
+  }
+
+  const progressText = progress.total > 0
+    ? `${progress.current_index ?? progress.completed + progress.skipped} / ${progress.total}`
+    : null;
+
+  return (
+    <PanelCard
+      titleCn="当前议题"
+      titleEn="CURRENT TOPIC"
+      icon={<List size={16} />}
+      variant={current ? "active" : "default"}
+      headerRight={
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-techMuted">
+          <span
+            className={cx(
+              "w-1.5 h-1.5 rounded-full",
+              current ? "bg-techCyan animate-pulse" : "bg-techMuted",
+            )}
+          />
+          <span className="font-semibold text-techText">{statusLabelCn}</span>
+          <span className="text-[0.65rem] font-mono uppercase tracking-wider opacity-60">
+            {statusLabelEn}
+          </span>
+        </span>
+      }
+    >
+      {current ? (
+        <div>
+          <p className="text-base font-bold text-techText mb-1">
+            {current.title}
+          </p>
+          {progressText && (
+            <p className="text-xs text-techMuted">
+              议程进度 / Progress: {progressText}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div>
+          <p className="text-sm text-techMuted">
+            {statusLabelCn}
+          </p>
+          <p className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted/60 mt-0.5">
+            {statusLabelEn}
+          </p>
+          {progressText && (
+            <p className="text-xs text-techMuted mt-2">
+              议程进度 / Progress: {progressText}
+            </p>
+          )}
+        </div>
+      )}
+    </PanelCard>
   );
 }
 
@@ -1138,6 +1225,8 @@ interface SpeechControlProps {
   isCheckedIn: boolean;
   writesAllowed: boolean;
   meetingStatus: "no_meeting" | "meeting_active";
+  /** Task 127A: local cleanup callback — immediately removes live caption. */
+  onLocalTerminalUtterance?: (utteranceId: string) => void;
 }
 
 function SpeechControl({
@@ -1147,11 +1236,13 @@ function SpeechControl({
   isCheckedIn,
   writesAllowed,
   meetingStatus,
+  onLocalTerminalUtterance,
 }: SpeechControlProps) {
   const { status, error, start, stop, cancel } = useSpeechStream(
     meetingId,
     seatId,
     isSpeaker,
+    onLocalTerminalUtterance ? { onLocalTerminalUtterance } : undefined,
   );
 
   // ── Speech model status polling (Task 119) ──────────────────────────────

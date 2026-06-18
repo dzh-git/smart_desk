@@ -22,7 +22,7 @@ backend/ FastAPI
   -> backend/speech_module owns ASR, punctuation, caption formatting
 
 SQLite
-  -> meetings, seats, votes, service calls, translation_records
+  -> meetings, agendas, attendees, seats, votes, service calls, translation_records
 ```
 
 The frontend never connects directly to FunASR. All audio and business state
@@ -95,14 +95,18 @@ FunASR FSMN-VAD is not the current final trigger. It is a deferred improvement.
 
 ## Frontend Architecture
 
-The frontend has two user modes:
+The frontend has three routes:
 
-- Admin dashboard at `/`
-- Seat tablet at `/?seat=1` through `/?seat=10`
+- Admin dashboard at `/admin` (also the default redirect from `/`).
+- Seat tablet at `/seat/:seatId` for seats 1 through 10.
+- Central display at `/display`.
 
-The admin dashboard displays meeting state, seats, agendas, active vote,
-service calls, and transcript history. Seat tablets handle check-in, voting,
-service calls, and Speaker Seat voice streaming.
+The admin dashboard is the only write-capable control surface for meeting
+lifecycle, speaker seat, attendees, agenda command, votes, service resolution,
+and ended-meeting review. Seat tablets handle check-in, voting, service calls,
+Speaker Seat voice streaming, and read-only current agenda display. The central
+display shows meeting status, agenda progress, and current or final vote
+results; it does not provide write controls.
 
 The transcript UI displays:
 

@@ -41,3 +41,34 @@ def ensure_translation_record_columns(engine) -> None:
             conn.execute(text(stmt))
             logger.info("Added column %s to translation_records", col_name)
         conn.commit()
+
+
+# ── Phase 1: Agenda state machine columns ───────────────────────────────────
+
+_AGENDA_COLUMNS_TO_ADD: dict[str, str] = {
+    "status": "VARCHAR(20) DEFAULT 'pending' NOT NULL",
+    "started_at": "DATETIME",
+    "completed_at": "DATETIME",
+    "skipped_at": "DATETIME",
+}
+
+
+def ensure_agenda_columns(engine) -> None:
+    """Idempotently add Phase 1 columns to agendas.
+
+    Checks existing columns via SQLAlchemy inspector.
+    Only ALTER TABLE if the column is missing.
+    Safe to call on every startup.
+    """
+    inspector = inspect(engine)
+    existing = {c["name"] for c in inspector.get_columns("agendas")}
+
+    with engine.connect() as conn:
+        for col_name, col_type in _AGENDA_COLUMNS_TO_ADD.items():
+            if col_name in existing:
+                logger.debug("Column %s already exists in agendas — skipping", col_name)
+                continue
+            stmt = f"ALTER TABLE agendas ADD COLUMN {col_name} {col_type}"
+            conn.execute(text(stmt))
+            logger.info("Added column %s to agendas", col_name)
+        conn.commit()

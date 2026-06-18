@@ -200,8 +200,10 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
 
     # Phase 4: idempotent column additions for translation_records
-    from backend.migrations import ensure_translation_record_columns
+    from backend.migrations import ensure_translation_record_columns, ensure_agenda_columns
     ensure_translation_record_columns(engine)
+    # Phase 1: idempotent column additions for agenda state machine
+    ensure_agenda_columns(engine)
 
     # Seed: initialize seat_states (1..10), speaker_seat (id=1), and demo data
     db = SessionLocal()

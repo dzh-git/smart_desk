@@ -27,7 +27,7 @@ import {
   SectionCard,
   ActionButton,
 } from "./shared";
-import { formatDuration, isDemoControlsEnabled } from "./shared";
+import { formatDuration, isDemoControlsEnabled, useClock, parseBackendDate } from "./shared";
 import {
   createVote,
   closeVote,
@@ -41,6 +41,10 @@ import {
   deleteAttendee,
   createAgenda,
   deleteAgenda,
+  setCurrentAgenda,
+  advanceAgenda,
+  completeAgenda,
+  skipAgenda,
   triggerSpeechPreload,
 } from "../api/resources";
 import type { Meeting, Attendee } from "../api/types";
@@ -50,12 +54,10 @@ import {
   canCreateMeeting,
   canStartMeeting,
   canEndMeeting,
-  canUsePhaseSelector,
   canCreateVote,
   canCloseVote,
   canControlSpeaker,
   canManageAttendees,
-  canManageAgenda,
   canResolveServiceCall,
 } from "../utils/uiState";
 
@@ -105,26 +107,15 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
   const [attendeeName, setAttendeeName] = useState("");
   const [attendeeTitle, setAttendeeTitle] = useState("");
   const [attendeeBusy, setAttendeeBusy] = useState(false);
-  const [agendaTitle, setAgendaTitle] = useState("");
   const [agendaBusy, setAgendaBusy] = useState(false);
 
   // ── Derived meeting lifecycle & vote state (Task 4) ─────────────────────
   const meetingStatus = deriveMeetingLifecycleStatus(meeting, pendingMeeting, isEndedMeeting);
   const voteState = deriveAdminVoteState(hasActiveVote, voteResults);
 
-  // ── UI Phase (local host-only state) ───────────────────────────────────
-  const [uiPhase, setUiPhase] = useState<"general" | "agenda_discussion">("general");
-  const prevMeetingIdRef = useRef<number | null>(null);
-
-  // Reset uiPhase to "general" when the active meeting changes to a new one
-  useEffect(() => {
-    if (meeting?.id && meeting.id !== prevMeetingIdRef.current && prevMeetingIdRef.current !== null) {
-      setUiPhase("general");
-    }
-    if (meeting?.id) {
-      prevMeetingIdRef.current = meeting.id;
-    }
-  }, [meeting?.id]);
+  // ── AdminWorkspace (local host-only state) ─────────────────────────────
+  type AdminWorkspace = "overview" | "agenda_vote" | "service_records";
+  const [workspace, setWorkspace] = useState<AdminWorkspace>("overview");
 
   // ── Ended Meeting Snapshot ────────────────────────────────────────────────
   // Keep a ref to the latest attendees so handleEndMeeting can snapshot
@@ -249,11 +240,16 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
     try {
       // Save seat→attendee snapshot BEFORE ending the meeting (backend may clear seat_id)
       saveEndedSnapshot(meeting.id, attendeesRef.current);
-      await endMeeting(meeting.id);
+      const endedMeeting = await endMeeting(meeting.id);
       // Save ended meeting data so the hook can restore it when fetchActiveMeeting returns null
       try {
         sessionStorage.setItem('endedMeetingId', String(meeting.id));
         sessionStorage.setItem('endedMeetingTitle', meeting.title);
+        if (meeting.started_at) {
+          sessionStorage.setItem('endedMeetingStartedAt', meeting.started_at);
+        }
+        // Prefer backend ended_at from the API response; fallback to current frontend time.
+        sessionStorage.setItem('endedMeetingEndedAt', endedMeeting.ended_at ?? new Date().toISOString());
       } catch { /* sessionStorage may throw */ }
       refresh();
     } catch (err: unknown) {
@@ -296,6 +292,11 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         sessionStorage.removeItem(`smartdesk.admin.endedMeetingSnapshot.${meeting.id}`);
       } catch { /* sessionStorage may throw */ }
     }
+    // Clear elapsed time data
+    try {
+      sessionStorage.removeItem('endedMeetingStartedAt');
+      sessionStorage.removeItem('endedMeetingEndedAt');
+    } catch { /* sessionStorage may throw */ }
     clearEndedMeeting();
   }, [meeting?.id, clearEndedMeeting]);
 
@@ -334,25 +335,24 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
     }
   }, [meeting, refresh]);
 
-  const handleCreateAgenda = useCallback(async () => {
+  const handleCreateAgenda = useCallback(async (title: string) => {
     if (!meeting) return;
-    const title = agendaTitle.trim();
-    if (!title) {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
       setAdminActionError("Agenda title is required");
       return;
     }
     setAgendaBusy(true);
     setAdminActionError(null);
     try {
-      await createAgenda(meeting.id, title, agenda.length + 1);
-      setAgendaTitle("");
+      await createAgenda(meeting.id, trimmedTitle, agenda.length + 1);
       refresh();
     } catch (err: unknown) {
       setAdminActionError(err instanceof Error ? err.message : "Failed to create agenda");
     } finally {
       setAgendaBusy(false);
     }
-  }, [meeting, agenda.length, agendaTitle, refresh]);
+  }, [meeting, agenda.length, refresh]);
 
   const handleDeleteAgenda = useCallback(async (agendaId: number) => {
     if (!meeting) return;
@@ -363,6 +363,74 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
       refresh();
     } catch (err: unknown) {
       setAdminActionError(err instanceof Error ? err.message : "Failed to delete agenda");
+    } finally {
+      setAgendaBusy(false);
+    }
+  }, [meeting, refresh]);
+
+  const handleSetCurrentAgenda = useCallback(async (agendaId: number) => {
+    if (!meeting) return;
+    // If there's already an active agenda, confirm before switching
+    const activeAgenda = agenda.find((a) => a.status === "active");
+    if (activeAgenda) {
+      const confirmed = window.confirm(
+        `当前议题 "${activeAgenda.title}" 将自动完成并切换到新议题。\n\nThe current topic "${activeAgenda.title}" will be completed and a new topic will be activated.`,
+      );
+      if (!confirmed) return;
+    }
+    setAgendaBusy(true);
+    setAdminActionError(null);
+    try {
+      await setCurrentAgenda(meeting.id, agendaId);
+      refresh();
+    } catch (err: unknown) {
+      setAdminActionError(err instanceof Error ? err.message : "Failed to set current agenda");
+    } finally {
+      setAgendaBusy(false);
+    }
+  }, [meeting, agenda, refresh]);
+
+  const handleAdvanceAgenda = useCallback(async () => {
+    if (!meeting) return;
+    setAgendaBusy(true);
+    setAdminActionError(null);
+    try {
+      await advanceAgenda(meeting.id);
+      refresh();
+    } catch (err: unknown) {
+      setAdminActionError(err instanceof Error ? err.message : "Failed to advance agenda");
+    } finally {
+      setAgendaBusy(false);
+    }
+  }, [meeting, refresh]);
+
+  const handleCompleteAgenda = useCallback(async (agendaId: number) => {
+    if (!meeting) return;
+    setAgendaBusy(true);
+    setAdminActionError(null);
+    try {
+      await completeAgenda(meeting.id, agendaId);
+      refresh();
+    } catch (err: unknown) {
+      setAdminActionError(err instanceof Error ? err.message : "Failed to complete agenda");
+    } finally {
+      setAgendaBusy(false);
+    }
+  }, [meeting, refresh]);
+
+  const handleSkipAgenda = useCallback(async (agendaId: number) => {
+    if (!meeting) return;
+    const confirmed = window.confirm(
+      `确定跳过当前议题？可稍后重新设为当前议题。\n\nSkip this topic? It can be set as current again later.`,
+    );
+    if (!confirmed) return;
+    setAgendaBusy(true);
+    setAdminActionError(null);
+    try {
+      await skipAgenda(meeting.id, agendaId);
+      refresh();
+    } catch (err: unknown) {
+      setAdminActionError(err instanceof Error ? err.message : "Failed to skip agenda");
     } finally {
       setAgendaBusy(false);
     }
@@ -399,10 +467,42 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
   const selectedSeat = activeSeatId != null
     ? seats.find((s) => s.seatId === activeSeatId)
     : undefined;
-  const elapsedMs =
-    meeting?.started_at != null
-      ? Date.now() - new Date(meeting.started_at).getTime()
-      : 0;
+  // ── Dynamic elapsed time ────────────────────────────────────────
+  // Re-computed every second via useClock so the elapsed display ticks.
+  // For ended meetings, use the static duration (started_at → ended_at)
+  // so elapsed does not continue ticking after the meeting ends.
+  // All backend timestamps are parsed via parseBackendDate to correctly
+  // handle naive UTC strings (no "Z" suffix) as UTC rather than local time.
+  const clockNow = useClock();
+  const elapsedMs = (() => {
+    // 1) Try real meeting.started_at
+    const startDate = meeting?.started_at ? parseBackendDate(meeting.started_at) : null;
+    if (startDate) {
+      const startMs = startDate.getTime();
+      if (meeting?.ended_at) {
+        // Static: ended meeting with real ended_at from backend
+        const endDate = parseBackendDate(meeting.ended_at);
+        if (endDate) return endDate.getTime() - startMs;
+      }
+      // Dynamic: active meeting — ticks every second via useClock
+      return clockNow.getTime() - startMs;
+    }
+
+    // 2) Ended meeting with sessionStorage fallback (after page refresh
+    //    the real meeting object is gone; use what we saved at end time).
+    if (isEndedMeeting) {
+      try {
+        const storedStart = sessionStorage.getItem('endedMeetingStartedAt');
+        const storedEnd = sessionStorage.getItem('endedMeetingEndedAt');
+        if (storedStart && storedEnd) {
+          const s = parseBackendDate(storedStart);
+          const e = parseBackendDate(storedEnd);
+          if (s && e) return e.getTime() - s.getTime();
+        }
+      } catch { /* sessionStorage may throw */ }
+    }
+    return 0;
+  })();
 
   // ── Loading State ──────────────────────────────────────────────────────
   if (loading) {
@@ -635,6 +735,11 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             <div className="rounded-xl border border-techBorder bg-techCard p-4 text-center shadow-card-glow">
               <p className="text-lg font-bold text-techMuted">Meeting Ended</p>
               <p className="text-sm text-techMuted/70 mt-1">{meeting?.title}</p>
+              {elapsedMs > 0 && (
+                <p className="text-xs text-techMuted/50 mt-2 font-mono">
+                  Duration: {formatDuration(elapsedMs)}
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -670,42 +775,6 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
               />
             </div>
 
-            {/* Phase selector — only in active meeting */}
-            {canUsePhaseSelector(meetingStatus) && (
-            <div className="flex flex-wrap items-center gap-3 bg-techCard border border-techBorder rounded-lg shadow-card-glow px-4 py-3">
-              <span className="inline-flex items-baseline gap-1.5">
-                <span className="text-sm font-semibold text-techText">当前阶段</span>
-                <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted">CURRENT PHASE</span>
-              </span>
-              <div className="flex rounded-lg border border-techBorder overflow-hidden">
-                <button
-                  onClick={() => setUiPhase("general")}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    uiPhase === "general"
-                      ? "bg-techCyan text-techBg"
-                      : "bg-techSurface text-techMuted hover:bg-techCardSoft"
-                  }`}
-                >
-                  General
-                </button>
-                <button
-                  onClick={() => setUiPhase("agenda_discussion")}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    uiPhase === "agenda_discussion"
-                      ? "bg-techCyan text-techBg"
-                      : "bg-techSurface text-techMuted hover:bg-techCardSoft"
-                  }`}
-                >
-                  Agenda Discussion
-                </button>
-              </div>
-              {uiPhase === "agenda_discussion" && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-techAmber/10 border border-techAmber/30 px-2.5 py-0.5 text-[10px] font-semibold text-techAmber">
-                  Agenda Discussion
-                </span>
-              )}
-            </div>
-          )}
 
           </div>
         )}
@@ -770,10 +839,69 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           </SectionCard>
         )}
 
-        {/* Main grid */}
+        {/* Workspace switcher — always visible */}
+        <div className="mb-6">
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => setWorkspace("overview")}
+              className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                workspace === "overview"
+                  ? "bg-techCyan text-techBg shadow-cyan-glow"
+                  : "bg-techCard border border-techBorder text-techMuted hover:bg-techCardSoft hover:text-techText"
+              }`}
+            >
+              <span className="inline-flex items-baseline gap-1.5">
+                <span>会议总览</span>
+                <span className="text-[0.65rem] font-mono uppercase tracking-wider opacity-60">OVERVIEW</span>
+              </span>
+            </button>
+            <button
+              onClick={() => setWorkspace("agenda_vote")}
+              className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                workspace === "agenda_vote"
+                  ? "bg-techCyan text-techBg shadow-cyan-glow"
+                  : "bg-techCard border border-techBorder text-techMuted hover:bg-techCardSoft hover:text-techText"
+              }`}
+            >
+              <span className="inline-flex items-baseline gap-1.5">
+                <span>议程与投票</span>
+                <span className="text-[0.65rem] font-mono uppercase tracking-wider opacity-60">AGENDA &amp; VOTE</span>
+              </span>
+            </button>
+            <button
+              onClick={() => setWorkspace("service_records")}
+              className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                workspace === "service_records"
+                  ? "bg-techCyan text-techBg shadow-cyan-glow"
+                  : "bg-techCard border border-techBorder text-techMuted hover:bg-techCardSoft hover:text-techText"
+              }`}
+            >
+              <span className="inline-flex items-baseline gap-1.5">
+                <span>服务与记录</span>
+                <span className="text-[0.65rem] font-mono uppercase tracking-wider opacity-60">SERVICE &amp; RECORDS</span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* adminActionError — always visible regardless of workspace */}
+        {adminActionError && (
+          <div className="mb-6 bg-techRose/10 border border-techRose/30 rounded-xl px-4 py-3 flex items-center gap-2">
+            <AlertCircle size={14} className="text-techRose flex-shrink-0" />
+            <p className="text-xs text-techRose">{adminActionError}</p>
+            <button
+              onClick={() => setAdminActionError(null)}
+              className="ml-auto text-techRose/60 hover:text-techRose"
+            >
+              <XCircle size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Main content — filtered by workspace for active meetings, all visible for ended meetings */}
         <div className="grid grid-cols-12 gap-6">
-          {/* Conference table — wide (hidden for ended meetings) */}
-          {!isEndedMeeting && (
+          {/* Conference table — only in overview workspace for active meetings */}
+          {!isEndedMeeting && workspace === "overview" && (
             <div className="col-span-12 xl:col-span-8">
               <div className="bg-techCard border border-techBorder rounded-lg shadow-card-glow p-6">
                 <h3 className="text-xs font-semibold uppercase tracking-widest text-techMuted mb-5">
@@ -823,135 +951,123 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             </div>
           )}
 
-          {/* Right column — full width when conference table is hidden */}
-          <div className={`col-span-12 flex flex-col gap-6 ${isEndedMeeting ? '' : 'xl:col-span-4'}`}>
-            <SectionCard
-              title="参会人员"
-              titleEn="ATTENDEES"
-              headerRight={
-                <span className="text-xs text-techMuted font-medium">
-                  {displayAttendees.length} 人 / PEOPLE
-                </span>
-              }
-            >
-              <div className="space-y-3">
-                {canManageAttendees(meetingStatus) && (
-                  <>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                      <input
-                        type="text"
-                        value={attendeeName}
-                        onChange={(e) => setAttendeeName(e.target.value)}
-                        placeholder="Attendee name"
-                        className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
-                      />
-                      <input
-                        type="text"
-                        value={attendeeTitle}
-                        onChange={(e) => setAttendeeTitle(e.target.value)}
-                        placeholder="Title"
-                        className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
-                      />
-                    </div>
-                    <ActionButton
-                      variant="primary"
-                      size="md"
-                      icon={attendeeBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
-                      onClick={handleCreateAttendee}
-                      disabled={!canManageAttendees(meetingStatus) || attendeeBusy}
-                      loading={attendeeBusy}
-                      className="w-full"
-                    >
-                      添加参会人 / ADD ATTENDEE
-                    </ActionButton>
-                  </>
-                )}
-                <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
-                  {displayAttendees.map((attendee) => (
-                    <div
-                      key={attendee.id}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-techCardSoft"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-techText">
-                          {attendee.name}
-                          {attendee.seat_id != null ? ` · Seat ${attendee.seat_id}` : ""}
-                        </p>
-                        <p className="truncate text-xs text-techMuted">
-                          {attendee.title || "No title"}
-                        </p>
+          {/* Right column */}
+          <div className={`col-span-12 flex flex-col gap-6 ${isEndedMeeting || workspace !== "overview" ? '' : 'xl:col-span-4'}`}>
+            {/* Attendees — visible in overview workspace or ended meetings */}
+            {(isEndedMeeting || workspace === "overview") && (
+              <SectionCard
+                title="参会人员"
+                titleEn="ATTENDEES"
+                headerRight={
+                  <span className="text-xs text-techMuted font-medium">
+                    {displayAttendees.length} 人 / PEOPLE
+                  </span>
+                }
+              >
+                <div className="space-y-3">
+                  {canManageAttendees(meetingStatus) && (
+                    <>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                        <input
+                          type="text"
+                          value={attendeeName}
+                          onChange={(e) => setAttendeeName(e.target.value)}
+                          placeholder="Attendee name"
+                          className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
+                        />
+                        <input
+                          type="text"
+                          value={attendeeTitle}
+                          onChange={(e) => setAttendeeTitle(e.target.value)}
+                          placeholder="Title"
+                          className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
+                        />
                       </div>
-                      {canManageAttendees(meetingStatus) && (
-                        <button
-                          onClick={() => handleDeleteAttendee(attendee.id)}
-                          disabled={attendeeBusy}
-                          className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-techMuted transition-colors hover:bg-techRose/20 hover:text-techRose disabled:opacity-50 min-h-[32px] min-w-[32px]"
-                          aria-label={`Delete attendee ${attendee.name}`}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </SectionCard>
-
-            <div className={uiPhase === "agenda_discussion" ? "border border-techAmber/30 rounded-lg bg-techAmber/5 p-3 space-y-3" : "space-y-3"}>
-              {uiPhase === "agenda_discussion" && (
-                <p className="text-xs font-semibold text-techAmber flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full bg-techAmber" />
-                  议题讨论模式 — 以下议题项高亮显示 / AGENDA DISCUSSION MODE
-                </p>
-              )}
-              {canManageAgenda(meetingStatus) && (
-                <SectionCard title="新增议程" titleEn="ADD AGENDA">
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={agendaTitle}
-                      onChange={(e) => setAgendaTitle(e.target.value)}
-                      placeholder="Agenda title"
-                      className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
-                    />
-                    <ActionButton
-                      variant="primary"
-                      size="md"
-                      icon={agendaBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
-                      onClick={handleCreateAgenda}
-                      disabled={!canManageAgenda(meetingStatus) || agendaBusy}
-                      loading={agendaBusy}
-                      className="w-full"
-                    >
-                      添加议程 / ADD AGENDA
-                    </ActionButton>
+                      <ActionButton
+                        variant="primary"
+                        size="md"
+                        icon={attendeeBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
+                        onClick={handleCreateAttendee}
+                        disabled={!canManageAttendees(meetingStatus) || attendeeBusy}
+                        loading={attendeeBusy}
+                        className="w-full"
+                      >
+                        添加参会人 / ADD ATTENDEE
+                      </ActionButton>
+                    </>
+                  )}
+                  <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                    {displayAttendees.map((attendee) => (
+                      <div
+                        key={attendee.id}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-techCardSoft"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-techText">
+                            {attendee.name}
+                            {attendee.seat_id != null ? ` · Seat ${attendee.seat_id}` : ""}
+                          </p>
+                          <p className="truncate text-xs text-techMuted">
+                            {attendee.title || "No title"}
+                          </p>
+                        </div>
+                        {canManageAttendees(meetingStatus) && (
+                          <button
+                            onClick={() => handleDeleteAttendee(attendee.id)}
+                            disabled={attendeeBusy}
+                            className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-techMuted transition-colors hover:bg-techRose/20 hover:text-techRose disabled:opacity-50 min-h-[32px] min-w-[32px]"
+                            aria-label={`Delete attendee ${attendee.name}`}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </SectionCard>
-              )}
-
-              <AgendaPanel
-                agenda={agenda}
-                onDelete={canManageAgenda(meetingStatus) ? handleDeleteAgenda : undefined}
-                deleting={agendaBusy}
-              />
-            </div>
-
-            {/* Admin action error */}
-            {adminActionError && (
-              <div className="bg-techRose/10 border border-techRose/30 rounded-xl px-4 py-3 flex items-center gap-2">
-                <AlertCircle size={14} className="text-techRose flex-shrink-0" />
-                <p className="text-xs text-techRose">{adminActionError}</p>
-                <button
-                  onClick={() => setAdminActionError(null)}
-                  className="ml-auto text-techRose/60 hover:text-techRose"
-                >
-                  <XCircle size={14} />
-                </button>
-              </div>
+                </div>
+              </SectionCard>
             )}
 
-            {/* Create Vote form — only when no active vote and meeting is active */}
-            {canCreateVote(meetingStatus, voteState, false) && (
+            {/* AgendaPanel — visible in agenda_vote workspace or ended meetings */}
+            {(isEndedMeeting || workspace === "agenda_vote") && (
+              <AgendaPanel
+                agendas={agenda}
+                onSetCurrent={handleSetCurrentAgenda}
+                onAdvance={handleAdvanceAgenda}
+                onComplete={handleCompleteAgenda}
+                onSkip={handleSkipAgenda}
+                onDelete={handleDeleteAgenda}
+                onAdd={handleCreateAgenda}
+                busy={agendaBusy}
+                readOnly={isEndedMeeting}
+                actionError={adminActionError}
+                onClearError={() => setAdminActionError(null)}
+                meetingActive={meetingStatus === "meeting_active"}
+              />
+            )}
+
+            {/* Lightweight empty state for agenda_vote — no agenda and no vote */}
+            {workspace === "agenda_vote" && !isEndedMeeting && agenda.length === 0 && voteState === "none" && (
+              <p className="text-xs text-techMuted/70 text-center py-3">
+                暂无议程与投票内容。下方可添加议程或创建投票。
+              </p>
+            )}
+
+            {/* VotePanel — visible in agenda_vote workspace or ended meetings */}
+            {(isEndedMeeting || workspace === "agenda_vote") && (
+              <VotePanel
+                vote={activeVote}
+                voteResults={voteResults}
+                hasActiveVote={hasActiveVote}
+                voteStatsError={voteStatsError}
+                onRetryStats={refresh}
+                onCloseVote={canCloseVote(meetingStatus, voteState, closingVote) ? handleCloseVote : undefined}
+                closingVote={closingVote}
+              />
+            )}
+
+            {/* Create Vote form — only in agenda_vote workspace for active meetings */}
+            {workspace === "agenda_vote" && canCreateVote(meetingStatus, voteState, false) && (
               <SectionCard title="创建投票" titleEn="CREATE VOTE">
                 <div className="space-y-3">
                   <input
@@ -1005,28 +1121,35 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
               </SectionCard>
             )}
 
-            <VotePanel
-              vote={activeVote}
-              voteResults={voteResults}
-              hasActiveVote={hasActiveVote}
-              voteStatsError={voteStatsError}
-              onRetryStats={refresh}
-              onCloseVote={canCloseVote(meetingStatus, voteState, closingVote) ? handleCloseVote : undefined}
-              closingVote={closingVote}
-            />
-            <MeetingResultPanel voteResults={voteResults} />
-            <ServicePanel calls={serviceCalls} seatNameMap={displaySeatNameMap} onResolve={canResolveServiceCall(meetingStatus, serviceCalls.some(c => c.status === "pending")) ? handleResolveCall : undefined} resolvingId={resolvingId} />
+            {/* MeetingResultPanel — visible in agenda_vote workspace or ended meetings */}
+            {(isEndedMeeting || workspace === "agenda_vote") && (
+              <MeetingResultPanel voteResults={voteResults} />
+            )}
+
+            {/* Lightweight empty state for service_records — no service calls and no transcript */}
+            {workspace === "service_records" && !isEndedMeeting && serviceCalls.length === 0 && translations.length === 0 && Object.keys(interimMap).length === 0 && (
+              <p className="text-xs text-techMuted/70 text-center py-3">
+                暂无服务请求与字幕记录。
+              </p>
+            )}
+
+            {/* ServicePanel — visible in service_records workspace or ended meetings */}
+            {(isEndedMeeting || workspace === "service_records") && (
+              <ServicePanel calls={serviceCalls} seatNameMap={displaySeatNameMap} onResolve={canResolveServiceCall(meetingStatus, serviceCalls.some(c => c.status === "pending")) ? handleResolveCall : undefined} resolvingId={resolvingId} />
+            )}
           </div>
         </div>
 
-        {/* Transcript row */}
-        <div className="mt-6">
-          <TranscriptPanel
-            entries={translations}
-            interims={Object.values(interimMap)}
-            seatNameMap={displaySeatNameMap}
-          />
-        </div>
+        {/* Transcript row — visible in service_records workspace or ended meetings */}
+        {(isEndedMeeting || workspace === "service_records") && (
+          <div className="mt-6">
+            <TranscriptPanel
+              entries={translations}
+              interims={Object.values(interimMap)}
+              seatNameMap={displaySeatNameMap}
+            />
+          </div>
+        )}
       </main>
 
       {/* Disconnected overlay — not shown for ended meetings (no WS needed) */}

@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 
 from backend.speech_module.caption_formatter import CaptionFormatter
+from backend.websocket.speech_trace import trace
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,9 @@ class SpeechStreamSession:
         # Task 122: VAD state tracking
         self.utterance_state: str = UTTERANCE_STATE_IDLE
         self.vad_silence_seconds: float = 0.0
+        # Task 126: terminal utterance_id set — prevents duplicate final/cancel
+        # for the same utterance_id. Each utterance_id can only be terminal once.
+        self.terminal_utterance_ids: set[str] = set()
 
 
 class SpeechStreamService:
@@ -292,11 +296,17 @@ class SpeechStreamService:
 
         Resets revision to 0 and clears current_utterance_id.
         Also resets SpeechModule's sentence merger for this session.
+
+        Task 126: marks the utterance_id as terminal on cancel, preventing
+        duplicate final/cancel events for the same utterance.
         """
         session = self._sessions.get(session_key)
         if session is None:
             return None
         uid = session.current_utterance_id
+        if uid:
+            # Task 126: track as terminal before clearing
+            session.terminal_utterance_ids.add(uid)
         session.current_utterance_id = None
         session.revision = 0
         session._utterance_buffer.clear()
@@ -344,6 +354,29 @@ class SpeechStreamService:
         )
         return new_uid
 
+    # ── Task 126: terminal utterance_id tracking ──────────────────────────────
+
+    def mark_utterance_terminal(
+        self, session_key: str, utterance_id: str,
+    ) -> None:
+        """Mark an utterance_id as terminal (finalized / cancelled / failed).
+
+        Idempotent — subsequent calls for the same utterance_id are no-ops.
+        Guards against duplicate final/cancel for the same utterance.
+        """
+        session = self._sessions.get(session_key)
+        if session and utterance_id:
+            session.terminal_utterance_ids.add(utterance_id)
+
+    def is_utterance_terminal(
+        self, session_key: str, utterance_id: str,
+    ) -> bool:
+        """Check if an utterance_id has already been finalized/cancelled."""
+        session = self._sessions.get(session_key)
+        if session:
+            return utterance_id in session.terminal_utterance_ids
+        return False
+
     def process_pcm_frame(
         self, session_key: str, pcm_bytes: bytes,
     ) -> dict[str, Any]:
@@ -378,7 +411,13 @@ class SpeechStreamService:
         sm.set_session_context(
             session_key, session.meeting_id, session.seat_id,
         )
+        trace("asr_streaming_start_at",
+              utterance_id=session.current_utterance_id,
+              meeting_id=session.meeting_id,
+              seat_id=session.seat_id)
+        _asr_t0 = time.perf_counter()
         raw_text = sm.process_interim_array(audio, session_key)
+        _asr_ms = round((time.perf_counter() - _asr_t0) * 1000)
 
         # 6. Apply caption formatter (Phase 02)
         _now = time.monotonic()
@@ -392,6 +431,15 @@ class SpeechStreamService:
 
         # 8. Task 122: Check VAD for auto-final detection
         vad_should_finalize = self._check_vad_end(session_key, audio)
+
+        if raw_text:
+            trace("asr_streaming_end_at",
+                  utterance_id=session.current_utterance_id,
+                  meeting_id=session.meeting_id,
+                  seat_id=session.seat_id,
+                  revision=session.revision,
+                  asr_infer_ms=_asr_ms,
+                  vad_should_finalize=vad_should_finalize)
 
         return {
             "utterance_id": session.current_utterance_id,
@@ -445,9 +493,21 @@ class SpeechStreamService:
 
         Does NOT persist or publish — caller (WS handler) owns that step.
         After calling this, the utterance buffer is cleared.
+
+        Task 126: returns None if the utterance_id is already terminal
+        (prevents duplicate finalization from race conditions).
         """
         session = self._sessions.get(session_key)
         if session is None or not session._utterance_buffer:
+            return None
+
+        # Task 126: guard against re-finalizing a terminal utterance
+        if (session.current_utterance_id
+                and session.current_utterance_id in session.terminal_utterance_ids):
+            logger.debug(
+                "Skipping finalize for already-terminal utterance %s "
+                "(session=%s)", session.current_utterance_id, session_key,
+            )
             return None
 
         audio = self.get_buffered_audio(session_key)

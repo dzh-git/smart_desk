@@ -24,6 +24,7 @@ meeting IDs from the frontend.
 | Service | Events |
 |---|---|
 | `MeetingService` | `meeting_started`, `meeting_ended`, `vote_closed` when ending a meeting closes an open vote |
+| `MeetingService` | `agenda_updated` after agenda create/delete/set-current/advance/complete/skip |
 | `SeatService` | `seat_occupied`, `seat_vacant`, `checkin_prompt`, `check_in`, `speaker_seat_set`, `speaker_seat_clear`, `translation_interim_cancelled` on speaker switch |
 | `VoteService` | `vote_started`, `vote_updated`, `vote_closed` |
 | `ServiceCallService` | `service_call_created`, `service_call_resolved`, `service_call_cancelled` |
@@ -37,9 +38,45 @@ The WebSocket broadcaster forwards:
 - seat events: `seat_occupied`, `seat_vacant`, `checkin_prompt`, `check_in`
 - speaker events: `speaker_seat_set`, `speaker_seat_clear`
 - meeting events: `meeting_started`, `meeting_ended`
+- agenda events: `agenda_updated`
 - vote events: `vote_started`, `vote_updated`, `vote_closed`
 - service call events: `service_call_created`, `service_call_resolved`, `service_call_cancelled`
 - speech/translation events: `translation_interim`, `translation_interim_cancelled`, `translation_final`
+
+## Agenda Event Rules
+
+`agenda_updated`:
+
+- published by `MeetingService`;
+- published after agenda `create`, `delete`, `set_current`, `advance`,
+  `complete`, or `skip`;
+- broadcast to the meeting room;
+- contains `meeting_id`, `agenda_id`, `action`, and `current_agenda_id`;
+- does not carry the full agenda list;
+- clients re-fetch `GET /api/meetings/{meeting_id}/agendas`.
+
+Payload shape:
+
+```json
+{
+  "meeting_id": 1,
+  "agenda_id": 2,
+  "action": "set_current",
+  "current_agenda_id": 2
+}
+```
+
+Allowed `action` values:
+
+- `create`
+- `delete`
+- `set_current`
+- `advance`
+- `complete`
+- `skip`
+
+Clients must ignore `agenda_updated` when the event `meeting_id` does not match
+the current effective meeting id.
 
 ## Speech Event Rules
 

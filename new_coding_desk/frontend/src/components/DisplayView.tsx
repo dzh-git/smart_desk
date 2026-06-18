@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
+  List,
   Loader2,
   Monitor,
   RefreshCw,
@@ -13,10 +14,11 @@ import {
   fetchActiveVote,
   fetchVoteResultsForMeeting,
   fetchVoteStatistics,
+  fetchAgendas,
 } from "../api/resources";
 import { useWebSocket } from "../hooks/useWebSocket";
 import type { WSMessage } from "../hooks/useWebSocket";
-import type { Meeting, VoteStatistics } from "../api/types";
+import type { Meeting, Agenda, VoteStatistics } from "../api/types";
 import {
   ActionButton,
   DualLabel,
@@ -24,6 +26,7 @@ import {
   useClock,
   formatTime,
 } from "./shared";
+import { deriveAgendaState } from "../utils/agendaState";
 
 const STORAGE_KEY = "smartdesk.display.endedMeetingId";
 
@@ -40,6 +43,7 @@ interface DisplayState {
   loading: boolean;
   error: string | null;
   meeting: Meeting | null;
+  agendas: Agenda[];
   activeVote: VoteStatistics | null;
   voteResults: VoteStatistics[];
   currentMeetingId: number | null;
@@ -50,6 +54,7 @@ const EMPTY_STATE: DisplayState = {
   loading: true,
   error: null,
   meeting: null,
+  agendas: [],
   activeVote: null,
   voteResults: [],
   currentMeetingId: null,
@@ -102,9 +107,10 @@ export function DisplayView() {
       // If an active meeting exists, prefer it and discard any stored ended id
       if (meeting) {
         clearStoredEndedId();
-        const [rawActiveVote, voteResults] = await Promise.all([
+        const [rawActiveVote, voteResults, agendas] = await Promise.all([
           fetchActiveVote(),
           fetchVoteResultsForMeeting(meeting.id),
+          fetchAgendas(meeting.id),
         ]);
         const activeVote = rawActiveVote
           ? await fetchVoteStatistics(rawActiveVote.id)
@@ -115,6 +121,7 @@ export function DisplayView() {
           loading: false,
           error: null,
           meeting,
+          agendas,
           activeVote,
           voteResults,
           currentMeetingId: meeting.id,
@@ -125,11 +132,15 @@ export function DisplayView() {
 
       // No active meeting — check if we have an ended meeting to show
       if (endedMeetingId !== null) {
-        const voteResults = await fetchVoteResultsForMeeting(endedMeetingId);
+        const [voteResults, agendas] = await Promise.all([
+          fetchVoteResultsForMeeting(endedMeetingId),
+          fetchAgendas(endedMeetingId),
+        ]);
         setState({
           loading: false,
           error: null,
           meeting: null,
+          agendas,
           activeVote: null,
           voteResults,
           currentMeetingId: null,
@@ -143,6 +154,7 @@ export function DisplayView() {
         loading: false,
         error: null,
         meeting: null,
+        agendas: [],
         activeVote: null,
         voteResults: [],
         currentMeetingId: null,
@@ -205,7 +217,8 @@ export function DisplayView() {
         event === "vote_started" ||
         event === "vote_updated" ||
         event === "vote_closed" ||
-        event === "meeting_ended"
+        event === "meeting_ended" ||
+        event === "agenda_updated"
       ) {
         // For meeting_ended, save the meeting id so we keep showing vote
         // results even after the active meeting is gone.
@@ -375,6 +388,11 @@ export function DisplayView() {
           {/* ── Normal content (not loading, no error) ─────────── */}
           {!state.loading && !state.error && (
             <>
+              {/* ── Agenda Progress ────────────────────────────── */}
+              {(state.agendas?.length ?? 0) > 0 && (
+                <DisplayAgendaProgress agendas={state.agendas} />
+              )}
+
               {/* ── Ended meeting banner ──────────────────────────── */}
               {isEndedMeeting && (
                 <div className="rounded-xl border border-techAmber/30 bg-techAmber/10 p-8 text-center shadow-card-glow">
@@ -543,6 +561,152 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+// ── Agenda Progress Display (read-only) ────────────────────────────────────────
+
+function DisplayAgendaProgress({ agendas }: { agendas: Agenda[] }) {
+  const { current, progress, isFlowDone } = deriveAgendaState(agendas);
+
+  // If all topics processed and no active, show the "all done" message
+  if (isFlowDone && !current) {
+    return (
+      <section className="rounded-xl border border-techGreen/30 bg-techCard p-10 shadow-card-glow">
+        <div className="text-center">
+          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border-2 border-techGreen/30 bg-techGreen/10">
+            <CheckCircle size={32} className="text-techGreen" />
+          </div>
+          <h2 className="text-3xl font-bold text-techGreen mb-2">
+            所有议题已处理
+          </h2>
+          <p className="text-lg font-mono tracking-wider text-techMuted">
+            ALL TOPICS PROCESSED
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-techBorder bg-techCard p-10 shadow-card-glow">
+      {/* Current topic header */}
+      <div className="mb-8">
+        <div className="mb-3 flex items-center gap-2">
+          <List size={20} className="text-techCyan" />
+          <span className="inline-flex items-baseline gap-1.5">
+            <span className="text-sm font-semibold uppercase tracking-[0.2em] text-techCyan">
+              当前议题
+            </span>
+            <span className="text-[0.65rem] font-mono tracking-wider text-techMuted">
+              CURRENT TOPIC
+            </span>
+          </span>
+        </div>
+        {current ? (
+          <h2 className="break-words text-4xl font-bold leading-tight text-techText">
+            {current.title}
+          </h2>
+        ) : (
+          <h2 className="break-words text-3xl font-semibold leading-tight text-techMuted">
+            暂无当前议题
+            <span className="ml-3 text-lg font-mono tracking-wider text-techMuted/60">
+              NO ACTIVE TOPIC
+            </span>
+          </h2>
+        )}
+      </div>
+
+      {/* Progress dots */}
+      <div className="mb-6">
+        <p className="mb-4 text-sm font-medium text-techMuted">
+          议程进度
+          <span className="ml-2 text-xs font-mono tracking-wider">
+            Agenda Progress
+          </span>
+          <span className="ml-3 text-lg font-bold text-techText">
+            {progress.current_index ?? (isFlowDone ? progress.total : 0)} / {progress.total}
+          </span>
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {[...agendas]
+            .sort((a, b) => (a.sort_order ?? a.id) - (b.sort_order ?? b.id))
+            .map((item) => {
+              const isActive = item.status === "active";
+              const isCompleted = item.status === "completed";
+              const isSkipped = item.status === "skipped";
+
+              const dotColor = isActive
+                ? "bg-techCyan border-techCyan shadow-cyan-glow"
+                : isCompleted
+                  ? "bg-techGreen border-techGreen"
+                  : isSkipped
+                    ? "bg-techAmber border-techAmber"
+                    : "bg-techCardSoft border-techBorder";
+
+              const labelColor = isActive
+                ? "text-techCyan"
+                : isCompleted
+                  ? "text-techGreen"
+                  : isSkipped
+                    ? "text-techAmber"
+                    : "text-techMuted";
+
+              return (
+                <div key={item.id} className="flex flex-col items-center gap-1.5">
+                  <div
+                    className={`w-10 h-10 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all duration-300 ${dotColor} ${
+                      isActive ? "animate-pulse" : ""
+                    }`}
+                  >
+                    <span className={isActive || isCompleted || isSkipped ? "text-techBg" : "text-techMuted"}>
+                      {item.sort_order ?? item.id}
+                    </span>
+                  </div>
+                  <span className={`text-[0.6rem] font-medium max-w-[72px] text-center leading-tight truncate ${labelColor}`}>
+                    {item.title}
+                  </span>
+                  {isActive && (
+                    <span className="text-[0.5rem] font-mono uppercase tracking-wider text-techCyan">
+                      Active
+                    </span>
+                  )}
+                  {isCompleted && (
+                    <span className="text-[0.5rem] font-mono uppercase tracking-wider text-techGreen">
+                      Done
+                    </span>
+                  )}
+                  {isSkipped && (
+                    <span className="text-[0.5rem] font-mono uppercase tracking-wider text-techAmber">
+                      Skip
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-4 text-xs text-techMuted">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-techGreen" />
+          Completed
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-techCyan" />
+          Active
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-techAmber" />
+          Skipped
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-techCardSoft border border-techBorder" />
+          Pending
+        </span>
       </div>
     </section>
   );

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import { AdminDashboard } from "../components/AdminDashboard";
+import { parseBackendDate, formatTranscriptTime, formatDuration } from "../components/shared";
 
 // ── Mock isDemoControlsEnabled ───────────────────────────────────────────────
 // Default: false (no demo controls shown)
@@ -152,12 +153,25 @@ describe("AdminDashboard - data loading", () => {
       expect(screen.getByText("Q2 Board Review")).toBeInTheDocument();
     });
 
+    // Overview workspace: conference table and attendees visible
     expect(screen.getByText(/Conference Room.*Seat Overview/i)).toBeInTheDocument();
     expect(screen.getAllByText("Alice Wang").length).toBeGreaterThanOrEqual(1);
+
+    // Switch to agenda_vote workspace to check agenda and vote panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
     expect(screen.getByText("Financial Review")).toBeInTheDocument();
+    expect(screen.getByText("暂无投票", { exact: true })).toBeInTheDocument();
+
+    // Switch to service_records workspace to check service and transcript panels
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
     expect(screen.getByText(/Coffee.*Seat 2/i)).toBeInTheDocument();
     expect(screen.getByText("Good morning everyone")).toBeInTheDocument();
-    expect(screen.getByText("暂无投票", { exact: true })).toBeInTheDocument();
   });
 
   it("does not request meeting-dependent resources when no active meeting", async () => {
@@ -261,6 +275,17 @@ describe("AdminDashboard - no mock behaviors", () => {
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
+    // Wait for meeting to load
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access vote panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     await waitFor(() => {
       expect(screen.getByText("Approve Budget")).toBeInTheDocument();
     });
@@ -291,6 +316,15 @@ describe("AdminDashboard - no mock behaviors", () => {
     });
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    // Wait for meeting to load, then switch to agenda_vote workspace
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/投票统计数据不可用/)).toBeInTheDocument();
@@ -328,6 +362,15 @@ describe("AdminDashboard - no mock behaviors", () => {
     });
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    // Wait for meeting to load, then switch to agenda_vote workspace
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     // Wait for error state
     await waitFor(() => {
@@ -371,6 +414,15 @@ describe("AdminDashboard - create vote", () => {
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
+    // Wait for meeting to load, then switch to agenda_vote workspace
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     await waitFor(() => {
       // Section title should exist (use heading role to avoid button ambiguity)
       expect(screen.getByRole("heading", { name: /Create Vote/i })).toBeInTheDocument();
@@ -404,6 +456,15 @@ describe("AdminDashboard - create vote", () => {
     });
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    // Wait for meeting to load, then switch to agenda_vote workspace
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     // Wait for form
     await waitFor(() => {
@@ -466,6 +527,15 @@ describe("AdminDashboard - create vote", () => {
     });
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    // Wait for meeting to load, then switch to agenda_vote workspace
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
@@ -531,6 +601,15 @@ describe("AdminDashboard - close vote", () => {
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
+    // Wait for meeting to load, then switch to agenda_vote workspace
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     await waitFor(() => {
       expect(screen.getByText("Close Vote")).toBeInTheDocument();
     });
@@ -570,6 +649,15 @@ describe("AdminDashboard - resolve service call", () => {
     });
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    // Wait for meeting to load, then switch to service_records workspace
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Resolve")).toBeInTheDocument();
@@ -614,6 +702,15 @@ describe("AdminDashboard - WebSocket refresh after admin actions", () => {
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
+    // Wait for meeting to load, then switch to agenda_vote
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     await waitFor(() => {
       expect(screen.getByText("Vote")).toBeInTheDocument();
     });
@@ -651,6 +748,15 @@ describe("AdminDashboard - WebSocket refresh after admin actions", () => {
     });
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    // Wait for meeting to load, then switch to service_records
+    await waitFor(() => {
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Service Requests")).toBeInTheDocument();
@@ -1060,6 +1166,12 @@ describe("Transcript - translation_interim event", () => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
     });
 
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     // Send translation_interim WS event
     await act(async () => {
       wsSend(0, "translation_interim", 1, {
@@ -1087,6 +1199,12 @@ describe("Transcript - translation_interim event", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     // Send rev 1
@@ -1136,6 +1254,12 @@ describe("Transcript - translation_interim event", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     // Send rev 5 first (higher)
@@ -1204,6 +1328,12 @@ describe("Transcript - translation_interim event", () => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
     });
 
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     const callsAfterLoad = fetchCount;
 
     // Send multiple translation_interim events
@@ -1260,6 +1390,15 @@ describe("Transcript - translation_final event", () => {
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
+    // Wait for meeting to load, then switch to service_records workspace
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     await waitFor(() => {
       expect(screen.getByText("暂无字幕")).toBeInTheDocument();
     });
@@ -1268,8 +1407,6 @@ describe("Transcript - translation_final event", () => {
     await act(async () => {
       wsSend(0, "translation_interim", 1, {
         utterance_id: "utt_1_1_000005",
-        seat_id: 1,
-        revision: 3,
         source_lang: "zh",
         target_lang: "en",
         source_text: "最终的翻译结果",
@@ -1327,6 +1464,15 @@ describe("Transcript - translation_interim_cancelled event", () => {
     });
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    // Wait for meeting to load, then switch to service_records workspace
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     await waitFor(() => {
       expect(screen.getByText("暂无字幕")).toBeInTheDocument();
@@ -1402,6 +1548,12 @@ describe("Transcript - deduplication", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     // Send rev 1
@@ -1483,6 +1635,12 @@ describe("Transcript - deduplication", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     // Send interim
@@ -1633,6 +1791,12 @@ describe("Transcript - live caption display", () => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
     });
 
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     // Send translation_interim WITH caption
     await act(async () => {
       wsSend(0, "translation_interim", 1, {
@@ -1674,6 +1838,12 @@ describe("Transcript - live caption display", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     // Send rev 1 — only current line
@@ -1735,6 +1905,12 @@ describe("Transcript - live caption display", () => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
     });
 
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     // Send translation_interim WITHOUT caption
     await act(async () => {
       wsSend(0, "translation_interim", 1, {
@@ -1769,6 +1945,12 @@ describe("Transcript - live caption display", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     // Send interim with long sourceText AND caption — caption should be shown, not sourceText
@@ -1812,6 +1994,12 @@ describe("Transcript - live caption display", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     await act(async () => {
@@ -1875,6 +2063,15 @@ describe("Transcript - live caption display", () => {
     });
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    // Wait for meeting to load, then switch to service_records workspace
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     await waitFor(() => {
       expect(screen.getByText("暂无字幕")).toBeInTheDocument();
@@ -1959,6 +2156,175 @@ describe("Transcript - language labels", () => {
     badgeEls.forEach((el) => {
       const text = el.textContent ?? "";
       expect(text).toMatch(/^(EN|ZH)$/);
+    });
+  });
+});
+
+// ── Task 126: Speech Lifecycle Fix Tests ───────────────────────────────────
+
+describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
+  function mockTranscriptScenario() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      return okResponse(null);
+    });
+  }
+
+  // ── Admin T126-1: Late interim blocked after final ────────────────────────
+  it("[T126-Admin-1] late translation_interim after final is blocked by terminal set", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    // Switch to service_records workspace
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Send interim
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_t126_admin_final_001", seat_id: 1, revision: 1,
+        source_lang: "zh", target_lang: "en", source_text: "管理员端测试。",
+        translated_text: "", is_final: false,
+        caption: { previous_line: "", current_line: "管理员端测试。", mode: "two_line" },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+    });
+
+    // Send final
+    await act(async () => {
+      wsSend(0, "translation_final", 1, {
+        translation_id: 500, utterance_id: "utt_t126_admin_final_001",
+        seat_id: 1, source_lang: "zh", target_lang: "en",
+        source_text: "管理员端测试。", translated_text: "Admin test.",
+        source_type: "offline_rescore",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+
+    // Send late interim — must be blocked
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_t126_admin_final_001", seat_id: 1, revision: 2,
+        source_lang: "zh", target_lang: "en", source_text: "延迟到达！",
+        translated_text: "", is_final: false,
+        caption: { previous_line: "延迟", current_line: "到达！", mode: "two_line" },
+      });
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+  });
+
+  // ── Admin T126-2: Late interim blocked after cancel ───────────────────────
+  it("[T126-Admin-2] late translation_interim after cancelled is blocked by terminal set", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Send interim
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_t126_admin_cancel_001", seat_id: 1, revision: 1,
+        source_lang: "zh", target_lang: "en", source_text: "即将取消。",
+        translated_text: "", is_final: false,
+        caption: { previous_line: "", current_line: "即将取消。", mode: "two_line" },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+    });
+
+    // Send cancelled
+    await act(async () => {
+      wsSend(0, "translation_interim_cancelled", 1, {
+        utterance_id: "utt_t126_admin_cancel_001", seat_id: 1, reason: "user_cancelled",
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+
+    // Send late interim — must be blocked
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_t126_admin_cancel_001", seat_id: 1, revision: 2,
+        source_lang: "zh", target_lang: "en", source_text: "延迟抵达！",
+        translated_text: "", is_final: false,
+        caption: { previous_line: "延迟", current_line: "抵达！", mode: "two_line" },
+      });
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+  });
+
+  // ── Admin T126-3: New utterance_id still works ────────────────────────────
+  it("[T126-Admin-3] new utterance_id interim still shows live caption (terminal set does not block)", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_t126_admin_new_001", seat_id: 1, revision: 1,
+        source_lang: "zh", target_lang: "en", source_text: "新内容。",
+        translated_text: "", is_final: false,
+        caption: { previous_line: "", current_line: "新内容。", mode: "two_line" },
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_t126_admin_new_001");
     });
   });
 });
@@ -2199,9 +2565,9 @@ describe("AdminDashboard - ended meeting view", () => {
   });
 });
 
-// ── UI Phase Tests ─────────────────────────────────────────────────────────
+// ── AdminWorkspace Tests ──────────────────────────────────────────────────────
 
-describe("AdminDashboard - uiPhase", () => {
+describe("AdminDashboard - AdminWorkspace", () => {
   function mockActiveMeetingScenario() {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/active") {
@@ -2218,7 +2584,7 @@ describe("AdminDashboard - uiPhase", () => {
     });
   }
 
-  it("shows phase selector with default 'general' when meeting is active", async () => {
+  it("does NOT show Current Phase selector when meeting is active", async () => {
     mockActiveMeetingScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
@@ -2226,16 +2592,45 @@ describe("AdminDashboard - uiPhase", () => {
       expect(screen.getByText("Test Meeting")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("当前阶段")).toBeInTheDocument();
-    expect(screen.getByText("CURRENT PHASE")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "General" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agenda Discussion" })).toBeInTheDocument();
-
-    // Default phase should be general — no agenda_discussion badge
-    expect(screen.queryByText(/AGENDA DISCUSSION MODE/)).not.toBeInTheDocument();
+    // Current Phase should be completely removed
+    expect(screen.queryByText("当前阶段")).not.toBeInTheDocument();
+    expect(screen.queryByText("CURRENT PHASE")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "General" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Agenda Discussion" })).not.toBeInTheDocument();
   });
 
-  it("does not show phase selector when there is no active meeting", async () => {
+  it("shows three workspace switcher buttons when meeting is active", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    // Three workspace buttons should be visible
+    expect(screen.getByText("会议总览")).toBeInTheDocument();
+    expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
+    expect(screen.getByText("议程与投票")).toBeInTheDocument();
+    expect(screen.getByText("AGENDA & VOTE")).toBeInTheDocument();
+    expect(screen.getByText("服务与记录")).toBeInTheDocument();
+    expect(screen.getByText("SERVICE & RECORDS")).toBeInTheDocument();
+  });
+
+  it("default workspace is overview showing conference table and attendees", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    // Default workspace should show conference table (overview content)
+    expect(screen.getByText(/Conference Room.*Seat Overview/i)).toBeInTheDocument();
+    expect(screen.getByText("参会人员")).toBeInTheDocument();
+    expect(screen.getByText("ATTENDEES")).toBeInTheDocument();
+  });
+
+  it("does not show workspace switcher when there is no active meeting", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/active") return okResponse(null);
       if (url === "/api/seats") return okResponse([]);
@@ -2250,91 +2645,12 @@ describe("AdminDashboard - uiPhase", () => {
       expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText("当前阶段 / CURRENT PHASE")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "General" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Agenda Discussion" })).not.toBeInTheDocument();
+    expect(screen.queryByText("OVERVIEW")).not.toBeInTheDocument();
+    expect(screen.queryByText("AGENDA & VOTE")).not.toBeInTheDocument();
+    expect(screen.queryByText("SERVICE & RECORDS")).not.toBeInTheDocument();
   });
 
-  it("does not show phase selector in ended meeting view", async () => {
-    sessionStorage.setItem("endedMeetingId", "42");
-    sessionStorage.setItem("endedMeetingTitle", "Past Meeting");
-
-    mockFetch.mockImplementation((url: string) => {
-      if (url === "/api/meetings/active") return okResponse(null);
-      if (url === "/api/seats") return okResponse([]);
-      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
-      if (url === "/api/votes/active") return okResponse(null);
-      if (url === "/api/votes?meeting_id=42") return okResponse([]);
-      if (url === "/api/meetings/42/attendees") return okResponse([]);
-      if (url.includes("/api/meetings/42/agendas")) return okResponse([]);
-      if (url === "/api/service-calls?meeting_id=42") return okResponse([]);
-      if (url === "/api/translations?meeting_id=42") return okResponse({ meeting_id: 42, entries: [] });
-      return okResponse(null);
-    });
-
-    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
-    });
-
-    expect(screen.queryByText("当前阶段 / CURRENT PHASE")).not.toBeInTheDocument();
-
-    sessionStorage.removeItem("endedMeetingId");
-    sessionStorage.removeItem("endedMeetingTitle");
-  });
-
-  it("switches to agenda_discussion and shows phase indicator", async () => {
-    mockActiveMeetingScenario();
-    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
-    });
-
-    // Click "Agenda Discussion"
-    const agendaDiscussionBtn = screen.getByRole("button", { name: "Agenda Discussion" });
-    await act(async () => {
-      agendaDiscussionBtn.click();
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // Should show agenda discussion indicator
-    expect(screen.getByText(/AGENDA DISCUSSION MODE/)).toBeInTheDocument();
-
-    // The phase badge should also be visible
-    const badges = screen.getAllByText("Agenda Discussion");
-    expect(badges.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("switches back to general and hides agenda discussion indicator", async () => {
-    mockActiveMeetingScenario();
-    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
-    });
-
-    // Switch to agenda_discussion
-    const agendaDiscussionBtn = screen.getByRole("button", { name: "Agenda Discussion" });
-    await act(async () => {
-      agendaDiscussionBtn.click();
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    expect(screen.getByText(/AGENDA DISCUSSION MODE/)).toBeInTheDocument();
-
-    // Switch back to general
-    const generalBtn = screen.getByRole("button", { name: "General" });
-    await act(async () => {
-      generalBtn.click();
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    expect(screen.queryByText(/AGENDA DISCUSSION MODE/)).not.toBeInTheDocument();
-  });
-
-  it("phase switch does not trigger any API call", async () => {
+  it("switching workspace does not trigger any API call", async () => {
     let callCount = 0;
     mockFetch.mockImplementation((url: string) => {
       callCount++;
@@ -2359,34 +2675,33 @@ describe("AdminDashboard - uiPhase", () => {
 
     const initialCalls = callCount;
 
-    // Switch to agenda_discussion
-    const agendaDiscussionBtn = screen.getByRole("button", { name: "Agenda Discussion" });
+    // Switch to agenda_vote workspace
+    const agendaVoteBtn = screen.getByText("议程与投票");
     await act(async () => {
-      agendaDiscussionBtn.click();
+      agendaVoteBtn.click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
     // Call count should NOT increase
     expect(callCount).toBe(initialCalls);
 
-    // Switch back to general
-    const generalBtn = screen.getByRole("button", { name: "General" });
+    // Switch to service_records workspace
+    const serviceRecordsBtn = screen.getByText("服务与记录");
     await act(async () => {
-      generalBtn.click();
+      serviceRecordsBtn.click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Call count still unchanged
     expect(callCount).toBe(initialCalls);
   });
 
-  it("vote creation and display unaffected by uiPhase switch", async () => {
+  it("vote creation and display unaffected by workspace switch", async () => {
     let postUrl = "";
 
     mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
       if (url === "/api/votes" && opts?.method === "POST") {
         postUrl = url;
-        return okResponse({ id: 99, meeting_id: 1, title: "Phase Vote", options: ["Yes", "No"], status: "open", is_anonymous: false });
+        return okResponse({ id: 99, meeting_id: 1, title: "Workspace Vote", options: ["Yes", "No"], status: "open", is_anonymous: false });
       }
       if (url === "/api/meetings/active") {
         return okResponse({ id: 1, title: "Test", status: "active", started_at: "2026-01-01T10:00:00Z" });
@@ -2403,25 +2718,28 @@ describe("AdminDashboard - uiPhase", () => {
 
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
+    // Wait for meeting to load
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
+      expect(screen.getByText("Test")).toBeInTheDocument();
     });
 
-    // Switch to agenda_discussion first
-    const agendaDiscussionBtn = screen.getByRole("button", { name: "Agenda Discussion" });
+    // Switch to agenda_vote workspace first
+    const agendaVoteBtn = screen.getByText("议程与投票");
     await act(async () => {
-      agendaDiscussionBtn.click();
+      agendaVoteBtn.click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Create vote form should still be accessible
-    expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
+    // Create vote form should be accessible in agenda_vote workspace
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
+    });
     expect(screen.getByRole("button", { name: /create vote/i })).toBeInTheDocument();
 
     // Fill and submit vote
     const { fireEvent } = await import("@testing-library/react");
     await act(async () => {
-      fireEvent.input(screen.getByPlaceholderText("Vote title..."), { target: { value: "Phase Vote" } });
+      fireEvent.input(screen.getByPlaceholderText("Vote title..."), { target: { value: "Workspace Vote" } });
       fireEvent.input(screen.getByPlaceholderText("Option 1"), { target: { value: "Yes" } });
       fireEvent.input(screen.getByPlaceholderText("Option 2"), { target: { value: "No" } });
       await new Promise((r) => setTimeout(r, 50));
@@ -2740,6 +3058,12 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
       expect(screen.getAllByText("Active Meeting").length).toBeGreaterThanOrEqual(1);
     });
 
+    // Switch to service_records workspace to access transcript
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
     await waitFor(() => {
       expect(screen.getByText("测试发言")).toBeInTheDocument();
     });
@@ -2751,6 +3075,1036 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
   });
 });
 
+// ── Phase 2 — Agenda Command Center Tests ─────────────────────────────────────
+
+describe("AgendaCommandCenter - layout", () => {
+  it("shows three-column layout: 议程控制台 / AGENDA COMMAND", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "LayoutTest", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Topic 1", sort_order: 1, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await screen.findByText("LayoutTest");
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Three-column layout titles
+    expect(screen.getByText("议程控制台")).toBeInTheDocument();
+    expect(screen.getByText("AGENDA COMMAND")).toBeInTheDocument();
+    expect(screen.getByText("议程时间线")).toBeInTheDocument();
+    expect(screen.getByText("AGENDA TIMELINE")).toBeInTheDocument();
+    expect(screen.getByText("当前议题")).toBeInTheDocument();
+    expect(screen.getByText("CURRENT TOPIC")).toBeInTheDocument();
+    expect(screen.getByText("议题操作")).toBeInTheDocument();
+    expect(screen.getByText("TOPIC ACTIONS")).toBeInTheDocument();
+  });
+});
+
+describe("AgendaCommandCenter - timeline statuses", () => {
+  it("shows pending, active, completed, skipped statuses in timeline", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "TimelineTest", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Pending Topic", sort_order: 1, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+        { id: 2, meeting_id: 1, title: "Active Topic", sort_order: 2, status: "active", started_at: "2026-01-01T10:05:00Z", completed_at: null, skipped_at: null },
+        { id: 3, meeting_id: 1, title: "Done Topic", sort_order: 3, status: "completed", started_at: "2026-01-01T10:00:00Z", completed_at: "2026-01-01T10:05:00Z", skipped_at: null },
+        { id: 4, meeting_id: 1, title: "Skipped Topic", sort_order: 4, status: "skipped", started_at: null, completed_at: null, skipped_at: "2026-01-01T10:03:00Z" },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await screen.findByText("TimelineTest");
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(screen.getAllByText("Pending Topic").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Active Topic").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Done Topic").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Skipped Topic").length).toBeGreaterThanOrEqual(1);
+
+    // Status labels — may appear in both timeline and center panel
+    expect(screen.getAllByText("PENDING").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("ACTIVE").length).toBeGreaterThanOrEqual(1);
+
+    // The center panel shows current (active) agenda
+    expect(screen.getByText("当前议题")).toBeInTheDocument();
+  });
+});
+
+describe("AgendaCommandCenter - preview behavior", () => {
+  it("clicking timeline item only previews, does not call set-current API", async () => {
+    const postCalls: string[] = [];
+
+    mockFetch.mockImplementation((url: string, _opts?: RequestInit) => {
+      if (_opts?.method === "POST" && url.includes("set-current")) {
+        postCalls.push(url);
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "PreviewTest", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Item A", sort_order: 1, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+        { id: 2, meeting_id: 1, title: "Item B", sort_order: 2, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await screen.findByText("PreviewTest");
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click on "Item A" in the timeline
+    const itemA = screen.getByText("Item A");
+    await act(async () => {
+      itemA.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Should show preview, NOT call set-current
+    expect(screen.getByText(/PREVIEW ONLY/)).toBeInTheDocument();
+    expect(postCalls).toHaveLength(0);
+  });
+});
+
+describe("AgendaCommandCenter - set current actions", () => {
+  it("preview pending then Set Current calls correct API", async () => {
+    let setCurrentCalledWith = 0;
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && url.includes("set-current")) {
+        setCurrentCalledWith = Number(url.match(/agendas\/(\d+)\/set-current/)?.[1] ?? 0);
+        return okResponse(null);
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Pending Item", sort_order: 1, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click pending item to preview
+    await act(async () => {
+      screen.getByText("Pending Item").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // "Set Current" button should be visible
+    const setCurrentBtn = screen.getByText(/SET CURRENT/);
+    expect(setCurrentBtn).toBeInTheDocument();
+
+    // Click Set Current
+    await act(async () => {
+      setCurrentBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(setCurrentCalledWith).toBe(1);
+  });
+
+  it("preview skipped then Set Current calls correct API", async () => {
+    let setCurrentCalledWith = 0;
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && url.includes("set-current")) {
+        setCurrentCalledWith = Number(url.match(/agendas\/(\d+)\/set-current/)?.[1] ?? 0);
+        return okResponse(null);
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 5, meeting_id: 1, title: "Skipped Item", sort_order: 1, status: "skipped", started_at: null, completed_at: null, skipped_at: "2026-01-01T10:03:00Z" },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click skipped item
+    await act(async () => {
+      screen.getByText("Skipped Item").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const setCurrentBtn = screen.getByText(/SET CURRENT/);
+    expect(setCurrentBtn).toBeInTheDocument();
+
+    await act(async () => {
+      setCurrentBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(setCurrentCalledWith).toBe(5);
+  });
+
+  it("preview completed shows Set Current disabled/explanation", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 3, meeting_id: 1, title: "Completed Item", sort_order: 1, status: "completed", started_at: "2026-01-01T10:00:00Z", completed_at: "2026-01-01T10:05:00Z", skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await screen.findByText("AgendaMtg");
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click completed item
+    await act(async () => {
+      screen.getByText("Completed Item").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Should show explanation text, not Set Current button
+    expect(screen.getByText(/COMPLETED TOPICS CANNOT BE SET CURRENT/)).toBeInTheDocument();
+  });
+
+  it("switching from existing active shows confirm; cancel does not call API", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    let setCurrentCalled = false;
+
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && url.includes("set-current")) {
+        setCurrentCalled = true;
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Current Active", sort_order: 1, status: "active", started_at: "2026-01-01T10:00:00Z", completed_at: null, skipped_at: null },
+        { id: 2, meeting_id: 1, title: "Next Topic", sort_order: 2, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Preview next topic
+    await act(async () => {
+      screen.getByText("Next Topic").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click Set Current → confirm dialog appears
+    const setCurrentBtn = screen.getByText(/SET CURRENT/);
+    await act(async () => {
+      setCurrentBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Confirm should have been called, but returned false (cancelled)
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(setCurrentCalled).toBe(false);
+
+    confirmSpy.mockRestore();
+  });
+
+  it("switching with active and confirm=true calls API", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let setCurrentCalled = false;
+
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && url.includes("set-current")) {
+        setCurrentCalled = true;
+        return okResponse(null);
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Current Active", sort_order: 1, status: "active", started_at: "2026-01-01T10:00:00Z", completed_at: null, skipped_at: null },
+        { id: 2, meeting_id: 1, title: "Next Topic", sort_order: 2, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Preview next topic
+    await act(async () => {
+      screen.getByText("Next Topic").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click Set Current
+    const setCurrentBtn = screen.getByText(/SET CURRENT/);
+    await act(async () => {
+      setCurrentBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(setCurrentCalled).toBe(true);
+
+    confirmSpy.mockRestore();
+  });
+});
+
+describe("AgendaCommandCenter - advance, complete, skip", () => {
+  it("Advance is disabled when no active agenda", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Pending Item", sort_order: 1, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Advance button should be disabled (no active agenda)
+    const advanceBtn = screen.getByText(/ADVANCE/).closest("button");
+    expect(advanceBtn).toBeDisabled();
+  });
+
+  it("Advance with active agenda calls correct API", async () => {
+    let advanceCalled = false;
+
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && url.includes("advance")) {
+        advanceCalled = true;
+        return okResponse(null);
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Active Item", sort_order: 1, status: "active", started_at: "2026-01-01T10:00:00Z", completed_at: null, skipped_at: null },
+        { id: 2, meeting_id: 1, title: "Next Item", sort_order: 2, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Advance button should be enabled
+    const advanceBtn = screen.getByText(/ADVANCE/).closest("button");
+    expect(advanceBtn).not.toBeDisabled();
+
+    await act(async () => {
+      advanceBtn!.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(advanceCalled).toBe(true);
+  });
+
+  it("Complete only available when active agenda exists", async () => {
+    let completeCalled = false;
+
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && url.includes("complete")) {
+        completeCalled = true;
+        return okResponse(null);
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Active Item", sort_order: 1, status: "active", started_at: "2026-01-01T10:00:00Z", completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click Complete
+    const completeBtn = screen.getByText(/COMPLETE/).closest("button");
+    expect(completeBtn).not.toBeDisabled();
+
+    await act(async () => {
+      completeBtn!.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(completeCalled).toBe(true);
+  });
+
+  it("Skip with active agenda shows confirm and calls API", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let skipCalled = false;
+
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && url.includes("skip")) {
+        skipCalled = true;
+        return okResponse(null);
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Active Item", sort_order: 1, status: "active", started_at: "2026-01-01T10:00:00Z", completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click Skip
+    const skipBtn = screen.getByText(/SKIP/).closest("button");
+    expect(skipBtn).not.toBeDisabled();
+
+    await act(async () => {
+      skipBtn!.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(skipCalled).toBe(true);
+
+    confirmSpy.mockRestore();
+  });
+
+  it("Skip with active but cancel confirm does not call API", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    let skipCalled = false;
+
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST" && url.includes("skip")) {
+        skipCalled = true;
+      }
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Active Item", sort_order: 1, status: "active", started_at: "2026-01-01T10:00:00Z", completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const skipBtn = screen.getByText(/SKIP/).closest("button");
+    await act(async () => {
+      skipBtn!.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(skipCalled).toBe(false);
+
+    confirmSpy.mockRestore();
+  });
+});
+
+describe("AgendaCommandCenter - flow done state", () => {
+  it("shows 所有议题已处理 / ALL TOPICS PROCESSED when all processed", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Topic A", sort_order: 1, status: "completed", started_at: "2026-01-01T10:00:00Z", completed_at: "2026-01-01T10:05:00Z", skipped_at: null },
+        { id: 2, meeting_id: 1, title: "Topic B", sort_order: 2, status: "skipped", started_at: null, completed_at: null, skipped_at: "2026-01-01T10:03:00Z" },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(screen.getByText("所有议题已处理")).toBeInTheDocument();
+    expect(screen.getByText("ALL TOPICS PROCESSED")).toBeInTheDocument();
+  });
+});
+
+describe("AgendaCommandCenter - meeting ended", () => {
+  beforeEach(() => {
+    sessionStorage.setItem("endedMeetingId", "42");
+    sessionStorage.setItem("endedMeetingTitle", "Past Meeting");
+  });
+
+  afterEach(() => {
+    sessionStorage.removeItem("endedMeetingId");
+    sessionStorage.removeItem("endedMeetingTitle");
+  });
+
+  it("hides all control buttons when meeting ended", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/votes?meeting_id=42") return okResponse([]);
+      if (url === "/api/meetings/42/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/42/agendas")) return okResponse([
+        { id: 1, meeting_id: 42, title: "Past Topic", sort_order: 1, status: "completed", started_at: "2026-01-01T10:00:00Z", completed_at: "2026-01-01T10:05:00Z", skipped_at: null },
+      ]);
+      if (url === "/api/service-calls?meeting_id=42") return okResponse([]);
+      if (url === "/api/translations?meeting_id=42") return okResponse({ meeting_id: 42, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    // The agenda panel should be visible but with read-only message
+    expect(screen.getByText("会议已结束，议程只读")).toBeInTheDocument();
+    expect(screen.getByText("READ-ONLY")).toBeInTheDocument();
+
+    // Control buttons should NOT be present
+    expect(screen.queryByText("SET CURRENT")).not.toBeInTheDocument();
+    expect(screen.queryByText("ADVANCE")).not.toBeInTheDocument();
+    expect(screen.queryByText("COMPLETE")).not.toBeInTheDocument();
+    expect(screen.queryByText("SKIP")).not.toBeInTheDocument();
+  });
+});
+
+describe("AgendaCommandCenter - delete active agenda disabled", () => {
+  it("delete button is disabled/not shown for active agenda", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([
+        { id: 1, meeting_id: 1, title: "Active Item", sort_order: 1, status: "active", started_at: "2026-01-01T10:00:00Z", completed_at: null, skipped_at: null },
+      ]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Preview the active item (click first match in timeline)
+    await act(async () => {
+      const items = screen.getAllByText("Active Item");
+      items[0].click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Delete button should NOT be visible for active agenda
+    expect(screen.queryByText(/DELETE/)).not.toBeInTheDocument();
+  });
+});
+
+describe("AgendaCommandCenter - WebSocket agenda_updated", () => {
+  it("triggers HTTP re-fetch when matching agenda_updated received", async () => {
+    let callCount = 0;
+    mockFetch.mockImplementation((url: string) => {
+      callCount++;
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const initialCalls = callCount;
+
+    // Send agenda_updated with matching meeting_id=1
+    await act(async () => {
+      wsSend(0, "agenda_updated", 1, {});
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(callCount).toBeGreaterThan(initialCalls);
+    });
+  });
+
+  it("ignores agenda_updated when meeting_id does not match", async () => {
+    let callCount = 0;
+    mockFetch.mockImplementation((url: string) => {
+      callCount++;
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "AgendaMtg", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AgendaMtg")).toBeInTheDocument();
+    });
+
+    // Switch to agenda_vote workspace to access agenda panels
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const initialCalls = callCount;
+
+    // Send agenda_updated with non-matching meeting_id=99
+    await act(async () => {
+      wsSend(0, "agenda_updated", 99, {});
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Wait a bit to ensure no re-fetch
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // Call count should NOT have increased
+    expect(callCount).toBe(initialCalls);
+  });
+});
+
 // ── Speech Preload Tests (Task 6) ───────────────────────────────────────────
 
 // Speech model preload tests moved to "AdminDashboard - speech model" describe block above
+
+// ── Task 130: Time Display Correctness Tests ───────────────────────────────
+
+describe("parseBackendDate — naive UTC parsing", () => {
+  it("treats naive UTC string as UTC, not local time", () => {
+    // "2026-01-01T04:27:00" has NO "Z".  parseBackendDate must treat it as
+    // UTC (append "Z"), NOT as local time, otherwise it would be wrong by the
+    // local UTC offset (e.g. 8 hours in UTC+8).
+    const d = parseBackendDate("2026-01-01T04:27:00");
+    expect(d).not.toBeNull();
+
+    // The resulting Date should represent 04:27 UTC
+    expect(d!.getUTCHours()).toBe(4);
+    expect(d!.getUTCMinutes()).toBe(27);
+
+    // Its numeric timestamp must equal what we'd get with explicit "Z"
+    const withZ = new Date("2026-01-01T04:27:00Z");
+    expect(d!.getTime()).toBe(withZ.getTime());
+  });
+
+  it("parses Z-suffixed string correctly", () => {
+    const d = parseBackendDate("2026-01-01T04:27:00Z");
+    expect(d).not.toBeNull();
+    expect(d!.getUTCHours()).toBe(4);
+    expect(d!.getUTCMinutes()).toBe(27);
+  });
+
+  it("parses timezone-offset string correctly", () => {
+    // +08:00 → 12:27 local = 04:27 UTC
+    const d = parseBackendDate("2026-01-01T12:27:00+08:00");
+    expect(d).not.toBeNull();
+    expect(d!.getUTCHours()).toBe(4);
+    expect(d!.getUTCMinutes()).toBe(27);
+  });
+
+  it("returns null for null / undefined / empty string", () => {
+    expect(parseBackendDate(null)).toBeNull();
+    expect(parseBackendDate(undefined)).toBeNull();
+    expect(parseBackendDate("")).toBeNull();
+  });
+
+  it("returns null for an invalid date string", () => {
+    expect(parseBackendDate("not-a-date")).toBeNull();
+    expect(parseBackendDate("2026-13-01T00:00:00")).toBeNull(); // month 13
+  });
+});
+
+describe("formatTranscriptTime — transcript time display", () => {
+  it("formats a naive UTC string as HH:mm (local time)", () => {
+    // 2026-01-01T04:27:00 treated as UTC → converted to local in HH:mm
+    const result = formatTranscriptTime("2026-01-01T04:27:00");
+    expect(result).toMatch(/^\d{2}:\d{2}$/);
+    // Must NOT contain "AM" or "PM" (hour12: false)
+    expect(result).not.toMatch(/AM|PM/);
+  });
+
+  it("formats Z-suffixed string as HH:mm (local time)", () => {
+    const result = formatTranscriptTime("2026-01-01T04:27:00Z");
+    expect(result).toMatch(/^\d{2}:\d{2}$/);
+    expect(result).not.toMatch(/AM|PM/);
+  });
+
+  it("returns --:-- fallback for null / undefined / empty", () => {
+    expect(formatTranscriptTime(null)).toBe("--:--");
+    expect(formatTranscriptTime(undefined)).toBe("--:--");
+    expect(formatTranscriptTime("")).toBe("--:--");
+  });
+});
+
+describe("AdminDashboard - elapsed time display (Task 130)", () => {
+  beforeEach(() => {
+    // Clean up any ended-meeting sessionStorage left by previous tests
+    try {
+      sessionStorage.removeItem('endedMeetingId');
+      sessionStorage.removeItem('endedMeetingTitle');
+      sessionStorage.removeItem('endedMeetingStartedAt');
+      sessionStorage.removeItem('endedMeetingEndedAt');
+    } catch { /* sessionStorage may throw */ }
+  });
+
+  it("shows Meeting time MetricCard with formatted elapsed for active meeting", async () => {
+    // started_at is 5 minutes in the past (naive UTC — no "Z")
+    const fiveMinAgo = new Date();
+    fiveMinAgo.setMinutes(fiveMinAgo.getMinutes() - 5);
+    const naiveUtc = fiveMinAgo.toISOString().replace("Z", ""); // strip Z
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({
+          id: 1, title: "Time Test", status: "active",
+          started_at: naiveUtc,
+        });
+      }
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Time Test")).toBeInTheDocument();
+    });
+
+    // The MetricCard "Meeting time" should show elapsed (with non-zero value from 5 min ago)
+    const meetingTime = screen.getByText("Meeting time");
+    expect(meetingTime).toBeInTheDocument();
+
+    // The MetricCard value (previous sibling inside the same container) should be a
+    // formatted duration, not "--"
+    const elapsedValue = meetingTime.previousElementSibling;
+    expect(elapsedValue).toBeTruthy();
+    expect(elapsedValue!.textContent).not.toBe("—");
+    expect(elapsedValue!.textContent).toMatch(/^\d/); // starts with a digit
+  });
+
+  it("shows Duration in ended meeting banner with static elapsed", async () => {
+    const effectiveMeetingId = 99;
+
+    // Ended meeting: fetchActiveMeeting returns null; meeting-dependent
+    // endpoints also need valid empty responses.
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      // Meeting-dependent endpoints (effectiveMeetingId = 99)
+      if (url === `/api/meetings/${effectiveMeetingId}/attendees`) return okResponse([]);
+      if (url === `/api/meetings/${effectiveMeetingId}/agendas`) return okResponse([]);
+      if (url === `/api/service-calls?meeting_id=${effectiveMeetingId}`) return okResponse([]);
+      if (url === `/api/translations?meeting_id=${effectiveMeetingId}`) return okResponse({ meeting_id: effectiveMeetingId, entries: [] });
+      if (url === `/api/votes?meeting_id=${effectiveMeetingId}`) return okResponse([]);
+      return okResponse(null);
+    });
+
+    // Pre-populate sessionStorage so the ended meeting is restored
+    try {
+      sessionStorage.setItem('endedMeetingId', String(effectiveMeetingId));
+      sessionStorage.setItem('endedMeetingTitle', 'Ended Meeting');
+      sessionStorage.setItem('endedMeetingStartedAt', '2026-01-01T10:00:00'); // naive UTC
+      sessionStorage.setItem('endedMeetingEndedAt', '2026-01-01T11:30:00');   // naive UTC → 1h30m
+    } catch { /* sessionStorage may throw */ }
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Meeting Ended")).toBeInTheDocument();
+    });
+
+    // Duration should show "1:30:00" (1h30m = 5400000 ms in HH:mm:ss format)
+    await waitFor(() => {
+      const durationElem = screen.getByText((content) => content.includes('Duration:'));
+      expect(durationElem).toBeInTheDocument();
+      expect(durationElem.textContent).toContain('1:30:00');
+    });
+
+    // Cleanup sessionStorage
+    try {
+      sessionStorage.removeItem('endedMeetingId');
+      sessionStorage.removeItem('endedMeetingTitle');
+      sessionStorage.removeItem('endedMeetingStartedAt');
+      sessionStorage.removeItem('endedMeetingEndedAt');
+    } catch { /* sessionStorage may throw */ }
+  });
+
+  it("does NOT show elapsed when there is no meeting", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(null);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
+    });
+
+    // No Meeting time pill/header should exist
+    expect(screen.queryByText("Meeting time")).not.toBeInTheDocument();
+  });
+
+  it("formatDuration handles exactly 1 hour", () => {
+    // 3600 seconds = 3600000 ms
+    expect(formatDuration(3600000)).toBe("1:00:00");
+  });
+
+  it("formatDuration handles under 1 hour", () => {
+    // 5 minutes 30 seconds = 330000 ms
+    expect(formatDuration(330000)).toBe("05:30");
+  });
+});

@@ -149,6 +149,41 @@ export function deleteAgenda(
   return apiDelete<void>(`/meetings/${meetingId}/agendas/${agendaId}`);
 }
 
+/** Set a pending/skipped agenda as the current active topic. */
+export function setCurrentAgenda(
+  meetingId: number,
+  agendaId: number,
+): Promise<void> {
+  return apiPost<void>(
+    `/meetings/${meetingId}/agendas/${agendaId}/set-current`,
+  );
+}
+
+/** Complete the current active topic and activate the next pending topic. */
+export function advanceAgenda(meetingId: number): Promise<void> {
+  return apiPost<void>(`/meetings/${meetingId}/agendas/advance`);
+}
+
+/** Complete the current active agenda. */
+export function completeAgenda(
+  meetingId: number,
+  agendaId: number,
+): Promise<void> {
+  return apiPost<void>(
+    `/meetings/${meetingId}/agendas/${agendaId}/complete`,
+  );
+}
+
+/** Skip the current active agenda. */
+export function skipAgenda(
+  meetingId: number,
+  agendaId: number,
+): Promise<void> {
+  return apiPost<void>(
+    `/meetings/${meetingId}/agendas/${agendaId}/skip`,
+  );
+}
+
 /** Returns service calls for a meeting. */
 export function fetchServiceCalls(meetingId: number): Promise<ServiceCall[]> {
   return apiGet<ServiceCall[]>(

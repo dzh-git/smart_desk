@@ -44,17 +44,132 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `GET` | `/api/meetings/{meeting_id}` | Get one meeting. |
 | `POST` | `/api/meetings/{meeting_id}/start` | Start a pending meeting; only one active meeting is allowed. |
 | `POST` | `/api/meetings/{meeting_id}/end` | End an active meeting. |
-| `GET` | `/api/meetings/{meeting_id}/agendas` | List agenda items. |
-| `POST` | `/api/meetings/{meeting_id}/agendas` | Add an agenda item. |
-| `DELETE` | `/api/meetings/{meeting_id}/agendas/{agenda_id}` | Delete an agenda item. |
+| `GET` | `/api/meetings/{meeting_id}/agendas` | List agenda items. Keeps the existing top-level `Agenda[]` response shape. |
+| `POST` | `/api/meetings/{meeting_id}/agendas` | Add an agenda item. Defaults to `status=pending`; active/ended lifecycle guards apply. |
+| `DELETE` | `/api/meetings/{meeting_id}/agendas/{agenda_id}` | Delete a non-active agenda item; deleting active or ended-meeting agenda items is forbidden. |
+| `POST` | `/api/meetings/{meeting_id}/agendas/{agenda_id}/set-current` | Set a pending/skipped agenda as the current active topic. |
+| `POST` | `/api/meetings/{meeting_id}/agendas/advance` | Complete the current active topic and activate the next pending topic. |
+| `POST` | `/api/meetings/{meeting_id}/agendas/{agenda_id}/complete` | Complete the current active topic. |
+| `POST` | `/api/meetings/{meeting_id}/agendas/{agenda_id}/skip` | Skip the current active topic. |
 | `GET` | `/api/meetings/{meeting_id}/attendees` | List attendees. |
 | `POST` | `/api/meetings/{meeting_id}/attendees` | Add an attendee. |
 | `DELETE` | `/api/meetings/{meeting_id}/attendees/{attendee_id}` | Delete an attendee. |
+
+Meeting backend statuses are `pending`, `active`, and `finished`. The frontend
+maps a finished meeting being reviewed to local `meetingStatus=meeting_ended`.
 
 Ending a meeting resets seats to `vacant`, clears attendee seat bindings,
 sets attendees to `checked_in=false`, closes any open vote, preserves the
 speaker seat value, and keeps historical votes, service calls, and translation
 records.
+
+## Agenda APIs
+
+Agenda items are persisted meeting resources. `GET
+/api/meetings/{meeting_id}/agendas` must remain backward compatible: the
+top-level response data stays an `Agenda[]`; each item is extended with status
+and timestamp fields.
+
+Agenda item shape:
+
+```json
+{
+  "id": 1,
+  "meeting_id": 1,
+  "title": "Product Proposal Discussion",
+  "sort_order": 3,
+  "status": "active",
+  "started_at": "2026-06-13T10:00:00Z",
+  "completed_at": null,
+  "skipped_at": null
+}
+```
+
+Status values:
+
+- `pending`
+- `active`
+- `completed`
+- `skipped`
+
+Allowed state transitions:
+
+- `pending -> active`
+- `skipped -> active`
+- `active -> completed`
+- `active -> skipped`
+- `active -> completed + next pending -> active`
+
+Forbidden state transitions:
+
+- `completed -> active`
+- `completed -> skipped`
+- `pending -> completed`
+- `pending -> skipped`
+- `skipped -> completed`
+- `active -> pending`
+
+State mutation rules:
+
+- A meeting must never have more than one `active` agenda item.
+- Agenda status changes must run in a backend transaction.
+- `set-current` accepts `pending` or `skipped` agenda items only.
+- Calling `set-current` for the already active agenda is idempotent and must
+  not update `started_at`.
+- Calling `set-current` for a `completed` agenda returns `400`.
+- If another agenda is active, `set-current` completes the old active agenda
+  and activates the new agenda in the same transaction.
+- `complete` only works for the current active agenda; otherwise it returns
+  `400`.
+- `skip` only works for the current active agenda; otherwise it returns `400`.
+- `advance` requires an active agenda; otherwise it returns `400`.
+- `advance` completes the current active agenda and activates the next
+  `pending` agenda by `sort_order`.
+- If `advance` finds no next pending agenda, the current active agenda becomes
+  `completed` and there is no current agenda.
+- `create agenda` defaults to `status=pending`.
+- `delete agenda` is allowed only for non-active agenda items in an active
+  meeting. Deleting an active agenda returns `400`.
+
+Meeting lifecycle guard:
+
+- Agenda write APIs only work when `meeting.status=active`.
+- If the meeting is finished, `create`, `delete`, `set-current`, `advance`,
+  `complete`, and `skip` return `400` or `409`.
+- `GET /api/meetings/{meeting_id}/agendas` remains available for finished
+  meetings so the frontend can show final agenda progress.
+
+Timestamp rules:
+
+- `pending`: `started_at=null`, `completed_at=null`, `skipped_at=null`.
+- `active`: `started_at=now`, `completed_at=null`, `skipped_at=null`.
+- `completed`: `completed_at=now`, `skipped_at=null`.
+- `skipped`: `skipped_at=now`, `completed_at=null`.
+- `skipped -> active`: clear `skipped_at` and refresh `started_at`.
+- Switching current agenda: old active becomes `completed` with
+  `completed_at=now`; new agenda becomes `active` with `started_at=now`,
+  `completed_at=null`, and `skipped_at=null`.
+
+Agenda mutation endpoints may return an agenda-state response for convenience:
+
+```json
+{
+  "meeting_id": 1,
+  "current_agenda": null,
+  "agendas": [],
+  "progress": {
+    "total": 3,
+    "completed": 1,
+    "skipped": 1,
+    "active": 0,
+    "pending": 1,
+    "current_index": null
+  }
+}
+```
+
+Frontend clients must still be able to refresh the source of truth through
+`GET /api/meetings/{meeting_id}/agendas`.
 
 ## Seat APIs
 
@@ -189,10 +304,14 @@ GET /api/seats/speaker
 GET /api/votes/active
 GET /api/votes?meeting_id={activeMeetingId}
 GET /api/service-calls/current?meeting_id={activeMeetingId}&seat_id={seatId}
-GET /api/translations?meeting_id={activeMeetingId}&seat_id={seatId}
+GET /api/translations?meeting_id={activeMeetingId}
 GET /api/meetings/{activeMeetingId}/agendas
 GET /api/meetings/{activeMeetingId}/attendees
 ```
+
+Seat pages display meeting-wide public transcript history by default. The
+`seat_id` query parameter remains an optional API capability for explicit
+filtered reads, but the current seat UI does not pass it.
 
 If there is no active meeting, the frontend must show a waiting state and must
 not call endpoints that require `meeting_id`.

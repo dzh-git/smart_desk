@@ -119,11 +119,51 @@ export function formatTime(date: Date) {
 }
 
 export function formatDuration(ms: number) {
-  const m = Math.floor(ms / 60000);
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  if (h > 0) return `${h}h ${rem}m`;
-  return `${m}m`;
+  const totalSeconds = Math.floor(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Parse a backend datetime string that may be a naive UTC timestamp.
+ *
+ * Backend uses `datetime.utcnow()` which Pydantic serialises without
+ * timezone info (e.g. "2026-01-01T04:27:00").  `new Date(value)` would
+ * treat this as LOCAL time, causing an incorrect display (e.g. 8 hours
+ * off for UTC+8 users).
+ *
+ * - null / undefined / empty string → null
+ * - Strings with "Z" or ±HH:MM offset → parsed as-is
+ * - Strings WITHOUT timezone → treated as UTC ("Z" appended)
+ * - Invalid values → null
+ */
+export function parseBackendDate(value: string | null | undefined): Date | null {
+  if (value == null || value === "") return null;
+
+  // Already has timezone info:  "Z", "+08:00", "-05:00"
+  if (/[Zz]|[+-]\d{2}:\d{2}$/.test(value)) {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Naive datetime — treat as UTC by appending "Z"
+  const d = new Date(value + "Z");
+  return isNaN(d.getTime()) ? null : d;
+}
+
+export function formatTranscriptTime(value: string | null | undefined): string {
+  const d = parseBackendDate(value);
+  if (!d) return "--:--";
+  return d.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 export function timeAgo(date: Date) {

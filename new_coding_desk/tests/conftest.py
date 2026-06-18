@@ -151,6 +151,12 @@ def event_bus():
     bus._subscribers.clear()
 
 
+@pytest.fixture(scope="session")
+def anyio_backend() -> str:
+    """Use asyncio backend for anyio-marked async tests (trio not installed)."""
+    return "asyncio"
+
+
 def pytest_sessionfinish(session: pytest.Session) -> None:  # type: ignore[arg-type]
     """Remove the temp test database file after all tests complete."""
     try:

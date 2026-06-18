@@ -231,15 +231,18 @@ class TestAgendaCRUD:
     def test_create_agenda(self, svc):
         """Create an agenda item for a meeting."""
         mid = _create_pending(svc)
+        svc.start_meeting(mid)
         agenda = svc.create_agenda(mid, "Financial Report", sort_order=1)
         assert agenda.id is not None
         assert agenda.title == "Financial Report"
         assert agenda.sort_order == 1
         assert agenda.meeting_id == mid
+        assert agenda.status == "pending"
 
     def test_create_agenda_default_sort(self, svc):
         """Agenda sort_order defaults to 0."""
         mid = _create_pending(svc)
+        svc.start_meeting(mid)
         agenda = svc.create_agenda(mid, "Intro")
         assert agenda.sort_order == 0
 
@@ -251,6 +254,7 @@ class TestAgendaCRUD:
     def test_list_agendas(self, svc):
         """List agendas sorted by sort_order."""
         mid = _create_pending(svc)
+        svc.start_meeting(mid)
         svc.create_agenda(mid, "Third", sort_order=3)
         svc.create_agenda(mid, "First", sort_order=1)
         svc.create_agenda(mid, "Second", sort_order=2)
@@ -272,6 +276,7 @@ class TestAgendaCRUD:
     def test_delete_agenda(self, svc):
         """Delete an agenda item."""
         mid = _create_pending(svc)
+        svc.start_meeting(mid)
         agenda = svc.create_agenda(mid, "To Delete")
         svc.delete_agenda(mid, agenda.id)
         assert len(svc.list_agendas(mid)) == 0
@@ -280,6 +285,7 @@ class TestAgendaCRUD:
         """Cannot delete agenda belonging to different meeting."""
         m1 = _create_pending(svc, "M1")
         m2 = _create_pending(svc, "M2")
+        svc.start_meeting(m1)
         agenda = svc.create_agenda(m1, "Budget")
         with pytest.raises(NotFoundError, match="Agenda.*not found"):
             svc.delete_agenda(m2, agenda.id)

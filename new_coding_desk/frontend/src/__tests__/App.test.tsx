@@ -296,6 +296,7 @@ describe("App - display vote results", () => {
           ],
         });
       }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
       return okResponse(null);
     });
 

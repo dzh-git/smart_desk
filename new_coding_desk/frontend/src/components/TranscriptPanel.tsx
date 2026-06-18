@@ -1,5 +1,5 @@
 import { MessageSquare, Loader2, Mic } from "lucide-react";
-import { PanelCard, TechEmptyState, SectionHeader } from "./shared";
+import { PanelCard, TechEmptyState, SectionHeader, formatTranscriptTime } from "./shared";
 import type { TranslationRecord } from "../api/types";
 
 const avatarColors = [
@@ -291,10 +291,7 @@ function TranscriptRow({
   speakerName: string;
 }) {
   const color = avatarColors[(entry.seat_id - 1) % avatarColors.length];
-  const time = new Date(entry.created_at).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const time = formatTranscriptTime(entry.created_at);
 
   const langLabel =
     entry.source_lang.toUpperCase() === "EN" ? "EN" : "ZH";

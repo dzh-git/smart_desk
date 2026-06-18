@@ -40,13 +40,28 @@ class AgendaCreate(BaseModel):
 
 
 class AgendaResponse(BaseModel):
-    """Agenda data returned to clients."""
+    """Agenda data returned to clients.
+
+    Phase 1: extended with status, started_at, completed_at, skipped_at.
+    """
     id: int
     meeting_id: int
     title: str
     sort_order: int
+    status: str = "pending"
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    skipped_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class AgendaStateResponse(BaseModel):
+    """Agenda state machine mutation response."""
+    meeting_id: int
+    current_agenda: AgendaResponse | None = None
+    agendas: list[AgendaResponse] = []
+    progress: dict | None = None
 
 
 # ── Attendee ────────────────────────────────────────────────────────────────

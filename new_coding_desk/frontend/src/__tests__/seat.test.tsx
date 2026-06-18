@@ -1409,7 +1409,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     // useSpeechStream hook. Here we confirm the WS is in recording state.
   });
 
-  it("sends end_hint and stops tracks on Stop", async () => {
+  it("sends end_hint and delays WS close (Task 126)", async () => {
     mockSpeakerCheckedIn();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
@@ -1429,9 +1429,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
       expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
     });
 
-    // Save reference to the speech WS before clicking Stop.
-    // After Stop calls close(), the WS is removed from wsInstances,
-    // so we read sentData from the saved object.
+    // Save speech WS reference before Stop.
     const speechWs = findSpeechWs();
     expect(speechWs).not.toBeNull();
 
@@ -1442,7 +1440,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Check sentData on the saved reference
+    // Check sentData on the saved reference — end_hint was sent
     const sentMessages = speechWs!.sentData.filter(
       (d): d is string => typeof d === "string",
     );
@@ -1450,10 +1448,10 @@ describe("SeatTablet - speech control (speaker seat)", () => {
       sentMessages.some((m) => m.includes('"type":"end_hint"')),
     ).toBe(true);
 
-    // Should return to idle state
-    await waitFor(() => {
-      expect(screen.getByText("Start")).toBeInTheDocument();
-    });
+    // Task 126: WS should NOT be closed immediately (2000ms delay).
+    // Only end_hint was sent; cleanup is deferred.
+    const wsAfterStop = findSpeechWs();
+    expect(wsAfterStop).not.toBeNull();
   });
 
   it("sends cancel and stops tracks on Cancel", async () => {
@@ -2452,4 +2450,1742 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
       expect(screen.getByText("Cross-seat visibility test")).toBeInTheDocument();
     });
   });
+});
+
+// ── Phase 3: Agenda Display Tests ─────────────────────────────────────────────
+
+// ── Task 125: Speech Lifecycle Audit Tests ─────────────────────────────────
+
+describe("SeatTablet - speech lifecycle audit (Task 125)", () => {
+  function mockSpeakerWithCaption() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations"))
+        return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+  }
+
+  // ── Test 1: Final clears interim ─────────────────────────────────────────
+  it("[T125-1] removes interim from interimMap on translation_final", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send interim with caption
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_audit_final_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "审计测试。",
+              translated_text: "",
+              is_final: false,
+              caption: {
+                previous_line: "审计",
+                current_line: "测试。",
+                mode: "two_line",
+              },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should appear
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_audit_final_001");
+    });
+
+    // Send final — this should remove the interim
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      // Fall back to speaker mock
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(Array.from({ length: 10 }, (_, i) => ({
+          seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+        })));
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      return okResponse(null);
+    });
+
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              translation_id: 200,
+              utterance_id: "utt_audit_final_001",
+              seat_id: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "审计测试。",
+              translated_text: "Audit test.",
+              source_type: "offline_rescore",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    });
+
+    // Live caption should be removed
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Test 2: Cancel clears interim ────────────────────────────────────────
+  it("[T125-2] removes interim from interimMap on translation_interim_cancelled", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send interim with caption
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_audit_cancel_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "取消测试。",
+              translated_text: "",
+              is_final: false,
+              caption: {
+                previous_line: "取消",
+                current_line: "测试。",
+                mode: "two_line",
+              },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should appear
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+    });
+
+    // Send cancelled event
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim_cancelled",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_audit_cancel_001",
+              seat_id: 1,
+              reason: "user_cancelled",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should be removed
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Test 3: Late interim after final (fixed by Task 126) ────────────────────
+  it("[T125-3] FIXED: late interim after translation_final no longer re-creates live caption", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send interim
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_audit_late_001",
+              seat_id: 1,
+              revision: 5,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "初始中间结果。",
+              translated_text: "",
+              is_final: false,
+              caption: {
+                previous_line: "初始",
+                current_line: "中间结果。",
+                mode: "two_line",
+              },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Verify interim shown
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+    });
+
+    // Send translation_final (removes interim)
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              translation_id: 300,
+              utterance_id: "utt_audit_late_001",
+              seat_id: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "初始中间结果。",
+              translated_text: "Initial interim result.",
+              source_type: "offline_rescore",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // After final, interim should be gone
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+
+    // Now simulate a LATE interim arriving AFTER final (same utterance_id, higher revision)
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_audit_late_001",
+              seat_id: 1,
+              revision: 6,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "延迟到达的中间结果！",
+              translated_text: "",
+              is_final: false,
+              caption: {
+                previous_line: "延迟到达的",
+                current_line: "中间结果！",
+                mode: "two_line",
+              },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // Task 126 FIX: late interim should NOT re-create live caption because
+    // the utterance_id is now tracked as terminal in terminalUtteranceIdsRef.
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Test 4: Stop sends end_hint, WS delayed close (Task 126) ──────────────
+  it("[T125-4] Stop sends end_hint and delays WS close (Task 126 fix)", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations"))
+        return okResponse({ meeting_id: 1, entries: [] });
+      if (url.includes("/api/speech/status"))
+        return okResponse({
+          ready: true, preloading: false, streaming_model: "loaded",
+          offline_model: "loaded", punctuation_model: "loaded",
+          punctuation_fallback: false, last_error: null,
+        });
+      return okResponse(null);
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    // Start speech
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+
+    const startBtn = screen.getByText("Start");
+    await act(async () => {
+      startBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Connect speech WS
+    await connectSpeechWs();
+
+    await waitFor(() => {
+      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+    });
+
+    // Save speech WS reference before Stop
+    const speechWs = findSpeechWs();
+    expect(speechWs).not.toBeNull();
+
+    // Click Stop
+    const stopBtn = screen.getByText("Stop");
+    await act(async () => {
+      stopBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Check that end_hint was sent
+    const sentMsgs = speechWs!.sentData.filter(
+      (d): d is string => typeof d === "string",
+    );
+    const hasEndHint = sentMsgs.some((m) => m.includes('"type":"end_hint"'));
+    expect(hasEndHint).toBe(true);
+
+    // Task 126 FIX: WS should NOT be closed immediately after Stop.
+    // The 2000ms delay window gives the backend time to finalize.
+    const wsAfterStop = findSpeechWs();
+    expect(wsAfterStop).not.toBeNull();
+  });
+
+  // ── Test 5: Cancel sends cancel then immediately closes WS ────────────────
+  it("[T125-5] Cancel sends cancel then immediately closes WS (race risk)", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations"))
+        return okResponse({ meeting_id: 1, entries: [] });
+      if (url.includes("/api/speech/status"))
+        return okResponse({
+          ready: true, preloading: false, streaming_model: "loaded",
+          offline_model: "loaded", punctuation_model: "loaded",
+          punctuation_fallback: false, last_error: null,
+        });
+      return okResponse(null);
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+
+    const startBtn = screen.getByText("Start");
+    await act(async () => {
+      startBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    await connectSpeechWs();
+
+    await waitFor(() => {
+      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+    });
+
+    const speechWs = findSpeechWs();
+    expect(speechWs).not.toBeNull();
+
+    const cancelBtn = screen.getByText("Cancel");
+    await act(async () => {
+      cancelBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    const sentMsgs = speechWs!.sentData.filter(
+      (d): d is string => typeof d === "string",
+    );
+    const hasCancel = sentMsgs.some((m) => m.includes('"type":"cancel"'));
+    expect(hasCancel).toBe(true);
+
+    // Cancel still closes WS immediately (no delay — intentional)
+    const wsAfterCancel = findSpeechWs();
+    expect(wsAfterCancel).toBeNull();
+  });
+});
+
+// ── Task 126: Speech Lifecycle Fix Tests ───────────────────────────────────
+
+describe("SeatTablet - speech lifecycle fixes (Task 126)", () => {
+  function mockSpeakerWithCaption() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations"))
+        return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+  }
+
+  // ── T126-1: Late interim blocked after translation_final ──────────────────
+  it("[T126-1] late translation_interim after final does not show live caption (terminal set)", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send interim for utt_t126_final
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t126_final_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "第一版。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "", current_line: "第一版。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+    });
+
+    // Send translation_final
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              translation_id: 400,
+              utterance_id: "utt_t126_final_001",
+              seat_id: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "第一版。",
+              translated_text: "Version one.",
+              source_type: "offline_rescore",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // After final, interim should be removed
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+
+    // Send LATE interim — should be blocked by terminalUtteranceIdsRef
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t126_final_001",
+              seat_id: 1,
+              revision: 2,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "延迟到达的第二版！",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "延迟到达的", current_line: "第二版！", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // Live caption must NOT re-appear (terminal set blocked it)
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+  });
+
+  // ── T126-2: Late interim blocked after translation_interim_cancelled ──────
+  it("[T126-2] late translation_interim after cancelled does not show live caption", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send interim
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t126_cancel_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "会被取消的。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "", current_line: "会被取消的。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+    });
+
+    // Send cancelled
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim_cancelled",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t126_cancel_001",
+              seat_id: 1,
+              reason: "user_cancelled",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+
+    // Send late interim — should be blocked
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t126_cancel_001",
+              seat_id: 1,
+              revision: 2,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "延迟到达！",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "延迟", current_line: "到达！", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+  });
+
+  // ── T126-3: New utterance_id still works normally ─────────────────────────
+  it("[T126-3] new utterance_id interim still shows live caption (terminal set does not block)", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send interim for new utterance
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t126_new_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "新的语音内容。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "", current_line: "新的语音内容。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_t126_new_001");
+    });
+  });
+
+  // ── T126-4: Duplicate terminal event is idempotent ────────────────────────
+  it("[T126-4] duplicate translation_final for same utterance_id is idempotent", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice Wang")).toBeInTheDocument();
+    });
+
+    // Send interim
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t126_dup_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "重复。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "", current_line: "重复。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+    });
+
+    // First final
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      if (url === "/api/meetings/active") return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      if (url === "/api/seats") return okResponse(Array.from({ length: 10 }, (_, i) => ({ seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z" })));
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      return okResponse(null);
+    });
+
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: { translation_id: 401, utterance_id: "utt_t126_dup_001", seat_id: 1, source_lang: "zh", target_lang: "en", source_text: "重复。", translated_text: "Dup.", source_type: "offline_rescore" },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+
+    // Second final for same utterance_id (duplicate)
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: { translation_id: 402, utterance_id: "utt_t126_dup_001", seat_id: 1, source_lang: "zh", target_lang: "en", source_text: "重复。", translated_text: "Dup.", source_type: "offline_rescore" },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // Should still be gone (no re-render of live caption)
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+  });
+});
+
+// ── Task 129-lite: Speech Stability Tests ────────────────────────────────────
+
+describe("SeatTablet - speech stability (Task 129-lite)", () => {
+  function mockSpeaker() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      if (url.includes("/api/speech/status"))
+        return okResponse({
+          ready: true, preloading: false, streaming_model: "loaded",
+          offline_model: "loaded", punctuation_model: "loaded",
+          punctuation_fallback: false, last_error: null,
+        });
+      return okResponse(null);
+    });
+  }
+
+  // ── Task129-1: Stop → stopping → 2s timeout → idle ─────────────────────
+  // Uses real timers (not vi.useFakeTimers) to avoid affecting other tests.
+  // The 2500ms wait is necessary for the 2000ms stopTimer in useSpeechStream.
+  it("[Task129-1] Stop transitions to stopping, then after 2s returns to idle", async () => {
+    mockSpeaker();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    // Wait for Start button
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+
+    // Click Start → recording
+    const startBtn = screen.getByText("Start");
+    await act(async () => {
+      startBtn.click();
+    });
+    await connectSpeechWs();
+
+    // Should now be recording
+    await waitFor(() => {
+      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+    });
+
+    // Click Stop
+    const stopBtn = screen.getByText("Stop");
+    await act(async () => {
+      stopBtn.click();
+    });
+
+    // Should immediately show "Stopping..."
+    await waitFor(() => {
+      expect(screen.getByText("Stopping...")).toBeInTheDocument();
+    });
+
+    // Wait 2500ms for the 2000ms stop timeout to fire
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 2500));
+    });
+
+    // After timeout, should return to idle with Start button
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+  }, 15000);
+
+  // ── Task129-2: Stopping state hides Start button ─────────────────────────
+  // Verifies that during the 2s stopping window, "Start" is NOT rendered.
+  // Uses real timers — the "Stopping..." check happens immediately after
+  // Stop is clicked (before the 2s timeout fires).
+  it("[Task129-2] stopping state does not show Start button (prevents re-start)", async () => {
+    mockSpeaker();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+
+    const startBtn = screen.getByText("Start");
+    await act(async () => {
+      startBtn.click();
+    });
+    await connectSpeechWs();
+
+    await waitFor(() => {
+      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+    });
+
+    // Click Stop — checking behavior DURING the 2s stopping window
+    const stopBtn = screen.getByText("Stop");
+    await act(async () => {
+      stopBtn.click();
+    });
+
+    // "Stopping..." visible immediately
+    await waitFor(() => {
+      expect(screen.getByText("Stopping...")).toBeInTheDocument();
+    });
+
+    // Start button should NOT appear during stopping (prevents re-start)
+    expect(screen.queryByText("Start")).not.toBeInTheDocument();
+
+    // Wait for stop timeout to fire, then verify Start reappears
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 2500));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+  }, 15000);
+
+  // ── Task129-3: New utterance still works after Stop → idle cycle ─────────
+  it("[Task129-3] new utterance interim still shows after Stop→idle cycle", async () => {
+    mockSpeaker();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Start")).toBeInTheDocument();
+    });
+
+    // Click Start → recording → Stop → idle (wait for 2s timeout)
+    const startBtn = screen.getByText("Start");
+    await act(async () => { startBtn.click(); });
+    await connectSpeechWs();
+    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+
+    const stopBtn = screen.getByText("Stop");
+    await act(async () => { stopBtn.click(); });
+
+    // Wait through the 2s stopping window
+    await act(async () => { await new Promise((r) => setTimeout(r, 2500)); });
+    await waitFor(() => expect(screen.getByText("Start")).toBeInTheDocument());
+
+    // Now send a new utterance interim via meeting WS — simulating a
+    // different speaker seat or new session sending interim independently
+    // after the previous speaker's Stop→idle cycle completed.
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t129_new_001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "停止后的新语音。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "", current_line: "停止后的新语音。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should appear for the new utterance
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_t129_new_001");
+    });
+  }, 15000);
+});
+
+describe("SeatTablet - current topic display (Phase 3)", () => {
+  function mockActiveMeetingWithAgendas(agendas: unknown[]) {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({
+          id: 1,
+          title: "Board Meeting",
+          status: "active",
+          started_at: "2026-01-01T10:00:00Z",
+        });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse(agendas);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+  }
+
+  it("shows current active agenda title and ACTIVE status", async () => {
+    mockActiveMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening Remarks", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Budget Review", sort_order: 2, status: "active", started_at: null, completed_at: null, skipped_at: null },
+      { id: 3, meeting_id: 1, title: "Q&A", sort_order: 3, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      const titles = screen.getAllByText("Budget Review");
+      expect(titles.length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.getByText("进行中")).toBeInTheDocument();
+    expect(screen.getByText(/ACTIVE/)).toBeInTheDocument();
+  });
+
+  it("shows NO ACTIVE TOPIC when no agenda is active but pending remain", async () => {
+    mockActiveMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening Remarks", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Budget Review", sort_order: 2, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      const els = screen.getAllByText("暂无当前议题");
+      expect(els.length).toBeGreaterThanOrEqual(1);
+    });
+    const noActiveEls = screen.getAllByText(/NO ACTIVE TOPIC/);
+    expect(noActiveEls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows ALL TOPICS PROCESSED when all items are completed or skipped", async () => {
+    mockActiveMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening Remarks", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Budget Review", sort_order: 2, status: "skipped", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      const els = screen.getAllByText("所有议题已处理");
+      expect(els.length).toBeGreaterThanOrEqual(1);
+    });
+    const allDoneEls = screen.getAllByText(/ALL TOPICS PROCESSED/);
+    expect(allDoneEls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not show any agenda control buttons (Set Current / Advance / Complete / Skip)", async () => {
+    mockActiveMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening Remarks", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Budget Review", sort_order: 2, status: "active", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      const titles = screen.getAllByText("Budget Review");
+      expect(titles.length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.queryByText("Set Current")).not.toBeInTheDocument();
+    expect(screen.queryByText("Advance")).not.toBeInTheDocument();
+    expect(screen.queryByText("Complete")).not.toBeInTheDocument();
+    expect(screen.queryByText("Skip")).not.toBeInTheDocument();
+  });
+
+  it("shows agenda progress like '2 / 3'", async () => {
+    mockActiveMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening Remarks", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Budget Review", sort_order: 2, status: "active", started_at: null, completed_at: null, skipped_at: null },
+      { id: 3, meeting_id: 1, title: "Q&A", sort_order: 3, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Progress/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/2 \/ 3/)).toBeInTheDocument();
+  });
+
+  it("re-fetches agendas on agenda_updated WS event", async () => {
+    let fetchCount = 0;
+    mockFetch.mockImplementation((url: string) => {
+      fetchCount++;
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(Array.from({ length: 10 }, (_, i) => ({
+          seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+        })));
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Seat 1/)).toBeInTheDocument();
+    });
+
+    const initialFetches = fetchCount;
+
+    // Simulate agenda_updated event via meeting WS
+    await act(async () => {
+      await triggerWsEvent("agenda_updated", 1, {});
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Should have triggered additional fetches
+    expect(fetchCount).toBeGreaterThan(initialFetches);
+  });
+
+  it("shows current topic even when seat is vacant", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(Array.from({ length: 10 }, (_, i) => ({
+          seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+        })));
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/agendas") {
+        return okResponse([
+          { id: 1, meeting_id: 1, title: "Opening Remarks", sort_order: 1, status: "active", started_at: null, completed_at: null, skipped_at: null },
+        ]);
+      }
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => {
+      const titles = screen.getAllByText("Opening Remarks");
+      expect(titles.length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.getByText(/ACTIVE/)).toBeInTheDocument();
+  });
+});
+
+// ── Task 127A: Speech Local Cleanup Tests ────────────────────────────────────
+
+describe("SeatTablet - speech local cleanup (Task 127A)", () => {
+  function mockSpeakerWithCaption() {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations"))
+        return okResponse({ meeting_id: 1, entries: [] });
+      if (url.includes("/api/speech/status"))
+        return okResponse({
+          ready: true, preloading: false, streaming_model: "loaded",
+          offline_model: "loaded", punctuation_model: "loaded",
+          punctuation_fallback: false, last_error: null,
+        });
+      return okResponse(null);
+    });
+  }
+
+  // ── T127A-1: Cancel immediately removes live caption ────────────────────
+  it("[T127A-1] Cancel immediately removes live caption without waiting for WS cancelled event", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+
+    // Start speech
+    const startBtn = screen.getByText("Start");
+    await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
+    await connectSpeechWs();
+    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+
+    // Send interim with caption via meeting WS
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "取消测试内容。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "取消测试", current_line: "内容。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Verify live caption appears
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_1_1_000001");
+    });
+
+    // Click Cancel — triggers local cleanup BEFORE any WS cancelled event
+    const cancelBtn = screen.getByText("Cancel");
+    await act(async () => {
+      cancelBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption must be removed immediately (local cleanup, not via WS)
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+    // NOTE: We did NOT send translation_interim_cancelled via WS.
+    // Cleanup happened purely from the local callback.
+  });
+
+  // ── T127A-2: Late interim ignored after Cancel ──────────────────────────
+  it("[T127A-2] late translation_interim after Cancel does not re-create live caption", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+
+    // Start speech
+    const startBtn = screen.getByText("Start");
+    await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
+    await connectSpeechWs();
+    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+
+    // Send interim
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "会被取消。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "会被", current_line: "取消。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+
+    // Click Cancel
+    const cancelBtn = screen.getByText("Cancel");
+    await act(async () => {
+      cancelBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    await waitFor(() => expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument());
+
+    // Send a LATE interim for the same utterance_id (higher revision)
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              revision: 2,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "延迟到达的取消后内容！",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "延迟到达的", current_line: "取消后内容！", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // Live caption must NOT reappear (utterance is terminal)
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+  });
+
+  // ── T127A-3: New utterance after Cancel still shows ────────────────────
+  it("[T127A-3] new utterance_id interim still shows live caption after Cancel", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+
+    // Start speech
+    const startBtn = screen.getByText("Start");
+    await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
+    await connectSpeechWs();
+    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+
+    // Send interim for first utterance
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "第一句。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "", current_line: "第一句。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+
+    // Click Cancel
+    const cancelBtn = screen.getByText("Cancel");
+    await act(async () => {
+      cancelBtn.click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    await waitFor(() => expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument());
+
+    // Send interim for a NEW utterance_id
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_t127a_new_after_cancel_002",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "取消后的新语音。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "取消后的", current_line: "新语音。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Live caption should appear for the new utterance
+    await waitFor(() => {
+      const el = screen.getByTestId("live-caption");
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-utterance-id", "utt_t127a_new_after_cancel_002");
+    });
+  });
+
+  // ── T127A-4: Stop timeout removes live caption ─────────────────────────
+  it("[T127A-4] Stop timeout removes live caption after 2 seconds", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("Start")).toBeInTheDocument());
+
+    const startBtn = screen.getByText("Start");
+    await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
+    await connectSpeechWs();
+    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+
+    // Send interim
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "超时测试。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "超时", current_line: "测试。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+
+    // Click Stop
+    const stopBtn = screen.getByText("Stop");
+    await act(async () => {
+      stopBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Should show stopping state
+    await waitFor(() => expect(screen.getByText("Stopping...")).toBeInTheDocument());
+
+    // Live caption should still be visible DURING the 2s window
+    expect(screen.getByTestId("live-caption")).toBeInTheDocument();
+
+    // Wait for the 2s timeout to fire (use real timer, as in Task 129 tests)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 2500));
+    });
+
+    // After timeout, live caption should be gone (local cleanup callback fired)
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+  }, 15000);
+
+  // ── T127A-5: Late interim ignored after Stop timeout ───────────────────
+  it("[T127A-5] late translation_interim after Stop timeout does not re-create live caption", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("Start")).toBeInTheDocument());
+
+    const startBtn = screen.getByText("Start");
+    await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
+    await connectSpeechWs();
+    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+
+    // Send interim
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "停止后延迟。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "停止后", current_line: "延迟。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+
+    // Click Stop and wait for timeout
+    const stopBtn = screen.getByText("Stop");
+    await act(async () => { stopBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 2500)); });
+
+    await waitFor(() => expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument());
+
+    // Send late interim for same utterance_id
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              revision: 2,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "延迟到达的停止后内容！",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "延迟到达的", current_line: "停止后内容！", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    // Live caption must NOT reappear
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+  }, 15000);
+
+  // ── T127A-6: Final within 2s of Stop still shows history ──────────────
+  it("[T127A-6] translation_final within 2s of Stop shows history record, no duplicate cleanup", async () => {
+    let translationsCallCount = 0;
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/seats") {
+        return okResponse(
+          Array.from({ length: 10 }, (_, i) => ({
+            seat_id: i + 1,
+            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 0 ? 1 : null,
+            updated_at: "2026-01-01T00:00:00Z",
+          })),
+        );
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{ id: 1, meeting_id: 1, name: "Alice Wang", title: "CEO", seat_id: 1, checked_in: true }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url.includes("/api/service-calls/current")) return okResponse(null);
+      if (url.includes("/api/translations")) {
+        translationsCallCount++;
+        if (translationsCallCount > 1) {
+          return okResponse({
+            meeting_id: 1,
+            entries: [{
+              id: 500, meeting_id: 1, seat_id: 1,
+              source_lang: "zh", target_lang: "en",
+              source_text: "停止后最终内容。",
+              translated_text: "Final content after stop.",
+              created_at: "2026-01-01T10:05:00Z",
+              utterance_id: "utt_1_1_000001",
+            }],
+          });
+        }
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      if (url.includes("/api/speech/status"))
+        return okResponse({
+          ready: true, preloading: false, streaming_model: "loaded",
+          offline_model: "loaded", punctuation_model: "loaded",
+          punctuation_fallback: false, last_error: null,
+        });
+      return okResponse(null);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("Start")).toBeInTheDocument());
+
+    const startBtn = screen.getByText("Start");
+    await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
+    await connectSpeechWs();
+    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+
+    // Send interim
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_interim",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              revision: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "停止后最终内容。",
+              translated_text: "",
+              is_final: false,
+              caption: { previous_line: "停止后", current_line: "最终内容。", mode: "two_line" },
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+
+    // Click Stop
+    const stopBtn = screen.getByText("Stop");
+    await act(async () => {
+      stopBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // BEFORE the 2s timeout, send translation_final
+    await act(async () => {
+      const ws = findMeetingWs();
+      if (ws?.onmessage) {
+        ws.onmessage({
+          data: JSON.stringify({
+            event: "translation_final",
+            meeting_id: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            payload: {
+              translation_id: 500,
+              utterance_id: "utt_1_1_000001",
+              seat_id: 1,
+              source_lang: "zh",
+              target_lang: "en",
+              source_text: "停止后最终内容。",
+              translated_text: "Final content after stop.",
+              source_type: "offline_rescore",
+            },
+          }),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    });
+
+    // Live caption should be removed by the translation_final handler
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    });
+
+    // History record should appear
+    await waitFor(() => {
+      expect(screen.getByText("Final content after stop.")).toBeInTheDocument();
+    });
+
+    // Now wait for the stop timeout to fire (the local cleanup is a no-op
+    // because utterance is already terminal and interim already removed)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 2500));
+    });
+
+    // Live caption should still be gone, history should still show
+    expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+    expect(screen.getByText("Final content after stop.")).toBeInTheDocument();
+  }, 15000);
 });

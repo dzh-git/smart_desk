@@ -1,0 +1,10 @@
+﻿# Runtime dependencies
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+pyautogui>=0.9.54
+pywin32>=306
+pynput>=1.7.6
+websockets>=12.0
+
+# Test dependencies
+pytest>=8.0.0

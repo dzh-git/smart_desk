@@ -153,6 +153,7 @@ describe("DisplayView — Task 2 ended meeting", () => {
       .mockResolvedValueOnce(okResponse(activeMeeting()))
       .mockResolvedValueOnce(okResponse(null)) // fetchActiveVote → null
       .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor Color", options: ["Blue", "Red"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting
+      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(1)
       .mockResolvedValueOnce(okResponse(closedVoteStats())); // fetchVoteStatistics for vote 10
 
     renderDisplay();
@@ -196,6 +197,7 @@ describe("DisplayView — Task 2 ended meeting", () => {
       .mockResolvedValueOnce(okResponse(activeMeeting({ id: 1, title: "Board Meeting" }))) // fetchActiveMeeting
       .mockResolvedValueOnce(okResponse(null)) // fetchActiveVote → null
       .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor Color", options: ["Blue", "Red"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting
+      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(1)
       .mockResolvedValueOnce(okResponse(closedVoteStats())); // fetchVoteStatistics
 
     renderDisplay();
@@ -210,11 +212,9 @@ describe("DisplayView — Task 2 ended meeting", () => {
     // The second load call should see no active meeting
     mockFetch
       .mockReset()
-      .mockResolvedValueOnce(okResponse(null)); // fetchActiveMeeting → null (meeting ended)
-
-    // But since we have endedMeetingId from the WS event, it should also fetch vote results
-    mockFetch
+      .mockResolvedValueOnce(okResponse(null)) // fetchActiveMeeting → null (meeting ended)
       .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor Color", options: ["Blue", "Red"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting(1)
+      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(endedMeetingId)
       .mockResolvedValueOnce(okResponse(closedVoteStats())); // fetchVoteStatistics(10)
 
     // Trigger meeting_ended event
@@ -251,6 +251,7 @@ describe("DisplayView — Task 2 ended meeting", () => {
     mockFetch
       .mockResolvedValueOnce(okResponse(null)) // fetchActiveMeeting → null
       .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor Color", options: ["Blue", "Red"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting(1)
+      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(1)
       .mockResolvedValueOnce(okResponse(closedVoteStats())); // fetchVoteStatistics(10)
 
     renderDisplay();
@@ -273,6 +274,7 @@ describe("DisplayView — Task 2 ended meeting", () => {
     mockFetch
       .mockResolvedValueOnce(okResponse(null)) // fetchActiveMeeting → null (first load)
       .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor Color", options: ["Blue", "Red"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting(1)
+      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(1)
       .mockResolvedValueOnce(okResponse(closedVoteStats())); // fetchVoteStatistics(10)
 
     renderDisplay();
@@ -288,6 +290,7 @@ describe("DisplayView — Task 2 ended meeting", () => {
       .mockResolvedValueOnce(okResponse(activeMeeting({ id: 2, title: "New Strategy Meeting" }))) // fetchActiveMeeting returns new meeting
       .mockResolvedValueOnce(okResponse(null)) // fetchActiveVote → null
       .mockResolvedValueOnce(okResponse([{ id: 20, meeting_id: 2, title: "New Vote", options: ["Yes", "No"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting(2)
+      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(2)
       .mockResolvedValueOnce(okResponse({ // fetchVoteStatistics(20)
         vote_id: 20,
         title: "New Vote",
@@ -333,9 +336,10 @@ describe("DisplayView — Task 2 ended meeting", () => {
     mockFetch
       .mockResolvedValueOnce(okResponse(activeMeeting({ id: 1, title: "Board Meeting" }))) // 1
       .mockResolvedValueOnce(okResponse({ id: 11, meeting_id: 1, title: "Lunch Choice", options: ["Pizza", "Salad"], status: "open", is_anonymous: false })) // 2
-      .mockResolvedValueOnce(okResponse([{ id: 11, meeting_id: 1, title: "Lunch Choice", options: ["Pizza", "Salad"], status: "open", is_anonymous: false }])) // 3
-      .mockResolvedValueOnce(okResponse(openVoteStats())) // 4
-      .mockResolvedValueOnce(okResponse(openVoteStats())); // 5
+      .mockResolvedValueOnce(okResponse([{ id: 11, meeting_id: 1, title: "Lunch Choice", options: ["Pizza", "Salad"], status: "open", is_anonymous: false }])) // 3: fetchVotesForMeeting
+      .mockResolvedValueOnce(okResponse([])) // 4: fetchAgendas(1)
+      .mockResolvedValueOnce(okResponse(openVoteStats())) // 5: fetchVoteStatistics(11) from fetchVoteResultsForMeeting
+      .mockResolvedValueOnce(okResponse(openVoteStats())); // 6: fetchVoteStatistics(11) for activeVote
 
     renderDisplay();
 
@@ -352,12 +356,14 @@ describe("DisplayView — Task 2 ended meeting", () => {
     // Triggering load() again:
     //   1. fetchActiveMeeting → null
     //   2. fetchVotesForMeeting(endedMeetingId=1)
-    //   3. fetchVoteStatistics(11)
+    //   3. fetchAgendas(1)
+    //   4. fetchVoteStatistics(11)
     mockFetch
       .mockReset()
-      .mockResolvedValueOnce(okResponse(null)) // 1
-      .mockResolvedValueOnce(okResponse([{ id: 11, meeting_id: 1, title: "Lunch Choice", options: ["Pizza", "Salad"], status: "closed", is_anonymous: false }])) // 2
-      .mockResolvedValueOnce(okResponse({ // 3
+      .mockResolvedValueOnce(okResponse(null)) // 1: fetchActiveMeeting → null
+      .mockResolvedValueOnce(okResponse([{ id: 11, meeting_id: 1, title: "Lunch Choice", options: ["Pizza", "Salad"], status: "closed", is_anonymous: false }])) // 2: fetchVotesForMeeting
+      .mockResolvedValueOnce(okResponse([])) // 3: fetchAgendas(1)
+      .mockResolvedValueOnce(okResponse({ // 4: fetchVoteStatistics(11)
         vote_id: 11,
         title: "Lunch Choice",
         is_anonymous: false,
@@ -460,6 +466,7 @@ describe("DisplayView — Task 6 polling for active meeting", () => {
         if (url === "/api/meetings/active") return okResponse(activeMeeting({ id: 2, title: "New Meeting From Poll" }));
         if (url === "/api/votes/active") return okResponse(null);
         if (url.includes("/api/votes?meeting_id=")) return okResponse([]);
+        if (url.includes("/api/meetings/") && url.endsWith("/agendas")) return okResponse([]);
         return okResponse(null);
       });
 
@@ -480,8 +487,9 @@ describe("DisplayView — Task 6 polling for active meeting", () => {
 
     mockFetch
       .mockResolvedValueOnce(okResponse(null))  // fetchActiveMeeting → null
-      .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor", options: ["Blue", "Red"], status: "closed", is_anonymous: false }]))
-      .mockResolvedValueOnce(okResponse(closedVoteStats()));
+      .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor", options: ["Blue", "Red"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting
+      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(1)
+      .mockResolvedValueOnce(okResponse(closedVoteStats())); // fetchVoteStatistics(10)
 
     renderDisplay();
 
@@ -495,6 +503,7 @@ describe("DisplayView — Task 6 polling for active meeting", () => {
       if (url === "/api/meetings/active") return okResponse(activeMeeting({ id: 3, title: "New Meeting After End" }));
       if (url === "/api/votes/active") return okResponse(null);
       if (url.includes("/api/votes?meeting_id=")) return okResponse([]);
+      if (url.includes("/api/meetings/") && url.endsWith("/agendas")) return okResponse([]);
       return okResponse(null);
     });
 
@@ -522,6 +531,7 @@ describe("DisplayView — Task 6 polling for active meeting", () => {
       if (url === "/api/meetings/active") return okResponse(null);
       if (url === "/api/votes?meeting_id=1") return okResponse([{ id: 10, meeting_id: 1, title: "Floor", options: ["Blue", "Red"], status: "closed", is_anonymous: false }]);
       if (url === "/api/votes/10/statistics") return okResponse(closedVoteStats());
+      if (url.includes("/api/meetings/") && url.endsWith("/agendas")) return okResponse([]);
       return okResponse(null);
     });
 
@@ -591,5 +601,193 @@ describe("DisplayView — Task 4 button rules", () => {
     expect(screen.queryByText("Create Pending Meeting")).not.toBeInTheDocument();
     expect(screen.queryByText("Add Attendee")).not.toBeInTheDocument();
     expect(screen.queryByText("Add Agenda")).not.toBeInTheDocument();
+  });
+});
+
+// ── Phase 3: Display Agenda Tests ────────────────────────────────────────────
+
+describe("DisplayView — agenda progress (Phase 3)", () => {
+  function activeMeetingWithAgendas(agendas: unknown[]) {
+    mockFetch
+      .mockResolvedValueOnce(okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" })) // fetchActiveMeeting
+      .mockResolvedValueOnce(okResponse(null)) // fetchActiveVote
+      .mockResolvedValueOnce(okResponse([])) // fetchVotesForMeeting
+      .mockResolvedValueOnce(okResponse(agendas)); // fetchAgendas
+  }
+
+  it("shows current agenda title and progress when meeting is active", async () => {
+    activeMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Budget Review", sort_order: 2, status: "active", started_at: null, completed_at: null, skipped_at: null },
+      { id: 3, meeting_id: 1, title: "Q&A", sort_order: 3, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    renderDisplay();
+
+    await waitFor(() => {
+      const titles = screen.getAllByText("Budget Review");
+      expect(titles.length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.getByText("当前议题")).toBeInTheDocument();
+    expect(screen.getByText("CURRENT TOPIC")).toBeInTheDocument();
+  });
+
+  it("shows '所有议题已处理' / ALL TOPICS PROCESSED when all agendas are done", async () => {
+    activeMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Budget", sort_order: 2, status: "skipped", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    renderDisplay();
+
+    await waitFor(() => {
+      const els = screen.getAllByText("所有议题已处理");
+      expect(els.length).toBeGreaterThanOrEqual(1);
+    });
+    const allDoneEls = screen.getAllByText("ALL TOPICS PROCESSED");
+    expect(allDoneEls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows '暂无当前议题' / NO ACTIVE TOPIC when no active agenda but pending remain", async () => {
+    activeMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Budget", sort_order: 2, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    renderDisplay();
+
+    await waitFor(() => {
+      const els = screen.getAllByText("暂无当前议题");
+      expect(els.length).toBeGreaterThanOrEqual(1);
+    });
+    const noActiveEls = screen.getAllByText("NO ACTIVE TOPIC");
+    expect(noActiveEls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows correct progress number (e.g. '2 / 5')", async () => {
+    activeMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "A", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "B", sort_order: 2, status: "active", started_at: null, completed_at: null, skipped_at: null },
+      { id: 3, meeting_id: 1, title: "C", sort_order: 3, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    renderDisplay();
+
+    await waitFor(() => {
+      expect(screen.getByText("2 / 3")).toBeInTheDocument();
+    });
+  });
+
+  it("shows progress dots with correct status colors", async () => {
+    activeMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "A", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "B", sort_order: 2, status: "active", started_at: null, completed_at: null, skipped_at: null },
+      { id: 3, meeting_id: 1, title: "C", sort_order: 3, status: "skipped", started_at: null, completed_at: null, skipped_at: null },
+      { id: 4, meeting_id: 1, title: "D", sort_order: 4, status: "pending", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    renderDisplay();
+
+    await waitFor(() => {
+      const titles = screen.getAllByText("B");
+      expect(titles.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Status labels should be present
+    const doneEls = screen.getAllByText("Done");
+    expect(doneEls.length).toBeGreaterThanOrEqual(1);
+    const activeEls = screen.getAllByText("Active");
+    expect(activeEls.length).toBeGreaterThanOrEqual(1);
+    const skipEls = screen.getAllByText("Skip");
+    expect(skipEls.length).toBeGreaterThanOrEqual(1);
+
+    // Legend should show all color labels
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("Skipped")).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+  });
+
+  it("fetches ended meeting agendas when endedMeetingId is set", async () => {
+    sessionStorage.setItem("smartdesk.display.endedMeetingId", "5");
+
+    mockFetch
+      .mockResolvedValueOnce(okResponse(null)) // fetchActiveMeeting → null
+      .mockResolvedValueOnce(okResponse([])) // fetchVotesForMeeting(5)
+      .mockResolvedValueOnce(okResponse([ // fetchAgendas(5)
+        { id: 10, meeting_id: 5, title: "Closed Topic", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
+      ]));
+
+    renderDisplay();
+
+    await waitFor(() => {
+      expect(screen.getByText("Meeting Ended")).toBeInTheDocument();
+    });
+
+    // Ended meeting agendas should still be displayed
+    await waitFor(() => {
+      expect(screen.getByText("所有议题已处理")).toBeInTheDocument();
+    });
+
+    sessionStorage.removeItem("smartdesk.display.endedMeetingId");
+  });
+
+  it("only shows Refresh button, no agenda control buttons", async () => {
+    activeMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening", sort_order: 1, status: "active", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    renderDisplay();
+
+    await waitFor(() => {
+      expect(screen.getByText("Refresh")).toBeInTheDocument();
+    });
+
+    // No agenda control buttons
+    expect(screen.queryByText("Set Current")).not.toBeInTheDocument();
+    expect(screen.queryByText("Advance")).not.toBeInTheDocument();
+    expect(screen.queryByText("Complete")).not.toBeInTheDocument();
+    expect(screen.queryByText("Skip")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add Agenda")).not.toBeInTheDocument();
+  });
+
+  it("re-fetches on agenda_updated WS event", async () => {
+    let agendasCallCount = 0;
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") {
+        return okResponse({ id: 1, title: "Board", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      }
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url.includes("/api/votes?meeting_id=")) return okResponse([]);
+      if (url.includes("/api/meetings/1/agendas")) {
+        agendasCallCount++;
+        return okResponse([{ id: 1, meeting_id: 1, title: "Opening", sort_order: 1, status: "active", started_at: null, completed_at: null, skipped_at: null }]);
+      }
+      return okResponse(null);
+    });
+
+    renderDisplay();
+
+    await waitFor(() => {
+      const titles = screen.getAllByText("Opening");
+      expect(titles.length).toBeGreaterThanOrEqual(1);
+    });
+
+    const initialCalls = agendasCallCount;
+
+    // Simulate agenda_updated event
+    await act(async () => {
+      simulateWsEvent({
+        event: "agenda_updated",
+        meeting_id: 1,
+        timestamp: Date.now(),
+        payload: {},
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Should have re-fetched agendas
+    expect(agendasCallCount).toBeGreaterThan(initialCalls);
   });
 });

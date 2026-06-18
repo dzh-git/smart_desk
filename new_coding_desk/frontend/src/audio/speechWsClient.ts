@@ -20,6 +20,8 @@
  *   - Connection loss sets status to "disconnected".
  */
 
+import { trace } from "./speechTrace";
+
 export type SpeechWsStatus =
   | "disconnected"
   | "connecting"
@@ -94,6 +96,7 @@ export class SpeechWsClient {
    * @returns Promise that resolves with utterance_id and session_key.
    */
   connect(meetingId: number, seatId: number): Promise<StartResult> {
+    trace("speech_ws_connect_start_at", { meetingId, seatId });
     return new Promise((resolve, reject) => {
       this.resolveConnect = resolve;
       this.rejectConnect = reject;
@@ -109,6 +112,7 @@ export class SpeechWsClient {
       ws.onopen = () => {
         this.setStatus("connected");
         // Send start command immediately per protocol §3
+        trace("ws_connected_at", { meetingId, seatId });
         ws.send(
           JSON.stringify({
             type: "start",
@@ -129,6 +133,10 @@ export class SpeechWsClient {
           const msg = JSON.parse(event.data as string);
 
           if (msg.type === "started") {
+            trace("ws_started_received_at", {
+              utteranceId: msg.utterance_id,
+              sessionKey: msg.session_key,
+            });
             this.setStatus("started");
             this.resolveConnect?.({
               utteranceId: msg.utterance_id,
@@ -137,10 +145,17 @@ export class SpeechWsClient {
             this.resolveConnect = null;
             this.rejectConnect = null;
           } else if (msg.type === "utterance_started") {
+            trace("ws_utterance_started_at", {
+              utteranceId: msg.utterance_id,
+            });
             // Task 122: backend auto-finalized → new utterance is ready.
             // Notify the hook so it can update its utteranceId.
             this.utteranceStartedCallback?.(msg.utterance_id);
           } else if (msg.type === "error") {
+            trace("ws_error_received_at", {
+              code: msg.code,
+              message: msg.message,
+            });
             this.setStatus("error", msg.message ?? msg.code);
             this.errorCallback?.(msg.code, msg.message ?? "");
             this.rejectConnect?.(new Error(msg.message ?? msg.code));
@@ -154,6 +169,7 @@ export class SpeechWsClient {
 
       ws.onclose = () => {
         this.ws = null;
+        trace("ws_closed_at", { meetingId, seatId });
         this.setStatus("disconnected");
         this.rejectConnect?.(new Error("WebSocket closed unexpectedly"));
         this.resolveConnect = null;
@@ -161,6 +177,7 @@ export class SpeechWsClient {
       };
 
       ws.onerror = () => {
+        trace("ws_error_at", { meetingId, seatId });
         this.setStatus("error", "WebSocket connection failed");
         this.rejectConnect?.(new Error("WebSocket connection failed"));
         this.resolveConnect = null;
@@ -187,6 +204,7 @@ export class SpeechWsClient {
    */
   sendEndHint(): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      trace("end_hint_sent_at", {});
       this.ws.send(JSON.stringify({ type: "end_hint" }));
     }
   }
@@ -198,6 +216,7 @@ export class SpeechWsClient {
    */
   sendCancel(): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      trace("cancel_sent_at", {});
       this.ws.send(JSON.stringify({ type: "cancel" }));
     }
   }
@@ -213,6 +232,7 @@ export class SpeechWsClient {
    * Close the WebSocket connection. Safe to call multiple times.
    */
   close(): void {
+    trace("speech_ws_closed_at", {});
     if (this.ws) {
       // Prevent auto-reconnect if the library supports it
       this.ws.onclose = null;

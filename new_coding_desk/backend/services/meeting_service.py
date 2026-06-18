@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from backend.events.event_bus import EventBus
 from backend.events.meeting_events import MeetingStartedEvent, MeetingEndedEvent
 from backend.events.vote_events import VoteClosedEvent
+from backend.events.agenda_events import AgendaUpdatedEvent
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.models.meeting import Meeting
 from backend.models.agenda import Agenda
@@ -186,33 +187,318 @@ class MeetingService(BaseService):
 
         return meeting
 
-    # ── Agenda ───────────────────────────────────────────────────────────────
+    # ── Agenda CRUD & State Machine ─────────────────────────────────────────
 
     def create_agenda(
         self, meeting_id: int, title: str, sort_order: int = 0
     ) -> Agenda:
-        """Add an agenda item to a meeting."""
-        self.get_meeting(meeting_id)  # ensure meeting exists
-        return self.meeting_repo.create_agenda(
+        """Add an agenda item to an active meeting. Status defaults to pending.
+
+        Raises ValidationError if meeting is not active.
+        Publishes agenda_updated (action=create).
+        """
+        self._check_meeting_active(meeting_id)
+        agenda = self.meeting_repo.create_agenda(
             meeting_id=meeting_id,
             title=title,
             sort_order=sort_order,
+            status="pending",
         )
 
+        current_active = self.meeting_repo.get_active_agenda(meeting_id)
+        self.event_bus.publish(
+            AgendaUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "meeting_id": meeting_id,
+                    "agenda_id": agenda.id,
+                    "action": "create",
+                    "current_agenda_id": current_active.id if current_active else None,
+                },
+            )
+        )
+        return agenda
+
     def list_agendas(self, meeting_id: int) -> list[Agenda]:
-        """List agendas for a meeting, sorted by sort_order."""
+        """List agendas for a meeting, sorted by sort_order.
+
+        Available for ended meetings as well (read-only).
+        """
         self.get_meeting(meeting_id)  # ensure meeting exists
         return self.meeting_repo.list_agendas_by_meeting(meeting_id)
 
     def delete_agenda(self, meeting_id: int, agenda_id: int) -> None:
-        """Delete an agenda item. Must belong to the given meeting."""
+        """Delete a non-active agenda item. Must belong to the given meeting.
+
+        Raises ValidationError if:
+            - Meeting is not active.
+            - Agenda is currently active.
+        Publishes agenda_updated (action=delete).
+        """
         agenda = self.meeting_repo.get_agenda_by_id(agenda_id)
         if not agenda or agenda.meeting_id != meeting_id:
             raise NotFoundError(
                 f"Agenda {agenda_id} not found in meeting {meeting_id}",
                 "AGENDA_NOT_FOUND",
             )
+
+        self._check_meeting_active(meeting_id)
+
+        if agenda.status == "active":
+            raise ValidationError(
+                "Cannot delete an active agenda",
+                "AGENDA_ACTIVE",
+            )
+
         self.meeting_repo.delete_agenda(agenda)
+
+        current_active = self.meeting_repo.get_active_agenda(meeting_id)
+        self.event_bus.publish(
+            AgendaUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "meeting_id": meeting_id,
+                    "agenda_id": agenda_id,
+                    "action": "delete",
+                    "current_agenda_id": current_active.id if current_active else None,
+                },
+            )
+        )
+
+    # ── Agenda state machine (Phase 1) ───────────────────────────────────────
+
+    def _check_meeting_active(self, meeting_id: int) -> Meeting:
+        """Check meeting exists and is active. Raises if not."""
+        meeting = self.get_meeting(meeting_id)
+        if meeting.status != "active":
+            raise ValidationError(
+                f"Meeting {meeting_id} is not active",
+                "MEETING_NOT_ACTIVE",
+            )
+        return meeting
+
+    def _get_current_active_agenda(self, meeting_id: int) -> Agenda | None:
+        """Return the single active agenda for a meeting, or None."""
+        return self.meeting_repo.get_active_agenda(meeting_id)
+
+    def set_current_agenda(self, meeting_id: int, agenda_id: int) -> Agenda:
+        """Set a pending/skipped agenda as the current active topic.
+
+        Rules per API_SPEC (agenda state machine):
+            - Meeting must be active.
+            - Accepted source statuses: pending, skipped.
+            - Completed → 400.
+            - Already-active → idempotent (no started_at update).
+            - If another agenda is active: old → completed, new → active.
+        Publishes agenda_updated (action=set_current).
+        """
+        self._check_meeting_active(meeting_id)
+
+        agenda = self.meeting_repo.get_agenda_by_id(agenda_id)
+        if not agenda or agenda.meeting_id != meeting_id:
+            raise NotFoundError(
+                f"Agenda {agenda_id} not found in meeting {meeting_id}",
+                "AGENDA_NOT_FOUND",
+            )
+
+        # Idempotent: already active
+        if agenda.status == "active":
+            return agenda
+
+        # Forbidden: completed cannot be set as current
+        if agenda.status == "completed":
+            raise ValidationError(
+                "Cannot set a completed agenda as current",
+                "AGENDA_ALREADY_COMPLETED",
+            )
+
+        # Only pending or skipped are valid source statuses
+        if agenda.status not in ("pending", "skipped"):
+            raise ValidationError(
+                f"Cannot set agenda with status '{agenda.status}' as current",
+                "AGENDA_INVALID_STATUS",
+            )
+
+        now = datetime.now(timezone.utc)
+
+        # Complete any currently active agenda
+        current_active = self._get_current_active_agenda(meeting_id)
+        if current_active:
+            current_active.status = "completed"
+            current_active.completed_at = now
+            current_active.skipped_at = None
+
+        # Activate the target agenda
+        agenda.status = "active"
+        agenda.started_at = now
+        agenda.completed_at = None
+        agenda.skipped_at = None
+
+        # Single transaction: both changes committed atomically
+        self.db.commit()
+        self.db.refresh(agenda)
+        if current_active:
+            self.db.refresh(current_active)
+
+        self.event_bus.publish(
+            AgendaUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "meeting_id": meeting_id,
+                    "agenda_id": agenda_id,
+                    "action": "set_current",
+                    "current_agenda_id": agenda_id,
+                },
+            )
+        )
+
+        return agenda
+
+    def advance_agenda(self, meeting_id: int) -> Agenda | None:
+        """Complete current active agenda and activate the next pending.
+
+        Rules:
+            - Meeting must be active.
+            - Must have a current active agenda (otherwise 400).
+            - Current active → completed.
+            - Next pending (by sort_order) → active.
+            - If no next pending: current completed, no current agenda.
+        Publishes agenda_updated (action=advance).
+        """
+        self._check_meeting_active(meeting_id)
+
+        current_active = self._get_current_active_agenda(meeting_id)
+        if not current_active:
+            raise ValidationError(
+                "No active agenda to advance",
+                "NO_ACTIVE_AGENDA",
+            )
+
+        now = datetime.now(timezone.utc)
+
+        # Complete current
+        current_active.status = "completed"
+        current_active.completed_at = now
+        current_active.skipped_at = None
+
+        # Find and activate next pending
+        next_agenda = self.meeting_repo.get_next_pending_agenda(
+            meeting_id, after_sort_order=current_active.sort_order,
+        )
+
+        if next_agenda:
+            next_agenda.status = "active"
+            next_agenda.started_at = now
+            next_agenda.completed_at = None
+            next_agenda.skipped_at = None
+
+        # Single transaction: both changes committed atomically
+        self.db.commit()
+        self.db.refresh(current_active)
+        if next_agenda:
+            self.db.refresh(next_agenda)
+
+        self.event_bus.publish(
+            AgendaUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "meeting_id": meeting_id,
+                    "agenda_id": current_active.id,
+                    "action": "advance",
+                    "current_agenda_id": next_agenda.id if next_agenda else None,
+                },
+            )
+        )
+
+        return next_agenda if next_agenda else current_active
+
+    def complete_agenda(self, meeting_id: int, agenda_id: int) -> Agenda:
+        """Complete the current active agenda.
+
+        Rules:
+            - Meeting must be active.
+            - agenda_id must be the current active agenda (otherwise 400).
+        Publishes agenda_updated (action=complete).
+        """
+        self._check_meeting_active(meeting_id)
+
+        agenda = self.meeting_repo.get_agenda_by_id(agenda_id)
+        if not agenda or agenda.meeting_id != meeting_id:
+            raise NotFoundError(
+                f"Agenda {agenda_id} not found in meeting {meeting_id}",
+                "AGENDA_NOT_FOUND",
+            )
+
+        if agenda.status != "active":
+            raise ValidationError(
+                "Only the active agenda can be completed",
+                "AGENDA_NOT_ACTIVE",
+            )
+
+        now = datetime.now(timezone.utc)
+        agenda.status = "completed"
+        agenda.completed_at = now
+        agenda.skipped_at = None
+
+        self.meeting_repo.save_agenda(agenda)
+
+        self.event_bus.publish(
+            AgendaUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "meeting_id": meeting_id,
+                    "agenda_id": agenda_id,
+                    "action": "complete",
+                    "current_agenda_id": None,
+                },
+            )
+        )
+
+        return agenda
+
+    def skip_agenda(self, meeting_id: int, agenda_id: int) -> Agenda:
+        """Skip the current active agenda.
+
+        Rules:
+            - Meeting must be active.
+            - agenda_id must be the current active agenda (otherwise 400).
+        Publishes agenda_updated (action=skip).
+        """
+        self._check_meeting_active(meeting_id)
+
+        agenda = self.meeting_repo.get_agenda_by_id(agenda_id)
+        if not agenda or agenda.meeting_id != meeting_id:
+            raise NotFoundError(
+                f"Agenda {agenda_id} not found in meeting {meeting_id}",
+                "AGENDA_NOT_FOUND",
+            )
+
+        if agenda.status != "active":
+            raise ValidationError(
+                "Only the active agenda can be skipped",
+                "AGENDA_NOT_ACTIVE",
+            )
+
+        now = datetime.now(timezone.utc)
+        agenda.status = "skipped"
+        agenda.skipped_at = now
+        agenda.completed_at = None
+
+        self.meeting_repo.save_agenda(agenda)
+
+        self.event_bus.publish(
+            AgendaUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "meeting_id": meeting_id,
+                    "agenda_id": agenda_id,
+                    "action": "skip",
+                    "current_agenda_id": None,
+                },
+            )
+        )
+
+        return agenda
 
     # ── Attendee ─────────────────────────────────────────────────────────────
 

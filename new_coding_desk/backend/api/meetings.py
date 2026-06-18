@@ -156,7 +156,10 @@ def list_agendas(meeting_id: int, db: Session = Depends(get_db)):
 def create_agenda(
     meeting_id: int, body: AgendaCreate, db: Session = Depends(get_db)
 ):
-    """POST /api/meetings/{meeting_id}/agendas — add an agenda item."""
+    """POST /api/meetings/{meeting_id}/agendas — add an agenda item (pending).
+
+    Meeting must be active. Publishes agenda_updated event.
+    """
     svc = _service(db)
     try:
         agenda = svc.create_agenda(
@@ -166,6 +169,8 @@ def create_agenda(
         )
     except NotFoundError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
     return ApiResponse.ok(data=AgendaResponse.model_validate(agenda))
 
 
@@ -175,12 +180,108 @@ def create_agenda(
 def delete_agenda(
     meeting_id: int, agenda_id: int, db: Session = Depends(get_db)
 ):
-    """DELETE /api/meetings/{meeting_id}/agendas/{agenda_id} — remove an agenda."""
+    """DELETE /api/meetings/{meeting_id}/agendas/{agenda_id} — remove a non-active agenda.
+
+    Meeting must be active. Cannot delete an active agenda.
+    """
     try:
         _service(db).delete_agenda(meeting_id, agenda_id)
     except NotFoundError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
     return ApiResponse.ok(message="Agenda deleted")
+
+
+# ── Agenda State Machine (Phase 1) ─────────────────────────────────────────
+
+
+@router.post(
+    "/{meeting_id}/agendas/{agenda_id}/set-current",
+    response_model=ApiResponse[AgendaResponse],
+)
+def set_current_agenda(
+    meeting_id: int, agenda_id: int, db: Session = Depends(get_db)
+):
+    """POST /{meeting_id}/agendas/{agenda_id}/set-current — set as active topic.
+
+    Only pending or skipped accepted. Completed → 400.
+    Idempotent if already active. Switches if another active exists.
+    """
+    svc = _service(db)
+    try:
+        agenda = svc.set_current_agenda(meeting_id, agenda_id)
+    except NotFoundError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
+    return ApiResponse.ok(data=AgendaResponse.model_validate(agenda))
+
+
+@router.post(
+    "/{meeting_id}/agendas/advance",
+    response_model=ApiResponse[AgendaResponse],
+)
+def advance_agenda(
+    meeting_id: int, db: Session = Depends(get_db)
+):
+    """POST /{meeting_id}/agendas/advance — complete current, activate next pending.
+
+    Requires an active agenda (400 otherwise).
+    If no next pending, current is completed with no current agenda.
+    """
+    svc = _service(db)
+    try:
+        result = svc.advance_agenda(meeting_id)
+    except NotFoundError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
+    if result is None:
+        return ApiResponse.ok(data=None)
+    return ApiResponse.ok(data=AgendaResponse.model_validate(result))
+
+
+@router.post(
+    "/{meeting_id}/agendas/{agenda_id}/complete",
+    response_model=ApiResponse[AgendaResponse],
+)
+def complete_agenda(
+    meeting_id: int, agenda_id: int, db: Session = Depends(get_db)
+):
+    """POST /{meeting_id}/agendas/{agenda_id}/complete — complete current active.
+
+    agenda_id must be the current active (400 otherwise).
+    """
+    svc = _service(db)
+    try:
+        agenda = svc.complete_agenda(meeting_id, agenda_id)
+    except NotFoundError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
+    return ApiResponse.ok(data=AgendaResponse.model_validate(agenda))
+
+
+@router.post(
+    "/{meeting_id}/agendas/{agenda_id}/skip",
+    response_model=ApiResponse[AgendaResponse],
+)
+def skip_agenda(
+    meeting_id: int, agenda_id: int, db: Session = Depends(get_db)
+):
+    """POST /{meeting_id}/agendas/{agenda_id}/skip — skip current active.
+
+    agenda_id must be the current active (400 otherwise).
+    """
+    svc = _service(db)
+    try:
+        agenda = svc.skip_agenda(meeting_id, agenda_id)
+    except NotFoundError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
+    return ApiResponse.ok(data=AgendaResponse.model_validate(agenda))
 
 
 # ── Attendee ─────────────────────────────────────────────────────────────────

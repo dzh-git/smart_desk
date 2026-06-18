@@ -1,8 +1,8 @@
 # SmartDesk 前端视觉规范
 
-> **版本**: 1.0  
-> **状态**: 冻结 — 本轮不新增业务功能，仅做视觉规范和 Tailwind token 准备。  
-> **最后更新**: 2026-06-12
+> **版本**: 1.1  
+> **状态**: 当前 SmartDesk 深色科技风视觉规范；用于约束三端视觉一致性和后续小范围 UI 修复。  
+> **最后更新**: 2026-06-18
 
 ---
 
@@ -1072,7 +1072,8 @@ className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5
 6. 打开 `/display` → 设置 1920×1080 → 截图 `visual-display-1920x1080.png`
 7. 打开 `/display` → 设置 3840×2160 → 截图 `visual-display-3840x2160.png`
 
-截图保存在 `working/plan/task-visual-qa/screenshots/`，不纳入版本控制（`working/` 已被 `.gitignore` 忽略）。
+截图建议保存在 `frontend/test-results/visual/` 或 Playwright 默认
+`frontend/test-results/` 下，不纳入版本控制。
 
 ### 24.11 13.3 寸触控验收要求 (Seat 端)
 
@@ -1114,7 +1115,8 @@ className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5
 - 7 个测试用例覆盖三端所有目标视口
 - 使用 `domcontentloaded` 等待策略
 - 检查 `body` 非空及关键文本可见（如 "Seat 1"、"Command Display"）
-- 截图保存到 `working/plan/task-visual-qa/screenshots/`
+- 截图保存到 `frontend/test-results/visual/` 或 Playwright 默认
+  `frontend/test-results/`
 - 如果后端不可用，测试记录环境限制并如实报告，不假装通过
 
 ### 24.14 停止大面积视觉重构

@@ -18,6 +18,8 @@
  * The onFrame callback is called from the audio processing graph.
  */
 
+import { trace } from "./speechTrace";
+
 export type AudioFrameCallback = (pcm16: ArrayBufferLike) => void;
 export type MicrophoneErrorCallback = (error: string) => void;
 
@@ -101,6 +103,8 @@ export class MicrophoneCapture {
     // 5. Connect the graph: source → processor → destination
     source.connect(processor);
     processor.connect(ctx.destination);
+
+    trace("microphone_started_at", {});
   }
 
   /**
@@ -132,6 +136,7 @@ export class MicrophoneCapture {
     while (pos + this.samplesPerFrame <= combined.length) {
       const frame = combined.subarray(pos, pos + this.samplesPerFrame);
       const pcm16 = MicrophoneCapture.float32ToPcm16(frame);
+      trace("frontend_pcm_created_at", { frameIndex: pos / this.samplesPerFrame });
       this.frameCallback?.(pcm16.buffer);
       pos += this.samplesPerFrame;
     }

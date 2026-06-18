@@ -34,6 +34,7 @@ from backend.events.service_call_events import (
     ServiceCallCancelledEvent,
 )
 from backend.events.translation_events import TranslationFinalEvent
+from backend.events.agenda_events import AgendaUpdatedEvent
 
 __all__ = [
     "EventBus",
@@ -42,6 +43,8 @@ __all__ = [
     # Meeting events
     "MeetingStartedEvent",
     "MeetingEndedEvent",
+    # Agenda events
+    "AgendaUpdatedEvent",
     # Seat events
     "SeatOccupiedEvent",
     "SeatVacantEvent",
