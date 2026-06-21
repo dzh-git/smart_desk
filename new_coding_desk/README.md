@@ -34,11 +34,37 @@ cd ..
 .\kill.bat
 ```
 
+可选屏幕共享（Screen Stream）：
+
+PowerShell 中：
+
+```powershell
+$env:ENABLE_SCREEN_STREAM = "true"
+.\start.bat
+```
+
+CMD 中：
+
+```bat
+set ENABLE_SCREEN_STREAM=true
+start.bat
+```
+
+Screen Stream 默认关闭。启用前需将 FFmpeg 和 MediaMTX 二进制文件分别
+放置到 `tools/ffmpeg/bin/ffmpeg.exe` 和 `tools/mediamtx/mediamtx.exe`。
+详见 `host_services/screen_stream/README.md`。
+
+```powershell
+.\kill.bat
+```
+
 默认地址：
 
-- 前端：`http://127.0.0.1:5173`
+- 前端：`http://localhost:5173`
 - 后端：`http://127.0.0.1:8000`
 - OpenAPI：`http://127.0.0.1:8000/docs`
+- Screen: `http://<中央主机IP>:5173/screen`
+- WebRTC: `http://<中央主机IP>:8889/screen`
 
 ## Main Routes
 
@@ -82,6 +108,7 @@ cd ..
 | Document | Meaning |
 |---|---|
 | `docs/API_SPEC.md` | 当前 HTTP API 契约，包括会议、议程、座位、投票、服务、字幕和语音状态接口。 |
+| `docs/HOST_DISPLAY_CONTRACT.md` | 中央主机屏幕采集、MediaMTX、Display Agent、只读状态 API、`/screen`、Admin 本机控制及启动部署的 Phase 1–6 冻结契约。 |
 | `docs/DATABASE_SCHEMA.md` | SQLite 表结构、字段含义和 repository ownership。 |
 | `docs/DEFERRED_ISSUES.md` | 当前 demo 已知但暂不阻塞的 deferred 问题。 |
 | `docs/DEMO_RUNBOOK.md` | 本地启动、三端人工验收、语音验收和自动检查流程。 |

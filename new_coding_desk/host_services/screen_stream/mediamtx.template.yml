@@ -1,0 +1,93 @@
+###############################################
+# MediaMTX configuration for SmartDesk
+#
+# RTSP publish:  127.0.0.1:{{RTSP_PORT}} (loopback only)
+# WebRTC HTTP:    0.0.0.0:{{WEBRTC_HTTP_PORT}} (LAN accessible)
+# WebRTC UDP:     0.0.0.0:{{WEBRTC_UDP_PORT}} (LAN accessible)
+# Control API:    127.0.0.1:{{CONTROL_API_PORT}} (loopback only)
+# Metrics:        127.0.0.1:{{METRICS_PORT}} (loopback only)
+#
+# Single stream path: {{STREAM_PATH}}
+# Only RTMP publish -> WebRTC playback pipeline is used.
+# All other protocols are DISABLED.
+###############################################
+
+###############################################
+# General
+###############################################
+logLevel: info
+logDestinations: [stdout]
+
+###############################################
+# RTSP Server (publish only, loopback)
+###############################################
+rtsp: yes
+rtspAddress: 127.0.0.1:{{RTSP_PORT}}
+protocols: [tcp]
+rtspEncryption: "no"
+
+###############################################
+# WebRTC (LAN accessible for browser viewers)
+###############################################
+webrtc: yes
+webrtcAddress: :{{WEBRTC_HTTP_PORT}}
+webrtcICEServers2:
+  - url: "stun:stun.l.google.com:19302"
+# webrtcAdditionalHosts allows browsers on LAN to reach the ICE candidate
+webrtcAdditionalHosts: ["{{HOST_IP}}"]
+webrtcICEUDPMuxAddress: :{{WEBRTC_UDP_PORT}}
+
+###############################################
+# RTMP — DISABLED (first version)
+###############################################
+rtmp: no
+
+###############################################
+# HLS — DISABLED (first version)
+###############################################
+hls: no
+hlsAddress: :8888
+hlsAlwaysRemux: no
+
+###############################################
+# SRT — DISABLED (first version)
+###############################################
+srt: no
+
+###############################################
+# MOQ — DISABLED
+###############################################
+moq: no
+
+###############################################
+# Record — DISABLED
+###############################################
+record: no
+
+###############################################
+# Control API & Metrics (loopback only)
+###############################################
+api: yes
+apiAddress: 127.0.0.1:{{CONTROL_API_PORT}}
+metrics: yes
+metricsAddress: 127.0.0.1:{{METRICS_PORT}}
+
+###############################################
+# External authentication — DISABLED
+###############################################
+externalAuthenticationURL: ""
+
+###############################################
+# Path defaults
+###############################################
+pathDefaults:
+  source: publisher
+  sourceProtocol: tcp
+  overridePublisher: yes
+  fallback: ""
+
+###############################################
+# Stream paths
+###############################################
+paths:
+  {{STREAM_PATH}}:

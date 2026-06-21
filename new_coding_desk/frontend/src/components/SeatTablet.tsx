@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Cpu,
   ArrowLeft,
@@ -21,6 +22,7 @@ import {
   CheckCircle2,
   Square,
   List,
+  Monitor,
 } from "lucide-react";
 import { useSeatData } from "../hooks/useSeatData";
 import { useClock, formatTime, formatDuration } from "./shared";
@@ -75,6 +77,7 @@ interface SeatTabletProps {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
+  const navigate = useNavigate();
   const {
     loading,
     error,
@@ -387,6 +390,16 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
             </button>
           </div>
         )}
+
+        {/* Shared screen entry — navigates to the read-only /screen viewer */}
+        <button
+          data-testid="seat-screen-entry"
+          onClick={() => navigate("/screen")}
+          className="w-full bg-techAccent/10 border border-techAccent/30 rounded-lg px-4 py-3 flex items-center justify-center gap-2 text-techAccent hover:bg-techAccent/20 transition-colors min-h-[44px]"
+        >
+          <Monitor size={16} />
+          <span className="text-sm font-medium">共享画面 / Screen Share</span>
+        </button>
 
         {/* Seat Status Card */}
         <SeatStatusCard

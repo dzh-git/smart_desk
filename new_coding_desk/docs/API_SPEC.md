@@ -19,8 +19,18 @@ in `WEBSOCKET_PROTOCOL.md`.
 ```
 
 - Errors use `success=false`, `data=null`, and a stable `error_code`.
+- Exception: `GET /api/host-display/status` currently returns its stable
+  status object directly, without the common response envelope. The local
+  Display Agent also returns raw Agent objects. See
+  `HOST_DISPLAY_CONTRACT.md` before changing either response shape.
 - The frontend must initialize by calling the concrete resources below. There
   is no aggregate dashboard endpoint dependency in the current app.
+
+## Health Check
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/health` | Local startup and health check. Response body: `{"status": "ok"}`. |
 
 ## Environment Variables
 
@@ -33,6 +43,11 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `TRANSLATION_MODEL_PATH` | unset | Override the local translation model directory. |
 | `RUN_TRANSLATION_SMOKE` | unset | Run translation model smoke tests. |
 | `VITE_ENABLE_DEMO_CONTROLS` | `false` | Show frontend demo controls. |
+| `SMARTDESK_AGENT_URL` | `http://127.0.0.1:8766` | Loopback Display Agent used by the read-only host-display status aggregator. |
+| `SMARTDESK_MEDIAMTX_CONTROL_URL` | `http://127.0.0.1:9997` | Loopback MediaMTX Control API base URL. |
+| `SMARTDESK_MEDIAMTX_METRICS_URL` | `http://127.0.0.1:9998/metrics` | Loopback MediaMTX metrics endpoint. |
+| `SMARTDESK_STREAM_PATH` | `screen` | Screen stream path used by status aggregation. |
+| `ENABLE_SCREEN_STREAM` | `false` | Integrated startup switch for screen-stream services (Display Agent + Screen Supervisor). Set to `true` before running `start.bat` to enable. |
 
 ## Meeting APIs
 
@@ -178,8 +193,18 @@ Frontend clients must still be able to refresh the source of truth through
 | `GET` | `/api/seats` | Return all 10 seat states. |
 | `POST` | `/api/seats/{seat_id}/checkin` | Check an attendee into an occupied unchecked seat. |
 | `GET` | `/api/seats/speaker` | Return the current speaker seat. |
-| `POST` | `/api/seats/speaker` | Set speaker seat. |
+| `POST` | `/api/seats/speaker` | Set speaker seat. See request body below. |
 | `DELETE` | `/api/seats/speaker` | Clear speaker seat. |
+
+`POST /api/seats/speaker` request body:
+
+```json
+{"seat_id": 1}
+```
+
+- `seat_id`：必填，integer，范围 1..10。
+
+`GET /api/seats/speaker` 和 `DELETE /api/seats/speaker` 不需要请求体。
 
 Check-in requires:
 
@@ -232,8 +257,26 @@ votes from the same attendee update the existing vote record.
 | `POST` | `/api/service-calls/{call_id}/resolve` | Resolve a call. |
 | `POST` | `/api/service-calls/{call_id}/cancel` | Cancel a call. |
 
-Supported service types are the backend-supported values only, currently used
-by the frontend as demo service request options.
+`POST /api/service-calls?meeting_id=N` — `meeting_id` is a required query
+parameter.
+
+Request body:
+
+```json
+{
+  "seat_id": 1,
+  "service_type": "coffee",
+  "custom_text": null
+}
+```
+
+Constraints:
+
+| Field | Required | Type | Constraints |
+|---|---|---|---|
+| `seat_id` | Yes | integer | 1..10 |
+| `service_type` | Yes | string | `coffee` / `tea` / `water` / `other` |
+| `custom_text` | No | string or null | Accepted by the request schema but not persisted by the current implementation. Callers must not expect this value in responses or history. |
 
 ## Translation APIs
 
@@ -278,6 +321,68 @@ Speech audio upload uses WebSocket:
 ```
 
 See `WEBSOCKET_PROTOCOL.md` for the binary audio and event contract.
+
+## Host Display and Screen Stream APIs
+
+The complete Phase 1-6 process, network, HTTP, frontend, and deployment
+contract is defined in `HOST_DISPLAY_CONTRACT.md`.
+
+### SmartDesk backend: read-only status
+
+```http
+GET /api/host-display/status
+```
+
+This endpoint returns a raw stable status object containing `agent_state`,
+`stream_state`, `active_app`, `viewer_count`, the three application states,
+and the stream profile. Upstream Agent or MediaMTX failures degrade to
+offline/unknown/null values and must not cause a backend 500.
+
+Frontend integration note: this raw response is incompatible with the common
+`apiGet()` envelope parser. Since Phase 5, `fetchHostDisplayStatus()` uses
+`apiGetRaw()` which reads the body as-is without expecting an envelope.
+Test fixtures return raw JSON matching the actual backend schema.
+
+There is deliberately no backend application-switching endpoint:
+
+```text
+POST /api/host-display/activate  # forbidden / not implemented
+```
+
+### Central-host local Display Agent
+
+These endpoints are not served by the SmartDesk backend and are reachable only
+on the browser machine's loopback interface:
+
+```http
+GET  http://127.0.0.1:8766/status
+POST http://127.0.0.1:8766/activate
+```
+
+The activate request accepts exactly one field and one of three values:
+
+```json
+{"app":"powerpoint"}
+```
+
+```text
+powerpoint | solidworks | smartdesk
+```
+
+Phase 5 Admin controls must probe the Agent and post directly to it. This works
+only when `/admin` is opened on the central host. Remote control is deferred
+until authentication and an authorized backend proxy exist.
+
+### Browser stream endpoint
+
+LAN viewers use MediaMTX directly:
+
+```text
+http://{central-host}:8889/screen
+```
+
+The `/screen` frontend route embeds this endpoint as a read-only WebRTC viewer.
+Video data does not pass through the SmartDesk backend or meeting WebSocket.
 
 ## Frontend Initialization
 

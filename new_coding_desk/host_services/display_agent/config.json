@@ -1,0 +1,11 @@
+{
+  "host": "127.0.0.1",
+  "port": 8766,
+  "allowed_origins": [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173"
+  ],
+  "smartdesk_display_url": "http://127.0.0.1:5173/display",
+  "target_display_index": 0,
+  "enable_powerpoint_com": true
+}

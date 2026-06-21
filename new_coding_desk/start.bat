@@ -1,148 +1,336 @@
-@echo off
-title SmartDesk Launcher
-
-:: ==========================================
-::   SmartDesk - Smart Conference Table
-::   Windows startup script
-:: ==========================================
-
-:: ── Project root (always resolve from batch file location) ──────────────────
-set "SD_ROOT=%~dp0"
-if "%SD_ROOT:~-1%"=="\" set "SD_ROOT=%SD_ROOT:~0,-1%"
-
-echo ==========================================
-echo   SmartDesk - Smart Conference Table
-echo ==========================================
-echo.
-
-:: ── Demo environment variables ──────────────────────────────────────────────
-set ENABLE_DEMO_SEED=true
-set ENABLE_DEMO_SEED_WHEN_NO_ACTIVE=true
-set ENABLE_DEMO_SEAT_API=true
-set VITE_ENABLE_DEMO_CONTROLS=true
-set ENABLE_TRANSLATION_MODEL=false
-
-echo   Environment:
-echo     ENABLE_DEMO_SEED             = true
-echo     ENABLE_DEMO_SEED_WHEN_NO_ACTIVE = true
-echo     ENABLE_DEMO_SEAT_API         = true
-echo     VITE_ENABLE_DEMO_CONTROLS    = true
-echo     ENABLE_TRANSLATION_MODEL     = false
-echo.
-
-:: ── Step 0: Prepare runtime directory and clean old instances ───────────────
-echo [0/4] Preparing workspace...
-if not exist "%SD_ROOT%\.smartdesk-runtime" mkdir "%SD_ROOT%\.smartdesk-runtime"
-set "SKIP_PAUSE=1"
-call "%SD_ROOT%\kill.bat"
-set "SKIP_PAUSE="
-%SystemRoot%\System32\timeout.exe /t 2 /nobreak >nul
-echo.
-
-:: ── Step 1: Check dependencies ─────────────────────────────────────────────
-echo [1/4] Checking dependencies...
-echo.
-
-:: Python
-where python >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo   [ERROR] Python not found in PATH.
-    pause
-    exit /b 1
-)
-echo   Python: OK
-
-:: Core Python packages
-python -c "import fastapi, sqlalchemy, pydantic, numpy, uvicorn; print('  OK')" 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo   [ERROR] Missing core Python packages.
-    echo   Run: pip install -r "%SD_ROOT%\requirements.txt"
-    pause
-    exit /b 1
-)
-
-:: Speech packages (optional)
-python -c "import torch, funasr, scipy, soundfile" >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo   [WARN] Speech packages missing - streaming ASR unavailable.
-    echo   Install: pip install -r "%SD_ROOT%\requirements.txt"
-) else (
-    echo   Speech packages: OK
-)
-
-:: pydub (optional)
-python -c "import pydub" >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo   [INFO] pydub not installed - file transcoding disabled.
-)
-
-:: npm
-where npm >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo   [ERROR] npm not found.
-    pause
-    exit /b 1
-)
-echo   npm: OK
-
-:: node_modules
-if not exist "%SD_ROOT%\frontend\node_modules" (
-    echo   [ERROR] frontend\node_modules not found.
-    echo   Run: cd frontend ^&^& npm install
-    pause
-    exit /b 1
-)
-echo   node_modules: OK
-echo.
-
-:: ── Step 2: Start Backend ──────────────────────────────────────────────────
-echo [2/4] Starting backend (FastAPI) on http://127.0.0.1:8000 ...
-echo.
-:: Launch cmd.exe window via PowerShell Start-Process with -PassThru to capture PID
-powershell -NoProfile -Command "$p = Start-Process cmd.exe -ArgumentList '/k ""title SmartDesk Backend && cd /d %SD_ROOT% && python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --log-level info""' -WindowStyle Normal -PassThru; $p.Id | Set-Content -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\backend.pid'"
-if exist "%SD_ROOT%\.smartdesk-runtime\backend.pid" (
-    set /p BACKEND_PID=<"%SD_ROOT%\.smartdesk-runtime\backend.pid"
-    echo   Backend window PID: %BACKEND_PID%
-) else (
-    echo   [WARN] Could not save backend PID
-)
-echo   Waiting 8s for backend to start...
-%SystemRoot%\System32\timeout.exe /t 8 /nobreak >nul
-echo.
-
-:: ── Step 3: Start Frontend ─────────────────────────────────────────────────
-echo [3/4] Starting frontend (Vite) on http://127.0.0.1:5173 ...
-echo.
-powershell -NoProfile -Command "$p = Start-Process cmd.exe -ArgumentList '/k ""title SmartDesk Frontend && cd /d %SD_ROOT%\frontend && npm run dev -- --host 127.0.0.1""' -WindowStyle Normal -PassThru; $p.Id | Set-Content -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\frontend.pid'"
-if exist "%SD_ROOT%\.smartdesk-runtime\frontend.pid" (
-    set /p FRONTEND_PID=<"%SD_ROOT%\.smartdesk-runtime\frontend.pid"
-    echo   Frontend window PID: %FRONTEND_PID%
-) else (
-    echo   [WARN] Could not save frontend PID
-)
-echo   Frontend starting (allow 5-8s for initial compile)...
-%SystemRoot%\System32\timeout.exe /t 4 /nobreak >nul
-echo.
-
-:: ── Step 4: Open browser ───────────────────────────────────────────────────
-echo [4/4] Opening browser...
-%SystemRoot%\System32\timeout.exe /t 2 /nobreak >nul
-start http://localhost:5173
-
-echo.
-echo ==========================================
-echo   SmartDesk is starting up!
-echo.
-echo   Frontend: http://localhost:5173
-echo   API:      http://localhost:8000
-echo   Docs:     http://localhost:8000/docs
-echo.
-echo   Demo controls enabled.
-echo.
-echo   Close this window will NOT stop processes.
-echo   Run kill.bat to stop all.
-echo ==========================================
-echo.
-
-pause
-exit /b 0
+@echo off
+title SmartDesk Launcher
+setlocal enabledelayedexpansion
+
+:: ========================================
+::  SmartDesk - Smart Conference Table
+::  Windows startup script
+:: ========================================
+
+:: -- Project root (resolve from batch file location) ----------------------
+set "SD_ROOT=%~dp0"
+if "%SD_ROOT:~-1%"=="\" set "SD_ROOT=%SD_ROOT:~0,-1%"
+
+echo ========================================
+echo   SmartDesk - Smart Conference Table
+echo ========================================
+echo.
+
+:: -- Demo environment variables -----------------------------------------
+set ENABLE_DEMO_SEED=true
+set ENABLE_DEMO_SEED_WHEN_NO_ACTIVE=true
+set ENABLE_DEMO_SEAT_API=true
+set VITE_ENABLE_DEMO_CONTROLS=true
+set ENABLE_TRANSLATION_MODEL=false
+if not defined ENABLE_SCREEN_STREAM set "ENABLE_SCREEN_STREAM=false"
+
+echo   Environment:
+echo     ENABLE_DEMO_SEED             = true
+echo     ENABLE_DEMO_SEED_WHEN_NO_ACTIVE = true
+echo     ENABLE_DEMO_SEAT_API         = true
+echo     VITE_ENABLE_DEMO_CONTROLS    = true
+echo     ENABLE_TRANSLATION_MODEL     = false
+echo     ENABLE_SCREEN_STREAM         = %ENABLE_SCREEN_STREAM%
+echo.
+
+:: -- Step 0: Prepare runtime dir and clean old instances -----------------
+echo [0/4] Preparing workspace...
+if not exist "%SD_ROOT%\.smartdesk-runtime" mkdir "%SD_ROOT%\.smartdesk-runtime"
+if exist "%SD_ROOT%\.smartdesk-runtime\backend.pid" del "%SD_ROOT%\.smartdesk-runtime\backend.pid"
+if exist "%SD_ROOT%\.smartdesk-runtime\frontend.pid" del "%SD_ROOT%\.smartdesk-runtime\frontend.pid"
+set "SKIP_PAUSE=1"
+call "%SD_ROOT%\kill.bat"
+set "SKIP_PAUSE="
+%SystemRoot%\System32\timeout.exe /t 2 /nobreak >nul
+echo.
+
+:: -- Step 1: Check dependencies -------------------------------------------
+echo [1/4] Checking dependencies...
+echo.
+
+:: Python
+where python >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo   [ERROR] Python not found in PATH.
+    pause
+    exit /b 1
+)
+echo   Python: OK
+
+:: Core Python packages
+python -c "import fastapi, sqlalchemy, pydantic, numpy, uvicorn; print('  OK')" 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo   [ERROR] Missing core Python packages.
+    echo   Run: pip install -r "%SD_ROOT%\requirements.txt"
+    pause
+    exit /b 1
+)
+
+:: Speech packages (optional)
+python -c "import torch, funasr, scipy, soundfile" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo   [WARN] Speech packages missing - streaming ASR unavailable.
+    echo   Install: pip install -r "%SD_ROOT%\requirements.txt"
+) else (
+    echo   Speech packages: OK
+)
+
+:: pydub (optional)
+python -c "import pydub" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo   [INFO] pydub not installed - file transcoding disabled.
+)
+
+:: npm
+where npm.cmd >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo   [ERROR] npm not found.
+    pause
+    exit /b 1
+)
+echo   npm: OK
+
+:: node_modules
+if not exist "%SD_ROOT%\frontend\node_modules" (
+    echo   [ERROR] frontend\node_modules not found.
+    echo   Run: cd frontend ^&^& npm install
+    pause
+    exit /b 1
+)
+echo   node_modules: OK
+echo.
+
+:: -- Step 2: Start Backend -----------------------------------------------
+echo [2/4] Starting backend FastAPI on http://127.0.0.1:8000 ...
+echo.
+
+powershell -NoProfile -Command ^
+  "$p = Start-Process python.exe -ArgumentList '-m','uvicorn','backend.main:app','--host','127.0.0.1','--port','8000','--log-level','info' -WorkingDirectory '%SD_ROOT%' -WindowStyle Normal -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\backend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\backend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\backend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\backend.pid' -ErrorAction SilentlyContinue }"
+
+if not exist "%SD_ROOT%\.smartdesk-runtime\backend.pid" (
+    echo   [ERROR] Backend failed to start. Check:
+    echo     %SD_ROOT%\.smartdesk-runtime\backend.stderr.log
+    echo.
+    echo   SmartDesk NOT started.
+    pause
+    exit /b 1
+)
+
+set /p BACKEND_PID=<"%SD_ROOT%\.smartdesk-runtime\backend.pid"
+echo   Backend PID: %BACKEND_PID%
+
+:: Verify backend process alive
+powershell -NoProfile -Command "if (Get-Process -Id %BACKEND_PID% -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
+if %ERRORLEVEL% NEQ 0 (
+    echo   [ERROR] Backend process PID=%BACKEND_PID% already exited.
+    del "%SD_ROOT%\.smartdesk-runtime\backend.pid" >nul 2>&1
+    echo   Check: %SD_ROOT%\.smartdesk-runtime\backend.stderr.log
+    echo.
+    echo   SmartDesk NOT started.
+    pause
+    exit /b 1
+)
+
+:: Poll port 8000 up to 30 seconds
+echo   Waiting for backend on 127.0.0.1:8000 ...
+set "BACKEND_OK=0"
+for /L %%i in (1,1,30) do (
+    if !BACKEND_OK! EQU 0 (
+        powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8000/docs' -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+        if !ERRORLEVEL! EQU 0 (
+            set "BACKEND_OK=1"
+            echo   Backend ready after %%i seconds.
+        ) else (
+            powershell -NoProfile -Command "if (Get-Process -Id %BACKEND_PID% -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>&1
+            if !ERRORLEVEL! NEQ 0 (
+                echo   [ERROR] Backend process died while waiting.
+                del "%SD_ROOT%\.smartdesk-runtime\backend.pid" >nul 2>&1
+                echo   Check: %SD_ROOT%\.smartdesk-runtime\backend.stderr.log
+                echo.
+                echo   SmartDesk NOT started.
+                pause
+                exit /b 1
+            )
+            <nul set /p "=."
+%SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+        )
+    )
+)
+if !BACKEND_OK! EQU 0 (
+    echo.
+    echo   [ERROR] Backend did not respond within 30 seconds on 127.0.0.1:8000.
+    echo   Check: %SD_ROOT%\.smartdesk-runtime\backend.stderr.log
+    echo.
+    echo   SmartDesk NOT started.
+    pause
+    exit /b 1
+)
+echo.
+
+:: -- Step 3: Start Frontend -----------------------------------------------
+echo [3/4] Starting frontend Vite on http://0.0.0.0:5173 ...
+echo.
+
+powershell -NoProfile -Command ^
+  "$p = Start-Process npm.cmd -ArgumentList 'run dev -- --host 0.0.0.0' -WorkingDirectory '%SD_ROOT%\frontend' -WindowStyle Normal -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\frontend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\frontend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\frontend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\frontend.pid' -ErrorAction SilentlyContinue }"
+
+if not exist "%SD_ROOT%\.smartdesk-runtime\frontend.pid" (
+    echo   [ERROR] Frontend failed to start. Check:
+    echo     %SD_ROOT%\.smartdesk-runtime\frontend.stderr.log
+    echo.
+    echo   SmartDesk NOT started.
+    pause
+    exit /b 1
+)
+
+set /p FRONTEND_PID=<"%SD_ROOT%\.smartdesk-runtime\frontend.pid"
+echo   Frontend PID: %FRONTEND_PID%
+
+:: Verify frontend process alive
+powershell -NoProfile -Command "if (Get-Process -Id %FRONTEND_PID% -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
+if %ERRORLEVEL% NEQ 0 (
+    echo   [ERROR] Frontend process PID=%FRONTEND_PID% already exited.
+    del "%SD_ROOT%\.smartdesk-runtime\frontend.pid" >nul 2>&1
+    echo   Check: %SD_ROOT%\.smartdesk-runtime\frontend.stderr.log
+    echo.
+    echo   SmartDesk NOT started.
+    pause
+    exit /b 1
+)
+
+:: Poll port 5173 up to 30 seconds
+echo   Waiting for frontend on 127.0.0.1:5173 ...
+set "FRONTEND_OK=0"
+for /L %%i in (1,1,30) do (
+    if !FRONTEND_OK! EQU 0 (
+        powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:5173' -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+        if !ERRORLEVEL! EQU 0 (
+            set "FRONTEND_OK=1"
+            echo   Frontend ready after %%i seconds.
+        ) else (
+            powershell -NoProfile -Command "if (Get-Process -Id %FRONTEND_PID% -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>&1
+            if !ERRORLEVEL! NEQ 0 (
+                echo   [ERROR] Frontend process died while waiting.
+                del "%SD_ROOT%\.smartdesk-runtime\frontend.pid" >nul 2>&1
+                echo   Check: %SD_ROOT%\.smartdesk-runtime\frontend.stderr.log
+                echo.
+                echo   SmartDesk NOT started.
+                pause
+                exit /b 1
+            )
+            <nul set /p "=."
+%SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+        )
+    )
+)
+if !FRONTEND_OK! EQU 0 (
+    echo.
+    echo   [ERROR] Frontend did not respond within 30 seconds on 127.0.0.1:5173.
+    echo   Check: %SD_ROOT%\.smartdesk-runtime\frontend.stderr.log
+    echo.
+    echo   SmartDesk NOT started.
+    pause
+    exit /b 1
+)
+echo.
+
+:: -- Screen Stream (optional) --------------------------------------------
+echo [screen-stream] ...
+
+:: Clean stale PID files from previous run (prevents false success)
+if exist "%SD_ROOT%\.smartdesk-runtime\display_agent.pid" del "%SD_ROOT%\.smartdesk-runtime\display_agent.pid"
+if exist "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid" del "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid"
+
+:: Binary availability flags (set before any block so %var% is set at parse time)
+set "SCREEN_STREAM_READY=1"
+if /I "%ENABLE_SCREEN_STREAM%"=="true" if not exist "%SD_ROOT%\tools\ffmpeg\bin\ffmpeg.exe" set "SCREEN_STREAM_READY=0"
+if /I "%ENABLE_SCREEN_STREAM%"=="true" if not exist "%SD_ROOT%\tools\mediamtx\mediamtx.exe" set "SCREEN_STREAM_READY=0"
+
+:: Supervisor pre-check -- validates config, binaries, encoder before starting
+if /I "%ENABLE_SCREEN_STREAM%"=="true" if %SCREEN_STREAM_READY% EQU 1 (
+    echo   [screen-stream] Running supervisor pre-check ...
+    python "%SD_ROOT%\host_services\screen_stream\supervisor.py" --check
+    if errorlevel 1 (
+        echo   [screen-stream] [ERROR] Supervisor pre-check failed.
+        echo   [screen-stream] Screen stream NOT started -- fix errors above and retry.
+        set "SCREEN_STREAM_READY=0"
+    )
+)
+
+if /I "%ENABLE_SCREEN_STREAM%"=="true" (
+    if %SCREEN_STREAM_READY% EQU 1 (
+        echo   [screen-stream] Starting Display Agent on http://127.0.0.1:8766 ...
+        start "SmartDesk Display Agent" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'agent.py' -WorkingDirectory '%SD_ROOT%\host_services\display_agent' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\display_agent.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and !$exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\display_agent.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\display_agent.pid' -ErrorAction SilentlyContinue }"
+        %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+        echo   [screen-stream] Starting Screen Supervisor ...
+        start "SmartDesk Screen Supervisor" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'supervisor.py' -WorkingDirectory '%SD_ROOT%\host_services\screen_stream' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and !$exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid' -ErrorAction SilentlyContinue }"
+        %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+    ) else (
+        if %SCREEN_STREAM_READY% EQU 0 (
+            echo   [screen-stream] [ERROR] Required screen-stream binaries not found
+            if not exist "%SD_ROOT%\tools\ffmpeg\bin\ffmpeg.exe" (
+                echo   [screen-stream]   Missing: tools\ffmpeg\bin\ffmpeg.exe
+            )
+            if not exist "%SD_ROOT%\tools\mediamtx\mediamtx.exe" (
+                echo   [screen-stream]   Missing: tools\mediamtx\mediamtx.exe
+            )
+        )
+        echo   [screen-stream] Screen stream NOT started
+    )
+) else (
+    echo   [screen-stream] Screen Stream disabled: ENABLE_SCREEN_STREAM is not true.
+)
+
+:: PID verification -- actually checks process is alive with Get-Process
+if /I "%ENABLE_SCREEN_STREAM%"=="true" if %SCREEN_STREAM_READY% EQU 1 (
+    if exist "%SD_ROOT%\.smartdesk-runtime\display_agent.pid" (
+        for /f "usebackq delims=" %%p in ("%SD_ROOT%\.smartdesk-runtime\display_agent.pid") do (
+            powershell -NoProfile -Command "if (Get-Process -Id %%p -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
+            if errorlevel 1 (
+                del "%SD_ROOT%\.smartdesk-runtime\display_agent.pid"
+                echo   [screen-stream] [ERROR] Display Agent PID=%%p exited -- check .smartdesk-runtime\display_agent.stderr.log
+            ) else (
+                echo   [screen-stream] Display Agent running PID=%%p
+            )
+        )
+    ) else (
+        echo   [screen-stream] [ERROR] Display Agent not running -- check .smartdesk-runtime\display_agent.stderr.log
+    )
+    if exist "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid" (
+        for /f "usebackq delims=" %%p in ("%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid") do (
+            powershell -NoProfile -Command "if (Get-Process -Id %%p -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
+            if errorlevel 1 (
+                del "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid"
+                echo   [screen-stream] [ERROR] Screen Supervisor PID=%%p exited -- check .smartdesk-runtime\screen_supervisor.stderr.log
+            ) else (
+                echo   [screen-stream] Screen Supervisor running PID=%%p
+            )
+        )
+    ) else (
+        echo   [screen-stream] [ERROR] Screen Supervisor not running -- check .smartdesk-runtime\screen_supervisor.stderr.log
+    )
+)
+echo.
+
+:: -- Step 4: Open browser --------------------------------------------------
+echo [4/4] Opening browser ...
+powershell -NoProfile -Command "Start-Process 'http://127.0.0.1:5173'"
+echo.
+
+echo ========================================
+echo   SmartDesk started successfully!
+echo.
+echo   Frontend: http://127.0.0.1:5173
+echo   API:      http://127.0.0.1:8000
+echo   Docs:     http://127.0.0.1:8000/docs
+echo.
+echo   Demo controls enabled.
+echo.
+echo   Close this window will NOT stop processes.
+echo   Run kill.bat to stop all.
+echo ========================================
+echo.
+
+pause
+endlocal
+exit /b 0

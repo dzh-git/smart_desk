@@ -1,0 +1,18 @@
+{
+  "display_index": 0,
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "bitrate": "5M",
+  "host_ip": "192.168.0.169",
+  "encoder": "auto",
+  "ffmpeg_path": "tools/ffmpeg/bin/ffmpeg.exe",
+  "mediamtx_path": "tools/mediamtx/mediamtx.exe",
+  "rtsp_port": 8554,
+  "webrtc_http_port": 8889,
+  "webrtc_udp_port": 8189,
+  "stream_path": "screen",
+  "max_restarts": 5,
+  "restart_delay_seconds": 3,
+  "runtime_dir": ".smartdesk-runtime/screen-stream"
+}

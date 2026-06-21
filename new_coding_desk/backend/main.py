@@ -40,6 +40,7 @@ from backend.api import (
     service_calls,
     translations,
     speech,
+    host_display,
 )
 
 logger = logging.getLogger(__name__)
@@ -263,6 +264,7 @@ app.include_router(votes.router)
 app.include_router(service_calls.router)
 app.include_router(translations.router)
 app.include_router(speech.router)
+app.include_router(host_display.router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

@@ -91,6 +91,43 @@ export function apiGet<T>(path: string): Promise<T> {
   return request<T>(path, { method: "GET" });
 }
 
+/**
+ * Raw GET — fetches the path and returns the full JSON body as T WITHOUT
+ * unwrapping an {success, data} envelope.  Use this for endpoints whose
+ * FastAPI handler returns a Pydantic model directly (e.g.
+ * GET /api/host-display/status).
+ *
+ * Throws ApiError for non-2xx HTTP statuses and NetworkError for
+ * transport failures — exactly the same as apiGet.  The only difference
+ * is that response.json() is returned as-is.
+ */
+export async function apiGetRaw<T>(path: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    throw new NetworkError(err);
+  }
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = body.detail ?? body.message ?? response.statusText;
+    } catch {
+      detail = response.statusText;
+    }
+    throw new ApiError(detail ?? "Unknown error", response.status, undefined);
+  }
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError("Invalid JSON response", response.status);
+  }
+}
+
 export function apiPost<T>(path: string, data?: unknown): Promise<T> {
   return request<T>(path, {
     method: "POST",

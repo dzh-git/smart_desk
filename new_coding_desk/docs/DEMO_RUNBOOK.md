@@ -43,17 +43,69 @@ cd ..
 
 常用 demo 环境变量：
 
-```powershell
+CMD 中：
+
+```bat
 set ENABLE_DEMO_SEED=true
 set ENABLE_DEMO_SEED_WHEN_NO_ACTIVE=true
 set ENABLE_DEMO_SEAT_API=true
 set VITE_ENABLE_DEMO_CONTROLS=true
 ```
 
-可选真实翻译：
+PowerShell 中：
 
 ```powershell
+$env:ENABLE_DEMO_SEED = "true"
+$env:ENABLE_DEMO_SEED_WHEN_NO_ACTIVE = "true"
+$env:ENABLE_DEMO_SEAT_API = "true"
+$env:VITE_ENABLE_DEMO_CONTROLS = "true"
+```
+
+可选屏幕共享（Screen Stream）：
+
+PowerShell 中：
+
+```powershell
+$env:ENABLE_SCREEN_STREAM = "true"
+.\start.bat
+```
+
+CMD 中：
+
+```bat
+set ENABLE_SCREEN_STREAM=true
+start.bat
+```
+
+启用前需将 FFmpeg 和 MediaMTX 二进制文件分别放置到
+`tools/ffmpeg/bin/ffmpeg.exe` 和 `tools/mediamtx/mediamtx.exe`。
+这些二进制文件不提交到 Git 仓库，需人工下载放置。Screen Stream
+启动后，Display Agent 监听 `127.0.0.1:8766`，Screen Supervisor
+管理 FFmpeg + MediaMTX 生命周期，WebRTC 播放地址为
+`http://<中央主机IP>:8889/screen`。
+
+局域网访问：前端绑定 `0.0.0.0:5173`，同一 LAN 的终端可通过
+`http://<中央主机IP>:5173/screen` 查看共享画面。后端仍仅监听
+`127.0.0.1:8000`，通过 Vite 代理访问。
+
+停止 Screen Stream（随 kill.bat 自动停止）：
+
+```powershell
+.\kill.bat
+```
+
+可选真实翻译：
+
+CMD 中：
+
+```bat
 set ENABLE_TRANSLATION_MODEL=true
+```
+
+PowerShell 中：
+
+```powershell
+$env:ENABLE_TRANSLATION_MODEL = "true"
 ```
 
 未启用翻译模型时，最终记录的 `translated_text` 使用
@@ -143,6 +195,17 @@ set ENABLE_TRANSLATION_MODEL=true
 pytest -q
 ```
 
+Screen Stream 代码级预检（需要 FFmpeg 和实际 GPU）：
+
+```powershell
+python host_services/screen_stream/supervisor.py --check
+```
+
+该命令验证配置文件、二进制文件路径，并对各编码器进行短时实机捕获探测。
+因依赖 GPU/显示器，失败时应记录硬件输出，不能把未运行记作通过。
+当前 Intel Graphics 主机上 QSV 预检通过。不含 RTSP、MediaMTX、WebRTC
+和多终端实机验收。
+
 前端：
 
 ```powershell
@@ -173,7 +236,27 @@ npm run e2e:speech
 | 翻译显示占位符 | 未启用 `ENABLE_TRANSLATION_MODEL=true` 或本地模型不可用。 |
 | 数据过多或状态混乱 | 本地 SQLite 数据库是 demo 产物，可停止服务后删除并重新启动。 |
 
-## 10. 已移除内容
+## 10. Screen Stream 实机验收（需中央主机执行）
+
+以下验收项需在配置了 FFmpeg 和 MediaMTX 的中央主机上手动执行。
+
+**当前状态：** 代码级自动测试 64 passed（config + phase1）。Intel QSV
+编码器预检（`supervisor.py --check`）通过；NVENC 因当前主机无 NVIDIA GPU
+未通过，符合预期。以下完整管线及多端验收**全部 NOT_RUN**（mock 测试和
+`--check` 不能替代实机验证）。
+
+| 验收项 | 命令/操作 | 预期 |
+|---|---|---|
+| FFmpeg ddagrab | 启动 Screen Stream 后检查 supervisor 日志 | 成功捕获目标显示器 |
+| MediaMTX WebRTC | 在 LAN 终端打开 `http://<IP>:8889/screen` | 画面正常播放 |
+| Display Agent | `curl http://127.0.0.1:8766/status` | 返回 `agent_state: online` |
+| PowerPoint 切换 | 在 `/admin` 点击 PowerPoint 按钮 | 幻灯片显示在目标显示器 |
+| SolidWorks 切换 | 在 `/admin` 点击 SolidWorks 按钮 | SolidWorks 窗口激活 |
+| 防火墙端口 | 检查 TCP 5173、8889 和 UDP 8189 放行 | LAN 终端可访问 |
+| 10 终端负载 | 10 个浏览器同时打开 `/screen` | 画面基本流畅 |
+| 端到端延迟 | 实测从画面变化到 WebRTC 显示 | 目标 <1s，验收上限 <=1.5s（当前未实机测量） |
+
+## 11. 已移除内容
 
 - 手势识别控制器不属于当前 SmartDesk 前后端项目，已从本仓库清理。
 - 历史 Task 计划文档不再作为运行手册维护。

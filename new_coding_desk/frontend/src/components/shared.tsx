@@ -134,7 +134,7 @@ export function formatDuration(ms: number) {
  *
  * Backend uses `datetime.utcnow()` which Pydantic serialises without
  * timezone info (e.g. "2026-01-01T04:27:00").  `new Date(value)` would
- * treat this as LOCAL time, causing an incorrect display (e.g. 8 hours
+ * treat this as LOCAL time, causing an incorrect display (e.g. 8 hours
  * off for UTC+8 users).
  *
  * - null / undefined / empty string → null

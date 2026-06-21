@@ -52,6 +52,21 @@ working/
 
 # Runtime state
 .smartdesk-runtime/
+*.pid
+
+# Screen-stream binaries (manually placed, not committed)
+tools/ffmpeg/
+tools/mediamtx/
+
+# Screen-stream nested tools and hardware diagnostics
+host_services/screen_stream/tools/
+host_services/screen_stream/dxdiag*.txt
+
+# Probe screenshots
+probe_*.png
+
+# Pytest per-review temporary directories
+.pytest-tmp-*/
 
 # Test and browser artifacts
 frontend/test-results/

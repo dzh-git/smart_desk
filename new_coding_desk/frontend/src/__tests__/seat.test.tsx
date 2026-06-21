@@ -1,6 +1,18 @@
+import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, act } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { SeatTablet } from "../components/SeatTablet";
+
+// ── Router-wrapped render helper ─────────────────────────────────────────────
+// SeatTablet now uses useNavigate() for the "Shared Screen" entry button,
+// so all tests need a Router context.  Wrap with MemoryRouter, keeping the
+// same API so existing tests require no individual changes.
+function render(ui: ReactElement) {
+  return rtlRender(
+    <MemoryRouter initialEntries={["/seat/1"]}>{ui}</MemoryRouter>,
+  );
+}
 
 // ── Mock isDemoControlsEnabled ───────────────────────────────────────────────
 let mockDemoControls = false;

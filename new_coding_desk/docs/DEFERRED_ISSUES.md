@@ -31,6 +31,24 @@ Production deployment needs a clear model cache strategy for `models/` and
 Automated E2E tests use PCM fixtures rather than browser microphone permission.
 Manual demo still requires a browser microphone grant.
 
+## Host Display / Screen Stream 未验证项
+
+以下项目不阻塞当前会议业务和代码构建（代码已完成，自动测试已通过），
+但部署前必须完成实机验证。
+
+| 未验证项 | 说明 |
+|---|---|
+| 外接中央显示器 `display_index` 校准 | `display_probe.py` 需在目标主机上运行并确认输出索引。DXGI 索引在热插拔后可能变化。 |
+| PowerPoint 实际窗口切换 | Display Agent COM/Win32 路径需在安装了 PowerPoint 的主机上验证。 |
+| SolidWorks 窗口切换 | 当前测试主机未安装 SolidWorks。需在 SolidWorks 主机上验证 `SLDWORKS.exe` 窗口激活。 |
+| WebRTC 局域网播放 | 需在 LAN 终端上打开 `http://<中央主机IP>:8889/screen` 确认画面实际显示。 |
+| 10 客户端并发 | 10 个浏览器同时打开 `/screen`。画面基本流畅即可。 |
+| <1s 延迟目标 | 实测从画面变化到 WebRTC 显示的端到端延迟。 |
+| 60 分钟稳定性 | 长时间运行后 FFmpeg 和 MediaMTX 不崩溃，画面不卡死。 |
+| FFmpeg 异常自动恢复 | 主动终止 FFmpeg 进程后 Supervisor 应在 `restart_delay_seconds` 后自动重启并恢复推流。 |
+| Windows 防火墙 | TCP 8889 和 UDP 8189 需放行。Ports 8000/8554/8766/9997/9998 保持 loopback-only。 |
+| 目标主机编码器兼容性 | 当前 Intel Graphics QSV probe 已通过。但其他 Intel 驱动组合、NVIDIA NVENC 和软件 libx264 fallback 仍需在各目标主机上逐台验证。 |
+
 ## Local Database Growth
 
 Repeated manual demos and E2E runs can create many meetings in the local SQLite

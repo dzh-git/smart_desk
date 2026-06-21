@@ -23,6 +23,7 @@ import { VotePanel } from "./VotePanel";
 import { ServicePanel } from "./ServicePanel";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { MeetingResultPanel } from "./MeetingResultPanel";
+import { HostDisplayControl } from "./HostDisplayControl";
 import {
   SectionCard,
   ActionButton,
@@ -1026,6 +1027,11 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                   </div>
                 </div>
               </SectionCard>
+            )}
+
+            {/* Host Display Control — only in overview for active meetings */}
+            {workspace === "overview" && !isEndedMeeting && (
+              <HostDisplayControl />
             )}
 
             {/* AgendaPanel — visible in agenda_vote workspace or ended meetings */}

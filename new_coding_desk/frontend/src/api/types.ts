@@ -148,3 +148,28 @@ export interface SpeechModelStatus {
   punctuation_fallback: boolean;
   last_error: string | null;
 }
+
+// ── Host Display Status (Screen Stream) ───────────────────────────────────
+
+export type AgentState = "online" | "offline";
+export type StreamState = "online" | "offline" | "unknown";
+
+export interface AppWindowState {
+  running: boolean;
+  window_found: boolean;
+}
+
+export interface StreamProfile {
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+}
+
+export interface HostDisplayStatus {
+  agent_state: AgentState;
+  stream_state: StreamState;
+  active_app: string | null;
+  viewer_count: number | null;
+  apps: Record<string, AppWindowState>;
+  profile: StreamProfile;
+}

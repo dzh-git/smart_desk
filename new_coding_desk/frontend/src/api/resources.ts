@@ -4,7 +4,7 @@
 //
 // See docs/API_SPEC.md for complete documentation.
 
-import { apiDelete, apiGet, apiPost } from "./client";
+import { apiDelete, apiGet, apiGetRaw, apiPost } from "./client";
 import type {
   Meeting,
   SeatState,
@@ -312,4 +312,16 @@ export function fetchSpeechStatus(): Promise<import("./types").SpeechModelStatus
 /** Trigger background model preload (non-blocking). */
 export function triggerSpeechPreload(): Promise<void> {
   return apiPost<void>("/speech/preload");
+}
+
+// ── Host Display Status (Screen Stream) ────────────────────────────────────
+
+/**
+ * Returns the read-only host display + stream status.
+ *
+ * Uses apiGetRaw because the backend endpoint returns the Pydantic model
+ * directly (not wrapped in the ApiResponse {success, data} envelope).
+ */
+export function fetchHostDisplayStatus(): Promise<import("./types").HostDisplayStatus> {
+  return apiGetRaw<import("./types").HostDisplayStatus>("/host-display/status");
 }

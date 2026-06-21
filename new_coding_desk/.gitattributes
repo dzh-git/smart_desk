@@ -1,0 +1,2 @@
+smart-desk/models/** !text !filter !merge !diff
+*.bat text eol=crlf
