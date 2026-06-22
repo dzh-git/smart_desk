@@ -20,12 +20,29 @@ echo.
 
 if not exist "%VENV_PYTHON%" (
     echo   [ERROR] Virtual env not found: %VENV_PYTHON%
-    echo   Run: python -m venv "%SD_ROOT%\.venv"
-    echo   Then: "%SD_ROOT%\.venv\Scripts\pip.exe" install -r "%SD_ROOT%\requirements.txt"
-    pause
+    echo   Create it with:  python -m venv "%SD_ROOT%\.venv"
+    echo   Then install:    "%SD_ROOT%\.venv\Scripts\pip.exe" install -r "%SD_ROOT%\requirements.txt"
+    echo   For details, see README.md in %SD_ROOT%
+    echo.
+    echo   Press any key to exit...
+    pause >nul
     exit /b 1
 )
 echo   Python: %VENV_PYTHON%
+
+rem Check model file exists (spec section 5: no network at demo site).
+if not exist "%SD_ROOT%\hand_landmarker.task" (
+    echo   [ERROR] Model file not found: hand_landmarker.task
+    echo   Please place the model file in the project root before running the demo.
+    echo   Expected path: %SD_ROOT%\hand_landmarker.task
+    echo   Do not rely on a network download at the demo site.
+    echo   For details, see README.md and docs/DEPLOYMENT_RUNBOOK.md.
+    echo.
+    echo   Press any key to exit...
+    pause >nul
+    exit /b 1
+)
+echo   Model file: OK
 
 rem Check required packages, but let the controller report runtime errors.
 echo   Checking gesture-control dependencies...
@@ -58,8 +75,8 @@ cd /d "%SD_ROOT%"
 set "CONTROLLER_EXIT=%ERRORLEVEL%"
 
 echo.
-echo ==========================================
 echo   Gesture controller exited with code %CONTROLLER_EXIT%.
+echo   Press any key to close this window...
 echo ==========================================
-pause
+pause >nul
 exit /b %CONTROLLER_EXIT%

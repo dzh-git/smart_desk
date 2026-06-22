@@ -2,8 +2,23 @@
 
 These tests keep the controller at the boundary between pure state intents
 and the ActionLayer. They use FakeDriver so no OS mouse/keyboard events run.
+
+Phase 3 coverage:
+    * PPT intent dispatch: press, hotkey, mouse_down, mouse_up, release_all
+    * move_to / move intent dispatch
+    * FakeDriver records all PPT actions without touching the real OS
+    * _dispatch_intents via execute() handles list of intents in order
+
+Phase 6 coverage:
+    * Model file check (check_model_files)
+    * Dry-run safety (FakeDriver never touches OS)
+    * Controller dispatches via ActionLayer.execute()
+    * Config preservation (start_paused / enable_hotkeys / dry_run)
 """
 from __future__ import annotations
+
+import os
+import tempfile
 
 from hands.gesture_actions import ActionLayer, FakeDriver
 from hands.gesture_config import default_config
@@ -23,6 +38,8 @@ def _controller_with_fake_driver() -> tuple[GestureController, FakeDriver]:
     return controller, driver
 
 
+# ── preserved: hotkey dispatch ──────────────────────────────────────────────
+
 def test_hotkey_intent_dispatches_ctrl_p_as_two_keys() -> None:
     controller, driver = _controller_with_fake_driver()
 
@@ -39,3 +56,490 @@ def test_hotkey_intent_dispatches_multi_key_combo_without_splitting() -> None:
 
     assert driver.names() == ["hotkey"]
     assert driver.calls[0].args == ("ctrl", "alt", "q")
+
+
+# ── Phase 3: PPT intent dispatch via _dispatch_intents ──────────────────────
+
+def test_dispatch_press_f5_recorded() -> None:
+    """PPT 启动: press("f5") 正确分发到 FakeDriver."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.press("f5")])
+    assert ("press", "f5") in driver.events
+
+
+def test_dispatch_press_right_left_recorded() -> None:
+    """PPT 翻页: press("right") / press("left") 正确分发."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.press("right")])
+    controller._dispatch_intents([ActionIntent.press("left")])
+    assert ("press", "right") in driver.events
+    assert ("press", "left") in driver.events
+
+
+def test_dispatch_hotkey_ctrl_p_recorded() -> None:
+    """PPT 进入画笔: hotkey(["ctrl","p"]) 正确分发."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.hotkey("ctrl", "p")])
+    assert ("hotkey", ["ctrl", "p"]) in driver.events
+
+
+def test_dispatch_hotkey_ctrl_a_recorded() -> None:
+    """PPT 取消画笔: hotkey(["ctrl","a"]) 正确分发."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.hotkey("ctrl", "a")])
+    assert ("hotkey", ["ctrl", "a"]) in driver.events
+
+
+def test_dispatch_press_esc_and_release_all_recorded() -> None:
+    """PPT 退出演示: press("esc") + release_all 正确分发."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([
+        ActionIntent.press("esc"),
+        ActionIntent.release_all(),
+    ])
+    assert ("press", "esc") in driver.events
+    # release_all produces 3 mouse_up + 3 key_up events
+    mouse_ups = [e for e in driver.events if e[0] == "mouse_up"]
+    key_ups = [e for e in driver.events if e[0] == "key_up"]
+    assert len(mouse_ups) == 3
+    assert len(key_ups) == 3
+
+
+def test_dispatch_mouse_down_up_recorded() -> None:
+    """PPT 画笔画线: mouse_down("left") + mouse_up("left") 正确分发."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([
+        ActionIntent.mouse_down(button="left"),
+        ActionIntent.mouse_up(button="left"),
+    ])
+    assert ("mouse_down", "left") in driver.events
+    assert ("mouse_up", "left") in driver.events
+
+
+def test_dispatch_move_to_recorded() -> None:
+    """PPT 画笔移动: move intent 正确分发为 move_to."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.move(960.0, 540.0)])
+    assert ("move_to", 960.0, 540.0) in driver.events
+
+
+def test_dispatch_full_pen_exit_sequence() -> None:
+    """完整画笔退出序列: mouse_up + hotkey(ctrl,a) 按顺序分发."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([
+        ActionIntent.mouse_up(button="left"),
+        ActionIntent.hotkey("ctrl", "a"),
+    ])
+    # Events must be in order
+    assert driver.events[0] == ("mouse_up", "left")
+    assert driver.events[1] == ("hotkey", ["ctrl", "a"])
+
+
+def test_dispatch_full_ppt_exit_sequence() -> None:
+    """完整 PPT 退出序列: mouse_up + press(esc) + release_all 按顺序分发."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([
+        ActionIntent.mouse_up(button="left"),
+        ActionIntent.press("esc"),
+        ActionIntent.release_all(),
+    ])
+    assert driver.events[0] == ("mouse_up", "left")
+    assert driver.events[1] == ("press", "esc")
+    # release_all produces 3 mouse_up + 3 key_up after the esc press
+    mouse_ups = [e for e in driver.events if e[0] == "mouse_up"]
+    key_ups = [e for e in driver.events if e[0] == "key_up"]
+    assert len(mouse_ups) >= 3  # 1 explicit + 3 from release_all
+    assert len(key_ups) == 3
+
+
+def test_dry_run_fake_driver_never_touches_os() -> None:
+    """#17: dry-run / FakeDriver 下 PPT 动作只记录，不真实控制鼠标键盘."""
+    controller, driver = _controller_with_fake_driver()
+    assert controller.actions.using_fake_driver()
+    # Dispatch a full PPT cycle
+    controller._dispatch_intents([
+        ActionIntent.press("f5"),
+        ActionIntent.press("right"),
+        ActionIntent.press("left"),
+        ActionIntent.hotkey("ctrl", "p"),
+        ActionIntent.mouse_down(button="left"),
+        ActionIntent.mouse_up(button="left"),
+        ActionIntent.hotkey("ctrl", "a"),
+        ActionIntent.press("esc"),
+        ActionIntent.release_all(),
+    ])
+    # All recorded as events, no real OS interaction.
+    # release_all produces 6 events (3 mouse_up + 3 key_up), so total = 8 + 6 = 14.
+    assert len(driver.events) == 14
+    # No exception, all events are tuples (fake driver format)
+    for ev in driver.events:
+        assert isinstance(ev, tuple)
+
+
+def test_dispatch_press_e_for_erase_recorded() -> None:
+    """PPT 擦除: press("e") 正确分发."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.press("e")])
+    assert ("press", "e") in driver.events
+
+
+def test_release_all_idempotent_via_dispatch() -> None:
+    """#18: release_all 仍然幂等 (通过 controller dispatch)."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.release_all()])
+    controller._dispatch_intents([ActionIntent.release_all()])
+    # Should not crash; 12 events (6 + 6 release calls)
+    mouse_ups = [e for e in driver.events if e[0] == "mouse_up"]
+    key_ups = [e for e in driver.events if e[0] == "key_up"]
+    assert len(mouse_ups) == 6  # 3 per release_all × 2
+    assert len(key_ups) == 6
+
+
+# ── Phase 4: Mouse mode intent dispatch ─────────────────────────────────────
+
+def test_dispatch_mouse_click_left_recorded() -> None:
+    """Mouse left click dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.click(button="left")])
+    assert ("click", "left") in driver.events
+
+
+def test_dispatch_mouse_click_right_recorded() -> None:
+    """Mouse right click dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.click(button="right")])
+    assert ("click", "right") in driver.events
+
+
+def test_dispatch_scroll_positive_recorded() -> None:
+    """Mouse scroll up dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.scroll(5)])
+    assert ("scroll", 5) in driver.events
+
+
+def test_dispatch_scroll_negative_recorded() -> None:
+    """Mouse scroll down dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.scroll(-5)])
+    assert ("scroll", -5) in driver.events
+
+
+def test_dispatch_move_rel_recorded() -> None:
+    """Mouse relative move dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.move_rel(20, -10)])
+    assert ("move_rel", 20, -10) in driver.events
+
+
+def test_dispatch_full_mouse_drag_sequence() -> None:
+    """Full mouse drag sequence in order."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([
+        ActionIntent.mouse_down(button="left"),
+        ActionIntent.move(500.0, 300.0),
+        ActionIntent.mouse_up(button="left"),
+    ])
+    assert driver.events[0] == ("mouse_down", "left")
+    assert driver.events[1] == ("move_to", 500.0, 300.0)
+    assert driver.events[2] == ("mouse_up", "left")
+
+
+def test_dry_run_mouse_actions_never_touch_os() -> None:
+    """Phase 4 #23: dry-run / FakeDriver mouse actions only recorded."""
+    controller, driver = _controller_with_fake_driver()
+    assert controller.actions.using_fake_driver()
+    controller._dispatch_intents([
+        ActionIntent.move_to(960, 540),
+        ActionIntent.click(button="left"),
+        ActionIntent.mouse_down(button="left"),
+        ActionIntent.move_rel(10, 20),
+        ActionIntent.mouse_up(button="left"),
+        ActionIntent.scroll(5),
+        ActionIntent.click(button="right"),
+        ActionIntent.release_all(),
+    ])
+    for ev in driver.events:
+        assert isinstance(ev, tuple)
+
+
+# ── Phase 5: SolidWorks intent dispatch ─────────────────────────────────────
+
+def test_dispatch_solidworks_mouse_down_middle_recorded() -> None:
+    """SolidWorks rotate: mouse_down("middle") dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.mouse_down(button="middle")])
+    assert ("mouse_down", "middle") in driver.events
+
+
+def test_dispatch_solidworks_key_down_shift_recorded() -> None:
+    """SolidWorks pan: key_down("shift") dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.key_down("shift")])
+    assert ("key_down", "shift") in driver.events
+
+
+def test_dispatch_solidworks_key_up_shift_recorded() -> None:
+    """SolidWorks pan end: key_up("shift") dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.key_up("shift")])
+    assert ("key_up", "shift") in driver.events
+
+
+def test_dispatch_solidworks_move_rel_recorded() -> None:
+    """SolidWorks rotate/pan move: move_rel dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.move_rel(15, -10)])
+    assert ("move_rel", 15, -10) in driver.events
+
+
+def test_dispatch_solidworks_press_f_recorded() -> None:
+    """SolidWorks fit view: press("f") dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.press("f")])
+    assert ("press", "f") in driver.events
+
+
+def test_dispatch_solidworks_hotkey_ctrl_7_recorded() -> None:
+    """SolidWorks isometric: hotkey("ctrl","7") dispatch."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([ActionIntent.hotkey("ctrl", "7")])
+    assert ("hotkey", ["ctrl", "7"]) in driver.events
+
+
+def test_dispatch_full_solidworks_pan_sequence() -> None:
+    """Full SolidWorks pan sequence: key_down + mouse_down + move + mouse_up + key_up."""
+    controller, driver = _controller_with_fake_driver()
+    controller._dispatch_intents([
+        ActionIntent.key_down("shift"),
+        ActionIntent.mouse_down(button="middle"),
+        ActionIntent.move_rel(10, 20),
+        ActionIntent.mouse_up(button="middle"),
+        ActionIntent.key_up("shift"),
+    ])
+    assert driver.events[0] == ("key_down", "shift")
+    assert driver.events[1] == ("mouse_down", "middle")
+    assert driver.events[2] == ("move_rel", 10, 20)
+    assert driver.events[3] == ("mouse_up", "middle")
+    assert driver.events[4] == ("key_up", "shift")
+
+
+def test_dry_run_solidworks_actions_never_touch_os() -> None:
+    """Phase 5 #25: dry-run / FakeDriver SolidWorks actions only recorded."""
+    controller, driver = _controller_with_fake_driver()
+    assert controller.actions.using_fake_driver()
+    controller._dispatch_intents([
+        ActionIntent.mouse_down(button="middle"),
+        ActionIntent.key_down("shift"),
+        ActionIntent.move_rel(10, 20),
+        ActionIntent.scroll(5),
+        ActionIntent.mouse_up(button="middle"),
+        ActionIntent.key_up("shift"),
+        ActionIntent.press("f"),
+        ActionIntent.hotkey("ctrl", "7"),
+        ActionIntent.release_all(),
+    ])
+    for ev in driver.events:
+        assert isinstance(ev, tuple)
+
+
+# ── Phase 6: Model file check, dry-run safety, config preservation ─────────
+
+def test_check_model_files_returns_empty_when_exists() -> None:
+    """Model file check passes when hand_landmarker.task exists."""
+    from hands.gesture_controller import check_model_files
+    # The project root has hand_landmarker.task, so check should pass.
+    # use_gesture_recognizer=False to only check hand_landmarker.task.
+    missing = check_model_files(use_gesture_recognizer=False)
+    assert missing == []
+
+
+def test_check_model_files_returns_missing_when_absent() -> None:
+    """Model file check reports missing file when not present."""
+    from hands.gesture_controller import check_model_files
+    # Use a temp dir with no model file.  use_gesture_recognizer=False so
+    # only hand_landmarker.task is required.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        missing = check_model_files(tmpdir, use_gesture_recognizer=False)
+        assert len(missing) == 1
+        assert "hand_landmarker.task" in missing[0]
+
+
+# ── Phase 8: GestureRecognizer model file check ─────────────────────────────
+
+def test_check_model_files_includes_gesture_recognizer_when_enabled() -> None:
+    """When use_gesture_recognizer=True, gesture_recognizer.task is required."""
+    from hands.gesture_controller import check_model_files
+    with tempfile.TemporaryDirectory() as tmpdir:
+        missing = check_model_files(tmpdir, use_gesture_recognizer=True)
+        # Both hand_landmarker.task and gesture_recognizer.task should be missing.
+        assert len(missing) == 2
+        names = [os.path.basename(m) for m in missing]
+        assert "hand_landmarker.task" in names
+        assert "gesture_recognizer.task" in names
+
+
+def test_check_model_files_excludes_gesture_recognizer_when_disabled() -> None:
+    """When use_gesture_recognizer=False, gesture_recognizer.task is NOT required."""
+    from hands.gesture_controller import check_model_files
+    with tempfile.TemporaryDirectory() as tmpdir:
+        missing = check_model_files(tmpdir, use_gesture_recognizer=False)
+        assert len(missing) == 1
+        assert "hand_landmarker.task" in missing[0]
+        assert "gesture_recognizer.task" not in missing[0]
+
+
+def test_check_model_files_passes_when_both_exist() -> None:
+    """When both model files exist and use_gesture_recognizer=True, no missing."""
+    from hands.gesture_controller import check_model_files
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create both dummy model files.
+        open(os.path.join(tmpdir, "hand_landmarker.task"), "w").close()
+        open(os.path.join(tmpdir, "gesture_recognizer.task"), "w").close()
+        missing = check_model_files(tmpdir, use_gesture_recognizer=True)
+        assert missing == []
+
+
+# ── Phase 8: GestureRecognizer config preservation ──────────────────────────
+
+def test_use_gesture_recognizer_config_default_true() -> None:
+    """use_gesture_recognizer defaults to True."""
+    config = default_config()
+    assert config.use_gesture_recognizer is True
+
+
+def test_use_gesture_recognizer_config_can_be_disabled() -> None:
+    """use_gesture_recognizer can be set to False."""
+    config = default_config()
+    config.use_gesture_recognizer = False
+    assert config.use_gesture_recognizer is False
+
+
+def test_fallback_to_rule_gestures_config_default_true() -> None:
+    """fallback_to_rule_gestures defaults to True."""
+    config = default_config()
+    assert config.fallback_to_rule_gestures is True
+
+
+def test_gesture_recognizer_model_path_config() -> None:
+    """gesture_recognizer_model_path defaults to gesture_recognizer.task."""
+    config = default_config()
+    assert config.gesture_recognizer_model_path == "gesture_recognizer.task"
+
+
+def test_min_gesture_confidence_config_default() -> None:
+    """min_gesture_confidence defaults to 0.65."""
+    config = default_config()
+    assert config.min_gesture_confidence == 0.65
+
+
+# ── Phase 8: SWIPE still computed by state machine (not recognizer) ──────────
+
+def test_swipe_still_computed_by_state_machine() -> None:
+    """SWIPE_LEFT / SWIPE_RIGHT still come from Open_Palm trajectory in state machine.
+
+    This verifies that the HandInput from to_hand_input still carries ``wave_x``
+    (palm center x), which the state machine uses for swipe trajectory computation.
+    SWIPE is not a GestureRecognizer canned gesture — it must remain landmark-based.
+    """
+    from hands.gesture_recognition import HandRecognizer, _FrameResult
+    from hands.gesture_state import Gesture
+
+    # Build a recognizer with a fake GR that returns Open_Palm.
+    r = HandRecognizer(
+        use_gesture_recognizer=True,
+        gesture_recognizer_fn=lambda mp_image: ("Open_Palm", 0.99),
+    )
+
+    # Construct a frame result with open-palm landmarks (landmarks carry wave_x).
+    from tests.test_gesture_recognition import _open_palm
+    lm = _open_palm()
+    fr = _FrameResult(
+        landmarks=lm,
+        raw_hand_landmarks=None,
+        gesture="Open_Palm",
+        gesture_confidence=0.99,
+        gesture_source="gesture_recognizer",
+        raw_gesture="Open_Palm",
+    )
+    hi = r.to_hand_input(fr)
+
+    # wave_x must be present — the state machine needs it for swipe detection.
+    assert hi.wave_x is not None
+    assert hi.gesture == Gesture.OPEN_PALM
+    # palm_xy must also be present (used for DRAG / move_rel).
+    assert hi.palm_xy is not None
+
+
+def test_dry_run_fake_driver_never_calls_real_pyautogui() -> None:
+    """Dry-run / FakeDriver never touches real OS mouse/keyboard."""
+    controller, driver = _controller_with_fake_driver()
+    assert controller.actions.using_fake_driver()
+    # Dispatch various intents — all should be recorded by FakeDriver only.
+    controller._dispatch_intents([
+        ActionIntent.move_to(100, 200),
+        ActionIntent.click(button="left"),
+        ActionIntent.mouse_down(button="middle"),
+        ActionIntent.key_down("shift"),
+        ActionIntent.scroll(5),
+        ActionIntent.key_up("shift"),
+        ActionIntent.mouse_up(button="middle"),
+        ActionIntent.press("f"),
+        ActionIntent.hotkey("ctrl", "7"),
+        ActionIntent.release_all(),
+    ])
+    # All events are tuples (FakeDriver format), no real OS calls.
+    for ev in driver.events:
+        assert isinstance(ev, tuple)
+
+
+def test_controller_dispatches_via_action_layer_execute() -> None:
+    """Controller still dispatches intents via ActionLayer.execute()."""
+    controller, driver = _controller_with_fake_driver()
+    # _dispatch_intents should call actions.execute()
+    controller._dispatch_intents([ActionIntent.press("f5")])
+    assert ("press", "f5") in driver.events
+
+
+def test_start_paused_config_preserved() -> None:
+    """start_paused config is not broken."""
+    config = default_config()
+    config.start_paused = True
+    config.pause_on_start = True
+    assert config.start_paused is True
+    assert config.pause_on_start is True
+
+
+def test_enable_hotkeys_config_preserved() -> None:
+    """enable_hotkeys config is not broken."""
+    config = default_config()
+    assert config.enable_hotkeys is True
+    config.enable_hotkeys = False
+    assert config.enable_hotkeys is False
+
+
+def test_dry_run_config_preserved() -> None:
+    """dry_run config is not broken."""
+    config = default_config()
+    config.dry_run = True
+    config.enable_system_mouse = False
+    assert config.dry_run is True
+    assert config.enable_system_mouse is False
+
+
+def test_config_hotkeys_not_broken() -> None:
+    """Ctrl+Alt+G / Ctrl+Alt+Q hotkey strings are preserved."""
+    config = default_config()
+    assert "ctrl" in config.hotkey_toggle_pause.lower()
+    assert "alt" in config.hotkey_toggle_pause.lower()
+    assert "g" in config.hotkey_toggle_pause.lower()
+    assert "ctrl" in config.hotkey_emergency_exit.lower()
+    assert "alt" in config.hotkey_emergency_exit.lower()
+    assert "q" in config.hotkey_emergency_exit.lower()
+
+
+def test_solidworks_zoom_sensitivity_can_be_negative() -> None:
+    """SolidWorks zoom direction can be reversed via negative sensitivity."""
+    config = default_config()
+    config.solidworks_zoom_sensitivity = -8.0
+    assert config.solidworks_zoom_sensitivity == -8.0

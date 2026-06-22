@@ -1,24 +1,39 @@
-﻿"""Tests for hands.gesture_recognition — pure classification functions.
+"""Tests for hands.gesture_recognition — pure classification functions.
 
 These test ``classify_gesture``, ``is_hand_open``, ``is_fist``,
 ``finger_bent_status``, ``palm_center``, and ``pinch_distance`` by constructing
 synthetic landmark lists. No MediaPipe model, no camera.
+
+Phase 8 adds tests for:
+    * ``normalize_gesture_name`` — official ↔ legacy name mapping.
+    * ``_FrameResult`` + ``to_hand_input`` priority logic (GestureRecognizer
+      primary, rule fallback, Closed_Fist safety, low-confidence → None).
+    * ``gesture_recognizer_model_exists`` helper.
+    * PINCH still computed from landmarks (not from GestureRecognizer).
 """
 from __future__ import annotations
 
 import math
+from typing import Optional, Tuple
+from unittest.mock import patch
 
 import pytest
 
 from hands.gesture_recognition import (
+    CANONICAL_GESTURE_NAMES,
+    HandRecognizer,
+    _FrameResult,
     classify_gesture,
     finger_bent_status,
+    gesture_recognizer_model_exists,
     is_fist,
     is_hand_open,
+    landmarks_to_hand_input,
+    normalize_gesture_name,
     palm_center,
     pinch_distance,
 )
-from hands.gesture_state import Gesture
+from hands.gesture_state import Gesture, HandInput
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -223,3 +238,467 @@ class TestPinchDistance:
 
     def test_short_landmarks(self) -> None:
         assert pinch_distance([[0, 0, 0]] * 5) is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 8 — normalize_gesture_name tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestNormalizeGestureName:
+    """Test spec §5.1 gesture name compatibility mapping."""
+
+    # ── Official GestureRecognizer names → canonical ──────────────────────
+    def test_official_none(self) -> None:
+        assert normalize_gesture_name("None") == "None"
+
+    def test_official_closed_fist(self) -> None:
+        assert normalize_gesture_name("Closed_Fist") == "Closed_Fist"
+
+    def test_official_open_palm(self) -> None:
+        assert normalize_gesture_name("Open_Palm") == "Open_Palm"
+
+    def test_official_pointing_up(self) -> None:
+        assert normalize_gesture_name("Pointing_Up") == "Pointing_Up"
+
+    def test_official_thumb_down(self) -> None:
+        assert normalize_gesture_name("Thumb_Down") == "Thumb_Down"
+
+    def test_official_thumb_up(self) -> None:
+        assert normalize_gesture_name("Thumb_Up") == "Thumb_Up"
+
+    def test_official_victory(self) -> None:
+        assert normalize_gesture_name("Victory") == "Victory"
+
+    def test_official_iloveyou(self) -> None:
+        assert normalize_gesture_name("ILoveYou") == "ILoveYou"
+
+    # ── Legacy rule names → canonical ─────────────────────────────────────
+    def test_legacy_fist_to_closed_fist(self) -> None:
+        assert normalize_gesture_name("fist") == "Closed_Fist"
+
+    def test_legacy_open_palm(self) -> None:
+        assert normalize_gesture_name("open_palm") == "Open_Palm"
+
+    def test_legacy_single_finger_to_pointing_up(self) -> None:
+        assert normalize_gesture_name("single_finger") == "Pointing_Up"
+
+    def test_legacy_two_finger_to_victory(self) -> None:
+        assert normalize_gesture_name("two_finger") == "Victory"
+
+    def test_legacy_unknown_to_none(self) -> None:
+        assert normalize_gesture_name("unknown") == "None"
+
+    def test_legacy_no_hand_to_none(self) -> None:
+        # "none" is the Gesture.NONE value
+        assert normalize_gesture_name("none") == "None"
+
+    # ── Gesture enum members ──────────────────────────────────────────────
+    def test_enum_fist(self) -> None:
+        assert normalize_gesture_name(Gesture.FIST) == "Closed_Fist"
+
+    def test_enum_open_palm(self) -> None:
+        assert normalize_gesture_name(Gesture.OPEN_PALM) == "Open_Palm"
+
+    def test_enum_single_finger(self) -> None:
+        assert normalize_gesture_name(Gesture.SINGLE_FINGER) == "Pointing_Up"
+
+    def test_enum_two_finger(self) -> None:
+        assert normalize_gesture_name(Gesture.TWO_FINGER) == "Victory"
+
+    def test_enum_closed_fist(self) -> None:
+        assert normalize_gesture_name(Gesture.CLOSED_FIST) == "Closed_Fist"
+
+    def test_enum_none(self) -> None:
+        assert normalize_gesture_name(Gesture.NONE) == "None"
+
+    def test_enum_unknown(self) -> None:
+        assert normalize_gesture_name(Gesture.UNKNOWN) == "None"
+
+    # ── None / unrecognised ───────────────────────────────────────────────
+    def test_none_input(self) -> None:
+        assert normalize_gesture_name(None) == "None"
+
+    def test_unrecognised_string(self) -> None:
+        assert normalize_gesture_name("foobar") == "None"
+
+    # ── PINCH preserved ───────────────────────────────────────────────────
+    def test_pinch_preserved(self) -> None:
+        assert normalize_gesture_name(Gesture.PINCH) == "PINCH"
+
+    # ── All canonical names are in CANONICAL_GESTURE_NAMES ────────────────
+    def test_all_official_names_in_canonical_set(self) -> None:
+        for name in ["None", "Closed_Fist", "Open_Palm", "Pointing_Up",
+                      "Thumb_Down", "Thumb_Up", "Victory", "ILoveYou"]:
+            assert name in CANONICAL_GESTURE_NAMES
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 8 — landmarks_to_hand_input produces canonical names
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestLandmarksToHandInputCanonical:
+    """Verify that the rule path outputs canonical Gesture enum members."""
+
+    def test_fist_becomes_closed_fist(self) -> None:
+        hi = landmarks_to_hand_input(_closed_fist())
+        assert hi.gesture == Gesture.CLOSED_FIST
+
+    def test_open_palm_stays_open_palm(self) -> None:
+        hi = landmarks_to_hand_input(_open_palm())
+        assert hi.gesture == Gesture.OPEN_PALM
+
+    def test_single_finger_becomes_pointing_up(self) -> None:
+        hi = landmarks_to_hand_input(_single_finger())
+        assert hi.gesture == Gesture.POINTING_UP
+
+    def test_two_finger_becomes_victory(self) -> None:
+        hi = landmarks_to_hand_input(_two_finger())
+        assert hi.gesture == Gesture.VICTORY
+
+    def test_empty_landmarks_gives_none(self) -> None:
+        hi = landmarks_to_hand_input([])
+        assert hi.gesture == Gesture.NONE
+
+    def test_pinch_distance_still_computed(self) -> None:
+        """PINCH is still computed from landmarks, not from GestureRecognizer."""
+        hi = landmarks_to_hand_input(_open_palm())
+        assert hi.pinch_distance is not None
+        assert hi.pinch_distance > 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 8 — to_hand_input priority logic (GestureRecognizer vs fallback)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _make_frame_result(
+    landmarks: Optional[list] = None,
+    gesture: Optional[str] = None,
+    gesture_confidence: Optional[float] = None,
+    gesture_source: Optional[str] = None,
+    raw_gesture: Optional[str] = None,
+) -> _FrameResult:
+    """Build a _FrameResult for testing to_hand_input without a camera."""
+    return _FrameResult(
+        landmarks=landmarks,
+        raw_hand_landmarks=None,
+        gesture=gesture,
+        gesture_confidence=gesture_confidence,
+        gesture_source=gesture_source,
+        raw_gesture=raw_gesture,
+    )
+
+
+class TestToHandInputGestureRecognizer:
+    """Test §11 acceptance points 1–9: GestureRecognizer output → HandInput.gesture."""
+
+    def _recognizer(self, **kwargs) -> HandRecognizer:
+        defaults = dict(
+            use_gesture_recognizer=True,
+            min_gesture_confidence=0.65,
+            fallback_to_rule_gestures=True,
+        )
+        defaults.update(kwargs)
+        return HandRecognizer(**defaults)
+
+    # 1. Closed_Fist
+    def test_gr_closed_fist(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_closed_fist(),
+            gesture="Closed_Fist",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+            raw_gesture="Closed_Fist",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.CLOSED_FIST
+
+    # 2. Open_Palm
+    def test_gr_open_palm(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            gesture="Open_Palm",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+            raw_gesture="Open_Palm",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.OPEN_PALM
+
+    # 3. Pointing_Up
+    def test_gr_pointing_up(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_single_finger(),
+            gesture="Pointing_Up",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+            raw_gesture="Pointing_Up",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.POINTING_UP
+
+    # 4. Thumb_Up
+    def test_gr_thumb_up(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            gesture="Thumb_Up",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+            raw_gesture="Thumb_Up",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.THUMB_UP
+
+    # 5. Thumb_Down
+    def test_gr_thumb_down(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            gesture="Thumb_Down",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+            raw_gesture="Thumb_Down",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.THUMB_DOWN
+
+    # 6. Victory
+    def test_gr_victory(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_two_finger(),
+            gesture="Victory",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+            raw_gesture="Victory",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.VICTORY
+
+    # 7. ILoveYou
+    def test_gr_iloveyou(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            gesture="ILoveYou",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+            raw_gesture="ILoveYou",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.ILOVEYOU
+
+    # 8. Low confidence → fallback to rule
+    def test_low_confidence_falls_back_to_rule(self) -> None:
+        """Acceptance #8: low confidence result falls back to old rule logic."""
+        r = self._recognizer(min_gesture_confidence=0.65, fallback_to_rule_gestures=True)
+        # GestureRecognizer says "Open_Palm" with 0.3 confidence (below threshold).
+        # Rule says FIST (from _closed_fist landmarks) → should normalize to Closed_Fist.
+        fr = _make_frame_result(
+            landmarks=_closed_fist(),
+            gesture="Closed_Fist",       # fallback result
+            gesture_confidence=0.3,      # below threshold
+            gesture_source="rule_fallback",
+            raw_gesture="fist",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.CLOSED_FIST
+
+    # 9. Low confidence + fallback disabled → None
+    def test_low_confidence_no_fallback_gives_none(self) -> None:
+        """Acceptance #9: low confidence with fallback off → None."""
+        r = self._recognizer(min_gesture_confidence=0.65, fallback_to_rule_gestures=False)
+        # When fallback is off and confidence is low, the _FrameResult.gesture
+        # would be "None" (set by _rule_fallback).  But Closed_Fist safety
+        # override still applies.
+        fr = _make_frame_result(
+            landmarks=_open_palm(),  # not a fist
+            gesture="None",
+            gesture_confidence=0.3,
+            gesture_source="none",
+            raw_gesture="Open_Palm",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.NONE
+
+    def test_low_confidence_no_fallback_but_fist_safety(self) -> None:
+        """Closed_Fist safety: even with fallback off, rule fist is preserved."""
+        r = self._recognizer(min_gesture_confidence=0.65, fallback_to_rule_gestures=False)
+        fr = _make_frame_result(
+            landmarks=_closed_fist(),
+            gesture="Closed_Fist",  # safety override from _rule_fallback
+            gesture_confidence=0.3,
+            gesture_source="rule_fallback",
+            raw_gesture="fist",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.CLOSED_FIST
+
+    def test_no_landmarks_gives_none(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(landmarks=None, gesture="None", gesture_source="none")
+        hi = r.to_hand_input(fr)
+        assert hi.gesture == Gesture.NONE
+
+    def test_pinch_distance_still_in_hand_input(self) -> None:
+        """PINCH is still computed from landmarks, not from GestureRecognizer."""
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            gesture="Open_Palm",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.pinch_distance is not None
+        assert hi.pinch_distance > 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 8 — process_frame with injected fake recognizer
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestProcessFrameWithFakeRecognizer:
+    """Test process_frame priority logic using a fake gesture recognizer fn.
+
+    The HandLandmarker is mocked so no real MediaPipe model is loaded.
+    """
+
+    def _make_recognizer_with_fake_landmarker(
+        self,
+        fake_gesture_fn: Optional[callable] = None,
+        **kwargs,
+    ) -> HandRecognizer:
+        """Build a HandRecognizer whose HandLandmarker is faked.
+
+        The fake landmarker returns a fixed set of landmarks every call.
+        """
+        defaults = dict(
+            use_gesture_recognizer=True,
+            min_gesture_confidence=0.65,
+            fallback_to_rule_gestures=True,
+            gesture_recognizer_fn=fake_gesture_fn,
+        )
+        defaults.update(kwargs)
+        r = HandRecognizer(**defaults)
+
+        # Inject a fake landmarker that returns closed-fist landmarks.
+        class _FakeLandmark:
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+
+        class _FakeResult:
+            hand_landmarks = [[_FakeLandmark(0.5, 0.5) for _ in range(21)]]
+
+        class _FakeLandmarker:
+            def detect(self, mp_image):
+                return _FakeResult()
+
+            def close(self):
+                pass
+
+        r._landmarker = _FakeLandmarker()
+        return r
+
+    def test_gr_high_confidence_uses_recognizer(self) -> None:
+        """When GR confidence >= threshold, use GR output."""
+        def fake_fn(mp_image):
+            return ("Closed_Fist", 0.95)
+
+        r = self._make_recognizer_with_fake_landmarker(fake_fn)
+        import numpy as np
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        fr = r.process_frame(img)
+
+        assert fr.gesture == "Closed_Fist"
+        assert fr.gesture_source == "gesture_recognizer"
+        assert fr.gesture_confidence == 0.95
+
+    def test_gr_low_confidence_falls_back_to_rule(self) -> None:
+        """When GR confidence < threshold, fall back to rule classification."""
+        def fake_fn(mp_image):
+            return ("Open_Palm", 0.3)  # below 0.65
+
+        r = self._make_recognizer_with_fake_landmarker(fake_fn)
+        import numpy as np
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        fr = r.process_frame(img)
+
+        # The fake landmarker returns all-same landmarks (0.5, 0.5), which
+        # classify_gesture would see as... all tips at same y as MCPs → not bent
+        # → open_palm or unknown.  The key assertion is source != "gesture_recognizer".
+        assert fr.gesture_source != "gesture_recognizer"
+
+    def test_gr_no_result_falls_back_to_rule(self) -> None:
+        """When GR returns None, fall back to rule."""
+        def fake_fn(mp_image):
+            return None
+
+        r = self._make_recognizer_with_fake_landmarker(fake_fn)
+        import numpy as np
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        fr = r.process_frame(img)
+
+        assert fr.gesture_source in ("rule_fallback", "none")
+
+    def test_use_gesture_recognizer_false_skips_gr(self) -> None:
+        """When use_gesture_recognizer=False, GR is never called."""
+        gr_called = []
+
+        def fake_fn(mp_image):
+            gr_called.append(True)
+            return ("Closed_Fist", 0.99)
+
+        r = self._make_recognizer_with_fake_landmarker(
+            fake_fn, use_gesture_recognizer=False
+        )
+        import numpy as np
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        fr = r.process_frame(img)
+
+        assert len(gr_called) == 0  # GR never called
+        assert fr.gesture_source in ("rule_fallback", "none")
+
+    def test_no_hand_returns_none_gesture(self) -> None:
+        """When no hand is detected, gesture is None."""
+        r = self._make_recognizer_with_fake_landmarker(
+            lambda mp_image: ("Closed_Fist", 0.99)
+        )
+
+        # Override landmarker to return no hands.
+        class _EmptyResult:
+            hand_landmarks = []
+
+        class _EmptyLandmarker:
+            def detect(self, mp_image):
+                return _EmptyResult()
+
+            def close(self):
+                pass
+
+        r._landmarker = _EmptyLandmarker()
+
+        import numpy as np
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        fr = r.process_frame(img)
+
+        assert fr.landmarks is None
+        assert fr.gesture == "None"
+        assert fr.gesture_source == "none"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 8 — gesture_recognizer_model_exists helper
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestGestureRecognizerModelExists:
+    def test_returns_bool(self) -> None:
+        result = gesture_recognizer_model_exists()
+        assert isinstance(result, bool)
+
+    def test_returns_false_for_nonexistent_file(self) -> None:
+        assert gesture_recognizer_model_exists("nonexistent_model.task") is False

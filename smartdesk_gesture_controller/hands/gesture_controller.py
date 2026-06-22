@@ -21,6 +21,7 @@ Safety contract:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any, Optional
 
@@ -39,9 +40,44 @@ from .gesture_status_server import GestureStatusServer
 
 logger = logging.getLogger("hands.controller")
 
+# Model files that must exist in the project root for offline demo.
+_REQUIRED_MODEL_FILES = ("hand_landmarker.task",)
+
+
+def check_model_files(
+    project_root: Optional[str] = None,
+    use_gesture_recognizer: bool = True,
+) -> list:
+    """Check that required model files exist in the project root.
+
+    Returns a list of missing required model file paths (empty if all present).
+    The caller is responsible for printing/logging a clear error; this function
+    only reports missing paths so messages are not duplicated between main()
+    and start().
+
+    Phase 8: when ``use_gesture_recognizer`` is True (the default),
+    ``gesture_recognizer.task`` is also required.  When False, only
+    ``hand_landmarker.task`` is checked.
+    """
+    if project_root is None:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    missing = []
+    for fname in _REQUIRED_MODEL_FILES:
+        path = os.path.join(project_root, fname)
+        if not os.path.exists(path):
+            missing.append(path)
+    if use_gesture_recognizer:
+        gr_path = os.path.join(project_root, "gesture_recognizer.task")
+        if not os.path.exists(gr_path):
+            missing.append(gr_path)
+    return missing
+
 
 class GestureController:
     """Owns the camera, recognizer, state, actions and status server."""
+
+    # Debug window title (kept as a constant so every cv2 call uses the same name).
+    _DEBUG_WINDOW_NAME = "SmartDesk Gesture Control"
 
     def __init__(
         self,
@@ -60,6 +96,10 @@ class GestureController:
             max_num_hands=self.config.max_num_hands,
             min_detection_confidence=self.config.min_detection_confidence,
             min_tracking_confidence=self.config.min_tracking_confidence,
+            use_gesture_recognizer=self.config.use_gesture_recognizer,
+            min_gesture_confidence=self.config.min_gesture_confidence,
+            fallback_to_rule_gestures=self.config.fallback_to_rule_gestures,
+            gesture_recognizer_model_path=self.config.gesture_recognizer_model_path,
         )
         self.actions = actions or ActionLayer(enable_system_mouse=self.config.enable_system_mouse)
         self.state = GestureState(self.config)
@@ -77,12 +117,37 @@ class GestureController:
     # ── public lifecycle ───────────────────────────────────────────────────
     def start(self) -> int:
         """Open resources and enter the frame loop. Returns process exit code."""
+        # ── Pre-flight: check model files exist (spec §5, no network at demo) ──
+        missing = check_model_files(use_gesture_recognizer=self.config.use_gesture_recognizer)
+        if missing:
+            for m in missing:
+                fname = os.path.basename(m)
+                print(f"[Error] Model file not found: {fname}")
+                print(f"        Expected path: {m}")
+                if fname == "gesture_recognizer.task":
+                    print(f"        Place gesture_recognizer.task in the project root,")
+                    print(f"        or set use_gesture_recognizer=False to use rule-based fallback only.")
+                else:
+                    print(f"        Please place the model file in the project root before running the demo.")
+                logger.error("Model file not found: %s", fname)
+            return 3
+
         try:
             self._open_camera()
         except Exception:
             logger.exception("failed to open camera %s", self.config.camera_index)
             self._shutdown()
             return 2
+
+        # Create a resizable debug window with an enlarged initial size so the
+        # user can clearly observe hand landmarks and gesture text (spec §13).
+        if self.config.show_debug_window:
+            import cv2
+
+            cv2.namedWindow(self._DEBUG_WINDOW_NAME, cv2.WINDOW_NORMAL)
+            init_w = int(self.config.camera_width * self.config.debug_window_scale)
+            init_h = int(self.config.camera_height * self.config.debug_window_scale)
+            cv2.resizeWindow(self._DEBUG_WINDOW_NAME, init_w, init_h)
 
         if self.config.status_server_enabled:
             self.status_server = GestureStatusServer(
@@ -164,9 +229,10 @@ class GestureController:
         # Debug window + status broadcast.
         if self.config.show_debug_window:
             self.recognizer.draw(img, frame_result)
-            self._render_debug(img, result, now)
-            cv2.imshow("SmartDesk Gesture Control", img)
-            self._pin_debug_window_once("SmartDesk Gesture Control")
+            self._render_debug(img, result, now, frame_result)
+            display_img = self._scale_for_display(img)
+            cv2.imshow(self._DEBUG_WINDOW_NAME, display_img)
+            self._pin_debug_window_once(self._DEBUG_WINDOW_NAME)
 
         self.status_server_update(
             mode=result.mode,
@@ -178,30 +244,18 @@ class GestureController:
 
     # ── intent dispatch ────────────────────────────────────────────────────
     def _dispatch_intents(self, intents: list) -> None:
-        for intent in intents:
-            self._apply_intent(intent)
+        """Execute all intents via the ActionLayer's unified ``execute`` entry.
+
+        Phase 3: switched from the manual ``_apply_intent`` switch to
+        ``ActionLayer.execute`` so every intent type (move_to, move_rel,
+        scroll, key_down, key_up, click, status, noop …) is handled
+        correctly, not just the legacy subset.
+        """
+        self.actions.execute(intents)
 
     def _apply_intent(self, intent: ActionIntent) -> None:
-        kind = intent.kind
-        if kind == "move":
-            x, y = intent.args
-            self.actions.move_to(x, y)
-        elif kind == "click":
-            self.actions.left_click()
-        elif kind == "mouse_down":
-            x, y = (intent.args + (None, None))[:2]
-            self.actions.mouse_down(x, y)
-        elif kind == "mouse_up":
-            x, y = (intent.args + (None, None))[:2]
-            self.actions.mouse_up(x, y)
-        elif kind == "press":
-            self.actions.press(intent.args[0])
-        elif kind == "hotkey":
-            self.actions.hotkey(*intent.args)
-        elif kind == "release_all":
-            self.actions.release_all()
-        else:  # pragma: no cover - defensive
-            logger.warning("unknown intent kind: %s", kind)
+        """Execute a single intent (kept for backward compat / tests)."""
+        self.actions.execute(intent)
 
     # ── safety helpers ─────────────────────────────────────────────────────
     def _safe_release(self) -> None:
@@ -317,7 +371,23 @@ class GestureController:
         self.stop()
 
     # ── debug rendering ────────────────────────────────────────────────────
-    def _render_debug(self, img, result: StepResult, now: float) -> None:
+    def _scale_for_display(self, img):
+        """Scale the debug image by ``debug_window_scale`` for easier observation.
+
+        Landmarks and text are drawn on the original-resolution image first, then
+        the whole frame is resized.  This keeps the drawing logic unchanged while
+        making everything (including the gesture text) larger on screen.
+        """
+        import cv2
+
+        scale = self.config.debug_window_scale
+        if scale <= 1.0:
+            return img
+        h, w = img.shape[:2]
+        return cv2.resize(img, (int(w * scale), int(h * scale)),
+                          interpolation=cv2.INTER_LINEAR)
+
+    def _render_debug(self, img, result: StepResult, now: float, frame_result=None) -> None:
         import cv2
 
         fps = self._compute_fps(now)
@@ -326,8 +396,85 @@ class GestureController:
         mode_text = f"[{result.mode.upper()}]{' (PAUSED)' if self.state.paused else ''}"
         cv2.putText(img, mode_text, (10, 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        cv2.putText(img, result.note[:60], (10, 90),
+
+        # ── Current recognized gesture (always shown, even when paused) ────
+        di = result.debug_info
+        current_gesture = di.get("current_gesture", "none")
+        gesture_color = (0, 255, 0) if current_gesture != "none" else (120, 120, 120)
+        cv2.putText(img, f"gesture: {current_gesture}", (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, gesture_color, 2)
+
+        cv2.putText(img, result.note[:60], (10, 120),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        # ── Phase 8: gesture recognition source / confidence / raw name ────
+        y_offset = 150
+        if frame_result is not None:
+            source = frame_result.gesture_source or "none"
+            conf = frame_result.gesture_confidence
+            raw = frame_result.raw_gesture
+            if source != "none" or conf is not None or raw is not None:
+                cv2.putText(img, f"src: {source}", (10, y_offset),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 255), 1)
+                y_offset += 20
+                if conf is not None:
+                    cv2.putText(img, f"conf: {conf:.2f}", (10, y_offset),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 255), 1)
+                    y_offset += 20
+                if raw is not None and raw != current_gesture:
+                    cv2.putText(img, f"raw: {raw}", (10, y_offset),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 255), 1)
+                    y_offset += 20
+
+        # ── Phase 6: dry-run calibration info (spec §7) ────────────────────
+        # stable_duration
+        stable = di.get("stable_duration", 0.0)
+        cv2.putText(img, f"stable: {stable:.2f}s", (10, y_offset),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        y_offset += 20
+        # active_continuous_action
+        action = di.get("active_continuous_action", None)
+        if action:
+            cv2.putText(img, f"action: {action}", (10, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
+            y_offset += 20
+        # mouse / middle / shift state
+        flags = []
+        if di.get("is_left_mouse_down"):
+            flags.append("L-down")
+        if di.get("is_middle_mouse_down"):
+            flags.append("M-down")
+        if di.get("is_shift_down"):
+            flags.append("Shift-down")
+        if di.get("is_pinching"):
+            flags.append("Pinch")
+        if flags:
+            cv2.putText(img, " | ".join(flags), (10, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 100, 255), 1)
+            y_offset += 20
+
+        # Extra calibration fields (phase 7: pinch distance, swipe dx/dy, lost time, cooldown).
+        if di.get("pinch_distance") is not None:
+            cv2.putText(img, f"pinch: {di['pinch_distance']:.3f}", (10, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+            y_offset += 20
+        swipe_dx = di.get("swipe_dx", 0.0)
+        swipe_dy = di.get("swipe_dy", 0.0)
+        if swipe_dx or swipe_dy:
+            cv2.putText(img, f"swipe dx/dy: {swipe_dx:.2f}/{swipe_dy:.2f}", (10, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+            y_offset += 20
+        lost_duration = di.get("hand_lost_duration", 0.0)
+        if lost_duration > 0.0:
+            cv2.putText(img, f"lost: {lost_duration:.1f}s", (10, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            y_offset += 20
+        cooldown_until = di.get("cooldown_until", 0.0)
+        if cooldown_until > now:
+            cv2.putText(img, f"cooldown: {max(0.0, cooldown_until - now):.2f}s", (10, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+            y_offset += 20
+
         if not self.config.enable_system_mouse:
             cv2.putText(img, "DRY-RUN (no system mouse)", (10, img.shape[0] - 12),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
@@ -411,12 +558,17 @@ class GestureController:
         print(f"  status server:    {'ws://%s:%s' % (self.config.status_server_host, self.config.status_server_port) if self.status_server else 'off'}")
         print(f"  pause hotkey:     {self.config.hotkey_toggle_pause}")
         print(f"  exit hotkey:      {self.config.hotkey_emergency_exit}")
+        gr_status = "on" if self.config.use_gesture_recognizer else "off (rule fallback)"
+        print(f"  gesture recognizer: {gr_status}")
         if self.config.show_debug_window:
             print(f"  quit via window:  press '{self.config.exit_key}'")
         print("Gestures:")
         print("  presentation: open palm swipe left/right = prev/next, fist = standby")
-        print("  mouse:        single finger = move, pinch = click,")
-        print("                two finger (hold) = drag, fist = exit mode")
+        print("  mouse:        pointing up = move, pinch = click/drag,")
+        print("                victory hold = scroll mode, thumb down = right click,")
+        print("                fist = exit mode")
+        print("  solidworks:   open palm = rotate, victory = pan, pinch = zoom,")
+        print("                thumb up = fit, iloveyou = isometric, fist = exit")
         print("=" * 60)
 
 

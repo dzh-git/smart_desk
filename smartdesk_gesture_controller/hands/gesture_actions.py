@@ -1,4 +1,4 @@
-﻿"""Thin wrapper around pyautogui system control actions.
+"""Thin wrapper around pyautogui system control actions.
 
 Why a wrapper instead of calling ``pyautogui`` directly from the state machine:
     1. Every action is gated by ``enable_system_mouse`` so the controller can
@@ -11,14 +11,28 @@ Why a wrapper instead of calling ``pyautogui`` directly from the state machine:
 The real ``pyautogui`` import is deferred to ``_real_driver()`` so that simply
 importing this module (e.g. in tests on a headless CI) does not trigger
 pyautogui's failsafe / display initialization.
+
+Phase 1 additions (ACTION_INTENT_SPEC.md):
+    * ``execute(intents)`` — unified entry point accepting a single
+      ``ActionIntent``, a list, ``None``, or an empty list.
+    * ``release_all`` now unconditionally releases left/middle/right mouse
+      buttons and shift/ctrl/alt keys (idempotent, always safe).
+    * ``FakeDriver`` gained ``scroll``, ``keyDown``, ``keyUp``, ``moveRel``
+      and an ``events`` list in the spec's tuple format.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+
+from .gesture_state import ActionIntent
 
 logger = logging.getLogger("hands.actions")
+
+# Buttons and modifier keys that release_all always clears.
+_RELEASE_BUTTONS: Tuple[str, ...] = ("left", "middle", "right")
+_RELEASE_KEYS: Tuple[str, ...] = ("shift", "ctrl", "alt")
 
 
 @dataclass
@@ -36,38 +50,85 @@ class _Call:
 
 
 class FakeDriver:
-    """Records every call instead of touching the OS. Used in dry-run + tests."""
+    """Records every call instead of touching the OS. Used in dry-run + tests.
+
+    Two recording surfaces are maintained:
+    * ``calls``  — list of ``_Call`` dataclass instances (backward compat).
+    * ``events`` — list of tuples in the ACTION_INTENT_SPEC §11.1 format, e.g.
+      ``("press", "f5")``, ``("mouse_down", "left")``, ``("release_all",)``.
+    """
 
     def __init__(self) -> None:
         self.calls: List[_Call] = []
+        self.events: List[tuple] = []
 
-    # The methods below mirror the pyautogui surface we actually use.
+    # ── pyautogui-compatible methods ────────────────────────────────────────
     def moveTo(self, *args: Any, **kwargs: Any) -> None:
         self.calls.append(_Call("moveTo", args, kwargs))
+        # Extract x, y from positional or keyword args.
+        x = args[0] if len(args) > 0 else kwargs.get("x", 0)
+        y = args[1] if len(args) > 1 else kwargs.get("y", 0)
+        self.events.append(("move_to", x, y))
+
+    def moveRel(self, *args: Any, **kwargs: Any) -> None:
+        self.calls.append(_Call("moveRel", args, kwargs))
+        dx = args[0] if len(args) > 0 else kwargs.get("dx", 0)
+        dy = args[1] if len(args) > 1 else kwargs.get("dy", 0)
+        self.events.append(("move_rel", dx, dy))
 
     def click(self, *args: Any, **kwargs: Any) -> None:
         self.calls.append(_Call("click", args, kwargs))
+        button = kwargs.get("button", "left")
+        self.events.append(("click", button))
 
     def mouseDown(self, *args: Any, **kwargs: Any) -> None:
         self.calls.append(_Call("mouseDown", args, kwargs))
+        button = kwargs.get("button", "left")
+        self.events.append(("mouse_down", button))
 
     def mouseUp(self, *args: Any, **kwargs: Any) -> None:
         self.calls.append(_Call("mouseUp", args, kwargs))
+        button = kwargs.get("button", "left")
+        self.events.append(("mouse_up", button))
 
     def press(self, *args: Any, **kwargs: Any) -> None:
         self.calls.append(_Call("press", args, kwargs))
+        key = args[0] if args else kwargs.get("key", "")
+        self.events.append(("press", key))
 
     def hotkey(self, *args: Any, **kwargs: Any) -> None:
         self.calls.append(_Call("hotkey", args, kwargs))
+        self.events.append(("hotkey", list(args)))
+
+    def keyDown(self, *args: Any, **kwargs: Any) -> None:
+        self.calls.append(_Call("keyDown", args, kwargs))
+        key = args[0] if args else kwargs.get("key", "")
+        self.events.append(("key_down", key))
+
+    def keyUp(self, *args: Any, **kwargs: Any) -> None:
+        self.calls.append(_Call("keyUp", args, kwargs))
+        key = args[0] if args else kwargs.get("key", "")
+        self.events.append(("key_up", key))
+
+    def scroll(self, *args: Any, **kwargs: Any) -> None:
+        self.calls.append(_Call("scroll", args, kwargs))
+        amount = args[0] if args else kwargs.get("amount", 0)
+        self.events.append(("scroll", amount))
 
     def size(self) -> Tuple[int, int]:  # pyautogui ships this too
         return (1920, 1080)
 
+    # ── convenience ─────────────────────────────────────────────────────────
     def names(self) -> List[str]:
         return [c.name for c in self.calls]
 
     def reset(self) -> None:
         self.calls.clear()
+        self.events.clear()
+
+    def has_event(self, *prefix: Any) -> bool:
+        """True if any event tuple starts with the given prefix."""
+        return any(ev[: len(prefix)] == prefix for ev in self.events)
 
 
 def _real_driver() -> Any:
@@ -81,7 +142,13 @@ def _real_driver() -> Any:
 
 
 class ActionLayer:
-    """All OS-level side effects the gesture controller can perform."""
+    """All OS-level side effects the gesture controller can perform.
+
+    Phase 1: the layer accepts ``ActionIntent`` objects via :meth:`execute`
+    and dispatches them to the appropriate pyautogui / FakeDriver call.
+    Existing positional methods (``move_to``, ``mouse_down`` …) are kept so
+    the unmodified controller continues to work.
+    """
 
     def __init__(
         self,
@@ -92,6 +159,11 @@ class ActionLayer:
         # When system mouse is disabled we always use the fake driver so the
         # recorded calls can still be inspected by tests / status UI.
         self._driver: Any = driver if driver is not None else (FakeDriver() if not enable_system_mouse else None)
+
+        # Track held state for release_all and conflict detection.
+        self._held_buttons: set = set()   # subset of {"left","middle","right"}
+        self._held_keys: set = set()      # subset of {"shift","ctrl","alt",...}
+        # Legacy flag — some external code reads is_left_down directly.
         self._is_left_down: bool = False
 
     # ── driver wiring ───────────────────────────────────────────────────────
@@ -111,9 +183,17 @@ class ActionLayer:
     # ── tracking ────────────────────────────────────────────────────────────
     @property
     def is_left_down(self) -> bool:
-        return self._is_left_down
+        return "left" in self._held_buttons
 
-    # ── actions ─────────────────────────────────────────────────────────────
+    @property
+    def held_buttons(self) -> set:
+        return set(self._held_buttons)
+
+    @property
+    def held_keys(self) -> set:
+        return set(self._held_keys)
+
+    # ── existing positional actions (controller compat) ─────────────────────
     def move_to(self, x: float, y: float) -> None:
         self._apply("moveTo", x, y)
 
@@ -121,17 +201,21 @@ class ActionLayer:
         self._apply("click", button="left")
 
     def mouse_down(self, x: Optional[float] = None, y: Optional[float] = None) -> None:
+        """Legacy left-button mouseDown — controller calls this."""
         kwargs: Dict[str, Any] = {"button": "left"}
         if x is not None and y is not None:
             kwargs["x"], kwargs["y"] = x, y
         self._apply("mouseDown", **kwargs)
+        self._held_buttons.add("left")
         self._is_left_down = True
 
     def mouse_up(self, x: Optional[float] = None, y: Optional[float] = None) -> None:
+        """Legacy left-button mouseUp — controller calls this."""
         kwargs: Dict[str, Any] = {"button": "left"}
         if x is not None and y is not None:
             kwargs["x"], kwargs["y"] = x, y
         self._apply("mouseUp", **kwargs)
+        self._held_buttons.discard("left")
         self._is_left_down = False
 
     def press(self, key: str) -> None:
@@ -140,18 +224,143 @@ class ActionLayer:
     def hotkey(self, *keys: str) -> None:
         self._apply("hotkey", *keys)
 
+    # ── release_all (strengthened per ACTION_INTENT_SPEC §7) ────────────────
     def release_all(self) -> None:
-        """Safety net: ensure no mouse button stays pressed.
+        """Release every mouse button and modifier key that could be held.
 
-        Called on shutdown, on hand-loss timeout, and on any unhandled
-        exception in the main loop. Idempotent.
+        Unconditionally calls ``mouseUp`` for left/middle/right and ``keyUp``
+        for shift/ctrl/alt.  This is deliberately *always* executed — even if
+        our tracking says nothing is held — because the OS may have a stuck
+        button from an external source.  Idempotent: calling twice never
+        raises and never leaves a button held.
         """
-        if self._is_left_down:
+        for button in _RELEASE_BUTTONS:
             try:
-                self._apply("mouseUp", button="left")
+                self._apply("mouseUp", button=button)
             except Exception:  # pragma: no cover - defensive
-                logger.exception("release_all: mouseUp failed")
+                logger.exception("release_all: mouseUp(%s) failed", button)
+        for key in _RELEASE_KEYS:
+            try:
+                self._apply("keyUp", key)
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("release_all: keyUp(%s) failed", key)
+        self._held_buttons.clear()
+        self._held_keys.clear()
+        self._is_left_down = False
+
+    # ── unified execute(intents) entry point ────────────────────────────────
+    def execute(self, intents: Union[None, ActionIntent, Iterable[ActionIntent]]) -> None:
+        """Execute one or more ``ActionIntent`` objects in order.
+
+        Accepts:
+        * ``None``           — no-op.
+        * single ``ActionIntent`` — executed directly.
+        * list of ``ActionIntent`` — executed sequentially.
+        * empty list         — no-op.
+
+        Unknown intent types raise ``ValueError`` (never silently swallowed).
+        """
+        if intents is None:
+            return
+        if isinstance(intents, ActionIntent):
+            intents = [intents]
+        for intent in intents:
+            self._execute_one(intent)
+
+    def _execute_one(self, intent: ActionIntent) -> None:
+        t = intent.type
+
+        # ── No-ops and non-hardware actions ────────────────────────────────
+        if t == "noop":
+            return
+        if t == "status":
+            logger.info("[status] %s", intent.text or "")
+            return
+
+        # ── Keyboard actions ───────────────────────────────────────────────
+        if t == "press":
+            if not intent.key:
+                raise ValueError("press intent requires a non-empty key")
+            self.press(intent.key)
+            return
+        if t == "hotkey":
+            if not intent.keys:
+                raise ValueError("hotkey intent requires a non-empty keys list")
+            self.hotkey(*intent.keys)
+            return
+        if t == "key_down":
+            if not intent.key:
+                raise ValueError("key_down intent requires a non-empty key")
+            self._key_down(intent.key)
+            return
+        if t == "key_up":
+            if not intent.key:
+                raise ValueError("key_up intent requires a non-empty key")
+            self._key_up(intent.key)
+            return
+
+        # ── Mouse actions ──────────────────────────────────────────────────
+        if t in ("move", "move_to"):
+            if intent.x is None or intent.y is None:
+                raise ValueError(f"{t} intent requires x and y")
+            self.move_to(intent.x, intent.y)
+            return
+        if t == "move_rel":
+            if intent.dx is None or intent.dy is None:
+                raise ValueError("move_rel intent requires dx and dy")
+            self._move_rel(intent.dx, intent.dy)
+            return
+        if t == "mouse_down":
+            self._mouse_down_button(intent.button or "left")
+            return
+        if t == "mouse_up":
+            self._mouse_up_button(intent.button or "left")
+            return
+        if t == "click":
+            self._click_button(intent.button or "left")
+            return
+        if t == "scroll":
+            if intent.amount is None:
+                raise ValueError("scroll intent requires amount")
+            self._scroll(intent.amount)
+            return
+
+        # ── Safety ─────────────────────────────────────────────────────────
+        if t == "release_all":
+            self.release_all()
+            return
+
+        raise ValueError(f"unknown ActionIntent type: {t!r}")
+
+    # ── internal: button-aware primitives (used by execute) ─────────────────
+    def _mouse_down_button(self, button: str) -> None:
+        self._apply("mouseDown", button=button)
+        self._held_buttons.add(button)
+        if button == "left":
+            self._is_left_down = True
+
+    def _mouse_up_button(self, button: str) -> None:
+        self._apply("mouseUp", button=button)
+        self._held_buttons.discard(button)
+        if button == "left":
             self._is_left_down = False
+
+    def _click_button(self, button: str) -> None:
+        self._apply("click", button=button)
+
+    def _move_rel(self, dx: float, dy: float) -> None:
+        self._apply("moveRel", dx, dy)
+
+    def _scroll(self, amount: int) -> None:
+        self._apply("scroll", amount)
+
+    def _key_down(self, key: str) -> None:
+        self._apply("keyDown", key)
+        self._held_keys.add(key)
+
+    def _key_up(self, key: str) -> None:
+        self._apply("keyUp", key)
+        self._held_keys.discard(key)
 
     # ── internals ───────────────────────────────────────────────────────────
     def _apply(self, name: str, *args: Any, **kwargs: Any) -> None:

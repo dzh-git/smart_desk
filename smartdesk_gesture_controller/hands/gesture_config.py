@@ -1,13 +1,20 @@
-﻿"""Configuration for the standalone gesture-control process.
+"""Configuration for the standalone gesture-control process.
 
 All tunable parameters live here as a single dataclass so the controller,
 state machine, action layer and status server can be constructed from one
-object. ``default_config()`` returns values ported from ``hands/test2.py``
+object.  ``default_config()`` returns values ported from ``hands/test2.py``
 with the new safety knobs (hand-loss timeout, dry-run mode, status server)
 added on top.
 
 CLI overrides are resolved in ``config_from_args``; the package never reads
 ``sys.argv`` at import time so the modules stay import-safe for unit tests.
+
+Phase 1 (CONFIG_SPEC.md):
+    All spec-mandated parameters are now defined here with defaults.  Legacy
+    field names (``cam_width``, ``wave_threshold``, ``smoothening`` …) are
+    kept as properties that alias the new canonical names, so existing code
+    (controller + state machine) continues to work without modification.
+    New code should prefer the canonical names.
 """
 from __future__ import annotations
 
@@ -16,49 +23,133 @@ from dataclasses import dataclass, field, replace
 from typing import Tuple
 
 
-# Modes are an explicit union so the state machine can validate transitions
-# and the SolidWorks stub can refuse to run until its second phase lands.
+# Modes are an explicit union so the state machine can validate transitions.
+# Phase 2 adds presentation_pen, mouse_scroll and paused per STATE_MACHINE_SPEC.
 MODE_STANDBY = "standby"
 MODE_PRESENTATION = "presentation"
+MODE_PRESENTATION_PEN = "presentation_pen"
 MODE_MOUSE = "mouse"
+MODE_MOUSE_SCROLL = "mouse_scroll"
 MODE_SOLIDWORKS = "solidworks"
-VALID_MODES = (MODE_STANDBY, MODE_PRESENTATION, MODE_MOUSE, MODE_SOLIDWORKS)
+MODE_PAUSED = "paused"
+VALID_MODES = (
+    MODE_STANDBY, MODE_PRESENTATION, MODE_PRESENTATION_PEN,
+    MODE_MOUSE, MODE_MOUSE_SCROLL, MODE_SOLIDWORKS, MODE_PAUSED,
+)
+# Modes that the CLI --mode flag can pre-select (excludes sub-modes & paused).
+CLI_MODES = (MODE_PRESENTATION, MODE_MOUSE, MODE_SOLIDWORKS)
 
 
 @dataclass
 class GestureConfig:
-    """All knobs for one gesture-control process instance."""
+    """All knobs for one gesture-control process instance.
+
+    Fields are grouped by category.  Where a legacy name and a spec name
+    refer to the same concept, the canonical (spec) name is the dataclass
+    field and the legacy name is exposed as a read-only property alias.
+    """
 
     # ── Camera ──────────────────────────────────────────────────────────────
     camera_index: int = 0
-    cam_width: int = 640
-    cam_height: int = 320
-
-    # ── Screen mapping region (camera px → screen px) ───────────────────────
-    # Kept as a margin inside the camera frame so the cursor does not stick
-    # to the very edges, matching the reference implementation.
+    camera_width: int = 640
+    camera_height: int = 480
+    camera_fps: int = 30
+    # Legacy alias kept for controller compat (controller reads cam_width/cam_height).
     map_margin: int = 50
 
-    # ── Timing / cooldowns (seconds unless noted) ───────────────────────────
-    wave_cooldown: float = 1.0          # between two slide gestures
-    wave_threshold: float = 10.0        # min horizontal delta (camera px) to count as a wave
-    drag_cooldown: float = 0.3          # stabilization before entering drag mode
-    fist_exit_cooldown: float = 1.0     # between two fist-exit triggers
-    single_cooldown: float = 0.25       # stabilization before single-finger mouse mode
-    click_cooldown: float = 0.35        # anti-bounce for pinch click
+    # ── Recognizer confidence ───────────────────────────────────────────────
+    min_hand_detection_confidence: float = 0.7
+    min_hand_presence_confidence: float = 0.6
+    min_tracking_confidence: float = 0.5
+    min_gesture_confidence: float = 0.65
+    max_num_hands: int = 1
+
+    # ── GestureRecognizer (Phase 8) ────────────────────────────────────────
+    # When True, the recognition layer loads gesture_recognizer.task and uses
+    # MediaPipe's official canned-gesture classification as the primary source
+    # for static gestures.  Legacy landmark-rule classification is kept as a
+    # fallback (see ``fallback_to_rule_gestures``).
+    use_gesture_recognizer: bool = True
+    gesture_recognizer_model_path: str = "gesture_recognizer.task"
+    fallback_to_rule_gestures: bool = True
+
+    # ── Timing / hold times (seconds) ───────────────────────────────────────
     hand_loss_timeout: float = 1.0      # release mouse + back to standby after this
+    # NOTE: CONFIG_SPEC.md spells this "hand_lost_timeout"; existing code and
+    # tests use "hand_loss_timeout".  We keep the code spelling for compat.
+    start_presentation_hold: float = 1.5
+    enter_mouse_hold: float = 1.0
+    enter_solidworks_hold: float = 1.5
+    exit_mode_hold: float = 0.8
+    pen_mode_hold: float = 0.5
+    erase_hold: float = 0.5
+    right_click_hold: float = 0.5
+    fit_view_hold: float = 0.5
+    isometric_view_hold: float = 0.8
+
+    # ── Cooldowns (seconds) ─────────────────────────────────────────────────
+    page_turn_cooldown: float = 0.8     # between two slide gestures
+    mode_switch_cooldown: float = 1.0
+    click_cooldown: float = 0.35        # anti-bounce for pinch click
+    right_click_cooldown: float = 0.5
+    pen_toggle_cooldown: float = 0.6
+    solidworks_view_cooldown: float = 0.8
+
+    # ── Wave / swipe detection ──────────────────────────────────────────────
+    # camera-px threshold (legacy, used by current state machine)
+    wave_threshold: float = 10.0
+    wave_cooldown: float = 1.0
+    # Normalised thresholds (spec, for future state-machine rewrite)
+    swipe_threshold_x: float = 0.18
+    swipe_threshold_y_limit: float = 0.12
+    swipe_time_window: float = 0.8
+
+    # ── Pinch ───────────────────────────────────────────────────────────────
+    # Legacy: camera-px distance between thumb(4) and index(8) tips.
+    pinch_click_distance: float = 35.0
+    # Spec: normalised landmark distance (0–1).
+    pinch_threshold: float = 0.045
+    pinch_release_threshold: float = 0.065
+    pinch_zoom_deadzone: float = 0.01
 
     # ── Mouse movement ──────────────────────────────────────────────────────
-    smoothening: float = 1.0            # 1 = no extra smoothing (matches reference)
+    smoothening: float = 1.0            # legacy (1 = no extra smoothing)
+    mouse_smoothing: float = 0.35       # spec (0–1, higher = smoother)
+    mouse_speed: float = 1.0
+    mouse_max_step_px: int = 80
     mouse_fps: int = 20                 # throttle pyautogui.moveTo calls
-    pinch_click_distance: float = 35.0  # camera px between thumb tip(4) and index tip(8)
+    drag_cooldown: float = 0.3          # legacy: stabilization before entering drag
+    drag_hold_time: float = 0.35        # spec: pinch hold before drag
+    single_cooldown: float = 0.25       # legacy: stabilization before single-finger mouse
+    click_max_movement_px: int = 25
+    fist_exit_cooldown: float = 1.0     # legacy: between two fist-exit triggers
+
+    # ── Scroll ──────────────────────────────────────────────────────────────
+    scroll_threshold_y: float = 0.08
+    scroll_amount: int = 5
+    scroll_cooldown: float = 0.12
+    invert_scroll: bool = False          # reverse scroll direction globally (mouse_scroll + solidworks zoom)
+
+    # ── SolidWorks ──────────────────────────────────────────────────────────
+    solidworks_drag_sensitivity: float = 1.2
+    solidworks_zoom_sensitivity: float = 8.0
+    solidworks_min_zoom_step: int = 1   # minimum scroll step per pinch delta (avoids amount=0)
+    solidworks_deadzone: float = 0.01
 
     # ── Behavior / safety switches ──────────────────────────────────────────
     initial_mode: str = MODE_STANDBY
     enable_system_mouse: bool = True    # False = dry-run, recognize but never control
+    dry_run: bool = False               # spec alias (if True, enable_system_mouse=False)
     show_debug_window: bool = True      # cv2.imshow window
     debug_window_topmost: bool = True   # win32gui HWND_TOPMOST on Windows
+    debug_window_always_on_top: bool = True
+    debug_window_scale: float = 1.5     # display scale factor (>1 enlarges the debug window for easier observation)
+    show_landmarks: bool = True
+    show_fps: bool = True
+    show_action_log: bool = True
     pause_on_start: bool = True         # begin paused; requires explicit activation
+    start_paused: bool = True           # spec alias for pause_on_start
+    enable_hotkeys: bool = True
     exit_key: str = "q"                 # key inside the cv2 window to quit
 
     # ── Global hotkeys (best-effort via pynput; falls back to cv2-only) ─────
@@ -71,22 +162,58 @@ class GestureConfig:
     status_server_port: int = 8765
     status_broadcast_interval: float = 0.2  # seconds between broadcasts
 
-    # ── MediaPipe Hands ─────────────────────────────────────────────────────
-    max_num_hands: int = 1
-    min_detection_confidence: float = 0.7
-    min_tracking_confidence: float = 0.5
-
     # Derived (filled lazily; not set by argparse)
     screen_size: Tuple[int, int] = field(default=(0, 0))
 
+    # ── Legacy property aliases ─────────────────────────────────────────────
+    @property
+    def cam_width(self) -> int:
+        return self.camera_width
+
+    @cam_width.setter
+    def cam_width(self, value: int) -> None:
+        self.camera_width = value
+
+    @property
+    def cam_height(self) -> int:
+        return self.camera_height
+
+    @cam_height.setter
+    def cam_height(self, value: int) -> None:
+        self.camera_height = value
+
+    @property
+    def min_detection_confidence(self) -> float:
+        """Legacy alias for ``min_hand_detection_confidence`` (controller compat)."""
+        return self.min_hand_detection_confidence
+
+    @min_detection_confidence.setter
+    def min_detection_confidence(self, value: float) -> None:
+        self.min_hand_detection_confidence = value
+
+    @property
+    def hand_lost_timeout(self) -> float:
+        """Spec-canonical alias for ``hand_loss_timeout`` (CONFIG_SPEC spelling).
+
+        The state machine internally prefers ``hand_lost_timeout`` per the
+        spec; existing code/tests that read ``hand_loss_timeout`` keep working
+        because the underlying dataclass field is still ``hand_loss_timeout``.
+        """
+        return self.hand_loss_timeout
+
+    @hand_lost_timeout.setter
+    def hand_lost_timeout(self, value: float) -> None:
+        self.hand_loss_timeout = value
+
+    # ── Derived helpers ─────────────────────────────────────────────────────
     def map_region(self) -> Tuple[int, int, int, int]:
         """Return (x_start, x_end, y_start, y_end) of the screen-mapping box."""
         m = self.map_margin
         return (
             m,
-            max(m + 1, self.cam_width - m),
+            max(m + 1, self.camera_width - m),
             m,
-            max(m + 1, self.cam_height - m),
+            max(m + 1, self.camera_height - m),
         )
 
     @property
@@ -123,7 +250,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--camera", type=int, default=0, help="camera index (default 0)")
     parser.add_argument(
         "--mode",
-        choices=(MODE_PRESENTATION, MODE_MOUSE),
+        choices=CLI_MODES,
         default=MODE_MOUSE,
         help="active control mode on startup after leaving standby (default mouse)",
     )
@@ -157,7 +284,9 @@ def config_from_args(argv: list[str] | None = None) -> GestureConfig:
     config.camera_index = args.camera
     config.initial_mode = args.mode
     config.enable_system_mouse = not args.no_mouse
+    config.dry_run = args.no_mouse
     config.show_debug_window = not args.no_debug
     config.status_server_enabled = not args.no_server
     config.pause_on_start = not args.no_pause_on_start
+    config.start_paused = config.pause_on_start
     return config
