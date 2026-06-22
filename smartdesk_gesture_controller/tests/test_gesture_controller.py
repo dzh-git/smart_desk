@@ -1,4 +1,4 @@
-﻿"""Tests for hands.gesture_controller intent dispatch.
+"""Tests for hands.gesture_controller intent dispatch.
 
 These tests keep the controller at the boundary between pure state intents
 and the ActionLayer. They use FakeDriver so no OS mouse/keyboard events run.
@@ -543,3 +543,162 @@ def test_solidworks_zoom_sensitivity_can_be_negative() -> None:
     config = default_config()
     config.solidworks_zoom_sensitivity = -8.0
     assert config.solidworks_zoom_sensitivity == -8.0
+
+
+# ── Phase 10: keyboard backend + cv2 fallback ───────────────────────────────
+
+def test_keyboard_backend_registers_global_hotkeys(monkeypatch):
+    """keyboard backend registers Ctrl+Alt+G and Ctrl+Alt+Q."""
+    import sys
+
+    registered = []
+
+    def fake_add_hotkey(hotkey, callback):
+        registered.append(hotkey)
+        return f"handle_{hotkey}"
+
+    fake_keyboard = type(
+        "FakeKeyboard",
+        (),
+        {
+            "add_hotkey": staticmethod(fake_add_hotkey),
+            "remove_hotkey": staticmethod(lambda h: None),
+            "unhook_all_hotkeys": staticmethod(lambda: None),
+        },
+    )
+    monkeypatch.setitem(sys.modules, "keyboard", fake_keyboard)
+
+    controller, _ = _controller_with_fake_driver()
+    controller._install_hotkeys()
+
+    assert controller._hotkey_backend == "keyboard"
+    assert "ctrl+alt+g" in registered
+    assert "ctrl+alt+q" in registered
+
+    # Cleanup should clear backend state.
+    controller._uninstall_hotkeys()
+    assert controller._hotkey_backend is None
+
+
+def test_keyboard_backend_registration_failure_still_starts(monkeypatch, caplog):
+    """If keyboard.add_hotkey fails the controller does not crash and prints a warning."""
+    import sys
+
+    def fake_add_hotkey(hotkey, callback):
+        raise RuntimeError("keyboard registration failed")
+
+    fake_keyboard = type(
+        "FakeKeyboard",
+        (),
+        {
+            "add_hotkey": staticmethod(fake_add_hotkey),
+            "remove_hotkey": staticmethod(lambda h: None),
+            "unhook_all_hotkeys": staticmethod(lambda: None),
+        },
+    )
+    monkeypatch.setitem(sys.modules, "keyboard", fake_keyboard)
+
+    # Make pynput unavailable as well so we hit the final fallback path.
+    monkeypatch.setitem(sys.modules, "pynput", None)
+    monkeypatch.setitem(sys.modules, "pynput.keyboard", None)
+
+    controller, _ = _controller_with_fake_driver()
+    controller._install_hotkeys()
+
+    assert controller._hotkey_backend is None
+    assert controller._hotkey_handles == []
+    assert "global hotkeys unavailable" in caplog.text.lower()
+
+
+def test_debug_window_p_key_toggles_pause(monkeypatch):
+    """Pressing 'p' in the cv2 window toggles pause/resume."""
+    import cv2
+
+    controller, _ = _controller_with_fake_driver()
+    controller.config.show_debug_window = True
+    assert controller.state.paused is True
+
+    # Simulate a single 'p' keypress.
+    def fake_waitKey(delay):
+        return ord('p') & 0xFF
+
+    monkeypatch.setattr(cv2, "waitKey", fake_waitKey)
+    controller._handle_debug_keys()
+    assert controller.state.paused is False
+
+    # Pressing 'p' again resumes pause.
+    controller._handle_debug_keys()
+    assert controller.state.paused is True
+
+
+def test_debug_window_space_key_toggles_pause(monkeypatch):
+    """Pressing Space in the cv2 window toggles pause/resume."""
+    import cv2
+
+    controller, _ = _controller_with_fake_driver()
+    controller.config.show_debug_window = True
+    assert controller.state.paused is True
+
+    def fake_waitKey(delay):
+        return 32  # Space
+
+    monkeypatch.setattr(cv2, "waitKey", fake_waitKey)
+    controller._handle_debug_keys()
+    assert controller.state.paused is False
+
+
+def test_debug_window_q_key_quits(monkeypatch):
+    """Pressing 'q' in the cv2 window requests exit."""
+    import cv2
+
+    controller, _ = _controller_with_fake_driver()
+    controller.config.show_debug_window = True
+
+    def fake_waitKey(delay):
+        return ord('q') & 0xFF
+
+    monkeypatch.setattr(cv2, "waitKey", fake_waitKey)
+    assert controller._handle_debug_keys() is True
+
+
+def test_debug_window_esc_key_quits(monkeypatch):
+    """Pressing Esc in the cv2 window requests exit."""
+    import cv2
+
+    controller, _ = _controller_with_fake_driver()
+    controller.config.show_debug_window = True
+
+    def fake_waitKey(delay):
+        return 27  # Esc
+
+    monkeypatch.setattr(cv2, "waitKey", fake_waitKey)
+    assert controller._handle_debug_keys() is True
+
+
+def test_no_mouse_uses_fake_driver():
+    """--no-mouse creates a controller that uses FakeDriver."""
+    from hands.gesture_config import config_from_args
+
+    config = config_from_args(["--no-mouse"])
+    controller = GestureController(config=config)
+    assert controller.config.dry_run is True
+    assert controller.config.enable_system_mouse is False
+    assert controller.actions.using_fake_driver()
+
+
+def test_start_unpaused_argument():
+    """--start-unpaused disables pause_on_start / start_paused."""
+    from hands.gesture_config import config_from_args
+
+    config = config_from_args(["--start-unpaused"])
+    assert config.pause_on_start is False
+    assert config.start_paused is False
+
+
+def test_no_pause_on_start_argument():
+    """--no-pause-on-start still works."""
+    from hands.gesture_config import config_from_args
+
+    config = config_from_args(["--no-pause-on-start"])
+    assert config.pause_on_start is False
+    assert config.start_paused is False

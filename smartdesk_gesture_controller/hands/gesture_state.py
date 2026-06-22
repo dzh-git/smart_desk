@@ -84,6 +84,8 @@ G_PINCH = "PINCH"
 G_UNKNOWN = "unknown"
 
 # Map legacy Gesture enum values → canonical gesture name strings.
+# Phase 9: Thumb_Up / Thumb_Down are normalized to G_NONE (disabled, spec
+# GESTURE_MAPPING_SPEC §3.2 — false-positive risk too high for v1).
 _LEGACY_TO_CANONICAL: Dict[str, str] = {
     Gesture.NONE.value: G_NONE,
     Gesture.FIST.value: G_CLOSED_FIST,
@@ -95,8 +97,8 @@ _LEGACY_TO_CANONICAL: Dict[str, str] = {
     # Spec-canonical values pass through.
     Gesture.CLOSED_FIST.value: G_CLOSED_FIST,
     Gesture.POINTING_UP.value: G_POINTING_UP,
-    Gesture.THUMB_UP.value: G_THUMB_UP,
-    Gesture.THUMB_DOWN.value: G_THUMB_DOWN,
+    Gesture.THUMB_UP.value: G_NONE,       # Phase 9: disabled
+    Gesture.THUMB_DOWN.value: G_NONE,     # Phase 9: disabled
     Gesture.VICTORY.value: G_VICTORY,
     Gesture.ILOVEYOU.value: G_ILOVEYOU,
 }
@@ -355,6 +357,9 @@ class GestureState:
         # trigger release_all (spec §14.2 recommendation).
         self.last_hand_seen: Optional[float] = None
         self.hand_lost_start_time: Optional[float] = None
+        # Edge-trigger latch: ensures a single continuous hand-loss event only
+        # emits the safety release sequence once.  Reset when a hand reappears.
+        self._hand_loss_released: bool = False
 
         # ── Continuous-action state (spec §2.3) ─────────────────────────────
         self.active_continuous_action: Optional[str] = None
@@ -476,7 +481,12 @@ class GestureState:
         if self.paused:
             gname = hand.gesture_name
             if gname != G_NONE:
+                # Treat hand re-detection in pause the same as active mode:
+                # re-arm the hand-loss safety latch so a subsequent loss after
+                # resuming can still emit release_all once.
                 self.last_hand_seen = now
+                self.hand_lost_start_time = None
+                self._hand_loss_released = False
             gesture_desc = "no hand" if gname == G_NONE else gname
             return StepResult(
                 mode=MODE_PAUSED,
@@ -497,6 +507,7 @@ class GestureState:
         # Hand present.
         self.last_hand_seen = now
         self.hand_lost_start_time = None
+        self._hand_loss_released = False
 
         # ── Dispatch by mode ───────────────────────────────────────────────
         if self.mode == MODE_STANDBY:
@@ -505,12 +516,15 @@ class GestureState:
             intents, note = self._step_presentation(hand, now)
         elif self.mode == MODE_PRESENTATION_PEN:
             intents, note = self._step_presentation_pen(hand, now)
-        elif self.mode == MODE_MOUSE:
-            intents, note = self._step_mouse(hand, now)
-        elif self.mode == MODE_MOUSE_SCROLL:
-            intents, note = self._step_mouse_scroll(hand, now)
         elif self.mode == MODE_SOLIDWORKS:
             intents, note = self._step_solidworks(hand, now)
+        elif self.mode in (MODE_MOUSE, MODE_MOUSE_SCROLL):
+            # Phase 9: mouse / mouse_scroll modes are disabled (spec
+            # GESTURE_MAPPING_SPEC §3.2).  If somehow entered, fall back to
+            # standby with release_all.
+            intents = [ActionIntent.release_all()]
+            self._enter_mode(MODE_STANDBY, now)
+            note = f"{self.mode} disabled → standby (Phase 9)"
         else:
             intents, note = [], f"Unknown mode: {self.mode}"
 
@@ -520,55 +534,48 @@ class GestureState:
     # Mode handlers
     # ═══════════════════════════════════════════════════════════════════════
 
-    # ── standby (spec §5) ───────────────────────────────────────────────────
+    # ── standby (spec §5, Phase 9 simplified) ──────────────────────────────
     def _step_standby(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:
+        """Phase 9 standby: ILoveYou swipe switches modes.
+
+        ILoveYou right swipe → presentation (no F5).
+        ILoveYou left swipe  → solidworks.
+        Closed_Fist          → release_all (safety).
+        """
         g = hand.gesture_name
         cfg = self.config
 
-        _STANDBY_STATUS = "Standby: Thumb Up = PPT, Pointing Up = Mouse, I Love You = SolidWorks"
+        _STANDBY_STATUS = "Standby: ILoveYou → Right=PPT, Left=SolidWorks, Fist=Release"
 
         # Closed_Fist → stay in standby, release_all (safety, spec §5.3).
         if g == G_CLOSED_FIST:
             self._reset_continuous_state()
             return [ActionIntent.release_all()], "Standby (fist — released)"
 
-        # Thumb_Up HOLD → presentation (press F5).
-        if g == G_THUMB_UP:
-            if self._hold_triggered(G_THUMB_UP, cfg.start_presentation_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_MODE_SWITCH, now):
-                self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
-                self._enter_mode(MODE_PRESENTATION, now)
-                return [ActionIntent.press("f5")], "Thumb_Up HOLD → presentation (F5)"
-
-        # Pointing_Up HOLD → mouse.
-        if g == G_POINTING_UP:
-            if self._hold_triggered(G_POINTING_UP, cfg.enter_mouse_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_MODE_SWITCH, now):
-                self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
-                self._enter_mode(MODE_MOUSE, now)
-                return [], "Pointing_Up HOLD → mouse"
-
-        # ILoveYou HOLD → solidworks.
+        # ILoveYou swipe → mode switch (spec Phase 9).
         if g == G_ILOVEYOU:
-            if self._hold_triggered(G_ILOVEYOU, cfg.enter_solidworks_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_MODE_SWITCH, now):
-                self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
-                self._enter_mode(MODE_SOLIDWORKS, now)
-                return [], "ILoveYou HOLD → solidworks"
+            return self._detect_iloveyou_swipe(hand, now, from_mode=MODE_STANDBY)
 
-        # Open_Palm, PINCH, etc. → no action in standby (spec §5.4).
-        # Open_Palm must NEVER trigger F5 in standby (spec §9, requirement #2).
+        # Other gestures → no action in standby.
         return [], _STANDBY_STATUS
 
-    # ── presentation (spec §6) ──────────────────────────────────────────────
+    # ── presentation (spec §6, Phase 9 simplified) ─────────────────────────
     _PRESENTATION_STATUS = "Presentation: Open Palm Swipe = Page, Victory = Pen, Fist = Exit"
 
     def _step_presentation(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:
+        """Phase 9 presentation mode.
+
+        Gestures:
+        * Closed_Fist HOLD → standby (Esc + release_all).
+        * Victory HOLD     → presentation_pen (Ctrl+P).
+        * Open_Palm swipe  → page turn (left/right).
+        * ILoveYou swipe   → mode switch (right=standby, left=solidworks).
+        """
         g = hand.gesture_name
         cfg = self.config
 
-        # Clear swipe tracking when not Open_Palm (one-swipe-one-turn reset).
-        if g != G_OPEN_PALM:
+        # Clear swipe tracking when not Open_Palm or ILoveYou.
+        if g not in (G_OPEN_PALM, G_ILOVEYOU):
             self._swipe_history = []
             self._swipe_armed = True
 
@@ -588,20 +595,16 @@ class GestureState:
                 self._enter_mode(MODE_PRESENTATION_PEN, now)
                 return [ActionIntent.hotkey("ctrl", "p")], "Victory HOLD → presentation_pen (Ctrl+P)"
 
-        # Thumb_Down HOLD → erase (press "e").  Stays in presentation.
-        if g == G_THUMB_DOWN:
-            if self._hold_triggered(G_THUMB_DOWN, cfg.erase_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_PEN_TOGGLE, now):
-                self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
-                return [ActionIntent.press("e")], "Thumb_Down HOLD → erase (e)"
-
-        # Thumb_Up HOLD → cancel pen (Ctrl+A).  Stays in presentation.
-        # Thumb_Up must NOT re-trigger F5 in presentation (spec §6.5).
-        if g == G_THUMB_UP:
-            if self._hold_triggered(G_THUMB_UP, cfg.pen_mode_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_PEN_TOGGLE, now):
-                self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
-                return [ActionIntent.hotkey("ctrl", "a")], "Thumb_Up HOLD → cancel pen (Ctrl+A)"
+        # ILoveYou swipe → mode switch (right=standby, left=solidworks).
+        if g == G_ILOVEYOU:
+            result = self._detect_iloveyou_swipe(hand, now, from_mode=MODE_PRESENTATION)
+            # If swipe triggered, mode may have changed.
+            if self.mode == MODE_STANDBY:
+                # Right swipe from presentation → standby: add Esc to exit PPT.
+                intents = list(result[0])
+                intents.insert(0, ActionIntent.press("esc"))
+                return intents, result[1]
+            return result
 
         # Open_Palm swipe → page turn (spec §6.3, §7.1).
         if g == G_OPEN_PALM:
@@ -609,10 +612,18 @@ class GestureState:
 
         return [], self._PRESENTATION_STATUS
 
-    # ── presentation_pen (spec §7) ──────────────────────────────────────────
-    _PEN_STATUS = "Pen Mode: Pointing Up = Move, Pinch = Draw, Thumb Up = Cursor, Fist = Exit"
+    # ── presentation_pen (spec §7, Phase 9 simplified) ─────────────────────
+    _PEN_STATUS = "Pen Mode: Pointing Up = Move, Pinch = Draw, Victory = Exit, Fist = Exit"
 
     def _step_presentation_pen(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:
+        """Phase 9 presentation_pen mode.
+
+        Gestures:
+        * Closed_Fist HOLD → standby (mouse_up + Esc + release_all).
+        * Victory HOLD     → back to presentation (mouse_up + Ctrl+A).
+        * Pointing_Up      → move cursor.
+        * PINCH (hysteresis) → draw (mouse_down/mouse_up).
+        """
         g = hand.gesture_name
         cfg = self.config
         intents: List[ActionIntent] = []
@@ -628,34 +639,22 @@ class GestureState:
                 self._enter_mode(MODE_STANDBY, now)
                 return intents, "Closed_Fist HOLD → standby (Esc + release)"
 
-        # Thumb_Up HOLD → presentation (mouse_up + Ctrl+A).
-        if g == G_THUMB_UP:
-            if self._hold_triggered(G_THUMB_UP, cfg.pen_mode_hold, now) and \
+        # Victory HOLD → back to presentation (mouse_up + Ctrl+A).
+        if g == G_VICTORY:
+            if self._hold_triggered(G_VICTORY, cfg.pen_mode_hold, now) and \
                self._cooldown_ok(_COOLDOWN_PEN_TOGGLE, now):
                 self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
                 if self.is_left_mouse_down:
                     intents.append(ActionIntent.mouse_up(button="left"))
                 intents.append(ActionIntent.hotkey("ctrl", "a"))
                 self._enter_mode(MODE_PRESENTATION, now)
-                return intents, "Thumb_Up HOLD → presentation (Ctrl+A)"
-
-        # Thumb_Down HOLD → erase (press "e").  Stays in presentation_pen.
-        if g == G_THUMB_DOWN:
-            if self._hold_triggered(G_THUMB_DOWN, cfg.erase_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_PEN_TOGGLE, now):
-                self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
-                return [ActionIntent.press("e")], "Thumb_Down HOLD → erase (e)"
+                return intents, "Victory HOLD → presentation (Ctrl+A)"
 
         # ── PINCH draw with hysteresis (spec §7.3, §8) ──────────────────────
-        # PINCH is detected by pinch_distance (not gesture name alone), so we
-        # always check it.  Hysteresis prevents border jitter:
-        #   enter  when pinch_distance < pinch_threshold
-        #   exit   when pinch_distance > pinch_release_threshold
         if hand.pinch_distance is not None:
             self._update_pinch_hysteresis(hand.pinch_distance, intents)
 
         # ── Move pointer (Pointing_Up or while PINCH-drawing) ───────────────
-        # Pointing_Up moves the cursor; during PINCH the cursor follows too.
         if hand.palm_xy is not None:
             mv = self._maybe_move(hand.palm_xy, now)
             if mv is not None:
@@ -777,27 +776,24 @@ class GestureState:
             return intents, "Scroll mode — active"
         return intents, self._MOUSE_SCROLL_STATUS
 
-    # ── solidworks (spec §10) ───────────────────────────────────────────────
+    # ── solidworks (spec §10, Phase 9 simplified) ──────────────────────────
     _SOLIDWORKS_STATUS = (
         "SolidWorks: Open Palm = Rotate, Victory = Pan, Pinch = Zoom, "
-        "Thumb Up = Fit, Fist = Exit"
+        "ILoveYou Swipe = Switch Mode, Fist = Exit"
     )
 
     def _step_solidworks(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:
-        """Phase 5 SolidWorks view-mode handler (spec §10).
+        """Phase 9 SolidWorks view-mode handler (spec §10).
 
         Gestures:
         * Closed_Fist HOLD  → standby (release_all).
-        * Thumb_Up HOLD     → press("f")  — fit view (cooldown-gated).
-        * ILoveYou HOLD     → hotkey("ctrl","7") — isometric (cooldown-gated).
         * Open_Palm + move  → mouse_down("middle") + move_rel — rotate.
         * Victory + move    → key_down("shift") + mouse_down("middle") + move_rel — pan.
         * PINCH             → scroll(+/-amount) — zoom (hysteresis + deadzone).
+        * ILoveYou swipe    → right=presentation, left=standby.
         * Other / None      → end any active rotate/pan.
 
-        Mutual exclusion (spec §10.5): rotate / pan / zoom are exclusive.  When
-        switching, the previous action's buttons are released before starting
-        the new one.
+        Mutual exclusion (spec §10.5): rotate / pan / zoom are exclusive.
         """
         g = hand.gesture_name
         cfg = self.config
@@ -814,29 +810,19 @@ class GestureState:
                 return intents, "Closed_Fist HOLD → standby (release)"
             return intents, "SolidWorks: Closed_Fist (holding)"
 
-        # ── 2. Thumb_Up HOLD → press("f") (fit view) ────────────────────────
-        if g == G_THUMB_UP:
-            if self.active_continuous_action:
-                intents.extend(self._end_solidworks_action())
-            if self._hold_triggered(G_THUMB_UP, cfg.fit_view_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_SOLIDWORKS_VIEW, now):
-                self._set_cooldown(_COOLDOWN_SOLIDWORKS_VIEW,
-                                   cfg.solidworks_view_cooldown, now)
-                intents.append(ActionIntent.press("f"))
-            return intents, "SolidWorks: Thumb_Up (fit)"
-
-        # ── 3. ILoveYou HOLD → hotkey("ctrl","7") (isometric) ───────────────
+        # ── 2. ILoveYou swipe → mode switch ─────────────────────────────────
         if g == G_ILOVEYOU:
             if self.active_continuous_action:
                 intents.extend(self._end_solidworks_action())
-            if self._hold_triggered(G_ILOVEYOU, cfg.isometric_view_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_SOLIDWORKS_VIEW, now):
-                self._set_cooldown(_COOLDOWN_SOLIDWORKS_VIEW,
-                                   cfg.solidworks_view_cooldown, now)
-                intents.append(ActionIntent.hotkey("ctrl", "7"))
-            return intents, "SolidWorks: ILoveYou (isometric)"
+            result = self._detect_iloveyou_swipe(hand, now, from_mode=MODE_SOLIDWORKS)
+            if self.mode != MODE_SOLIDWORKS:
+                # Mode changed — add release_all for safety.
+                intents.extend(result[0])
+                intents.append(ActionIntent.release_all())
+                return intents, result[1]
+            return result
 
-        # ── 4. Open_Palm → rotate (mouse_down middle + move_rel) ───────────
+        # ── 3. Open_Palm → rotate (mouse_down middle + move_rel) ───────────
         if g == G_OPEN_PALM:
             # Switch from pan to rotate: release shift + middle first.
             if self.active_continuous_action == "solidworks_pan":
@@ -851,7 +837,7 @@ class GestureState:
                     intents.append(mv)
             return intents, "SolidWorks: Open_Palm (rotate)"
 
-        # ── 5. Victory → pan (key_down shift + mouse_down middle + move_rel)
+        # ── 4. Victory → pan (key_down shift + mouse_down middle + move_rel)
         if g == G_VICTORY:
             # Switch from rotate to pan: release middle first.
             if self.active_continuous_action == "solidworks_rotate":
@@ -866,7 +852,7 @@ class GestureState:
                     intents.append(mv)
             return intents, "SolidWorks: Victory (pan)"
 
-        # ── 6. PINCH → zoom (scroll) ────────────────────────────────────────
+        # ── 5. PINCH → zoom (scroll) ────────────────────────────────────────
         if g == G_PINCH and hand.pinch_distance is not None:
             # End any active rotate/pan before zooming (spec §10.5).
             if self.active_continuous_action in ("solidworks_rotate",
@@ -876,7 +862,7 @@ class GestureState:
             intents.extend(zoom_intents)
             return intents, "SolidWorks: PINCH (zoom)"
 
-        # ── 7. Other gestures — end any active action ──────────────────────
+        # ── 6. Other gestures — end any active action ──────────────────────
         if self.active_continuous_action:
             intents.extend(self._end_solidworks_action())
 
@@ -1119,6 +1105,14 @@ class GestureState:
         if elapsed < timeout:
             return [], "No hand detected (within grace)"
 
+        # Timeout exceeded → release everything once per continuous hand-loss
+        # event.  The latch prevents repeated release_all on every subsequent
+        # no-hand frame, which would otherwise synchronously block the frame
+        # loop via ActionLayer.release_all()'s unconditional mouse/key releases.
+        if self._hand_loss_released:
+            return [], "Hand lost timeout (already released)"
+        self._hand_loss_released = True
+
         # Timeout exceeded → release everything.
         intents: List[ActionIntent] = []
         # presentation_pen must release left mouse on hand-loss (spec §7.3).
@@ -1154,6 +1148,9 @@ class GestureState:
         if self.is_left_mouse_down or self.is_middle_mouse_down or self.is_shift_down or \
            self.is_single_mouse_active or self.active_continuous_action:
             intents.append(ActionIntent.release_all())
+        # Mark the safety release as done for the current hand-loss period so
+        # the next no-hand frame does not duplicate the release.
+        self._hand_loss_released = True
         self._reset_continuous_state()
         return intents
 
@@ -1228,6 +1225,113 @@ class GestureState:
                     intents.append(ActionIntent.mouse_up(button="left"))
                     self.is_left_mouse_down = False
                     self.active_continuous_action = None
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 9: ILoveYou swipe — unified mode switching (spec GESTURE_MAPPING_SPEC §5)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _detect_iloveyou_swipe(
+        self, hand: HandInput, now: float, *, from_mode: str
+    ) -> Tuple[List[ActionIntent], str]:
+        """ILoveYou left/right swipe for unified mode switching.
+
+        Right swipe → presentation (press F5).
+        Left swipe  → solidworks.
+
+        Uses the same time-window trajectory approach as presentation swipe:
+        records (time, x, y) into ``_swipe_history``, prunes entries older
+        than ``swipe_time_window``, and triggers when |dx| exceeds
+        ``iloveyou_swipe_threshold_x`` with |dy| under
+        ``swipe_threshold_y_limit``.
+
+        One-swipe-one-turn: after a trigger the swipe is disarmed until the
+        hand returns near the start position.
+        """
+        cfg = self.config
+        intents: List[ActionIntent] = []
+
+        x = hand.wave_x if hand.wave_x is not None else (
+            hand.palm_xy[0] if hand.palm_xy is not None else None
+        )
+        y = hand.palm_xy[1] if hand.palm_xy is not None else None
+        if x is None:
+            return intents, f"{from_mode} (ILoveYou — no position)"
+
+        self._swipe_history.append((now, x, y if y is not None else 0.0))
+
+        # Prune entries older than swipe_time_window.
+        window = cfg.swipe_time_window
+        while self._swipe_history and self._swipe_history[0][0] < now - window:
+            self._swipe_history.pop(0)
+
+        if len(self._swipe_history) < 2:
+            return intents, f"{from_mode} (ILoveYou — collecting)"
+
+        oldest = self._swipe_history[0]
+        latest = self._swipe_history[-1]
+        dx = latest[1] - oldest[1]
+        dy = latest[2] - oldest[2]
+
+        # Determine thresholds (normalized 0–1 vs camera px).
+        if x > 1.0:
+            threshold = cfg.iloveyou_swipe_threshold_x * cfg.camera_width
+            y_limit = cfg.swipe_threshold_y_limit * cfg.camera_width
+        else:
+            threshold = cfg.iloveyou_swipe_threshold_x
+            y_limit = cfg.swipe_threshold_y_limit
+
+        # Cooldown check.
+        if not self._cooldown_ok(_COOLDOWN_MODE_SWITCH, now):
+            if not self._swipe_armed and abs(dx) < threshold * 0.5:
+                self._swipe_armed = True
+            return intents, f"{from_mode} (ILoveYou — cooldown)"
+
+        # Y-limit check.
+        if y is not None and abs(dy) > y_limit:
+            if not self._swipe_armed and abs(dx) < threshold * 0.5:
+                self._swipe_armed = True
+            return intents, f"{from_mode} (ILoveYou — y too large)"
+
+        # Swipe trigger — only when armed.
+        if self._swipe_armed and abs(dx) > threshold:
+            self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
+            self._swipe_armed = False
+
+            # Direction depends on current mode (Phase 9 spec):
+            # standby:      right→presentation, left→solidworks
+            # presentation: right→standby,     left→solidworks
+            # solidworks:   right→presentation, left→standby
+            #
+            # No F5 is sent on entering presentation — PPT is expected to
+            # already be in slideshow mode.  The state machine only tracks
+            # mode; launching the slideshow is the user's responsibility.
+            if from_mode == MODE_STANDBY:
+                if dx > threshold:
+                    self._enter_mode(MODE_PRESENTATION, now)
+                    return [], "ILoveYou right swipe → presentation"
+                else:
+                    self._enter_mode(MODE_SOLIDWORKS, now)
+                    return [], "ILoveYou left swipe → solidworks"
+            elif from_mode == MODE_PRESENTATION:
+                if dx > threshold:
+                    self._enter_mode(MODE_STANDBY, now)
+                    return [ActionIntent.release_all()], "ILoveYou right swipe → standby"
+                else:
+                    self._enter_mode(MODE_SOLIDWORKS, now)
+                    return [ActionIntent.release_all()], "ILoveYou left swipe → solidworks"
+            else:  # solidworks
+                if dx > threshold:
+                    self._enter_mode(MODE_PRESENTATION, now)
+                    return [], "ILoveYou right swipe → presentation"
+                else:
+                    self._enter_mode(MODE_STANDBY, now)
+                    return [ActionIntent.release_all()], "ILoveYou left swipe → standby"
+
+        # Re-arm when hand returns near start.
+        if not self._swipe_armed and abs(dx) < threshold * 0.5:
+            self._swipe_armed = True
+
+        return intents, f"{from_mode} (ILoveYou — swipe detected: dx={dx:.1f})"
 
     # ═══════════════════════════════════════════════════════════════════════
     # Legacy behaviour helpers (preserved from phase 1)
@@ -1681,6 +1785,7 @@ class GestureState:
         return {
             "mode": self.mode,
             "current_gesture": hand.gesture_name,
+            "raw_gesture": hand.gesture_value,
             "stable_duration": round(self.gesture_stable_duration, 3),
             "last_gesture": self.last_gesture,
             "is_left_mouse_down": self.is_left_mouse_down,

@@ -98,7 +98,8 @@ mediapipe
 opencv-python
 pyautogui
 pywin32
-pynput
+keyboard
+pynput（可选，keyboard 失败时的兼容兜底）
 websockets
 pytest
 ```
@@ -275,7 +276,7 @@ paused 或 standby
 方式一：从 standby 通过手势进入。
 
 ```text
-Thumb_Up 保持 1.5 秒
+ILoveYou 右滑
 ```
 
 方式二：命令行直接进入 presentation。
@@ -286,15 +287,11 @@ python -m hands.gesture_controller --mode presentation
 
 ---
 
-### 5.4 鼠标模式启动
+### 5.4 鼠标模式启动（已废弃）
 
-方式一：从 standby 通过手势进入。
+> 第一版简化演示中禁用 mouse / mouse_scroll 模式。
 
-```text
-Pointing_Up 保持 1.0 秒
-```
-
-方式二：命令行直接进入 mouse。
+方式二（命令行仍可用，但不推荐演示）：
 
 ```powershell
 python -m hands.gesture_controller --mode mouse
@@ -307,7 +304,7 @@ python -m hands.gesture_controller --mode mouse
 方式一：从 standby 通过手势进入。
 
 ```text
-ILoveYou 保持 1.5 秒
+ILoveYou 左滑
 ```
 
 方式二：命令行直接进入 solidworks。
@@ -363,6 +360,17 @@ python -m hands.gesture_controller
 pause
 ```
 
+启动时终端会显示当前热键后端，例如：
+
+```text
+hotkey backend: keyboard
+  pause/resume: ctrl+alt+g
+  emergency exit: ctrl+alt+q
+```
+
+如果显示 `Global hotkeys could not be installed`，说明 keyboard 库注册失败；
+仍可点击调试窗口后按 `p` 或 `Space` 暂停/恢复，按 `q` 或 `Esc` 退出。
+
 Dry-run 版本可以新增：
 
 ```bat
@@ -402,18 +410,18 @@ Ctrl+Alt+Q 可退出
 
 ### 7.2 手势识别检查
 
-使用 dry-run 模式检查以下手势：
+使用 dry-run 模式检查以下**6 个稳定手势**：
 
 ```text
 Closed_Fist
 Open_Palm
 Pointing_Up
-Thumb_Up
-Thumb_Down
 Victory
 ILoveYou
 PINCH
 ```
+
+注意：第一版不再使用 Thumb_Up / Thumb_Down 触发动作，dry-run 中可选择检测但不做动作映射。
 
 每个手势至少确认：
 
@@ -434,8 +442,10 @@ PINCH
 SolidWorks 平移时手离开摄像头，Shift 和中键能释放
 PPT 画笔画线时手离开摄像头，左键能释放
 Closed_Fist 可以退出当前模式
-Ctrl+Alt+G 可以暂停
+Ctrl+Alt+G 可以暂停（keyboard 全局热键）
 Ctrl+Alt+Q 可以退出
+如果 Ctrl+Alt+G 无效，点击调试窗口后按 p / Space 暂停/恢复
+仍无效时用 --start-unpaused 测试
 ```
 
 ---
@@ -455,14 +465,13 @@ Ctrl+Alt+Q 可以退出
 
 | 功能   | 手势                     |
 | ---- | ---------------------- |
-| 开始演示 | `Thumb_Up` 保持 1.5 秒    |
+| 进入演示 | `ILoveYou` 右滑         |
 | 下一页  | `Open_Palm` 向右挥        |
 | 上一页  | `Open_Palm` 向左挥        |
 | 进入画笔 | `Victory` 保持 0.5 秒     |
 | 移动画笔 | `Pointing_Up` 移动       |
 | 画线   | `PINCH` 并移动            |
-| 擦除画笔 | `Thumb_Down` 保持 0.5 秒  |
-| 取消画笔 | `Thumb_Up` 保持 0.5 秒    |
+| 退出画笔 | `Victory` 保持 0.5 秒     |
 | 退出演示 | `Closed_Fist` 保持 0.8 秒 |
 
 ### 8.3 注意事项
@@ -472,21 +481,19 @@ Ctrl+Alt+Q 可以退出
 一次挥手后等待页面变化，不要连续快速挥。
 画笔模式下，先确认 Pointing_Up 能移动光标，再 PINCH 画线。
 退出演示时使用 Closed_Fist，不要直接关闭程序。
+第一版不再提供手势擦除（原 Thumb_Down 擦除已废弃）。
 ```
 
 ---
 
-## 9. 鼠标模式操作说明
+## 9. 鼠标模式操作说明（已废弃）
 
-### 9.1 进入鼠标模式
+> **Deprecated / Disabled in simplified demo version**
+>
+> 由于当前演示重点是 PPT 和 SolidWorks，且鼠标模式会增加误触和调试成本，
+> 简化版本暂时禁用 mouse / mouse_scroll。
 
-从 standby：
-
-```text
-Pointing_Up 保持 1.0 秒
-```
-
-### 9.2 操作手势
+原操作手势（保留为后续版本参考）：
 
 | 功能     | 手势                     |
 | ------ | ---------------------- |
@@ -498,14 +505,6 @@ Pointing_Up 保持 1.0 秒
 | 滚轮     | `Victory` 上下移动         |
 | 右键     | `Thumb_Down` 保持 0.5 秒  |
 | 退出鼠标模式 | `Closed_Fist` 保持 0.8 秒 |
-
-### 9.3 注意事项
-
-```text
-鼠标模式比 PPT 模式更容易误操作。
-调试时建议先使用 --no-mouse。
-如果鼠标不受控，立即按 Ctrl+Alt+G 暂停或 Ctrl+Alt+Q 退出。
-```
 
 ---
 
@@ -524,7 +523,7 @@ Pointing_Up 保持 1.0 秒
 ### 10.2 进入 SolidWorks 模式
 
 ```text
-ILoveYou 保持 1.5 秒
+ILoveYou 左滑
 ```
 
 ### 10.3 操作手势
@@ -534,9 +533,15 @@ ILoveYou 保持 1.5 秒
 | 旋转模型   | `Open_Palm` 移动         |
 | 平移模型   | `Victory` 移动           |
 | 缩放模型   | `PINCH` 距离变化           |
-| 缩放全部拟合 | `Thumb_Up` 保持 0.5 秒    |
-| 等轴测视图  | `ILoveYou` 保持 0.8 秒    |
+| 模式切换   | `ILoveYou` 右滑/左滑     |
 | 退出模式   | `Closed_Fist` 保持 0.8 秒 |
+
+说明：
+
+```text
+缩放全部拟合暂时不通过手势触发，可使用键盘 F 或 SolidWorks 自身快捷操作。
+等轴测视图暂时不通过手势触发，可使用键盘快捷键。
+```
 
 ### 10.4 注意事项
 
@@ -561,10 +566,9 @@ Open_Palm 用于旋转，Victory 用于平移，两者不要混用。
 3. 手势识别置信度
 4. PINCH 阈值
 5. 挥手阈值
-6. 鼠标平滑和速度
-7. 滚轮阈值
-8. SolidWorks 灵敏度
-9. 手丢失超时时间
+6. SolidWorks 灵敏度
+7. 手丢失超时时间
+8. ILoveYou 滑动参数
 ```
 
 ---
@@ -659,7 +663,9 @@ pinch_release_threshold 必须大于 pinch_threshold
 
 ---
 
-### 11.5 鼠标标定
+### 11.5 鼠标标定（已废弃）
+
+> mouse 模式在第一版简化演示中已禁用，此节保留为后续版本参考。
 
 参数：
 
@@ -670,35 +676,15 @@ mouse_max_step_px = 80      # 单帧最大移动像素，防跳
 drag_hold_time = 0.35       # PINCH 长按变拖拽的时间（秒）
 click_max_movement_px = 25  # 短按允许的最大移动像素
 click_cooldown = 0.25       # 点击冷却（秒）
-right_click_hold = 0.5      # 右键 HOLD 时间
-right_click_cooldown = 0.5  # 右键冷却
-```
-
-如果鼠标抖动：
-
-```text
-优先调大 mouse_smoothing（如 0.5）
-调小 mouse_speed（如 0.7）
-调小 mouse_max_step_px（如 40）
-```
-
-如果鼠标跟手慢：
-
-```text
-调小 mouse_smoothing（如 0.15）
-调大 mouse_speed（如 1.5）
-```
-
-如果短按容易变拖拽：
-
-```text
-调大 drag_hold_time（如 0.5）
-调大 click_max_movement_px
+right_click_hold = 0.5      # 右键 HOLD 时间（已废弃）
+right_click_cooldown = 0.5  # 右键冷却（已废弃）
 ```
 
 ---
 
-### 11.6 滚轮标定
+### 11.6 滚轮标定（已废弃）
+
+> mouse_scroll 模式在第一版简化演示中已禁用，此节保留为后续版本参考。SolidWorks 的 PINCH 缩放不受影响。
 
 参数：
 
@@ -708,29 +694,6 @@ scroll_amount = 5           # 每次滚轮步长
 scroll_cooldown = 0.12      # 滚轮冷却（秒）
 invert_scroll = False       # 全局反转滚动方向（mouse_scroll + SolidWorks 缩放）
 ```
-
-方向说明：
-
-```text
-手向上移动 = scroll(+amount) = 向上滚动 / 放大视图方向
-手向下移动 = scroll(-amount) = 向下滚动
-```
-
-如果滚轮太灵敏：
-
-```text
-调大 scroll_threshold_y
-调大 scroll_cooldown
-调小 scroll_amount
-```
-
-如果滚动方向相反：
-
-```text
-将 invert_scroll 设为 True（集中控制方向，不要散落修改 scroll 逻辑）
-```
-
----
 
 ### 11.7 SolidWorks 标定
 
@@ -742,9 +705,7 @@ solidworks_zoom_sensitivity = 8.0    # 缩放灵敏度
 solidworks_min_zoom_step = 1         # 缩放最小滚轮步长（避免 amount=0 没反应）
 solidworks_deadzone = 0.01           # 旋转/平移死区（归一化）
 pinch_zoom_deadzone = 0.01           # PINCH 缩放死区
-solidworks_view_cooldown = 0.8       # 视图快捷键冷却
-fit_view_hold = 0.5                  # Thumb_Up 拟合 HOLD 时间
-isometric_view_hold = 0.8            # ILoveYou 等轴测 HOLD 时间
+solidworks_view_cooldown = 0.8       # 视图快捷键冷却（保留供后续扩展）
 ```
 
 如果模型旋转太慢：
@@ -833,7 +794,7 @@ dry-run 模式下调试窗口显示以下信息，用于现场标定：
 
 ```text
 FPS              — 当前帧率
-[MODE]           — 当前模式（standby/presentation/mouse/solidworks 等）
+[MODE]           — 当前模式（standby/presentation/solidworks 等）
 gesture          — 当前识别到的手势名称
 note             — 状态提示文本
 src              — 手势识别来源（gesture_recognizer / rule_fallback / none）
@@ -850,6 +811,8 @@ lost             — 手丢失持续时间
 cooldown         — 冷却剩余时间
 DRY-RUN          — 提示不控制真实鼠标
 ```
+
+重点检测 6 个稳定手势：Closed_Fist、Open_Palm、Pointing_Up、Victory、ILoveYou、PINCH。
 
 通过 `src` 字段可以判断当前手势是来自 GestureRecognizer（更稳定）还是旧规则兜底。如果 `src` 长期显示 `rule_fallback`，说明 GestureRecognizer 置信度偏低，可能需要调整 `min_gesture_confidence` 或检查光照条件。
 
@@ -946,11 +909,12 @@ DRY-RUN          — 提示不控制真实鼠标
 处理：
 
 ```text
-1. 立即按 Ctrl+Alt+G 暂停
-2. 如果仍未释放，按 Ctrl+Alt+Q 退出
-3. 手动点击鼠标左键/中键释放
-4. 检查 release_all 是否包含 left/middle/right
-5. 检查手丢失是否触发 release_all
+1. 立即按 Ctrl+Alt+G 暂停（keyboard 全局热键）
+2. 如果 Ctrl+Alt+G 无效，点击调试窗口后按 p / Space 暂停
+3. 如果仍未释放，按 Ctrl+Alt+Q 退出
+4. 手动点击鼠标左键/中键释放
+5. 检查 release_all 是否包含 left/middle/right
+6. 检查手丢失是否触发 release_all
 ```
 
 ---
@@ -961,10 +925,11 @@ DRY-RUN          — 提示不控制真实鼠标
 
 ```text
 1. 做 Closed_Fist 退出模式
-2. 按 Ctrl+Alt+G 暂停
-3. 按 Ctrl+Alt+Q 退出
-4. 检查 mouse_up("middle") 是否执行
-5. 检查 Open_Palm 结束条件是否正确
+2. 按 Ctrl+Alt+G 暂停（keyboard 全局热键）
+3. 如果 Ctrl+Alt+G 无效，点击调试窗口后按 p / Space 暂停
+4. 按 Ctrl+Alt+Q 退出
+5. 检查 mouse_up("middle") 是否执行
+6. 检查 Open_Palm 结束条件是否正确
 ```
 
 ---
@@ -988,6 +953,36 @@ Shift 没有释放
 
 ---
 
+### 12.8 全局热键 Ctrl+Alt+G 无效
+
+现象：
+
+```text
+程序启动后按 Ctrl+Alt+G 没有反应
+```
+
+原因：
+
+```text
+1. keyboard 库未安装
+2. 某些 Windows 环境禁止全局热键注册
+3. 其他软件已占用相同快捷键
+```
+
+处理：
+
+```text
+1. 先点击调试窗口，使其获得焦点
+2. 按 p 或 Space 暂停/恢复
+3. 按 q 或 Esc 退出
+4. 仍无效时，用 --start-unpaused 参数启动：
+   python -m hands.gesture_controller --start-unpaused
+5. 确认 requirements.txt 中的 keyboard 已安装
+6. 如需重新启用旧 pynput 后端，确保 pynput 已安装且 keyboard 不存在
+```
+
+---
+
 ## 14. 日志检查
 
 建议日志至少包含：
@@ -1006,7 +1001,7 @@ FPS
 示例：
 
 ```text
-[12:01:05] mode=standby gesture=Thumb_Up stable=1.50 action=press:f5
+[12:01:05] mode=standby gesture=ILoveYou action=switch:presentation reason=swipe_right
 [12:01:07] mode=presentation gesture=Open_Palm action=press:right
 [12:01:15] mode=solidworks action=mouse_down:middle reason=rotate_begin
 [12:01:20] mode=solidworks action=release_all reason=fist_exit
@@ -1020,13 +1015,15 @@ FPS
 
 ```text
 1. 先展示 dry-run 模式，说明系统能识别手势但不控制电脑
-2. 展示 PPT：开始、翻页、画笔、擦除、退出
-3. 展示鼠标：移动、点击、拖拽、滚轮
-4. 展示 SolidWorks：旋转、平移、缩放、适配视图
-5. 展示安全机制：Closed_Fist、Ctrl+Alt+G、Ctrl+Alt+Q
+2. 重点检测 6 个稳定手势：Closed_Fist、Open_Palm、Pointing_Up、Victory、ILoveYou、PINCH
+3. 重点检测：ILoveYou 左右滑是否稳定、Open_Palm 左右挥是否稳定、Victory HOLD 是否稳定、PINCH 是否稳定
+4. 展示 PPT：ILoveYou 右滑进入、翻页、Victory 进入画笔、PINCH 画线、Victory 退出画笔
+5. 展示 SolidWorks：ILoveYou 左滑进入、Open_Palm 旋转、Victory 平移、PINCH 缩放
+6. 展示模式切换：ILoveYou 左右滑在 standby / presentation / solidworks 之间切换
+7. 展示安全机制：Closed_Fist、Ctrl+Alt+G、Ctrl+Alt+Q
 ```
 
-不要一开始就演示 SolidWorks，因为它对鼠标中键和 Shift 依赖更强，风险更高。
+第一版不再演示 mouse / mouse_scroll 模式。
 
 ---
 
@@ -1064,18 +1061,23 @@ release_all 必须在退出前执行
 [ ] Python 环境可用
 [ ] 依赖已安装
 [ ] dry-run 模式可启动
-[ ] Closed_Fist 可识别
-[ ] Thumb_Up 可识别
+[ ] Closed_Fist 可识别（可靠退出）
 [ ] Open_Palm 可识别
 [ ] Victory 可识别
+[ ] ILoveYou 可识别
 [ ] PINCH 可识别
-[ ] Ctrl+Alt+G 可暂停
+[ ] ILoveYou 左右滑稳定
+[ ] Ctrl+Alt+G 可暂停（keyboard 全局热键）
 [ ] Ctrl+Alt+Q 可退出
+[ ] Ctrl+Alt+G 无效时，p / Space 可暂停/恢复
+[ ] 仍无效时，--start-unpaused 可启动测试
 [ ] PPT 已打开
 [ ] SolidWorks 已打开
 [ ] release_all 测试通过
 [ ] 鼠标没有卡住风险
 ```
+
+**说明**：第一版不再检测 Thumb_Up / Thumb_Down 手势的触发行为。
 
 ---
 
@@ -1084,7 +1086,10 @@ release_all 必须在退出前执行
 部署和演示时，优先级顺序必须是：
 
 ```text
-安全退出 > 手势稳定 > PPT 演示 > 鼠标控制 > SolidWorks 控制 > 打包美化
+安全退出 > 手势稳定 > PPT 演示 > SolidWorks 控制 > 打包美化
 ```
+
+第一版简化方案：只使用 6 个稳定手势（Closed_Fist、Open_Palm、Pointing_Up、Victory、ILoveYou、PINCH），
+通过 ILoveYou 滑动切换模式，禁用 mouse / mouse_scroll，删除 Thumb_Up / Thumb_Down 功能映射。
 
 只要出现鼠标键、键盘键卡住或无法退出的问题，应立即停止演示并修复安全机制。

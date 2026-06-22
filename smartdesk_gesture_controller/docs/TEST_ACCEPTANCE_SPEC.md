@@ -14,7 +14,7 @@
 2. 什么结果算通过。
 3. 哪些问题必须阻塞合并。
 4. 如何验证安全释放。
-5. 如何验证 PPT、鼠标和 SolidWorks 的端到端效果。
+5. 如何验证 PPT 和 SolidWorks 的端到端效果。
 
 ---
 
@@ -38,7 +38,7 @@ Dry-run 端到端测试
 | 状态机测试         | 验证手势到 ActionIntent         | 否             |
 | 动作层测试         | 验证 ActionIntent 到动作调用      | 使用 FakeDriver |
 | Dry-run 端到端测试 | 摄像头识别 + 状态机 + 动作日志         | 否             |
-| 真实端到端测试       | 实际控制 PPT / SolidWorks / 鼠标 | 是             |
+| 真实端到端测试       | 实际控制 PPT / SolidWorks      | 是             |
 
 ---
 
@@ -92,13 +92,15 @@ Dry-run 模式已先通过
 测试项：
 
 ```text
-FIST / Closed_Fist 可以识别
-OPEN_PALM / Open_Palm 可以识别
-SINGLE_FINGER / Pointing_Up 可以识别
-TWO_FINGER / Victory 可以识别
+Closed_Fist 可以识别
+Open_Palm 可以识别
+Pointing_Up 可以识别
+Victory 可以识别
+ILoveYou 可以识别
 PINCH 距离小于阈值时触发
 PINCH 距离大于释放阈值时释放
 None 或低置信度手势不会触发动作
+Thumb_Up / Thumb_Down 可识别但不触发任何动作映射
 ```
 
 验收标准：
@@ -107,6 +109,7 @@ None 或低置信度手势不会触发动作
 所有单元测试通过
 PINCH 使用滞回机制
 低置信度手势被过滤
+Thumb_Up / Thumb_Down 识别保留但不映射到任何动作
 ```
 
 ---
@@ -122,19 +125,24 @@ PINCH 使用滞回机制
 测试项：
 
 ```text
-standby 中 Thumb_Up HOLD 触发 F5 并进入 presentation
+standby 中 ILoveYou 右滑进入 presentation（不发送 F5）
+standby 中 ILoveYou 左滑进入 solidworks
 standby 中 Open_Palm 不触发动作
+standby 中 Thumb_Up / Thumb_Down 不触发动作
 presentation 中 Open_Palm 右挥触发 right
 presentation 中 Open_Palm 左挥触发 left
 presentation 中 Victory HOLD 触发 Ctrl+P 并进入 presentation_pen
 presentation 中 Closed_Fist 触发 Esc + release_all + standby
+presentation_pen 中 Pointing_Up 触发 move
 presentation_pen 中 PINCH 触发 mouse_down(left)
 presentation_pen 中 PINCH 释放触发 mouse_up(left)
-mouse 中 Pointing_Up 触发 move
-mouse 中 PINCH 短按触发 click(left)
-mouse 中 PINCH 长按触发 mouse_down(left)
+presentation_pen 中 Victory HOLD 触发 Ctrl+A 并退回 presentation
+presentation_pen 中 Closed_Fist 触发 Esc + release_all + standby
 solidworks 中 Open_Palm 触发 middle mouse drag
 solidworks 中 Victory 触发 Shift + middle mouse drag
+solidworks 中 PINCH 距离变化触发 scroll
+solidworks 中 ILoveYou 右滑切换到 presentation
+solidworks 中 ILoveYou 左滑切换到 standby
 solidworks 中 Closed_Fist 触发 release_all + standby
 paused 中任意手势不触发动作
 ```
@@ -146,6 +154,8 @@ paused 中任意手势不触发动作
 ActionIntent 顺序正确
 所有退出路径包含 release_all
 cooldown 内不会重复触发离散动作
+Thumb_Up / Thumb_Down 不产生任何 ActionIntent
+mouse / mouse_scroll 模式不可达
 ```
 
 ---
@@ -161,7 +171,7 @@ cooldown 内不会重复触发离散动作
 测试项：
 
 ```text
-press("f5") 被正确记录
+press("esc") 被正确记录
 hotkey(["ctrl", "p"]) 被正确记录
 mouse_down("left") 被正确记录
 mouse_up("left") 被正确记录
@@ -228,7 +238,7 @@ PowerPoint 已打开
 
 | 编号     | 操作                     | 预期结果           | 通过标准                  |
 | ------ | ---------------------- | -------------- | --------------------- |
-| PPT-01 | `Thumb_Up` 保持 1.5 秒    | 发送 F5，进入放映     | 成功进入放映                |
+| PPT-01 | `ILoveYou` 右滑         | 进入 presentation | 成功切换模式                |
 | PPT-02 | `Open_Palm` 向右挥 10 次   | 下一页            | 至少成功 9 次，误触不超过 1 次    |
 | PPT-03 | `Open_Palm` 向左挥 10 次   | 上一页            | 至少成功 9 次，误触不超过 1 次    |
 | PPT-04 | 快速连续挥手                 | 不连续翻多页         | 一次挥手最多翻 1 页           |
@@ -236,9 +246,9 @@ PowerPoint 已打开
 | PPT-06 | `Pointing_Up` 移动       | 画笔/指针移动        | 移动方向正确                |
 | PPT-07 | `PINCH` 并移动            | 画线             | 可以画出线条                |
 | PPT-08 | 释放 `PINCH`             | 停止画线           | 左键释放                  |
-| PPT-09 | `Thumb_Down` 保持 0.5 秒  | 擦除画笔痕迹         | 当前页痕迹被擦除              |
-| PPT-10 | `Thumb_Up` 保持 0.5 秒    | 退出画笔           | 光标恢复箭头                |
-| PPT-11 | `Closed_Fist` 保持 0.8 秒 | 退出放映，回 standby | PPT 退出放映，状态机回 standby |
+| PPT-09 | `Victory` 保持 0.5 秒     | 退出画笔           | 光标恢复箭头                |
+| PPT-10 | `Closed_Fist` 保持 0.8 秒 | 退出放映，回 standby | PPT 退出放映，状态机回 standby |
+| PPT-11 | `ILoveYou` 左滑         | 进入 solidworks  | 成功切换模式                |
 
 ### 5.3 阻塞问题
 
@@ -253,16 +263,14 @@ standby 中 Open_Palm 误触 F5
 
 ---
 
-## 6. 鼠标模式验收
+## 6. 鼠标模式验收（已废弃）
 
-### 6.1 前置条件
+> **Deprecated / Disabled in simplified demo version**
+>
+> 由于当前演示重点是 PPT 和 SolidWorks，且鼠标模式会增加误触和调试成本，
+> 简化版本暂时禁用 mouse / mouse_scroll。
 
-```text
-打开一个普通窗口，例如浏览器或文件资源管理器
-程序处于 standby
-```
-
-### 6.2 测试清单
+原验收清单（保留为后续版本参考）：
 
 | 编号       | 操作                     | 预期结果            | 通过标准           |
 | -------- | ---------------------- | --------------- | -------------- |
@@ -273,26 +281,9 @@ standby 中 Open_Palm 误触 F5
 | MOUSE-05 | 释放 `PINCH`             | 停止拖拽            | 左键释放           |
 | MOUSE-06 | `Victory` 保持 0.5 秒     | 进入 mouse_scroll | 状态显示 scroll    |
 | MOUSE-07 | `Victory` 上下移动         | 页面滚动            | 方向正确           |
-| MOUSE-08 | `Thumb_Down` 保持 0.5 秒  | 右键单击            | 弹出右键菜单         |
-| MOUSE-09 | `Closed_Fist` 保持 0.8 秒 | 退出 mouse        | 回 standby，释放左键 |
-| MOUSE-10 | 拖拽中 `Thumb_Down`       | 不触发右键           | 拖拽中右键被阻止       |
-| MOUSE-11 | `mouse_scroll` 中 `PINCH` | 不触发点击           | PINCH 在滚轮模式无效  |
-| MOUSE-12 | `mouse_scroll` 中 `Thumb_Down` | 不触发右键      | Thumb_Down 在滚轮模式无效 |
-| MOUSE-13 | `mouse` 中上下移动          | 不触发滚轮           | 普通 mouse 不误触滚轮 |
-| MOUSE-14 | `mouse_scroll` 手丢失超时    | 回 mouse         | release_all 后回 mouse |
-| MOUSE-15 | `mouse` 手丢失超时          | 保持 mouse        | release_all 但保持 mouse |
+| MOUSE-08 | `Closed_Fist` 保持 0.8 秒 | 退出 mouse        | 回 standby，释放左键 |
 
-### 6.3 阻塞问题
-
-```text
-鼠标突然跳到屏幕边缘
-PINCH 后左键无法释放
-滚轮在普通 mouse 模式中误触
-退出 mouse 后仍然控制鼠标
-拖拽中右键误触
-mouse_scroll 中 PINCH 误触发点击
-mouse_scroll 中 Thumb_Down 误触发右键
-```
+**第一版不启用此模式。保留为后续版本参考。**
 
 ---
 
@@ -310,15 +301,15 @@ SolidWorks 已打开
 
 | 编号    | 操作                     | 预期结果             | 通过标准                  |
 | ----- | ---------------------- | ---------------- | --------------------- |
-| SW-01 | `ILoveYou` 保持 1.5 秒    | 进入 solidworks 模式 | 状态显示 solidworks       |
+| SW-01 | `ILoveYou` 左滑         | 进入 solidworks 模式 | 状态显示 solidworks       |
 | SW-02 | `Open_Palm` 移动         | 模型旋转             | 旋转方向基本符合手势移动          |
 | SW-03 | 停止 `Open_Palm` 或手离开    | 中键释放             | 不再旋转                  |
 | SW-04 | `Victory` 移动           | 模型平移             | 模型平移，不旋转              |
 | SW-05 | 停止 `Victory` 或手离开      | Shift 和中键释放      | 不再平移                  |
 | SW-06 | `PINCH` 距离增大           | 模型放大             | 缩放方向正确                |
 | SW-07 | `PINCH` 距离减小           | 模型缩小             | 缩放方向正确                |
-| SW-08 | `Thumb_Up` 保持 0.5 秒    | 缩放全部拟合           | 模型适配视图                |
-| SW-09 | `ILoveYou` 保持 0.8 秒    | 等轴测视图            | 视图切换                  |
+| SW-08 | `ILoveYou` 右滑         | 切换到 presentation | 成功切换模式                |
+| SW-09 | `ILoveYou` 左滑         | 切换到 standby      | 成功切换模式                |
 | SW-10 | `Closed_Fist` 保持 0.8 秒 | 退出 solidworks    | 回 standby，release_all |
 | SW-11 | 旋转中切到 `Victory`         | 先释放中键，再 Shift+中键 | 旋转→平移切换平滑             |
 | SW-12 | 平移中切到 `Open_Palm`       | 先释放中键+Shift，再中键 | 平移→旋转切换平滑             |
@@ -351,10 +342,9 @@ PINCH 缩放时中键或 Shift 卡住
 | SAFE-02 | `Ctrl+Alt+G`         | 暂停/恢复               |
 | SAFE-03 | 暂停时做任意手势             | 不执行鼠标键盘动作           |
 | SAFE-04 | `Ctrl+Alt+Q`         | 程序退出，并 release_all  |
-| SAFE-05 | 鼠标拖拽时手离开摄像头          | 1 秒内释放左键            |
-| SAFE-06 | SolidWorks 平移时手离开摄像头 | 1 秒内释放 Shift 和中键    |
-| SAFE-07 | PPT 画线时手离开摄像头        | 1 秒内释放左键            |
-| SAFE-08 | 程序异常退出模拟             | 执行 release_all      |
+| SAFE-05 | SolidWorks 平移时手离开摄像头 | 1 秒内释放 Shift 和中键    |
+| SAFE-06 | PPT 画线时手离开摄像头        | 1 秒内释放左键            |
+| SAFE-07 | 程序异常退出模拟             | 执行 release_all      |
 
 ### 8.2 通过标准
 
@@ -362,7 +352,7 @@ PINCH 缩放时中键或 Shift 卡住
 所有安全测试必须 100% 通过。
 ```
 
-安全测试不允许用“偶尔失败”通过。
+安全测试不允许用"偶尔失败"通过。
 
 ---
 
@@ -432,7 +422,7 @@ FPS 正常显示
 所有计划手势都能在 debug 窗口看到正确识别
 所有计划动作都能输出正确 ActionIntent
 没有真实鼠标键盘动作发生
-dry-run 可用于调试 PPT、mouse、SolidWorks 三种模式
+dry-run 可用于调试 PPT 和 SolidWorks 两种模式
 ```
 
 ---
@@ -445,57 +435,40 @@ dry-run 可用于调试 PPT、mouse、SolidWorks 三种模式
 
 | 编号       | 操作                     | 预期结果            |
 | -------- | ---------------------- | --------------- |
-| E2E-P-01 | standby 中 Thumb_Up 保持 1.5 秒 | PPT 进入放映，press("f5") |
+| E2E-P-01 | standby 中 ILoveYou 右滑  | 切换到 presentation 模式（不发送 F5） |
 | E2E-P-02 | Open_Palm 向右挥          | 下一页             |
 | E2E-P-03 | Open_Palm 向左挥          | 上一页             |
 | E2E-P-04 | Victory 保持 0.5 秒       | 进入画笔模式 Ctrl+P   |
 | E2E-P-05 | Pointing_Up 移动         | 画笔/指针移动         |
 | E2E-P-06 | PINCH 并移动              | 画线              |
-| E2E-P-07 | Thumb_Down 保持 0.5 秒    | 擦除画笔痕迹 E       |
-| E2E-P-08 | Thumb_Up 保持 0.5 秒      | 退出画笔 Ctrl+A    |
-| E2E-P-09 | Closed_Fist 保持 0.8 秒   | 退出演示 Esc + release_all |
+| E2E-P-07 | Victory 保持 0.5 秒       | 退出画笔 Ctrl+A    |
+| E2E-P-08 | Closed_Fist 保持 0.8 秒   | 退出演示 Esc + release_all |
 
-### 10a.2 Mouse 端到端测试
-
-| 编号       | 操作                     | 预期结果            |
-| -------- | ---------------------- | --------------- |
-| E2E-M-01 | standby 中 Pointing_Up 保持 1.0 秒 | 进入 mouse 模式    |
-| E2E-M-02 | Pointing_Up 移动         | 鼠标移动            |
-| E2E-M-03 | PINCH 短按               | 左键单击            |
-| E2E-M-04 | PINCH 长按并移动            | 拖拽              |
-| E2E-M-05 | 松开 PINCH               | 释放左键            |
-| E2E-M-06 | Victory 保持 0.5 秒       | 进入 mouse_scroll |
-| E2E-M-07 | Victory 向上移动           | 向上滚动            |
-| E2E-M-08 | Victory 向下移动           | 向下滚动            |
-| E2E-M-09 | Thumb_Down 保持 0.5 秒    | 右键单击            |
-| E2E-M-10 | Closed_Fist 保持 0.8 秒   | 退出 mouse + release_all |
-
-### 10a.3 SolidWorks 端到端测试
+### 10a.2 SolidWorks 端到端测试
 
 | 编号       | 操作                     | 预期结果            |
 | -------- | ---------------------- | --------------- |
-| E2E-S-01 | standby 中 ILoveYou 保持 1.5 秒 | 进入 solidworks 模式 |
+| E2E-S-01 | standby 中 ILoveYou 左滑  | 进入 solidworks 模式 |
 | E2E-S-02 | Open_Palm 移动           | 模型旋转（中键拖动）      |
 | E2E-S-03 | 停止 Open_Palm           | 中键释放，停止旋转       |
 | E2E-S-04 | Victory 移动             | 模型平移（Shift+中键）  |
 | E2E-S-05 | 停止 Victory             | 中键+Shift 释放     |
 | E2E-S-06 | PINCH 距离增大             | 模型放大            |
 | E2E-S-07 | PINCH 距离减小             | 模型缩小            |
-| E2E-S-08 | Thumb_Up 保持 0.5 秒      | 缩放全部拟合 F        |
-| E2E-S-09 | ILoveYou 保持 0.8 秒      | 等轴测视图 Ctrl+7   |
+| E2E-S-08 | ILoveYou 右滑            | 切换到 presentation |
+| E2E-S-09 | ILoveYou 左滑            | 切换到 standby     |
 | E2E-S-10 | Closed_Fist 保持 0.8 秒   | 退出 solidworks + release_all |
 
-### 10a.4 安全端到端测试
+### 10a.3 安全端到端测试
 
 | 编号       | 操作                   | 预期结果                    |
 | -------- | -------------------- | ----------------------- |
 | E2E-X-01 | 任意模式中 Ctrl+Alt+G     | 暂停，release_all          |
 | E2E-X-02 | 暂停中 Ctrl+Alt+G       | 恢复到 standby             |
 | E2E-X-03 | 任意模式中 Ctrl+Alt+Q     | 程序退出，release_all        |
-| E2E-X-04 | mouse 拖拽时手离开摄像头 > 1 秒 | 释放左键，release_all，保持 mouse |
-| E2E-X-05 | SolidWorks 平移时手离开 > 1 秒 | 释放中键+Shift，release_all，保持 solidworks |
-| E2E-X-06 | PPT 画线时手离开摄像头 > 1 秒  | 释放左键，release_all，保持 pen |
-| E2E-X-07 | 重复调用 release_all      | 不报错（幂等）                 |
+| E2E-X-04 | SolidWorks 平移时手离开 > 1 秒 | 释放中键+Shift，release_all，保持 solidworks |
+| E2E-X-05 | PPT 画线时手离开摄像头 > 1 秒  | 释放左键，release_all，保持 pen |
+| E2E-X-06 | 重复调用 release_all      | 不报错（幂等）                 |
 
 ---
 
@@ -510,50 +483,40 @@ dry-run 可用于调试 PPT、mouse、SolidWorks 三种模式
 [ ] Open_Palm 稳定
 [ ] Pointing_Up 稳定
 [ ] Victory 稳定
-[ ] Thumb_Up / Thumb_Down 稳定
 [ ] ILoveYou 稳定
 [ ] PINCH 距离在调试窗口显示合理
 [ ] FPS 稳定在 20 以上
 [ ] 调试窗口显示 pinch、swipe_dx、swipe_dy、hand_lost_duration、cooldown
+[ ] Thumb_Up / Thumb_Down 可识别但不触发动作（可选检查）
 ```
 
 ### 10b.2 PPT 真实测试
 
 ```text
+[ ] ILoveYou 右滑进入 presentation
 [ ] Open_Palm 左右翻页可用
 [ ] 一次挥手最多翻 1 页
 [ ] Victory 进入画笔
 [ ] Pointing_Up 移动画笔
 [ ] PINCH 画线稳定
-[ ] Thumb_Down 擦除
-[ ] Thumb_Up 退出画笔
+[ ] Victory 退出画笔
 [ ] Closed_Fist 退出演示
 ```
 
-### 10b.3 Mouse 真实测试
+### 10b.3 SolidWorks 真实测试
 
 ```text
-[ ] Pointing_Up 移动，鼠标不抖动、不跳边缘
-[ ] PINCH 短按 = 左键单击，不长按变拖拽
-[ ] PINCH 长按 + 移动 = 拖拽，释放后左键释放
-[ ] Victory 进入滚轮，上下滚动方向符合预期
-[ ] Thumb_Down 右键
-[ ] Closed_Fist 退出鼠标模式
-```
-
-### 10b.4 SolidWorks 真实测试
-
-```text
+[ ] ILoveYou 左滑进入 solidworks
 [ ] Open_Palm 旋转方向和灵敏度合理
 [ ] Victory 平移方向和灵敏度合理
 [ ] PINCH 缩放有反应，方向合理
 [ ] 缩放没反应时，可调整 solidworks_min_zoom_step
-[ ] Thumb_Up 缩放全部拟合
-[ ] ILoveYou 等轴测视图
+[ ] ILoveYou 右滑切换到 presentation
+[ ] ILoveYou 左滑切换到 standby
 [ ] Closed_Fist 退出并释放中键和 Shift
 ```
 
-### 10b.5 允许现场调整的参数
+### 10b.4 允许现场调整的参数
 
 | 现象 | 调整参数 |
 | ---- | -------- |
@@ -562,15 +525,12 @@ dry-run 可用于调试 PPT、mouse、SolidWorks 三种模式
 | 翻页误触 | 调大 swipe_threshold_x |
 | PINCH 不容易触发 | 调大 pinch_threshold |
 | PINCH 边界抖动 | 增大 pinch_release_threshold 与 pinch_threshold 的差距 |
-| 鼠标抖动 | 调大 mouse_smoothing，调小 mouse_speed |
-| 鼠标跟手慢 | 调小 mouse_smoothing，调大 mouse_speed |
-| 点击变拖拽 | 调大 drag_hold_time 或 click_max_movement_px |
-| 滚轮方向相反 | 将 invert_scroll 设为 True |
-| 滚轮太快 | 调小 scroll_amount 或调大 scroll_cooldown |
 | SolidWorks 缩放方向相反 | 将 invert_scroll 设为 True（或 solidworks_zoom_sensitivity 负值） |
 | SolidWorks 缩放没反应 | 调大 solidworks_min_zoom_step 或 solidworks_zoom_sensitivity |
 | 旋转/平移太快 | 调小 solidworks_drag_sensitivity |
 | 旋转/平移发抖 | 调大 solidworks_deadzone |
+| ILoveYou 滑动不灵敏 | 调小 iloveyou_swipe_threshold_x |
+| ILoveYou 误触发 | 调大 iloveyou_swipe_threshold_x 或 iloveyou_swipe_time_window |
 
 ---
 
@@ -582,10 +542,10 @@ dry-run 可用于调试 PPT、mouse、SolidWorks 三种模式
 1. GestureRecognizer 输出 Closed_Fist → HandInput.gesture 为 Closed_Fist
 2. GestureRecognizer 输出 Open_Palm → HandInput.gesture 为 Open_Palm
 3. GestureRecognizer 输出 Pointing_Up → HandInput.gesture 为 Pointing_Up
-4. GestureRecognizer 输出 Thumb_Up → HandInput.gesture 为 Thumb_Up
-5. GestureRecognizer 输出 Thumb_Down → HandInput.gesture 为 Thumb_Down
-6. GestureRecognizer 输出 Victory → HandInput.gesture 为 Victory
-7. GestureRecognizer 输出 ILoveYou → HandInput.gesture 为 ILoveYou
+4. GestureRecognizer 输出 Victory → HandInput.gesture 为 Victory
+5. GestureRecognizer 输出 ILoveYou → HandInput.gesture 为 ILoveYou
+6. GestureRecognizer 输出 Thumb_Up → HandInput.gesture 为 Thumb_Up（识别保留，不触发动作）
+7. GestureRecognizer 输出 Thumb_Down → HandInput.gesture 为 Thumb_Down（识别保留，不触发动作）
 8. 低置信度（< min_gesture_confidence）→ 回退旧规则
 9. 低置信度 + fallback 关闭 → 输出 None
 10. 旧规则 FIST → 归一化为 Closed_Fist
@@ -594,9 +554,10 @@ dry-run 可用于调试 PPT、mouse、SolidWorks 三种模式
 13. 旧规则 TWO_FINGER → 归一化为 Victory
 14. PINCH 仍由 landmarks 距离计算，不依赖官方分类
 15. SWIPE 仍由 Open_Palm 轨迹在状态机中计算
-16. 缺少 gesture_recognizer.task → 模型检查给出明确错误
-17. use_gesture_recognizer=False → 不要求 gesture_recognizer.task 存在
-18. 阶段 1–7 所有测试仍然通过
+16. ILoveYou 滑动由状态机基于 ILoveYou 手势轨迹计算
+17. 缺少 gesture_recognizer.task → 模型检查给出明确错误
+18. use_gesture_recognizer=False → 不要求 gesture_recognizer.task 存在
+19. 阶段 1–7 所有测试仍然通过
 ```
 
 ### 10c.2 Dry-run 真实验证（需要摄像头 + gesture_recognizer.task）
@@ -608,10 +569,12 @@ dry-run 可用于调试 PPT、mouse、SolidWorks 三种模式
    - conf（置信度）
    - raw（原始手势名）
    - pinch_distance / swipe_dx / swipe_dy / FPS / mode / stable_duration
-2. 分别做出 7 种官方手势，确认 src 显示 gesture_recognizer 且手势名正确
+2. 分别做出 6 种稳定手势（Closed_Fist、Open_Palm、Pointing_Up、Victory、ILoveYou、PINCH），确认 src 显示 gesture_recognizer 且手势名正确
 3. 遮挡摄像头或做出模糊手势，确认低置信度时 src 切换到 rule_fallback
 4. 确认 PINCH / SWIPE / HOLD / DRAG 行为不受影响
-5. 确认 PPT / mouse / SolidWorks 操作映射不变
+5. 确认 ILoveYou 左右滑切换模式正常
+6. 确认 PPT / SolidWorks 操作映射不变
+7. Thumb_Up / Thumb_Down 可识别但不应产生任何 ActionIntent
 ```
 
 ### 10c.3 Closed_Fist 安全兜底验证
@@ -654,40 +617,26 @@ pytest tests/test_gesture_controller.py
 ### 12.1 PPT 第一版完成定义
 
 ```text
-可以用手势启动 PPT
+可以用手势启动 PPT（ILoveYou 右滑）
 可以左右翻页
 可以进入画笔并画线
-可以擦除
-可以退出画笔
+可以退出画笔（Victory toggle）
 可以退出演示
 不会出现左键卡住
 不会一次挥手翻多页
 ```
 
-### 12.2 鼠标第一版完成定义
+### 12.2 SolidWorks 第一版完成定义
 
 ```text
-可以进入鼠标模式
-可以移动鼠标
-可以左键点击
-可以拖拽
-可以滚轮
-可以右键
-可以安全退出
-```
-
-### 12.3 SolidWorks 第一版完成定义
-
-```text
-可以进入 SolidWorks 模式
+可以进入 SolidWorks 模式（ILoveYou 左滑）
 可以旋转模型
 可以平移模型
 可以缩放模型
-可以缩放全部拟合
 可以退出并释放中键和 Shift
 ```
 
-### 12.4 安全完成定义
+### 12.3 安全完成定义
 
 ```text
 Ctrl+Alt+G 可暂停
@@ -741,7 +690,7 @@ SolidWorks 全部视图定向
 
 ## 15. 结论
 
-本项目验收标准不是“代码能运行”这么简单，而是：
+本项目验收标准不是"代码能运行"这么简单，而是：
 
 ```text
 动作要可控

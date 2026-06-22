@@ -52,7 +52,7 @@ ActionIntent(...)
 例如：
 
 ```python
-ActionIntent(type="press", key="f5")
+ActionIntent(type="press", key="esc")
 ActionIntent(type="hotkey", keys=["ctrl", "p"])
 ActionIntent(type="mouse_down", button="middle")
 ActionIntent(type="release_all")
@@ -145,6 +145,7 @@ mouse_down
 mouse_up
 click
 move_to
+move（move_to 的遗留兼容别名）
 move_rel
 scroll
 key_down
@@ -165,12 +166,9 @@ noop
 示例：
 
 ```python
-ActionIntent(type="press", key="f5")
 ActionIntent(type="press", key="esc")
 ActionIntent(type="press", key="right")
 ActionIntent(type="press", key="left")
-ActionIntent(type="press", key="e")
-ActionIntent(type="press", key="b")
 ActionIntent(type="press", key="f")
 ```
 
@@ -302,7 +300,7 @@ PPT 画笔模式
 
 ```text
 x 和 y 必须非空
-动作层应限制 x/y 不超过屏幕边界
+当前动作层只校验 x/y 非空并转发给驱动；状态机的坐标映射负责生成屏幕范围内的位置
 ```
 
 ---
@@ -335,8 +333,7 @@ SolidWorks 平移
 约束：
 
 ```text
-dx/dy 必须经过灵敏度和最大速度限制
-单帧移动量不应过大
+当前动作层只校验 dx/dy 非空；SolidWorks 状态机负责灵敏度和 deadzone 处理
 ```
 
 ---
@@ -455,9 +452,8 @@ SolidWorks 缩放模型
 约束：
 
 ```text
-amount 必须限制最大值
-禁止单帧滚动过大
-scroll 必须有冷却或死区
+amount 必须非空
+当前动作层直接转发滚轮量；SolidWorks 状态机负责 deadzone、灵敏度和最小步长
 ```
 
 ---
@@ -494,8 +490,8 @@ pyautogui.keyUp("alt")
 
 ```text
 Closed_Fist 退出当前模式
-手丢失超时
-模式切换
+每次连续手丢失首次超时
+从活动模式切换
 暂停程序
 退出程序
 摄像头读取失败
@@ -503,6 +499,8 @@ MediaPipe 推理异常
 动作层异常
 程序 KeyboardInterrupt
 ```
+
+当前状态机从 `standby` 进入 `presentation` 或 `solidworks` 时不输出 `release_all`；standby 不持有连续按键。进入 paused、离开活动模式、退出和异常路径仍必须释放。
 
 ### 7.3 release_all 的幂等性
 
@@ -514,6 +512,19 @@ MediaPipe 推理异常
 重复调用 release_all 不应报错
 没有任何按键按下时调用 release_all 不应报错
 ```
+
+### 7.4 手丢失事件的输出频率
+
+`release_all` 的执行必须幂等，但状态机对同一次连续手丢失事件只应输出一次该意图：
+
+```text
+首次超过 hand_lost_timeout：输出 release_all
+后续连续无手帧：不重复输出
+有效手重新出现：重新布防下一次手丢失事件
+paused 中见手：只重新布防，不输出硬件动作
+```
+
+该规则避免 PyAutoGUI 的六个无条件释放调用在每一帧重复执行并阻塞视频循环。
 
 ---
 
@@ -574,11 +585,22 @@ cooldown 内忽略重复动作
 ]
 ```
 
-退出 PPT 演示：
+Closed_Fist 从 PPT 画笔模式退出演示：
 
 ```python
 [
     ActionIntent(type="mouse_up", button="left"),
+    ActionIntent(type="press", key="esc"),
+    ActionIntent(type="release_all"),
+]
+```
+
+其中显式 `mouse_up("left")` 只在状态机记录左键已按下时输出；`release_all` 仍会无条件释放所有三种鼠标键和三个辅助键。
+
+presentation 中 ILoveYou 右滑回 standby：
+
+```python
+[
     ActionIntent(type="press", key="esc"),
     ActionIntent(type="release_all"),
 ]
@@ -611,8 +633,7 @@ SolidWorks 平移结束：
 如果当前已经按下中键，再次收到 `mouse_down("middle")`：
 
 ```text
-动作层可以忽略重复 mouse_down
-状态机应避免重复输出
+当前动作层会转发每个 mouse_down；状态机必须避免在连续动作期间重复输出
 ```
 
 ### 10.2 Shift 键冲突
@@ -646,7 +667,7 @@ mouse_up("left")
 
 ```python
 fake_driver.events = [
-    ("press", "f5"),
+    ("press", "esc"),
     ("hotkey", ["ctrl", "p"]),
     ("mouse_down", "left"),
     ("mouse_up", "left"),
@@ -712,7 +733,7 @@ Dry-run 模式用于：
 示例：
 
 ```text
-[Action] press key=f5 mode=standby reason=start_presentation
+[Action] press key=esc mode=presentation reason=fist_exit
 [Action] hotkey keys=ctrl+p mode=presentation reason=enter_pen
 [Action] mouse_down button=middle mode=solidworks reason=rotate_begin
 [Action] release_all mode=solidworks reason=fist_exit
@@ -774,6 +795,14 @@ window_activate
 动作层只执行意图
 测试层可以替换动作层
 release_all 永远优先
+ActionIntent 接口保持稳定
 ```
 
 这样才能保证项目可测试、可扩展，并且避免手势控制程序抢占鼠标后无法释放。
+
+**第一版简化方案说明**：
+
+本次简化方案不新增 ActionIntent 类型。
+只删除 Thumb_Up / Thumb_Down 相关的动作映射，不删除 ActionIntent 类型本身。
+mouse / right click / mouse_scroll 相关的 ActionIntent 类型仍然保留，
+但第一版不启用 mouse 模式，因此这些类型暂时不会被使用。

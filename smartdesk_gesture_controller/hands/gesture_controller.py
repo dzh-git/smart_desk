@@ -12,9 +12,10 @@ Run as a standalone process:
 
 Safety contract:
     1. Starts in standby/paused — control must be explicitly activated.
-    2. ``Ctrl+Alt+G`` toggles pause; ``Ctrl+Alt+Q`` (or the ``q`` key in the
-       debug window) quits. All exit paths call ``_shutdown`` which releases
-       every held mouse button.
+    2. ``Ctrl+Alt+G`` toggles pause; ``Ctrl+Alt+Q`` quits.  Both use the
+       ``keyboard`` library for global hotkeys.  If the backend fails, the
+       cv2 debug window accepts ``p`` / ``Space`` to toggle pause and ``q`` /
+       ``Esc`` to quit.
     3. Any unhandled exception in the frame loop triggers ``release_all`` and
        a controlled exit rather than leaving the cursor held.
 """
@@ -109,6 +110,8 @@ class GestureController:
         self._cap: Optional[Any] = cap
         self._owns_cap = cap is None
         self._hotkey_listener: Optional[Any] = None
+        self._hotkey_backend: Optional[str] = None
+        self._hotkey_handles: list = []
 
         self._running = False
         self._prev_fps_time: float = 0.0
@@ -210,7 +213,7 @@ class GestureController:
                 logger.exception("frame processing error — releasing and continuing")
                 self._safe_release()
 
-            if self._check_exit_key():
+            if self._handle_debug_keys():
                 break
 
     def _process_frame(self, img, now: float) -> None:
@@ -294,12 +297,8 @@ class GestureController:
             except Exception:  # pragma: no cover
                 pass
 
-        if self._hotkey_listener is not None:
-            try:
-                self._hotkey_listener.stop()
-            except Exception:  # pragma: no cover
-                pass
-            self._hotkey_listener = None
+        # Hotkey cleanup (keyboard library or pynput fallback).
+        self._uninstall_hotkeys()
 
         if self.status_server is not None:
             try:
@@ -310,20 +309,97 @@ class GestureController:
             self.status_server = None
 
     # ── hotkeys ────────────────────────────────────────────────────────────
+    # ── hotkeys ────────────────────────────────────────────────────────────
     def _install_hotkeys(self) -> None:
-        """Install global Ctrl+Alt+G (pause) and Ctrl+Alt+Q (exit) via pynput.
+        """Install global Ctrl+Alt+G (pause) and Ctrl+Alt+Q (exit).
 
-        Falls back silently to cv2-only mode if pynput is unavailable; in that
-        case the user can still quit with the ``q`` key in the debug window.
+        Primary backend is the ``keyboard`` library; it works more reliably on
+        Windows than pynput.  If ``keyboard`` fails we silently fall back to the
+        cv2 debug window keys (p/Space, q/Esc).  pynput is kept only as a last
+        fallback if the user still has it installed but not ``keyboard``.
+        """
+        if not self.config.enable_hotkeys:
+            logger.info("hotkeys disabled by config")
+            print("  hotkey backend: disabled")
+            return
+
+        # Primary: keyboard library.
+        if self._install_keyboard_hotkeys():
+            return
+
+        # Fallback: pynput (kept for compatibility, not the default).
+        if self._install_pynput_hotkeys():
+            return
+
+        # Final fallback: user can still control via the debug window.
+        logger.warning("global hotkeys unavailable — use debug window keys")
+        print("  [WARN] Global hotkeys could not be installed.")
+        print("         Click the debug window and press 'p' or Space to resume")
+        print("         Press 'q' or Esc in the debug window to quit")
+
+    def _install_keyboard_hotkeys(self) -> bool:
+        """Try to install global hotkeys using the ``keyboard`` library.
+
+        Returns ``True`` on success, ``False`` if the library is missing or
+        registration fails.
+        """
+        try:
+            import keyboard
+        except ImportError:
+            logger.info("keyboard library not installed — skipping keyboard backend")
+            return False
+
+        try:
+            pause_hotkey = self._keyboard_hotkey(self.config.hotkey_toggle_pause)
+            exit_hotkey = self._keyboard_hotkey(self.config.hotkey_emergency_exit)
+            handle_pause = keyboard.add_hotkey(pause_hotkey, self._on_toggle_pause)
+            handle_exit = keyboard.add_hotkey(exit_hotkey, self._on_emergency_exit)
+            self._hotkey_handles = [handle_pause, handle_exit]
+            self._hotkey_backend = "keyboard"
+            logger.info("global hotkeys active (keyboard): %s / %s", pause_hotkey, exit_hotkey)
+            print("  hotkey backend: keyboard")
+            print(f"    pause/resume: {pause_hotkey}")
+            print(f"    emergency exit: {exit_hotkey}")
+            return True
+        except Exception:
+            logger.exception("keyboard.add_hotkey failed — falling back")
+            return False
+
+    def _uninstall_keyboard_hotkeys(self) -> None:
+        """Remove any hotkeys registered with the ``keyboard`` library."""
+        if not self._hotkey_handles:
+            return
+        try:
+            import keyboard
+
+            for handle in self._hotkey_handles:
+                try:
+                    keyboard.remove_hotkey(handle)
+                except Exception:
+                    pass
+            keyboard.unhook_all_hotkeys()
+        except ImportError:
+            pass
+        except Exception:
+            logger.exception("keyboard.remove_hotkey failed")
+        finally:
+            self._hotkey_handles.clear()
+            self._hotkey_backend = None
+
+    def _install_pynput_hotkeys(self) -> bool:
+        """Legacy fallback: install global hotkeys via pynput.
+
+        Kept only for compatibility; the ``keyboard`` library is preferred.
+        Returns ``True`` on success.
         """
         try:
             from pynput import keyboard
         except ImportError:
-            logger.warning("pynput not installed — global hotkeys disabled; use 'q' to quit")
-            return
+            logger.info("pynput not installed — skipping pynput fallback")
+            return False
         except Exception:  # pragma: no cover - environment dependent
-            logger.exception("pynput import failed — global hotkeys disabled")
-            return
+            logger.exception("pynput import failed")
+            return False
 
         try:
             pause_combo = keyboard.HotKey(
@@ -341,10 +417,34 @@ class GestureController:
             listener.daemon = True
             listener.start()
             self._hotkey_listener = listener
-            logger.info("global hotkeys active: %s / %s", self.config.hotkey_toggle_pause, self.config.hotkey_emergency_exit)
+            self._hotkey_backend = "pynput"
+            logger.info("global hotkeys active (pynput fallback): %s / %s", self.config.hotkey_toggle_pause, self.config.hotkey_emergency_exit)
+            print("  hotkey backend: pynput (fallback)")
+            return True
         except Exception:  # pragma: no cover - environment dependent
-            logger.exception("failed to install hotkey listener — use 'q' to quit")
+            logger.exception("failed to install pynput hotkey listener")
+            return False
 
+    def _uninstall_pynput_hotkeys(self) -> None:
+        """Stop the pynput listener if it was started."""
+        if self._hotkey_listener is None:
+            return
+        try:
+            self._hotkey_listener.stop()
+        except Exception:
+            pass
+        self._hotkey_listener = None
+        self._hotkey_backend = None
+
+    def _uninstall_hotkeys(self) -> None:
+        """Remove all installed global hotkeys (keyboard or pynput)."""
+        self._uninstall_keyboard_hotkeys()
+        self._uninstall_pynput_hotkeys()
+
+    @staticmethod
+    def _keyboard_hotkey(spec: str) -> str:
+        """Convert the pynput-style spec ``<ctrl>+<alt>+g`` to ``ctrl+alt+g``."""
+        return spec.replace("<", "").replace(">", "").lower()
     @staticmethod
     def _canonical(key) -> Any:
         # pynput exposes either a KeyCode (chars) or a special Key; the HotKey
@@ -478,6 +578,9 @@ class GestureController:
         if not self.config.enable_system_mouse:
             cv2.putText(img, "DRY-RUN (no system mouse)", (10, img.shape[0] - 12),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
+        elif self.state.paused:
+            cv2.putText(img, "Press 'p' or Space to resume", (10, img.shape[0] - 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 100), 2)
 
         # Map region overlay.
         x1, x2, y1, y2 = self.config.map_region()
@@ -508,17 +611,23 @@ class GestureController:
         except Exception:  # pragma: no cover - environment dependent
             self._debug_window_topmost_set = True
 
-    # ── exit key ───────────────────────────────────────────────────────────
-    def _check_exit_key(self) -> bool:
+    # ── debug window key handling ──────────────────────────────────────────
+    def _handle_debug_keys(self) -> bool:
+        """Handle key-presses in the debug window.
+
+        Returns ``True`` when the quit key is pressed (caller should exit the loop).
+        """
         if not self.config.show_debug_window:
             return False
         try:
             import cv2
 
             key = cv2.waitKey(1) & 0xFF
-            if key == ord(self.config.exit_key):
-                logger.info("exit key pressed: %s", self.config.exit_key)
+            if key == ord(self.config.exit_key) or key == 27:  # q or Esc
+                logger.info("exit key pressed: key=%d", key)
                 return True
+            if key == ord('p') or key == 32:  # p or Space
+                self._on_toggle_pause()
         except Exception:  # pragma: no cover - environment dependent
             pass
         return False
@@ -561,7 +670,7 @@ class GestureController:
         gr_status = "on" if self.config.use_gesture_recognizer else "off (rule fallback)"
         print(f"  gesture recognizer: {gr_status}")
         if self.config.show_debug_window:
-            print(f"  quit via window:  press '{self.config.exit_key}'")
+            print(f"  debug keys:       '{self.config.exit_key}'/Esc = quit, p/Space = pause/resume")
         print("Gestures:")
         print("  presentation: open palm swipe left/right = prev/next, fist = standby")
         print("  mouse:        pointing up = move, pinch = click/drag,")

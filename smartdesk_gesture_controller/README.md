@@ -32,7 +32,7 @@ python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 ```
 
-如果只运行单元测试，仍建议安装 `pytest`。真实摄像头控制需要 `mediapipe`、`opencv-python`、`pyautogui`、`pynput` 等依赖。
+如果只运行单元测试，仍建议安装 `pytest`。真实摄像头控制需要 `mediapipe`、`opencv-python`、`pyautogui`、`keyboard`、`pynput`（可选兼容）等依赖。
 
 > **注意**：以下所有 `python` 命令均在 `.venv\Scripts\` 下执行。如果直接使用系统 `python` 会提示 `No module named 'cv2'`。推荐双击 `start_gesture.bat` 或先激活虚拟环境再手动运行。
 
@@ -88,6 +88,7 @@ PPT / 浏览器翻页：
 --no-debug             不显示 OpenCV 调试窗口
 --no-server            不启动 ws://127.0.0.1:8765 状态广播
 --no-pause-on-start    启动后直接激活，不等待 Ctrl+Alt+G
+--start-unpaused       同 --no-pause-on-start
 ```
 
 ## 停止方式
@@ -95,8 +96,10 @@ PPT / 浏览器翻页：
 优先使用：
 
 ```text
+Ctrl+Alt+G   暂停 / 恢复（全局热键，由 keyboard 库实现）
 Ctrl+Alt+Q   紧急退出，释放鼠标后退出
-q            在调试窗口中退出
+q / Esc      在调试窗口中退出
+p / Space    在调试窗口中暂停 / 恢复（keyboard 全局热键失效时的兜底）
 Ctrl+C       在启动终端中停止进程
 ```
 
@@ -195,8 +198,10 @@ PINCH 距离增大 → scroll(+) 缩放放大；距离减小 → scroll(-) 缩�
 ### paused 暂停模式
 
 ```text
-Ctrl+Alt+G：暂停/恢复（恢复后一律回 standby）
+Ctrl+Alt+G：暂停/恢复（恢复后一律回 standby，由 keyboard 库全局热键）
 Ctrl+Alt+Q：紧急退出（release_all 后退出）
+p / Space：在调试窗口中暂停/恢复（keyboard 全局热键失效时兜底）
+q / Esc：在调试窗口中退出
 暂停中任意手势不触发硬件动作
 ```
 
@@ -394,6 +399,24 @@ key_up("shift")    key_up("ctrl")       key_up("alt")
 
 立即按 `Ctrl+Alt+G` 暂停或 `Ctrl+Alt+Q` 退出。调试时先用 `--no-mouse` dry-run 模式。
 
+如果 `Ctrl+Alt+G` 无效，先点击调试窗口使其获得焦点，然后按 `p` 或 `Space` 暂停/恢复；
+仍无效时可用 `--start-unpaused` 测试。
+
+### Ctrl+Alt+G 全局热键无效
+
+现象：启动后按 `Ctrl+Alt+G` 没有反应。
+
+原因：当前使用 `keyboard` 库注册全局热键；某些 Windows 环境（如高权限软件、远程桌面）可能注册失败。
+
+处理：
+
+```text
+1. 点击调试窗口，使其获得焦点
+2. 按 p / Space 暂停/恢复
+3. 按 q / Esc 退出
+4. 仍无效时加 --start-unpaused 启动：
+   .venv\Scripts\python -m hands.gesture_controller --start-unpaused
+```
 ### PPT 一次挥手翻多页
 
 调大 `page_turn_cooldown`（如 1.2 秒）。

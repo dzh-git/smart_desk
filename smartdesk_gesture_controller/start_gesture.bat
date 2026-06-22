@@ -1,3 +1,5 @@
+set MEDIAPIPE_DISABLE_GPU_USAGE_REPORTING=1
+set GLOG_minloglevel=2
 @echo off
 setlocal
 title SmartDesk Gesture Controller

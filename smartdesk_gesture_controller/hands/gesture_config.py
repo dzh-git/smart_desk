@@ -103,6 +103,8 @@ class GestureConfig:
     swipe_threshold_x: float = 0.18
     swipe_threshold_y_limit: float = 0.12
     swipe_time_window: float = 0.8
+    # Phase 9: ILoveYou swipe threshold for mode switching.
+    iloveyou_swipe_threshold_x: float = 0.22
 
     # ── Pinch ───────────────────────────────────────────────────────────────
     # Legacy: camera-px distance between thumb(4) and index(8) tips.
@@ -152,7 +154,7 @@ class GestureConfig:
     enable_hotkeys: bool = True
     exit_key: str = "q"                 # key inside the cv2 window to quit
 
-    # ── Global hotkeys (best-effort via pynput; falls back to cv2-only) ─────
+    # ── Global hotkeys (best-effort via keyboard; falls back to cv2-only) ───
     hotkey_toggle_pause: str = "<ctrl>+<alt>+g"
     hotkey_emergency_exit: str = "<ctrl>+<alt>+q"
 
@@ -274,6 +276,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="start already active instead of paused in standby",
     )
+    parser.add_argument(
+        "--start-unpaused",
+        action="store_true",
+        help="alias for --no-pause-on-start: start already active",
+    )
     return parser
 
 
@@ -287,6 +294,6 @@ def config_from_args(argv: list[str] | None = None) -> GestureConfig:
     config.dry_run = args.no_mouse
     config.show_debug_window = not args.no_debug
     config.status_server_enabled = not args.no_server
-    config.pause_on_start = not args.no_pause_on_start
+    config.pause_on_start = not (args.no_pause_on_start or args.start_unpaused)
     config.start_paused = config.pause_on_start
     return config

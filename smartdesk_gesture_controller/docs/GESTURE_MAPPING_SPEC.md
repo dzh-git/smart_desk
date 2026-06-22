@@ -62,9 +62,8 @@ Open_Palm 既用于启动演示，又用于翻页，又用于鼠标移动
 
 ```text
 Closed_Fist：停止、退出、释放
-ILoveYou：进入 SolidWorks 或触发低频特殊命令
-Thumb_Up：确认、开始、适配视图
-Thumb_Down：取消、擦除、右键等负向操作
+ILoveYou：模式切换（PPT ↔ SolidWorks ↔ Standby）
+Victory：画笔模式进入/退出
 ```
 
 ### 3.3 高频连续控制使用稳定手势
@@ -144,16 +143,16 @@ GestureRecognizer 输出的官方 canned gesture 作为静态手势的优先来�
 
 MediaPipe GestureRecognizer 官方支持以下 canned gesture：
 
-| 官方手势标签 | 中文含义 | 项目内部标准名称 | 建议语义 |
-|---|---|---|---|
-| `None` | 未识别 / 无有效手势 | `None` | 无动作，必要时释放连续控制 |
-| `Closed_Fist` | 握拳 | `Closed_Fist` | 停止、退出、释放所有按键 |
-| `Open_Palm` | 张开手掌 | `Open_Palm` | 翻页、旋转、大范围拖动 |
-| `Pointing_Up` | 单指向上 | `Pointing_Up` | 鼠标移动、画笔移动、精确指向 |
-| `Thumb_Down` | 拇指向下 | `Thumb_Down` | 擦除、取消、右键、负向操作 |
-| `Thumb_Up` | 拇指向上 | `Thumb_Up` | 确认、开始、适配视图 |
-| `Victory` | V 字手势 | `Victory` | 画笔、平移、滚轮模式 |
-| `ILoveYou` | I Love You 手势 | `ILoveYou` | 低频模式切换、特殊命令 |
+| 官方手势标签 | 中文含义 | 项目内部标准名称 | 建议语义 | 状态 |
+|---|---|---|---|---|
+| `None` | 未识别 / 无有效手势 | `None` | 无动作，必要时释放连续控制 | 保留 |
+| `Closed_Fist` | 握拳 | `Closed_Fist` | 停止、退出、释放所有按键 | 保留 |
+| `Open_Palm` | 张开手掌 | `Open_Palm` | 翻页、旋转、大范围拖动 | 保留 |
+| `Pointing_Up` | 单指向上 | `Pointing_Up` | 鼠标移动、画笔移动、精确指向 | 保留 |
+| `Thumb_Down` | 拇指向下 | 识别层保留；状态机归一化为 `None` | **已废弃** - 第一版不使用 | 废弃 |
+| `Thumb_Up` | 拇指向上 | 识别层保留；状态机归一化为 `None` | **已废弃** - 第一版不使用 | 废弃 |
+| `Victory` | V 字手势 | `Victory` | 画笔、平移、滚轮模式 | 保留 |
+| `ILoveYou` | I Love You 手势 | `ILoveYou` | 模式切换、特殊命令 | 保留 |
 
 ### 5.1 手势名称兼容映射
 
@@ -168,7 +167,7 @@ MediaPipe GestureRecognizer 官方支持以下 canned gesture：
 | `NO_HAND` | `None` | 未检测到有效手势 |
 | `UNKNOWN` | `None` | 未知或低置信度手势 |
 
-状态机只应处理新标准名称。
+状态机处理标准名称；当前实现会进一步把 `Thumb_Up` / `Thumb_Down` 归一化为 `None`，确保其不进入任何功能分支。
 
 也就是说，进入状态机前必须完成名称归一化：
 
@@ -186,20 +185,27 @@ GestureRecognizer 负责输出官方静态手势分类结果，同时继续提�
 
 本项目的识别策略调整为：
 
-| 功能 | 识别来源 |
-|---|---|
-| `Closed_Fist` | GestureRecognizer 优先，规则判断兜底 |
-| `Open_Palm` | GestureRecognizer 优先，规则判断兜底 |
-| `Pointing_Up` | GestureRecognizer 优先，规则判断兜底 |
-| `Thumb_Down` | GestureRecognizer 优先 |
-| `Thumb_Up` | GestureRecognizer 优先 |
-| `Victory` | GestureRecognizer 优先，旧 TWO_FINGER 规则兜底 |
-| `ILoveYou` | GestureRecognizer 优先 |
-| `None` | GestureRecognizer 输出 None，或低置信度结果 |
-| `PINCH` | 仍使用 landmarks 自定义计算 |
-| `SWIPE_LEFT / SWIPE_RIGHT` | 仍使用 landmarks 轨迹计算 |
-| `HOLD` | 仍由状态机根据 stable_duration 判断 |
-| `DRAG` | 仍由状态机根据手部位置变化判断 |
+| 功能 | 识别来源 | 状态 |
+|---|---|---|
+| `Closed_Fist` | GestureRecognizer 优先，规则判断兜底 | 保留 |
+| `Open_Palm` | GestureRecognizer 优先，规则判断兜底 | 保留 |
+| `Pointing_Up` | GestureRecognizer 优先，规则判断兜底 | 保留 |
+| `Thumb_Down` | **第一版禁用** | 废弃 |
+| `Thumb_Up` | **第一版禁用** | 废弃 |
+| `Victory` | GestureRecognizer 优先，旧 TWO_FINGER 规则兜底 | 保留 |
+| `ILoveYou` | GestureRecognizer 优先 | 保留 |
+| `None` | GestureRecognizer 输出 None，或低置信度结果 | 保留 |
+| `PINCH` | 仍使用 landmarks 自定义计算 | 保留 |
+| `SWIPE_LEFT / SWIPE_RIGHT` | 仍使用 landmarks 轨迹计算 | 保留 |
+| `HOLD` | 仍由状态机根据 stable_duration 判断 | 保留 |
+| `DRAG` | 仍由状态机根据手部位置变化判断 | 保留 |
+
+**废弃说明**：
+
+```text
+Thumb_Up / Thumb_Down 在真实摄像头环境中容易受手腕角度、左右手、摄像头镜像影响，
+误识别风险较高。第一版稳定演示中不再使用这两个手势触发动作。
+```
 
 注意：
 
@@ -226,8 +232,9 @@ GestureRecognizer 负责输出官方静态手势分类结果，同时继续提�
 4. 对安全相关手势 Closed_Fist，可以允许规则判断兜底优先保留。
    原因：Closed_Fist 用于退出和 release_all，不能因为官方分类不稳定而完全失效。
 
-5. 对 Thumb_Up、Thumb_Down、ILoveYou，优先使用 GestureRecognizer。
+5. **Thumb_Up、Thumb_Down 在第一版中禁用**。
    原因：这些手势使用纯规则判断受摄像头角度影响较大，容易不稳定。
+   第一版稳定演示中不再使用这两个手势触发动作。
 
 ---
 
@@ -350,38 +357,72 @@ DRAG 必须有 begin / update / end 三个阶段
 
 | 手势               | 触发条件                      | 动作               | 说明          |
 | ---------------- | ------------------------- | ---------------- | ----------- |
-| `None`           | 手丢失超过 `hand_lost_timeout` | `release_all`    | 释放所有鼠标键和辅助键 |
-| `Closed_Fist`    | 保持 0.5–0.8 秒              | 退出当前子模式 / 停止连续动作 | 优先级最高       |
-| `Closed_Fist` 长按 | 保持 1.5 秒                  | 回到 `standby`     | 强制回待机       |
+| `None`           | 每次连续手丢失首次超过 `hand_lost_timeout` | `release_all` | 后续无手帧不重复释放，见手后重新布防 |
+| `Closed_Fist`    | standby 中立即；活动模式保持 0.8 秒 | 释放或退出当前模式 | 优先级最高 |
 | `Ctrl+Alt+G`     | 键盘热键                      | 暂停 / 恢复          | 不依赖手势识别     |
 | `Ctrl+Alt+Q`     | 键盘热键                      | 紧急退出程序           | 不依赖手势识别     |
 
 全局规则：
 
 ```text
-任何模式下，只要触发 Closed_Fist，都必须先执行 release_all，再切换状态。
+standby 中 Closed_Fist 立即执行 `release_all` 并保持待机；presentation、presentation_pen、solidworks 中保持 0.8 秒后按各模式退出序列释放并回待机。
 ```
+
+**注意**：第一版中 `Thumb_Up` / `Thumb_Down` 不再触发任何全局动作。
+
+识别层仍可报告这两个官方标签，但当前状态机兼容映射会把它们转换为 `None`。
 
 ---
 
 ## 9. Standby 待机模式手势映射
 
-待机模式的目标是避免误触。
+待机模式的目标是避免误触，并提供稳定的模式切换方式。
 
 | 手势            | 触发条件     | 动作                        | 说明                 |
 | ------------- | -------- | ------------------------- | ------------------ |
-| `Thumb_Up`    | 保持 1.5 秒 | 发送 `F5`，进入 `presentation` | 启动 PPT 演示          |
-| `Pointing_Up` | 保持 1.0 秒 | 进入 `mouse`                | 启动鼠标控制             |
-| `ILoveYou`    | 保持 1.5 秒 | 进入 `solidworks`           | 启动 SolidWorks 查看模式 |
+| `ILoveYou`    | 向右滑动    | 进入 `presentation`          | 切换到 PPT 演示模式      |
+| `ILoveYou`    | 向左滑动    | 进入 `solidworks`           | 切换到 SolidWorks 模式  |
+| `Closed_Fist` | 任意       | 保持待机 / `release_all`    | 确保安全              |
 | `Open_Palm`   | 任意       | 不执行动作                     | 避免自然抬手误触           |
-| `Closed_Fist` | 任意       | 保持待机                      | 不执行动作              |
+| `Pointing_Up` | 任意       | 不执行动作                     | 第一版不使用此手势启动鼠标模式  |
+| `Victory`     | 任意       | 不执行动作                     | 避免误触              |
 | `None`        | 任意       | 不执行动作                     | 安全待机               |
 
-说明：
+**模式切换说明**：
 
 ```text
-standby 模式下不使用 Open_Palm 启动演示。
-原因：Open_Palm 是自然伸手动作，误触概率较高。
+Standby 不再通过 Thumb_Up 启动 PPT，也不再进入 mouse 模式。
+模式切换统一由 ILoveYou 左右滑完成。
+
+ILoveYou 滑动方向规则（Phase 9 最终版）：
+
+  standby:
+    右滑 → presentation
+    左滑 → solidworks
+
+  presentation:
+    右滑 → standby
+    左滑 → solidworks
+
+  solidworks:
+    右滑 → presentation
+    左滑 → standby
+
+进入 presentation 时不发送 F5，PPT 幻灯片放映由用户手动启动。
+standby → presentation / solidworks 只更新内部模式，不输出系统动作；从活动模式离开时执行安全释放。presentation 右滑回 standby 还会发送 `Esc`。
+```
+
+**滑动检测要求**：
+
+```text
+1. ILoveYou swipe 必须有 mode_switch_cooldown
+2. ILoveYou 静止不触发切换
+3. swipe 必须满足 x 方向阈值和 y 方向限制
+4. 推荐参数：
+   - iloveyou_swipe_threshold_x = 0.22
+   - swipe_threshold_y_limit = 0.12（ILoveYou 复用）
+   - swipe_time_window = 0.8s（ILoveYou 复用）
+   - mode_switch_cooldown = 1.0s
 ```
 
 ---
@@ -405,16 +446,22 @@ PowerPoint 已打开，或已经进入幻灯片放映模式。
 | 下一页    | `Open_Palm` 向右挥        | `press("right")` 或 `press("pagedown")`       | 高   |
 | 上一页    | `Open_Palm` 向左挥        | `press("left")` 或 `press("pageup")`          | 高   |
 | 进入画笔模式 | `Victory` 保持 0.5 秒     | `hotkey("ctrl", "p")`，进入 `presentation_pen`  | 中   |
-| 擦除画笔痕迹 | `Thumb_Down` 保持 0.5 秒  | `press("e")`                                 | 中   |
-| 取消画笔   | `Thumb_Up` 保持 0.5 秒    | `hotkey("ctrl", "a")`                        | 中   |
+| 模式切换   | `ILoveYou` 右滑/左滑     | 右滑：`Esc` + 释放并回 standby；左滑：释放并进 solidworks | 中   |
 | 退出演示   | `Closed_Fist` 保持 0.8 秒 | `press("esc")` + `release_all` + 回 `standby` | 高   |
-| 黑屏     | `ILoveYou` 保持 0.8 秒    | `press("b")`                                 | 低   |
+| 手丢失超时  | `None` 首次超过超时时间    | `release_all`，保持 `presentation`；连续无手不重复 | 高 |
+
+**第一版简化说明**：
+
+```text
+PPT 模式不再提供手势擦除。
+第一版只保留翻页、进入画笔、退出演示和模式切换。
+```
 
 限制：
 
 ```text
-presentation 模式下，Thumb_Up 不再触发 F5。
-presentation 模式下，Open_Palm 保持不触发任何动作，只识别左右挥动。
+presentation 模式下，Victory 不再重复触发 Ctrl+P。
+presentation 模式下 Open_Palm 保持不触发任何动作，只识别左右挥动。
 ```
 
 ---
@@ -439,9 +486,16 @@ presentation 模式下 Victory 保持 0.5 秒
 | 开始画线 | `PINCH` 开始             | `mouse_down("left")`                         |
 | 持续画线 | `PINCH` 保持 + 移动        | 鼠标移动                                         |
 | 停止画线 | `PINCH` 释放             | `mouse_up("left")`                           |
-| 擦除痕迹 | `Thumb_Down` 保持 0.5 秒  | `press("e")`                                 |
-| 退出画笔 | `Thumb_Up` 保持 0.5 秒    | `hotkey("ctrl", "a")`，回 `presentation`       |
+| 退出画笔 | `Victory` 保持 0.5 秒     | `hotkey("ctrl", "a")`，回 `presentation`       |
 | 退出演示 | `Closed_Fist` 保持 0.8 秒 | `press("esc")` + `release_all` + 回 `standby` |
+| 手丢失  | `None` 首次超过超时时间    | 按需 `mouse_up("left")` + `release_all`，保持 `presentation_pen`；连续无手不重复 |
+
+**画笔切换说明**：
+
+```text
+Victory 在 presentation 中表示进入画笔；
+Victory 在 presentation_pen 中表示退出画笔。
+```
 
 限制：
 
@@ -452,12 +506,17 @@ PINCH 只负责画线，不负责普通点击。
 
 ---
 
-## 12. 鼠标模式手势映射
+## 12. 鼠标模式手势映射（已废弃）
+
+> **Deprecated / Disabled in simplified demo version**
+>
+> 由于当前演示重点是 PPT 和 SolidWorks，且鼠标模式会增加误触和调试成本，
+> 简化版本暂时禁用 mouse / mouse_scroll。
 
 模式名称：
 
 ```text
-mouse
+mouse（已废弃）
 ```
 
 | 功能      | 手势                     | 动作                          |
@@ -471,21 +530,21 @@ mouse
 | 右键单击    | `Thumb_Down` 保持 0.5 秒  | `click("right")`            |
 | 退出鼠标模式  | `Closed_Fist` 保持 0.8 秒 | `release_all` + 回 `standby` |
 
-限制：
-
-```text
-鼠标模式下，Open_Palm 不执行动作。
-避免用户自然张手时干扰鼠标控制。
-```
+**第一版不启用此模式。保留为后续版本参考。**
 
 ---
 
-## 13. 鼠标滚轮子模式手势映射
+## 13. 鼠标滚轮子模式手势映射（已废弃）
+
+> **Deprecated / Disabled in simplified demo version**
+>
+> 由于当前演示重点是 PPT 和 SolidWorks，且鼠标模式会增加误触和调试成本，
+> 简化版本暂时禁用 mouse / mouse_scroll。
 
 模式名称：
 
 ```text
-mouse_scroll
+mouse_scroll（已废弃）
 ```
 
 | 功能     | 手势                        | 动作                |
@@ -494,12 +553,7 @@ mouse_scroll
 | 向下滚动   | `Victory` + 手向下移动         | `scroll(-amount)` |
 | 退出滚轮模式 | `Closed_Fist` 或 `None` 超时 | 回 `mouse`         |
 
-限制：
-
-```text
-只有进入 mouse_scroll 后，手掌上下移动才会触发滚轮。
-普通 mouse 模式下不允许 y 方向移动直接触发滚轮。
-```
+**第一版不启用此模式。保留为后续版本参考。**
 
 ---
 
@@ -516,9 +570,9 @@ solidworks
 | 旋转模型             | `Open_Palm` + 移动       | 按住中键拖动                      | 高   |
 | 平移模型             | `Victory` + 移动         | `Shift` + 中键拖动              | 高   |
 | 缩放模型             | `PINCH` 距离变化           | 鼠标滚轮                        | 高   |
-| 缩放全部拟合           | `Thumb_Up` 保持 0.5 秒    | `press("f")`                | 中   |
-| 等轴测视图            | `ILoveYou` 保持 0.8 秒    | `hotkey("ctrl", "7")`       | 中   |
+| 模式切换             | `ILoveYou` 右滑/左滑     | 结束连续动作并 `release_all` 后切换模式 | 中 |
 | 退出 SolidWorks 模式 | `Closed_Fist` 保持 0.8 秒 | `release_all` + 回 `standby` | 高   |
+| 手丢失超时            | `None` 首次超过超时时间    | 按需释放中键/Shift + `release_all`，保持 `solidworks`；连续无手不重复 | 高 |
 
 ### 14.1 旋转模型规则
 
@@ -593,14 +647,8 @@ PINCH 距离减小：
 
 ```text
 翻页
-开始演示
+进入/退出画笔
 退出演示
-进入画笔
-擦除
-取消画笔
-右键
-缩放全部拟合
-等轴测
 模式切换
 ```
 
@@ -609,11 +657,13 @@ PINCH 距离减小：
 ```text
 page_turn_cooldown = 0.8s
 mode_switch_cooldown = 1.0s
-click_cooldown = 0.25s
+click_cooldown = 0.35s  # 兼容 mouse 逻辑，当前模式已禁用
 right_click_cooldown = 0.5s
 pen_toggle_cooldown = 0.6s
 solidworks_view_cooldown = 0.8s
 ```
+
+其中 `click_cooldown`、`right_click_cooldown`、`solidworks_view_cooldown` 是当前保留的兼容配置；简化主流程不使用对应鼠标点击或视图快捷键动作。
 
 ---
 
@@ -624,65 +674,85 @@ solidworks_view_cooldown = 0.8s
 推荐默认值：
 
 ```text
-start_presentation_hold = 1.5s
-enter_mouse_hold = 1.0s
-enter_solidworks_hold = 1.5s
 exit_mode_hold = 0.8s
 pen_mode_hold = 0.5s
-erase_hold = 0.5s
-right_click_hold = 0.5s
-fit_view_hold = 0.5s
-isometric_view_hold = 0.8s
+mode_switch_cooldown = 1.0s
+page_turn_cooldown = 0.8s
+```
+
+**已废弃参数**（第一版不使用）：
+
+```text
+start_presentation_hold  # 不再使用 Thumb_Up 启动 PPT
+enter_mouse_hold          # mouse 模式已禁用
+erase_hold                # 不再使用 Thumb_Down 擦除
+right_click_hold          # 不再使用 Thumb_Down 右键
+fit_view_hold             # 不再使用 Thumb_Up 拟合视图
+isometric_view_hold       # 不再使用 ILoveYou 等轴测
+```
+
+**新增参数说明**：
+
+```text
+iloveyou_swipe_threshold_x = 0.22  # ILoveYou 专用 x 方向阈值
+swipe_threshold_y_limit = 0.12     # Open_Palm / ILoveYou 共用 y 限制
+swipe_time_window = 0.8s           # Open_Palm / ILoveYou 共用轨迹窗口
+mode_switch_cooldown = 1.0s        # 模式切换冷却时间
+pen_mode_hold = 0.5s               # Victory 进入/退出画笔的保持时间
+exit_mode_hold = 0.8s              # Closed_Fist 退出活动模式保持时间
 ```
 
 ---
 
-## 18. 第一版实现范围
+## 18. 第一版简化实现范围
 
 当前版本在原有 landmarks 规则识别的基础上，新增 MediaPipe GestureRecognizer 接入要求。
 
 接入后，各模式下的手势操作映射保持不变，只改变静态手势的识别来源。
 
-具体映射如下：
+**第一版简化实现范围**：
 
 ```text
 1. Standby:
-   - Thumb_Up 启动 PPT
-   - Pointing_Up 进入鼠标模式
-   - ILoveYou 进入 SolidWorks 模式
+   - ILoveYou 右滑进入 presentation
+   - ILoveYou 左滑进入 solidworks
+   - Closed_Fist 保持待机 / release_all
 
 2. PPT:
    - Open_Palm 左右翻页
    - Victory 进入画笔
-   - Thumb_Down 擦除
-   - Thumb_Up 取消画笔
+   - Victory 退出画笔
    - Closed_Fist 退出演示
 
-3. Mouse:
-   - Pointing_Up 移动
-   - PINCH 左键点击
-   - PINCH 长按拖拽
-   - Victory 进入滚轮模式
-   - Thumb_Down 右键
-   - Closed_Fist 退出
+3. PPT 画笔:
+   - Pointing_Up 移动画笔
+   - PINCH 画线
+   - Victory 退出画笔
+   - Closed_Fist 退出演示
 
 4. SolidWorks:
    - Open_Palm 旋转
    - Victory 平移
    - PINCH 缩放
-   - Thumb_Up 缩放全部拟合
-   - ILoveYou 等轴测
+   - ILoveYou 右滑/左滑切换模式
    - Closed_Fist 退出
 ```
 
-暂缓实现：
+**暂缓实现**：
 
 ```text
-白屏 W
-多种视图定向 Ctrl+1 / Ctrl+2 / Ctrl+3
-双手缩放
-多台电脑控制
-复杂手势教学 UI
+- Thumb_Up（已废弃）
+- Thumb_Down（已废弃）
+- mouse（已废弃）
+- mouse_scroll（已废弃）
+- 手势擦除
+- SolidWorks 拟合视图
+- SolidWorks 等轴测视图
+- 白屏 W
+- 多种视图定向 Ctrl+1 / Ctrl+2 / Ctrl+3
+- 双手缩放
+- 多台电脑控制
+- 复杂手势教学 UI
 ```
 
 ### 18.1 GestureRecognizer 接入后不改变的内容
@@ -693,10 +763,10 @@ isometric_view_hold = 0.8s
    standby
    presentation
    presentation_pen
-   mouse
-   mouse_scroll
    solidworks
    paused
+   ~~mouse（已废弃）~~
+   ~~mouse_scroll（已废弃）~~
 
 2. ActionIntent 接口不变。
 
@@ -710,7 +780,7 @@ isometric_view_hold = 0.8s
 
 7. DRAG / move_rel / scroll 等连续动作逻辑不变。
 
-8. PPT、mouse、SolidWorks 的操作映射不变。
+8. PPT、SolidWorks 的操作映射不变（已简化）。
 
 本次接入 GestureRecognizer 的目标是提升静态手势识别稳定性，而不是重新设计交互。
 
@@ -741,11 +811,11 @@ gesture_recognizer.task
    Closed_Fist
    Open_Palm
    Pointing_Up
-   Thumb_Down
-   Thumb_Up
    Victory
    ILoveYou
    None
+   ~~Thumb_Up（已废弃）~~
+   ~~Thumb_Down（已废弃）~~
 
 5. 保留 landmarks 输出，继续支持 PINCH / SWIPE / DRAG。
 6. 状态机 gesture_state.py 尽量不大改。
@@ -757,6 +827,7 @@ gesture_recognizer.task
    - PINCH 仍由 landmarks 计算
    - SWIPE 仍由 Open_Palm 轨迹计算
    - 状态机不因识别来源变化而改变行为
+   - Thumb_Up / Thumb_Down 出现时不触发任何动作
 
 ---
 
@@ -781,13 +852,22 @@ gesture_recognizer.task
 
 ## 20. 结论
 
-本项目第一版手势设计目标不是“手势越多越好”，而是：
+本项目第一版手势设计目标不是"手势越多越好"，而是：
 
 ```text
 PPT 演示闭环稳定
-鼠标模式不误触
 SolidWorks 能旋转、平移、缩放
+模式切换简单可靠（ILoveYou 滑动）
 任何时候都能安全退出和释放按键
+减少误识别风险（废弃 Thumb_Up / Thumb_Down）
 ```
 
 后续开发必须优先保证安全性、稳定性和可测试性。
+
+**第一版简化重点**：
+
+1. 只保留 6 个稳定手势：Closed_Fist、Open_Palm、Pointing_Up、Victory、ILoveYou、PINCH
+2. 使用 ILoveYou 滑动切换模式，避免使用容易误识别的 Thumb_Up / Thumb_Down
+3. 禁用 mouse / mouse_scroll 模式，降低演示复杂度
+4. 删除手势擦除功能，简化 PPT 画笔模式
+5. 删除 SolidWorks 拟合视图和等轴测视图，降低误触风险

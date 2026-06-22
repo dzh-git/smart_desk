@@ -96,9 +96,9 @@ hand_lost_timeout
 
 ---
 
-## 3. 配置结构建议
+## 3. 当前配置结构
 
-建议定义：
+当前 `hands/gesture_config.py` 中与第一版主流程直接相关的字段如下。未列出的兼容字段仍保留在代码中：
 
 ```python
 from dataclasses import dataclass
@@ -112,30 +112,28 @@ class GestureConfig:
     camera_fps: int = 30
 
     # recognizer
-    min_hand_detection_confidence: float = 0.6
+    min_hand_detection_confidence: float = 0.7
     min_hand_presence_confidence: float = 0.6
-    min_tracking_confidence: float = 0.6
+    min_tracking_confidence: float = 0.5
     min_gesture_confidence: float = 0.65
+    max_num_hands: int = 1
+
+    # GestureRecognizer
+    use_gesture_recognizer: bool = True
+    gesture_recognizer_model_path: str = "gesture_recognizer.task"
+    fallback_to_rule_gestures: bool = True
 
     # timing
-    hand_lost_timeout: float = 1.0
-    start_presentation_hold: float = 1.5
-    enter_mouse_hold: float = 1.0
-    enter_solidworks_hold: float = 1.5
+    hand_loss_timeout: float = 1.0
     exit_mode_hold: float = 0.8
     pen_mode_hold: float = 0.5
-    erase_hold: float = 0.5
-    right_click_hold: float = 0.5
-    fit_view_hold: float = 0.5
-    isometric_view_hold: float = 0.8
-
-    # cooldown
     page_turn_cooldown: float = 0.8
     mode_switch_cooldown: float = 1.0
-    click_cooldown: float = 0.25
-    right_click_cooldown: float = 0.5
+    click_cooldown: float = 0.35
     pen_toggle_cooldown: float = 0.6
-    solidworks_view_cooldown: float = 0.8
+
+    # ILoveYou swipe
+    iloveyou_swipe_threshold_x: float = 0.22
 
     # swipe
     swipe_threshold_x: float = 0.18
@@ -147,21 +145,32 @@ class GestureConfig:
     pinch_release_threshold: float = 0.065
     pinch_zoom_deadzone: float = 0.01
 
-    # mouse
-    mouse_smoothing: float = 0.35
-    mouse_speed: float = 1.0
-    mouse_max_step_px: int = 80
-    drag_hold_time: float = 0.35
-    click_max_movement_px: int = 25
+    # deprecated compatibility fields (still present, but simplified flow does not use them)
+    start_presentation_hold: float = 1.5
+    enter_mouse_hold: float = 1.0
+    enter_solidworks_hold: float = 1.5
+    erase_hold: float = 0.5
+    right_click_hold: float = 0.5
+    fit_view_hold: float = 0.5
+    isometric_view_hold: float = 0.8
+    right_click_cooldown: float = 0.5
 
-    # scroll
-    scroll_threshold_y: float = 0.08
-    scroll_amount: int = 5
-    scroll_cooldown: float = 0.12
+    # mouse（保留为后续版本兼容，第一版简化演示不使用）
+    mouse_smoothing: float = 0.35  # 保留
+    mouse_speed: float = 1.0  # 保留
+    mouse_max_step_px: int = 80  # 保留
+    drag_hold_time: float = 0.35  # 保留
+    click_max_movement_px: int = 25  # 保留
+
+    # scroll（保留为后续版本兼容，第一版简化演示不使用；mouse_scroll 模式已废弃）
+    scroll_threshold_y: float = 0.08  # 保留
+    scroll_amount: int = 5  # 保留
+    scroll_cooldown: float = 0.12  # 保留
 
     # solidworks
     solidworks_drag_sensitivity: float = 1.2
     solidworks_zoom_sensitivity: float = 8.0
+    solidworks_min_zoom_step: int = 1
     solidworks_deadzone: float = 0.01
 
     # debug
@@ -232,8 +241,8 @@ class GestureConfig:
 说明：
 
 ```text
-目标帧率，不保证摄像头一定达到
-实际 FPS 应在 debug 窗口显示
+该字段记录目标帧率；当前 _open_camera() 只设置宽度和高度，尚未把 camera_fps 写入 VideoCapture
+实际 FPS 在 debug 窗口显示
 ```
 
 ---
@@ -243,7 +252,7 @@ class GestureConfig:
 ### 5.1 min_hand_detection_confidence
 
 ```text
-默认值：0.6
+默认值：0.7
 范围：0.0–1.0
 ```
 
@@ -283,11 +292,13 @@ class GestureConfig:
 演示阶段：0.65–0.75
 ```
 
+当前 `HandLandmarker` 实际使用 `min_hand_detection_confidence=0.7` 和 `min_tracking_confidence=0.5`。`min_hand_presence_confidence=0.6` 字段已保留，但当前构造参数尚未消费它。
+
 ---
 
 ## 6. 时间参数
 
-### 6.1 hand_lost_timeout
+### 6.1 hand_loss_timeout / hand_lost_timeout
 
 ```text
 默认值：1.0
@@ -297,7 +308,9 @@ class GestureConfig:
 含义：
 
 ```text
-手离开摄像头画面超过该时间后，触发 release_all。
+`hand_loss_timeout` 是 dataclass 的实际字段名；`hand_lost_timeout` 是读写属性别名，两者指向同一个值。
+
+手离开摄像头画面超过该时间后，同一次连续手丢失事件只触发一次 `release_all`。有效手重新出现后重新布防。
 ```
 
 调大：
@@ -322,60 +335,51 @@ class GestureConfig:
 
 ---
 
-### 6.2 start_presentation_hold
+### 6.2 start_presentation_hold（已废弃）
 
-```text
-默认值：1.5
-单位：秒
-```
+> **Deprecated in simplified demo version**
+>
+> 第一版不再使用 Thumb_Up 启动 PPT，因此此参数已废弃。
 
-含义：
+原含义：
 
 ```text
 standby 模式下，Thumb_Up 保持多久触发 F5。
 ```
 
-推荐：
-
-```text
-不要低于 1 秒，避免误触启动 PPT。
-```
+**第一版不使用此参数。保留为后续版本参考。**
 
 ---
 
-### 6.3 enter_mouse_hold
+### 6.3 enter_mouse_hold（已废弃）
 
-```text
-默认值：1.0
-单位：秒
-```
+> **Deprecated in simplified demo version**
+>
+> 第一版禁用 mouse 模式，因此此参数已废弃。
 
-含义：
+原含义：
 
 ```text
 standby 模式下，Pointing_Up 保持多久进入鼠标模式。
 ```
 
+**第一版不使用此参数。保留为后续版本参考。**
+
 ---
 
-### 6.4 enter_solidworks_hold
+### 6.4 enter_solidworks_hold（已废弃）
 
-```text
-默认值：1.5
-单位：秒
-```
+> **Deprecated in simplified demo version**
+>
+> 第一版使用 ILoveYou 滑动切换模式，不再使用 HOLD，因此此参数已废弃。
 
-含义：
+原含义：
 
 ```text
 standby 模式下，ILoveYou 保持多久进入 SolidWorks 模式。
 ```
 
-说明：
-
-```text
-SolidWorks 模式会控制中键、Shift 和滚轮，误触风险较高，因此保持时间应略长。
-```
+**第一版不使用此参数。使用 iloveyou_swipe_threshold_x 和 mode_switch_cooldown 替代。**
 
 ---
 
@@ -447,7 +451,7 @@ PPT 翻页后，至少等待多久才允许下一次翻页。
 ### 7.3 click_cooldown
 
 ```text
-默认值：0.25
+默认值：0.35
 单位：秒
 ```
 
@@ -533,6 +537,80 @@ Open_Palm 在 x 方向移动超过该距离，才认为是左右挥手。
 
 ---
 
+## 8.x ILoveYou 滑动参数
+
+### 8.x.1 iloveyou_swipe_threshold_x
+
+```text
+默认值：0.22
+单位：归一化坐标
+```
+
+含义：
+
+```text
+ILoveYou 手势在 x 方向移动超过该距离，才认为是模式切换滑动。
+```
+
+调大：
+
+```text
+需要更大幅度滑动，误触更少
+```
+
+调小：
+
+```text
+更灵敏，但容易误切换模式
+```
+
+---
+
+### 8.x.2 垂直限制（复用 swipe_threshold_y_limit）
+
+```text
+默认值：0.12
+单位：归一化坐标
+```
+
+含义：
+
+```text
+当前代码没有独立的 `iloveyou_swipe_y_limit` 字段。ILoveYou 滑动复用 `swipe_threshold_y_limit = 0.12`。
+```
+
+---
+
+### 8.x.3 时间窗口（复用 swipe_time_window）
+
+```text
+默认值：0.8
+单位：秒
+```
+
+含义：
+
+```text
+当前代码没有独立的 `iloveyou_swipe_time_window` 字段。ILoveYou 滑动复用 `swipe_time_window = 0.8`。
+```
+
+---
+
+### 8.x.4 mode_switch_cooldown
+
+```text
+默认值：1.0
+单位：秒
+```
+
+含义：
+
+```text
+模式切换后，短时间内不允许再次切换。
+```
+
+---
+
 ## 9. 捏合参数
 
 ### 9.1 pinch_threshold
@@ -592,7 +670,11 @@ SolidWorks 缩放时，PINCH 距离变化小于该值则不触发滚轮。
 
 ---
 
-## 10. 鼠标参数
+## 10. 鼠标参数（已废弃）
+
+> **Deprecated in simplified demo version**
+>
+> mouse 模式在第一版简化演示中已禁用。以下参数保留为后续版本兼容，不在第一版代码中使用。
 
 ### 10.1 mouse_smoothing
 
@@ -686,7 +768,11 @@ PINCH 短按期间，如果移动超过该距离，不再认为是普通点击�
 
 ---
 
-## 11. 滚轮参数
+## 11. 滚轮参数（已废弃）
+
+> **Deprecated in simplified demo version**
+>
+> mouse_scroll 模式在第一版简化演示中已禁用。以下参数保留为后续版本兼容，SolidWorks 的 PINCH 缩放参数（solidworks_zoom_sensitivity 等）不受影响。
 
 ### 11.1 scroll_threshold_y
 
@@ -700,6 +786,8 @@ PINCH 短按期间，如果移动超过该距离，不再认为是普通点击�
 ```text
 mouse_scroll 模式下，手在 y 方向移动超过该阈值才触发滚轮。
 ```
+
+> **已废弃**：第一版简化演示不使用 mouse_scroll 模式，此参数保留为后续版本兼容。
 
 ---
 
@@ -775,7 +863,18 @@ PINCH 距离变化映射到滚轮缩放量的倍率。
 
 ---
 
-### 12.3 solidworks_deadzone
+### 12.3 solidworks_min_zoom_step
+
+```text
+默认值：1
+单位：滚轮单位
+```
+
+含义：PINCH 变化超过死区但换算后滚轮量为 0 时，保证至少输出该步长。
+
+---
+
+### 12.4 solidworks_deadzone
 
 ```text
 默认值：0.01
@@ -815,7 +914,7 @@ SolidWorks 旋转/平移时，手部位移小于该值不触发鼠标移动。
 含义：
 
 ```text
-调试窗口是否置顶。
+兼容配置字段。当前控制器实际读取 `debug_window_topmost=True` 决定是否置顶。
 ```
 
 ---
@@ -829,7 +928,7 @@ SolidWorks 旋转/平移时，手部位移小于该值不触发鼠标移动。
 含义：
 
 ```text
-是否在调试窗口显示手部关键点。
+兼容配置字段；当前只要启用调试窗口就会绘制关键点，尚未按该字段分支。
 ```
 
 ---
@@ -843,7 +942,7 @@ SolidWorks 旋转/平移时，手部位移小于该值不触发鼠标移动。
 含义：
 
 ```text
-是否显示实时 FPS。
+兼容配置字段；当前只要启用调试窗口就会显示实时 FPS，尚未按该字段分支。
 ```
 
 ---
@@ -857,7 +956,7 @@ SolidWorks 旋转/平移时，手部位移小于该值不触发鼠标移动。
 含义：
 
 ```text
-是否在调试窗口或日志中显示动作触发记录。
+兼容配置字段；当前日志和调试信息尚未统一按该字段开关。
 ```
 
 ---
@@ -873,7 +972,7 @@ SolidWorks 旋转/平移时，手部位移小于该值不触发鼠标移动。
 含义：
 
 ```text
-程序启动后是否默认暂停。
+兼容字段。状态机构造时实际读取 `pause_on_start=True`；CLI 会同步设置 `pause_on_start` 和 `start_paused`。
 ```
 
 建议：
@@ -893,7 +992,7 @@ SolidWorks 旋转/平移时，手部位移小于该值不触发鼠标移动。
 含义：
 
 ```text
-是否只识别手势和输出动作日志，不实际控制鼠标键盘。
+CLI 状态记录字段。真正决定动作层是否控制系统的是 `enable_system_mouse`；`--no-mouse` 会同时设置 `dry_run=True` 和 `enable_system_mouse=False`。
 ```
 
 启动示例：
@@ -930,12 +1029,13 @@ python -m hands.gesture_controller --no-mouse
 
 ```bash
 python -m hands.gesture_controller --mode presentation
-python -m hands.gesture_controller --mode mouse
 python -m hands.gesture_controller --mode solidworks
 python -m hands.gesture_controller --no-debug
 python -m hands.gesture_controller --no-mouse
 python -m hands.gesture_controller --camera 1
 ```
+
+> `--mode mouse` 仍作为兼容 CLI 值被解析，但当前状态机禁用了 `mouse` / `mouse_scroll`；进入后会安全释放并回到 `standby`。现场不要使用该参数。
 
 命令行优先级：
 
@@ -1000,7 +1100,7 @@ mouse_smoothing
 mouse_speed
 solidworks_drag_sensitivity
 solidworks_zoom_sensitivity
-hand_lost_timeout
+hand_loss_timeout（并提供 hand_lost_timeout 属性别名）
 ```
 
 标定顺序：
