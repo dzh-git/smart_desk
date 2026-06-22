@@ -554,6 +554,13 @@ class HandRecognizer:
         The ``gesture`` field is set to a *canonical* Gesture enum member so
         the state machine receives normalised names.  PINCH / palm / pinch
         distance are still computed from landmarks (unchanged).
+
+        Phase 8 fix: ``pinch_distance`` is now normalised to the 0--1 range
+        when the original MediaPipe landmarks are available.  This matches
+        the spec thresholds (``pinch_threshold``/``pinch_release_threshold``)
+        and removes the camera-resolution dependency that made PINCH fail on
+        low-resolution frames where the pixel distance was < 100 px but still
+        larger than the heuristic ``> 1.0`` cutoff.
         """
         if frame_result.landmarks is None:
             return HandInput(gesture=Gesture.NONE)
@@ -562,11 +569,24 @@ class HandRecognizer:
         gesture_enum = _canonical_gesture_enum(frame_result.gesture)
 
         palm = palm_center(frame_result.landmarks)
+
+        # Normalised pinch distance (0-1) from raw MediaPipe landmarks.
+        # Falls back to camera-px for legacy/test paths that only provide
+        # the converted ``landmarks`` list.
+        pinch_dist: Optional[float] = None
+        if frame_result.raw_hand_landmarks:
+            hand = frame_result.raw_hand_landmarks[0]
+            thumb = hand[4]
+            index = hand[8]
+            pinch_dist = math.hypot(thumb.x - index.x, thumb.y - index.y)
+        else:
+            pinch_dist = pinch_distance(frame_result.landmarks)
+
         return HandInput(
             gesture=gesture_enum,
             palm_xy=palm,
             wave_x=float(palm[0]) if palm is not None else None,
-            pinch_distance=pinch_distance(frame_result.landmarks),
+            pinch_distance=pinch_dist,
         )
 
     # ── debug drawing ──────────────────────────────────────────────────────

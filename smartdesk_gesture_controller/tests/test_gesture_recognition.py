@@ -91,6 +91,28 @@ def _open_palm() -> list:
     )
 
 
+class _FakeNormalizedLandmark:
+    """Minimal stand-in for MediaPipe NormalizedLandmark in tests."""
+
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+
+
+def _fake_raw_hand(pinch_dx: float = 0.01, pinch_dy: float = 0.0) -> list:
+    """Build a fake raw hand-landmark list with a configurable thumb-index gap.
+
+    The returned list has length 1 (one hand) and the hand has 21 landmarks.
+    Thumb tip (index 4) is placed at (pinch_dx, pinch_dy) and index tip
+    (index 8) is at (0, 0), so the normalised pinch distance is
+    sqrt(pinch_dx² + pinch_dy²).
+    """
+    lms = [_FakeNormalizedLandmark(0.0, 0.0) for _ in range(21)]
+    lms[4] = _FakeNormalizedLandmark(pinch_dx, pinch_dy)  # thumb tip
+    lms[8] = _FakeNormalizedLandmark(0.0, 0.0)             # index tip
+    return [lms]
+
+
 def _closed_fist() -> list:
     return _make_landmarks(
         thumb_tip_y=80, thumb_ip_y=120,
@@ -376,11 +398,12 @@ def _make_frame_result(
     gesture_confidence: Optional[float] = None,
     gesture_source: Optional[str] = None,
     raw_gesture: Optional[str] = None,
+    raw_hand_landmarks: Optional[list] = None,
 ) -> _FrameResult:
     """Build a _FrameResult for testing to_hand_input without a camera."""
     return _FrameResult(
         landmarks=landmarks,
-        raw_hand_landmarks=None,
+        raw_hand_landmarks=raw_hand_landmarks,
         gesture=gesture,
         gesture_confidence=gesture_confidence,
         gesture_source=gesture_source,
@@ -555,6 +578,23 @@ class TestToHandInputGestureRecognizer:
         hi = r.to_hand_input(fr)
         assert hi.pinch_distance is not None
         assert hi.pinch_distance > 0
+
+    def test_pinch_distance_is_normalised_with_raw_landmarks(self) -> None:
+        """When raw MediaPipe landmarks are present, pinch_distance is 0-1."""
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand(pinch_dx=0.01),
+            gesture="Open_Palm",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+        )
+        hi = r.to_hand_input(fr)
+        assert hi.pinch_distance is not None
+        # Expected: sqrt(0.01^2 + 0^2) = 0.01
+        assert abs(hi.pinch_distance - 0.01) < 1e-6
+        # Must be < 1.0 so the state machine uses the normalised thresholds.
+        assert hi.pinch_distance < 1.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
