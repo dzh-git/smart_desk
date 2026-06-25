@@ -119,15 +119,13 @@ class GestureFrameRecorder:
         mode: str,
         generated_events: List[ControlEvent],
         *,
-        mode_after: Optional[str] = None,
-        state_result_mode: Optional[str] = None,
         state_paused: Optional[bool] = None,
         mode_changed: bool = False,
     ) -> None:
         """Write one frame's data as a JSON line.
 
-        ``mode`` is the mode **before** ``GestureState.step()``; ``mode_after``
-        is the mode after.  ``mode_changed`` is True when they differ.
+        ``mode`` is the mode **before** ``GestureState.step()``.
+        ``mode_changed`` is True when the mode changed during this frame.
 
         Failures are logged but never raised — the main loop must not break.
         """
@@ -137,8 +135,6 @@ class GestureFrameRecorder:
         try:
             record = _build_record(
                 gesture_frame, tracker_result, mode, generated_events,
-                mode_after=mode_after,
-                state_result_mode=state_result_mode,
                 state_paused=state_paused,
                 mode_changed=mode_changed,
             )
@@ -174,8 +170,6 @@ def _build_record(
     mode: str,
     generated_events: List[ControlEvent],
     *,
-    mode_after: Optional[str] = None,
-    state_result_mode: Optional[str] = None,
     state_paused: Optional[bool] = None,
     mode_changed: bool = False,
 ) -> Dict[str, Any]:
@@ -183,19 +177,17 @@ def _build_record(
 
     Field layout (flat, no nesting)::
 
-        timestamp, mode, mode_before_state_step, mode_after_state_step,
-        state_result_mode, state_paused, mode_changed,
+        timestamp, mode, state_paused, mode_changed,
         raw_gesture, stable_gesture, confidence,
         hand_present, palm_x, palm_y, index_x, index_y, pinch_norm,
         intent_state, active_attempt, active_session, generated_intents, generated_events
 
-    ``mode`` (alias ``mode_before_state_step``) records the mode **before**
-    ``GestureState.step()``; ``mode_after_state_step`` records it after.
-    ``mode_changed`` is True when they differ.  ``generated_intents`` is a
-    list of intent type strings produced by ``state.step()``.
-    ``active_attempt`` is a compact ``"<intent_type>:<phase>:<id>"`` string
-    or ``null``.  ``active_session`` is ``"<control_type>:<phase>:<id>"`` or
-    ``null``.
+    ``mode`` records the mode **before** ``GestureState.step()``.
+    ``mode_changed`` is True when the mode changed during this frame.
+    ``generated_intents`` is a list of intent type strings produced by
+    ``state.step()``.  ``active_attempt`` is a compact
+    ``"<intent_type>:<phase>:<id>"`` string or ``null``.  ``active_session``
+    is ``"<control_type>:<phase>:<id>"`` or ``null``.
     """
     gf = gesture_frame
     tr = tracker_result
@@ -220,9 +212,6 @@ def _build_record(
     return {
         "timestamp": gf.timestamp,
         "mode": mode,
-        "mode_before_state_step": mode,
-        "mode_after_state_step": mode_after if mode_after is not None else mode,
-        "state_result_mode": state_result_mode,
         "state_paused": state_paused,
         "mode_changed": mode_changed,
         "raw_gesture": gf.raw_gesture,

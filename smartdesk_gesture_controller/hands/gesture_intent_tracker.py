@@ -510,6 +510,11 @@ class GestureIntentTracker:
         self._zoom_active = False
         self._zoom_last_distance = None
 
+        # Reset stable gesture so stale classification doesn't leak after hand loss.
+        self._stable_gesture = None
+        self._stable_since = 0.0
+        self._gesture_history.clear()
+
         events.append(ControlEvent(
             type=EVT_HAND_LOST_TIMEOUT,
             reason="hand_lost_timeout",

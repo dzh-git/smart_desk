@@ -616,6 +616,7 @@ def test_debug_window_p_key_toggles_pause(monkeypatch):
 
     controller, _ = _controller_with_fake_driver()
     controller.config.show_debug_window = True
+    controller.state.paused = True  # start paused for toggle test
     assert controller.state.paused is True
 
     # Simulate a single 'p' keypress.
@@ -637,6 +638,7 @@ def test_debug_window_space_key_toggles_pause(monkeypatch):
 
     controller, _ = _controller_with_fake_driver()
     controller.config.show_debug_window = True
+    controller.state.paused = True  # start paused for toggle test
     assert controller.state.paused is True
 
     def fake_waitKey(delay):

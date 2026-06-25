@@ -71,7 +71,7 @@ def _cfg(**overrides) -> GestureConfig:
         gesture_keep_confidence=0.45,
         intent_lost_timeout=0.25,
         mode_arm_duration=0.20,
-        mode_swipe_timeout=1.20,
+        mode_swipe_timeout=3.0,
         page_swipe_timeout=0.80,
         landmark_smoothing=0.45,
         motion_deadzone=0.015,
@@ -217,6 +217,20 @@ class TestHandLostTimeout:
             events.extend(r.events)
         hand_lost_events = [e for e in events if e.type == EVT_HAND_LOST_TIMEOUT]
         assert len(hand_lost_events) == 2
+
+    def test_stable_gesture_reset_after_hand_lost_timeout(self):
+        """stable_gesture is reset to None after hand_lost_timeout fires."""
+        tracker = GestureIntentTracker(_cfg(hand_loss_timeout=1.0))
+        # First establish a stable gesture with hand present.
+        for i in range(10):
+            f = _frame(hand_present=True, gesture="Open_Palm", ts=i * 0.033)
+            tracker.update(f, MODE_STANDBY, i * 0.033)
+        assert tracker._stable_gesture == "Open_Palm"
+        # Hand lost for 2 seconds — triggers timeout.
+        for i in range(10, 71):
+            f = _frame(hand_present=False, ts=i * 0.033)
+            tracker.update(f, MODE_STANDBY, i * 0.033)
+        assert tracker._stable_gesture is None
 
 
 # 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?# Test: candidate confirmation 鈥?4/5 frames required

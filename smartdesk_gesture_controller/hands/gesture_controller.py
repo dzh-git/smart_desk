@@ -262,8 +262,6 @@ class GestureController:
         # mode and whether a mode change occurred this frame.
         self.recorder.record_frame(
             gesture_frame, tracker_result, mode_before, tracker_result.events,
-            mode_after=self.state.mode,
-            state_result_mode=result.mode,
             state_paused=self.state.paused,
             mode_changed=mode_changed,
         )

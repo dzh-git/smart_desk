@@ -140,7 +140,7 @@ class GestureConfig:
     gesture_keep_confidence: float = 0.45
     intent_lost_timeout: float = 0.25
     mode_arm_duration: float = 0.20
-    mode_swipe_timeout: float = 0.80
+    mode_swipe_timeout: float = 3.0
     page_swipe_timeout: float = 0.80
     landmark_smoothing: float = 0.45
     motion_deadzone: float = 0.015
@@ -434,7 +434,7 @@ Closed_Fist 保持多久退出当前模式。
 | `gesture_keep_confidence` | 0.45 | 0–1 | 已进入流程后的保持参考置信度 |
 | `intent_lost_timeout` | 0.25 | 秒 | 分类保持失败的最长容忍时间 |
 | `mode_arm_duration` | 0.20 | 秒 | ILoveYou 进入模式切换 armed 前的最短稳定时间 |
-| `mode_swipe_timeout` | 0.80 | 秒 | 模式切换 attempt 的最长追踪时间 |
+| `mode_swipe_timeout` | 3.0 | 秒 | 模式切换 attempt 的最长追踪时间 |
 | `page_swipe_timeout` | 0.80 | 秒 | 翻页 attempt 的最长追踪时间 |
 | `landmark_smoothing` | 0.45 | 0–1 | landmarks 低通滤波中当前观测值权重 |
 | `motion_deadzone` | 0.015 | 归一化坐标 | 运动死区 |

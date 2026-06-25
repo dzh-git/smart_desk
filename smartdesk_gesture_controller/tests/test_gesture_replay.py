@@ -428,8 +428,7 @@ class TestRecordRoundTrip:
         record = _build_record(gf, tr, "standby", tr.events)
 
         required = {
-            "timestamp", "mode", "mode_before_state_step", "mode_after_state_step",
-            "state_result_mode", "state_paused", "mode_changed",
+            "timestamp", "mode", "state_paused", "mode_changed",
             "raw_gesture", "stable_gesture",
             "confidence", "hand_present", "palm_x", "palm_y",
             "index_x", "index_y", "pinch_norm", "intent_state",
@@ -438,29 +437,23 @@ class TestRecordRoundTrip:
         assert required.issubset(record.keys())
 
     def test_build_record_mode_change_fields(self) -> None:
-        """_build_record captures mode_before/mode_after/mode_changed correctly."""
+        """_build_record captures mode and mode_changed correctly."""
         gf = _make_gesture_frame()
         tr = _make_tracker_result()
         record = _build_record(
             gf, tr, "standby", [],
-            mode_after="presentation",
-            state_result_mode="presentation",
             state_paused=False,
             mode_changed=True,
         )
         assert record["mode"] == "standby"
-        assert record["mode_before_state_step"] == "standby"
-        assert record["mode_after_state_step"] == "presentation"
-        assert record["state_result_mode"] == "presentation"
         assert record["state_paused"] is False
         assert record["mode_changed"] is True
 
     def test_build_record_defaults_when_no_mode_change(self) -> None:
-        """Without mode_change kwargs, mode_after defaults to mode."""
+        """Without mode_change kwargs, mode_changed defaults to False."""
         gf = _make_gesture_frame()
         tr = _make_tracker_result()
         record = _build_record(gf, tr, "standby", [])
-        assert record["mode_after_state_step"] == "standby"
         assert record["mode_changed"] is False
         assert record["generated_intents"] == []
 
@@ -928,7 +921,7 @@ class TestRecorderModeChangeFields:
     """Test that the recorder captures mode_before/mode_after/mode_changed."""
 
     def test_record_frame_with_mode_change(self, tmp_path) -> None:
-        """record_frame writes mode_changed=True when mode_after differs from mode."""
+        """record_frame writes mode_changed=True when mode changes."""
         config = default_config()
         config.gesture_record_dir = str(tmp_path)
         recorder = GestureFrameRecorder(config)
@@ -938,8 +931,6 @@ class TestRecorderModeChangeFields:
         tr = _make_tracker_result()
         recorder.record_frame(
             gf, tr, "standby", [],
-            mode_after="presentation",
-            state_result_mode="presentation",
             state_paused=False,
             mode_changed=True,
         )
@@ -949,10 +940,7 @@ class TestRecorderModeChangeFields:
             record = json.loads(f.readline())
 
         assert record["mode"] == "standby"
-        assert record["mode_before_state_step"] == "standby"
-        assert record["mode_after_state_step"] == "presentation"
         assert record["mode_changed"] is True
-        assert record["state_result_mode"] == "presentation"
 
     def test_record_frame_without_mode_change(self, tmp_path) -> None:
         """record_frame writes mode_changed=False when mode stays the same."""
@@ -965,8 +953,6 @@ class TestRecorderModeChangeFields:
         tr = _make_tracker_result()
         recorder.record_frame(
             gf, tr, "standby", [],
-            mode_after="standby",
-            state_result_mode="standby",
             state_paused=False,
             mode_changed=False,
         )
@@ -976,7 +962,6 @@ class TestRecorderModeChangeFields:
             record = json.loads(f.readline())
 
         assert record["mode_changed"] is False
-        assert record["mode_after_state_step"] == "standby"
 
     def test_record_frame_generated_intents(self, tmp_path) -> None:
         """record_frame writes generated_intents as a list of event type strings."""

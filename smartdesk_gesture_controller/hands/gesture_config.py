@@ -153,10 +153,9 @@ class GestureConfig:
     # Min stable duration before ILoveYou mode-switch attempt enters armed.
     mode_arm_duration: float = 0.20
     # Max tracking time for mode-switch / page-turn attempts.
-    # mode_swipe_timeout bumped from 0.80 → 1.20: real-record replays showed
-    # that 0.80s is too tight for ILoveYou swipe commits (~0.9s typical).
+    # mode_swipe_timeout set to 3.0: gives ILoveYou swipe commits ample time.
     # page_swipe_timeout stays at 0.80 (Open_Palm swipes are faster).
-    mode_swipe_timeout: float = 1.20
+    mode_swipe_timeout: float = 3.0
     page_swipe_timeout: float = 0.80
     # Landmark low-pass filter: weight of the new observation (0-1).
     landmark_smoothing: float = 0.45
@@ -327,6 +326,10 @@ def config_from_args(argv: list[str] | None = None) -> GestureConfig:
     config.dry_run = args.no_mouse
     config.show_debug_window = not args.no_debug
     config.status_server_enabled = not args.no_server
-    config.pause_on_start = not (args.no_pause_on_start or args.start_unpaused)
-    config.start_paused = config.pause_on_start
+    # Only override the dataclass defaults when the user explicitly requests
+    # no-pause via CLI flags. Without these flags, keep the dataclass default
+    # (pause_on_start=False) so double-clicking the .bat does not force pause.
+    if args.no_pause_on_start or args.start_unpaused:
+        config.pause_on_start = False
+        config.start_paused = False
     return config
