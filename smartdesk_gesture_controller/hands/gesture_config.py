@@ -37,7 +37,7 @@ VALID_MODES = (
     MODE_MOUSE, MODE_MOUSE_SCROLL, MODE_SOLIDWORKS, MODE_PAUSED,
 )
 # Modes that the CLI --mode flag can pre-select (excludes sub-modes & paused).
-CLI_MODES = (MODE_PRESENTATION, MODE_MOUSE, MODE_SOLIDWORKS)
+CLI_MODES = (MODE_PRESENTATION, MODE_SOLIDWORKS)
 
 
 @dataclass
@@ -138,6 +138,35 @@ class GestureConfig:
     solidworks_min_zoom_step: int = 1   # minimum scroll step per pinch delta (avoids amount=0)
     solidworks_deadzone: float = 0.01
 
+    # ── Control-flow tracker (Phase 1, CONFIG_SPEC §6.6) ───────────────────
+    # Candidate confirmation: official classifier must match at least
+    # gesture_enter_frames out of the last gesture_enter_window_frames frames,
+    # with per-frame confidence >= gesture_enter_confidence.
+    gesture_enter_frames: int = 4
+    gesture_enter_window_frames: int = 5
+    # Grace frames for classification jitter while an attempt/session is active.
+    gesture_keep_grace_frames: int = 6
+    gesture_enter_confidence: float = 0.70
+    gesture_keep_confidence: float = 0.45
+    # Max continuous classification failure before cancelling attempt/session.
+    intent_lost_timeout: float = 0.25
+    # Min stable duration before ILoveYou mode-switch attempt enters armed.
+    mode_arm_duration: float = 0.20
+    # Max tracking time for mode-switch / page-turn attempts.
+    # mode_swipe_timeout bumped from 0.80 → 1.20: real-record replays showed
+    # that 0.80s is too tight for ILoveYou swipe commits (~0.9s typical).
+    # page_swipe_timeout stays at 0.80 (Open_Palm swipes are faster).
+    mode_swipe_timeout: float = 1.20
+    page_swipe_timeout: float = 0.80
+    # Landmark low-pass filter: weight of the new observation (0-1).
+    landmark_smoothing: float = 0.45
+    # Motion constraints (all in normalised coordinates).
+    motion_deadzone: float = 0.015
+    max_motion_step: float = 0.08      # max per-frame displacement
+    max_motion_velocity: float = 1.5   # max normalised coords per second
+    min_motion_duration: float = 0.12  # min dynamic action duration
+    direction_consistency_frames: int = 3
+
     # ── Behavior / safety switches ──────────────────────────────────────────
     initial_mode: str = MODE_STANDBY
     enable_system_mouse: bool = True    # False = dry-run, recognize but never control
@@ -149,14 +178,18 @@ class GestureConfig:
     show_landmarks: bool = True
     show_fps: bool = True
     show_action_log: bool = True
-    pause_on_start: bool = True         # begin paused; requires explicit activation
-    start_paused: bool = True           # spec alias for pause_on_start
+    pause_on_start: bool = False         # begin paused; requires explicit activation
+    start_paused: bool = False          # spec alias for pause_on_start
     enable_hotkeys: bool = True
     exit_key: str = "q"                 # key inside the cv2 window to quit
 
     # ── Global hotkeys (best-effort via keyboard; falls back to cv2-only) ───
     hotkey_toggle_pause: str = "<ctrl>+<alt>+g"
     hotkey_emergency_exit: str = "<ctrl>+<alt>+q"
+
+    # ── Gesture recording / replay ─────────────────────────────────────────
+    record_gestures: bool = True            # enable recording in controller loop
+    gesture_record_dir: str = "logs"              # diTruerectory for JSONL record files
 
     # ── Status broadcast server ─────────────────────────────────────────────
     status_server_enabled: bool = True
@@ -253,8 +286,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mode",
         choices=CLI_MODES,
-        default=MODE_MOUSE,
-        help="active control mode on startup after leaving standby (default mouse)",
+        default=MODE_STANDBY,
+        help="active control mode on startup after leaving standby (default standby)",
     )
     parser.add_argument(
         "--no-mouse",

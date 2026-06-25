@@ -1,8 +1,9 @@
 # SmartDesk
 
-SmartDesk 是一个本地智能会议桌 demo。当前仓库包含 FastAPI 后端、
-React/Vite 前端、SQLite 持久化、WebSocket 实时同步、本地 FunASR
-语音识别、实时字幕和可选 OPUS-MT 翻译。
+SmartDesk 是一个面向 Windows 局域网环境的智能会议桌 demo。当前仓库包含
+FastAPI 后端、React/Vite 前端、SQLite 持久化、WebSocket 实时同步、
+本地 FunASR 语音识别、实时字幕、可选 OPUS-MT 翻译，以及可选的中央主机
+屏幕采集与 WebRTC 共享功能。
 
 手势识别控制器不再属于当前前后端项目；如需中央主机手势控制，请使用独立项目目录。
 
@@ -54,9 +55,15 @@ Screen Stream 默认关闭。启用前需将 FFmpeg 和 MediaMTX 二进制文件
 放置到 `tools/ffmpeg/bin/ffmpeg.exe` 和 `tools/mediamtx/mediamtx.exe`。
 详见 `host_services/screen_stream/README.md`。
 
-```powershell
-.\kill.bat
-```
+该功能由中央主机本地 Display Agent、FFmpeg 和 MediaMTX 组成：FFmpeg
+采集指定显示器，MediaMTX 通过 WebRTC 向局域网终端分发。`/admin` 中的
+PowerPoint、SolidWorks、SmartDesk 窗口切换按钮只支持在中央主机本机浏览器
+中使用，因为浏览器访问的 `127.0.0.1:8766` 始终指向浏览器所在机器。远程
+终端可以观看 `/screen`，但不能通过该本地 Agent 控制中央主机窗口。
+
+屏幕共享的代码和自动测试已经完成；外接显示器索引、PowerPoint/SolidWorks
+窗口切换、局域网 WebRTC、10 客户端并发、延迟和长时间稳定性仍需在目标
+Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 
 默认地址：
 
@@ -73,6 +80,7 @@ Screen Stream 默认关闭。启用前需将 FFmpeg 和 MediaMTX 二进制文件
 | `/admin` | 主持人控制台。 |
 | `/seat/:seatId` | 1 到 10 号座位端。 |
 | `/display` | 中央大屏。 |
+| `/screen` | 局域网终端使用的只读中央主机共享画面。 |
 | `/` | 自动跳转到 `/admin`。 |
 | `/?seat=N` | 兼容旧入口，自动跳转到 `/seat/N`。 |
 
@@ -87,6 +95,9 @@ Screen Stream 默认关闭。启用前需将 FFmpeg 和 MediaMTX 二进制文件
 | `ENABLE_TRANSLATION_MODEL=true` | 启用本地 OPUS-MT zh-en 最终翻译。 |
 | `TRANSLATION_MODEL_PATH=...` | 覆盖本地翻译模型路径。 |
 | `RUN_TRANSLATION_SMOKE=true` | 启用翻译模型 smoke test。 |
+| `ENABLE_SCREEN_STREAM=true` | 随 `start.bat` 启动 Display Agent、FFmpeg 和 MediaMTX；默认关闭。 |
+| `SMARTDESK_AGENT_URL=...` | 后端只读状态聚合使用的 Display Agent 地址，默认 `http://127.0.0.1:8766`。 |
+| `SMARTDESK_STREAM_PATH=screen` | MediaMTX 屏幕流路径。 |
 
 ## Main Folders
 
@@ -95,6 +106,8 @@ Screen Stream 默认关闭。启用前需将 FFmpeg 和 MediaMTX 二进制文件
 | `backend/` | FastAPI app、routers、services、repositories、models、WebSocket handlers。 |
 | `backend/speech_module/` | 当前语音实现：FunASR、标点、caption formatting。 |
 | `frontend/` | React + Vite + TypeScript 前端。 |
+| `host_services/display_agent/` | 中央主机本地 Windows 窗口发现与切换 Agent。 |
+| `host_services/screen_stream/` | FFmpeg/MediaMTX 配置、显示器探测和进程 Supervisor。 |
 | `docs/` | 当前 API、状态机、运行手册、架构和 ADR 文档。 |
 | `tests/` | 后端测试和语音测试。 |
 | `models/` | 本地模型权重和缓存，不纳入 git。 |
@@ -148,6 +161,12 @@ npm run lint
 npm test -- --run
 npm run build
 npm run e2e:speech
+```
+
+屏幕共享代码级预检（需要已放置 FFmpeg，且依赖目标显示器和编码器）：
+
+```powershell
+python host_services/screen_stream/supervisor.py --check
 ```
 
 如果命令因模型、浏览器、后端服务或本地环境缺失失败，应记录真实失败原因。

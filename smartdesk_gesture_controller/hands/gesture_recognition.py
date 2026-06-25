@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 from .gesture_state import Gesture, HandInput
+from .gesture_intent_tracker import GestureFrame, GestureSource
 
 logger = logging.getLogger("hands.recognition")
 
@@ -587,6 +588,90 @@ class HandRecognizer:
             palm_xy=palm,
             wave_x=float(palm[0]) if palm is not None else None,
             pinch_distance=pinch_dist,
+        )
+
+    # ── Task-2: GestureFrame construction ──────────────────────────────────
+    _SOURCE_MAP = {
+        "gesture_recognizer": GestureSource.RECOGNIZER,
+        "rule_fallback": GestureSource.RULE_FALLBACK,
+        "none": GestureSource.NONE,
+    }
+
+    def to_gesture_frame(self, frame_result: _FrameResult) -> GestureFrame:
+        """Construct a :class:`GestureFrame` from a :class:`_FrameResult`.
+
+        All spatial coordinates are image-normalised (0–1).
+        ``pinch_distance_norm`` is the thumb-index distance divided by
+        ``hand_size`` (wrist→middle_mcp distance), making it scale-invariant.
+
+        When no hand is detected, returns a frame with ``hand_present=False``
+        and all spatial fields set to ``None``.
+
+        ``timestamp`` uses :func:`time.monotonic` so it is suitable for
+        control-loop timing.
+        """
+        import time as _time
+
+        ts = _time.monotonic()
+
+        # No hand detected.
+        if frame_result.landmarks is None or not frame_result.raw_hand_landmarks:
+            return GestureFrame(
+                hand_present=False,
+                raw_gesture=None,
+                gesture_confidence=0.0,
+                gesture_source=GestureSource.NONE,
+                timestamp=ts,
+            )
+
+        hand = frame_result.raw_hand_landmarks[0]  # list[NormalizedLandmark], 21 pts
+
+        # ── palm_xy: midpoint of wrist(0) and middle_mcp(9) ──────────────
+        wrist = hand[0]
+        middle_mcp = hand[9]
+        palm_x = (wrist.x + middle_mcp.x) / 2.0
+        palm_y = (wrist.y + middle_mcp.y) / 2.0
+
+        # ── index_tip_xy: landmark 8 ──────────────────────────────────────
+        index_tip = hand[8]
+
+        # ── hand_size: distance(wrist, middle_mcp) in normalised coords ──
+        hand_size = math.hypot(
+            wrist.x - middle_mcp.x,
+            wrist.y - middle_mcp.y,
+        )
+
+        # ── pinch_distance: raw thumb-index distance (normalised) ────────
+        thumb_tip = hand[4]
+        pinch_dist = math.hypot(
+            thumb_tip.x - index_tip.x,
+            thumb_tip.y - index_tip.y,
+        )
+
+        # ── pinch_distance_norm: scale-invariant pinch ───────────────────
+        pinch_dist_norm = pinch_dist / hand_size if hand_size > 1e-6 else None
+
+        # ── gesture_source mapping ───────────────────────────────────────
+        src_str = frame_result.gesture_source or "none"
+        source = self._SOURCE_MAP.get(src_str, GestureSource.NONE)
+
+        # ── raw_gesture: use the normalised canonical name ───────────────
+        # When the classifier couldn't determine a gesture, raw_gesture=None.
+        raw_gesture = frame_result.gesture
+        if raw_gesture is not None and raw_gesture == "None":
+            raw_gesture = None
+
+        return GestureFrame(
+            hand_present=True,
+            raw_gesture=raw_gesture,
+            gesture_confidence=frame_result.gesture_confidence or 0.0,
+            gesture_source=source,
+            palm_xy=(palm_x, palm_y),
+            index_tip_xy=(index_tip.x, index_tip.y),
+            pinch_distance=pinch_dist,
+            hand_size=hand_size,
+            pinch_distance_norm=pinch_dist_norm,
+            timestamp=ts,
         )
 
     # ── debug drawing ──────────────────────────────────────────────────────

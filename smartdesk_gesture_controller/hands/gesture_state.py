@@ -34,6 +34,27 @@ from .gesture_config import (
     MODE_SOLIDWORKS,
     MODE_STANDBY,
 )
+from .gesture_intent_tracker import (
+    ControlEvent,
+    EVT_MODE_SWIPE_LEFT,
+    EVT_MODE_SWIPE_RIGHT,
+    EVT_PAGE_SWIPE_LEFT,
+    EVT_PAGE_SWIPE_RIGHT,
+    EVT_ROTATE_BEGIN,
+    EVT_ROTATE_UPDATE,
+    EVT_ROTATE_END,
+    EVT_PAN_BEGIN,
+    EVT_PAN_UPDATE,
+    EVT_PAN_END,
+    EVT_ZOOM_UPDATE,
+    EVT_CANCEL,
+    EVT_HAND_LOST_TIMEOUT,
+    EVT_PEN_MODE_TOGGLE,
+    EVT_PEN_DRAW_BEGIN,
+    EVT_PEN_DRAW_UPDATE,
+    EVT_PEN_DRAW_END,
+    EVT_FIST_HOLD_COMMITTED,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -470,20 +491,25 @@ class GestureState:
     # The frame step
     # ═══════════════════════════════════════════════════════════════════════
 
-    def step(self, hand: HandInput, now: float) -> StepResult:
+    def step(self, hand: HandInput, now: float,
+             events: Optional[List[ControlEvent]] = None) -> StepResult:
         """Advance the state machine one frame.
 
         ``hand.gesture == NONE`` means no hand was detected this frame.
+
+        ``events`` is an optional list of :class:`ControlEvent` from the
+        :class:`GestureIntentTracker`.  When provided, migrated gesture
+        logic (mode switch, page turn) consumes events instead of the
+        legacy HandInput trajectory path.  Non-migrated gestures still
+        use the HandInput path.
         """
+        if events is None:
+            events = []
+
         # ── Paused: block all hardware actions (spec §11) ──────────────────
-        # Even in pause, the user may want to verify gesture recognition
-        # accuracy, so we surface the current gesture in status_text.
         if self.paused:
             gname = hand.gesture_name
             if gname != G_NONE:
-                # Treat hand re-detection in pause the same as active mode:
-                # re-arm the hand-loss safety latch so a subsequent loss after
-                # resuming can still emit release_all once.
                 self.last_hand_seen = now
                 self.hand_lost_start_time = None
                 self._hand_loss_released = False
@@ -499,9 +525,19 @@ class GestureState:
         gname = hand.gesture_name
         self._update_hold(gname, now)
 
+        # ── Process tracker events first (migrated path) ───────────────────
+        event_intents: List[ActionIntent] = []
+        event_note = ""
+        if events:
+            event_intents, event_note = self._handle_events(events, now)
+
         # ── No hand: run hand-loss safety (spec §14) ───────────────────────
         if gname == G_NONE:
             intents, note = self._handle_no_hand(now)
+            # Merge any event intents (e.g. hand_lost_timeout from tracker).
+            intents = event_intents + intents
+            if event_note:
+                note = f"{event_note} | {note}" if note else event_note
             return StepResult(self.mode, intents, note, self._debug_info(hand, now))
 
         # Hand present.
@@ -509,7 +545,7 @@ class GestureState:
         self.hand_lost_start_time = None
         self._hand_loss_released = False
 
-        # ── Dispatch by mode ───────────────────────────────────────────────
+        # ── Dispatch by mode (legacy path for non-migrated gestures) ───────
         if self.mode == MODE_STANDBY:
             intents, note = self._step_standby(hand, now)
         elif self.mode == MODE_PRESENTATION:
@@ -519,16 +555,191 @@ class GestureState:
         elif self.mode == MODE_SOLIDWORKS:
             intents, note = self._step_solidworks(hand, now)
         elif self.mode in (MODE_MOUSE, MODE_MOUSE_SCROLL):
-            # Phase 9: mouse / mouse_scroll modes are disabled (spec
-            # GESTURE_MAPPING_SPEC §3.2).  If somehow entered, fall back to
-            # standby with release_all.
             intents = [ActionIntent.release_all()]
             self._enter_mode(MODE_STANDBY, now)
             note = f"{self.mode} disabled → standby (Phase 9)"
         else:
             intents, note = [], f"Unknown mode: {self.mode}"
 
-        return StepResult(self.mode, intents, note, self._debug_info(hand, now))
+        # Merge event-path intents first (they take priority for action).
+        all_intents = event_intents + intents
+        if event_note:
+            note = f"{event_note} | {note}" if note else event_note
+
+        return StepResult(self.mode, all_intents, note, self._debug_info(hand, now))
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Tracker event handling (migrated path)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _handle_events(self, events: List[ControlEvent],
+                       now: float) -> Tuple[List[ActionIntent], str]:
+        """Process ControlEvents from GestureIntentTracker.
+
+        Migrated events:
+        * ``mode_swipe_left/right`` — ILoveYou swipe mode switching.
+        * ``page_swipe_left/right`` — Open_Palm swipe page turning.
+        * ``hand_lost_timeout`` — hand-loss safety from tracker.
+        * ``rotate_begin/update/end`` — SolidWorks rotate via tracker.
+        * ``pan_begin/update/end`` — SolidWorks pan via tracker.
+        * ``zoom_update`` — SolidWorks zoom via tracker.
+        * ``fist_hold_committed`` — Closed_Fist HOLD exit (all modes).
+        * ``pen_mode_toggle`` — Victory HOLD enter/exit presentation_pen.
+        * ``pen_draw_begin/update/end`` — PINCH draw in presentation_pen.
+
+        Cooldown is managed here, not in the tracker.
+        """
+        intents: List[ActionIntent] = []
+        notes: List[str] = []
+
+        for evt in events:
+            if evt.type == EVT_MODE_SWIPE_RIGHT:
+                intents.extend(self._on_mode_swipe_right(now))
+                notes.append(f"mode_swipe_right ({evt.reason})")
+            elif evt.type == EVT_MODE_SWIPE_LEFT:
+                intents.extend(self._on_mode_swipe_left(now))
+                notes.append(f"mode_swipe_left ({evt.reason})")
+            elif evt.type == EVT_PAGE_SWIPE_RIGHT:
+                intents.extend(self._on_page_swipe_right(now))
+                notes.append(f"page_swipe_right ({evt.reason})")
+            elif evt.type == EVT_PAGE_SWIPE_LEFT:
+                intents.extend(self._on_page_swipe_left(now))
+                notes.append(f"page_swipe_left ({evt.reason})")
+            elif evt.type == EVT_HAND_LOST_TIMEOUT:
+                intents.extend(self._on_tracker_hand_lost(now))
+                notes.append("hand_lost_timeout")
+            elif self.mode == MODE_SOLIDWORKS and evt.type == EVT_ROTATE_BEGIN:
+                intents.extend(self._on_sw_rotate_begin())
+                notes.append("rotate_begin")
+            elif self.mode == MODE_SOLIDWORKS and evt.type == EVT_ROTATE_UPDATE:
+                mv = self._on_sw_move_update(evt)
+                if mv is not None:
+                    intents.append(mv)
+                notes.append("rotate_update")
+            elif self.mode == MODE_SOLIDWORKS and evt.type == EVT_ROTATE_END:
+                intents.extend(self._on_sw_action_end())
+                notes.append(f"rotate_end ({evt.reason})")
+            elif self.mode == MODE_SOLIDWORKS and evt.type == EVT_PAN_BEGIN:
+                intents.extend(self._on_sw_pan_begin())
+                notes.append("pan_begin")
+            elif self.mode == MODE_SOLIDWORKS and evt.type == EVT_PAN_UPDATE:
+                mv = self._on_sw_move_update(evt)
+                if mv is not None:
+                    intents.append(mv)
+                notes.append("pan_update")
+            elif self.mode == MODE_SOLIDWORKS and evt.type == EVT_PAN_END:
+                intents.extend(self._on_sw_action_end())
+                notes.append(f"pan_end ({evt.reason})")
+            elif self.mode == MODE_SOLIDWORKS and evt.type == EVT_ZOOM_UPDATE:
+                # Mutual exclusion: end rotate/pan before zoom.
+                if self.active_continuous_action in ("solidworks_rotate",
+                                                      "solidworks_pan"):
+                    intents.extend(self._end_solidworks_action())
+                amount = int(evt.dx)
+                if amount != 0:
+                    intents.append(ActionIntent.scroll(amount))
+                notes.append("zoom_update")
+            elif evt.type == EVT_FIST_HOLD_COMMITTED:
+                intents.extend(self._on_fist_hold_committed(now))
+                notes.append(f"fist_hold_committed ({evt.reason})")
+            elif evt.type == EVT_PEN_MODE_TOGGLE:
+                intents.extend(self._on_pen_mode_toggle(evt, now))
+                notes.append(f"pen_mode_toggle ({evt.reason})")
+            elif evt.type == EVT_PEN_DRAW_BEGIN:
+                intents.extend(self._on_pen_draw_begin())
+                notes.append("pen_draw_begin")
+            elif evt.type == EVT_PEN_DRAW_UPDATE:
+                mv = self._on_pen_draw_update(evt, now)
+                if mv is not None:
+                    intents.append(mv)
+                notes.append("pen_draw_update")
+            elif evt.type == EVT_PEN_DRAW_END:
+                intents.extend(self._on_pen_draw_end())
+                notes.append(f"pen_draw_end ({evt.reason})")
+
+        return intents, " | ".join(notes) if notes else ""
+
+    def _on_mode_swipe_right(self, now: float) -> List[ActionIntent]:
+        """ILoveYou right swipe — cooldown-gated mode switch."""
+        cfg = self.config
+        if not self._cooldown_ok(_COOLDOWN_MODE_SWITCH, now):
+            return []
+        self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
+
+        intents: List[ActionIntent] = []
+        if self.mode == MODE_STANDBY:
+            self._enter_mode(MODE_PRESENTATION, now)
+            return []  # standby → presentation: no release_all needed.
+        elif self.mode == MODE_PRESENTATION:
+            self._enter_mode(MODE_STANDBY, now)
+            return [ActionIntent.release_all()]
+        elif self.mode == MODE_SOLIDWORKS:
+            # End any active SW action before switching.
+            if self.active_continuous_action:
+                intents.extend(self._end_solidworks_action())
+            self._enter_mode(MODE_PRESENTATION, now)
+            return intents
+        return []
+
+    def _on_mode_swipe_left(self, now: float) -> List[ActionIntent]:
+        """ILoveYou left swipe — cooldown-gated mode switch."""
+        cfg = self.config
+        if not self._cooldown_ok(_COOLDOWN_MODE_SWITCH, now):
+            return []
+        self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
+
+        intents: List[ActionIntent] = []
+        if self.mode == MODE_STANDBY:
+            self._enter_mode(MODE_SOLIDWORKS, now)
+            return []
+        elif self.mode == MODE_PRESENTATION:
+            self._enter_mode(MODE_SOLIDWORKS, now)
+            return [ActionIntent.release_all()]
+        elif self.mode == MODE_SOLIDWORKS:
+            if self.active_continuous_action:
+                intents.extend(self._end_solidworks_action())
+            self._enter_mode(MODE_STANDBY, now)
+            intents.append(ActionIntent.release_all())
+            return intents
+        return []
+
+    def _on_page_swipe_right(self, now: float) -> List[ActionIntent]:
+        """Open_Palm right swipe → next page (presentation only, cooldown-gated)."""
+        if self.mode != MODE_PRESENTATION:
+            return []
+        cfg = self.config
+        if not self._cooldown_ok(_COOLDOWN_PAGE_TURN, now):
+            return []
+        self._set_cooldown(_COOLDOWN_PAGE_TURN, cfg.page_turn_cooldown, now)
+        return [ActionIntent.press("right")]
+
+    def _on_page_swipe_left(self, now: float) -> List[ActionIntent]:
+        """Open_Palm left swipe → previous page (presentation only, cooldown-gated)."""
+        if self.mode != MODE_PRESENTATION:
+            return []
+        cfg = self.config
+        if not self._cooldown_ok(_COOLDOWN_PAGE_TURN, now):
+            return []
+        self._set_cooldown(_COOLDOWN_PAGE_TURN, cfg.page_turn_cooldown, now)
+        return [ActionIntent.press("left")]
+
+    def _on_tracker_hand_lost(self, now: float) -> List[ActionIntent]:
+        """Tracker reports hand-loss timeout — release once if holding state."""
+        if self._hand_loss_released:
+            return []
+        self._hand_loss_released = True
+        intents: List[ActionIntent] = []
+        if self.is_left_mouse_down:
+            intents.append(ActionIntent.mouse_up(button="left"))
+        if self.is_middle_mouse_down:
+            intents.append(ActionIntent.mouse_up(button="middle"))
+        if self.is_shift_down:
+            intents.append(ActionIntent.key_up("shift"))
+        intents.append(ActionIntent.release_all())
+        self._reset_continuous_state()
+        if self.mode == MODE_MOUSE_SCROLL:
+            self.mode = MODE_MOUSE
+        return intents
 
     # ═══════════════════════════════════════════════════════════════════════
     # Mode handlers
@@ -536,14 +747,15 @@ class GestureState:
 
     # ── standby (spec §5, Phase 9 simplified) ──────────────────────────────
     def _step_standby(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:
-        """Phase 9 standby: ILoveYou swipe switches modes.
+        """Phase 9 standby: ILoveYou swipe switches modes (via tracker events).
 
-        ILoveYou right swipe → presentation (no F5).
-        ILoveYou left swipe  → solidworks.
+        Migrated to event path: ILoveYou swipe is now handled by
+        GestureIntentTracker → ControlEvent → _handle_events().
+        This handler only processes non-migrated gestures.
+
         Closed_Fist          → release_all (safety).
         """
         g = hand.gesture_name
-        cfg = self.config
 
         _STANDBY_STATUS = "Standby: ILoveYou → Right=PPT, Left=SolidWorks, Fist=Release"
 
@@ -552,11 +764,12 @@ class GestureState:
             self._reset_continuous_state()
             return [ActionIntent.release_all()], "Standby (fist — released)"
 
-        # ILoveYou swipe → mode switch (spec Phase 9).
-        if g == G_ILOVEYOU:
-            return self._detect_iloveyou_swipe(hand, now, from_mode=MODE_STANDBY)
+        # ILoveYou and Open_Palm swipe are now handled by the tracker event path.
+        # Clear swipe state to prevent stale trajectory from legacy path.
+        if g not in (G_ILOVEYOU, G_OPEN_PALM):
+            self._swipe_history = []
+            self._swipe_armed = True
 
-        # Other gestures → no action in standby.
         return [], _STANDBY_STATUS
 
     # ── presentation (spec §6, Phase 9 simplified) ─────────────────────────
@@ -565,50 +778,26 @@ class GestureState:
     def _step_presentation(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:
         """Phase 9 presentation mode.
 
-        Gestures:
-        * Closed_Fist HOLD → standby (Esc + release_all).
-        * Victory HOLD     → presentation_pen (Ctrl+P).
-        * Open_Palm swipe  → page turn (left/right).
-        * ILoveYou swipe   → mode switch (right=standby, left=solidworks).
+        Migrated to event path: ILoveYou swipe (mode switch) and Open_Palm
+        swipe (page turn) are now handled by GestureIntentTracker →
+        ControlEvent → _handle_events().
+
+        Non-migrated gestures: none.  Closed_Fist HOLD, Victory HOLD,
+        ILoveYou swipe, and Open_Palm swipe are all handled by
+        GestureIntentTracker → ControlEvent → _handle_events().
         """
         g = hand.gesture_name
         cfg = self.config
 
-        # Clear swipe tracking when not Open_Palm or ILoveYou.
+        # Clear swipe tracking when not Open_Palm or ILoveYou (legacy path
+        # cleanup — actual swipe detection is in the tracker now).
         if g not in (G_OPEN_PALM, G_ILOVEYOU):
             self._swipe_history = []
             self._swipe_armed = True
 
-        # Closed_Fist HOLD → standby (Esc + release_all).
-        if g == G_CLOSED_FIST:
-            if self._hold_triggered(G_CLOSED_FIST, cfg.exit_mode_hold, now):
-                self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
-                self._enter_mode(MODE_STANDBY, now)
-                return [ActionIntent.press("esc"), ActionIntent.release_all()], \
-                       "Closed_Fist HOLD → standby (Esc + release)"
-
-        # Victory HOLD → presentation_pen (Ctrl+P).
-        if g == G_VICTORY:
-            if self._hold_triggered(G_VICTORY, cfg.pen_mode_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_PEN_TOGGLE, now):
-                self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
-                self._enter_mode(MODE_PRESENTATION_PEN, now)
-                return [ActionIntent.hotkey("ctrl", "p")], "Victory HOLD → presentation_pen (Ctrl+P)"
-
-        # ILoveYou swipe → mode switch (right=standby, left=solidworks).
-        if g == G_ILOVEYOU:
-            result = self._detect_iloveyou_swipe(hand, now, from_mode=MODE_PRESENTATION)
-            # If swipe triggered, mode may have changed.
-            if self.mode == MODE_STANDBY:
-                # Right swipe from presentation → standby: add Esc to exit PPT.
-                intents = list(result[0])
-                intents.insert(0, ActionIntent.press("esc"))
-                return intents, result[1]
-            return result
-
-        # Open_Palm swipe → page turn (spec §6.3, §7.1).
-        if g == G_OPEN_PALM:
-            return self._detect_swipe(hand, now)
+        # Closed_Fist HOLD, Victory HOLD: migrated to tracker event path
+        # (EVT_FIST_HOLD_COMMITTED, EVT_PEN_MODE_TOGGLE → _handle_events()).
+        # ILoveYou swipe and Open_Palm swipe: also handled by tracker events.
 
         return [], self._PRESENTATION_STATUS
 
@@ -618,44 +807,27 @@ class GestureState:
     def _step_presentation_pen(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:
         """Phase 9 presentation_pen mode.
 
-        Gestures:
-        * Closed_Fist HOLD → standby (mouse_up + Esc + release_all).
-        * Victory HOLD     → back to presentation (mouse_up + Ctrl+A).
-        * Pointing_Up      → move cursor.
-        * PINCH (hysteresis) → draw (mouse_down/mouse_up).
+        Migrated to event path: Closed_Fist HOLD (EVT_FIST_HOLD_COMMITTED),
+        Victory HOLD (EVT_PEN_MODE_TOGGLE), and PINCH draw
+        (EVT_PEN_DRAW_BEGIN/UPDATE/END) are handled by
+        GestureIntentTracker → _handle_events().
+
+        Non-migrated: Pointing_Up move (fallback when no tracker pen_draw
+        session is active).
         """
         g = hand.gesture_name
         cfg = self.config
         intents: List[ActionIntent] = []
 
-        # Closed_Fist HOLD → standby (mouse_up + Esc + release_all).
-        if g == G_CLOSED_FIST:
-            if self._hold_triggered(G_CLOSED_FIST, cfg.exit_mode_hold, now):
-                self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
-                if self.is_left_mouse_down:
-                    intents.append(ActionIntent.mouse_up(button="left"))
-                intents.append(ActionIntent.press("esc"))
-                intents.append(ActionIntent.release_all())
-                self._enter_mode(MODE_STANDBY, now)
-                return intents, "Closed_Fist HOLD → standby (Esc + release)"
+        # Closed_Fist HOLD, Victory HOLD, PINCH draw: migrated to tracker
+        # event path → _handle_events().
 
-        # Victory HOLD → back to presentation (mouse_up + Ctrl+A).
-        if g == G_VICTORY:
-            if self._hold_triggered(G_VICTORY, cfg.pen_mode_hold, now) and \
-               self._cooldown_ok(_COOLDOWN_PEN_TOGGLE, now):
-                self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
-                if self.is_left_mouse_down:
-                    intents.append(ActionIntent.mouse_up(button="left"))
-                intents.append(ActionIntent.hotkey("ctrl", "a"))
-                self._enter_mode(MODE_PRESENTATION, now)
-                return intents, "Victory HOLD → presentation (Ctrl+A)"
-
-        # ── PINCH draw with hysteresis (spec §7.3, §8) ──────────────────────
-        if hand.pinch_distance is not None:
-            self._update_pinch_hysteresis(hand.pinch_distance, intents)
-
-        # ── Move pointer (Pointing_Up or while PINCH-drawing) ───────────────
-        if hand.palm_xy is not None:
+        # ── Move pointer (Pointing_Up or while not actively drawing) ─────
+        # Fallback move path: when tracker pen_draw session is NOT active
+        # (active_continuous_action != "pen_draw"), allow cursor movement.
+        # When pen_draw IS active, EVT_PEN_DRAW_UPDATE handles movement via
+        # _on_pen_draw_update — skip here to avoid duplicate move intents.
+        if hand.palm_xy is not None and self.active_continuous_action != "pen_draw":
             mv = self._maybe_move(hand.palm_xy, now)
             if mv is not None:
                 intents.append(mv)
@@ -683,12 +855,8 @@ class GestureState:
         cfg = self.config
         intents: List[ActionIntent] = []
 
-        # 1. Closed_Fist HOLD → standby (release_all).
-        if g == G_CLOSED_FIST:
-            if self._hold_triggered(G_CLOSED_FIST, cfg.exit_mode_hold, now):
-                self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
-                self._enter_mode(MODE_STANDBY, now)
-                return [ActionIntent.release_all()], "Closed_Fist HOLD → standby (release)"
+        # 1. Closed_Fist HOLD: migrated to tracker event path
+        #    (EVT_FIST_HOLD_COMMITTED → _handle_events()).
 
         # 2. Victory HOLD → mouse_scroll.
         if g == G_VICTORY:
@@ -750,12 +918,8 @@ class GestureState:
         if g != G_VICTORY:
             self._scroll_last_y = None
 
-        # Closed_Fist HOLD → standby (release_all).
-        if g == G_CLOSED_FIST:
-            if self._hold_triggered(G_CLOSED_FIST, cfg.exit_mode_hold, now):
-                self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
-                self._enter_mode(MODE_STANDBY, now)
-                return [ActionIntent.release_all()], "Closed_Fist HOLD → standby (release)"
+        # Closed_Fist HOLD: migrated to tracker event path
+        # (EVT_FIST_HOLD_COMMITTED → _handle_events()).
 
         # Pointing_Up HOLD → back to mouse.
         if g == G_POINTING_UP:
@@ -783,86 +947,52 @@ class GestureState:
     )
 
     def _step_solidworks(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:
-        """Phase 9 SolidWorks view-mode handler (spec §10).
+        """SolidWorks view-mode handler (spec §10).
 
-        Gestures:
+        Phase 4 migration: rotate (Open_Palm), pan (Victory), and zoom
+        (PINCH) are now driven by tracker events via _handle_events.
+        This legacy handler only processes non-migrated gestures:
         * Closed_Fist HOLD  → standby (release_all).
-        * Open_Palm + move  → mouse_down("middle") + move_rel — rotate.
-        * Victory + move    → key_down("shift") + mouse_down("middle") + move_rel — pan.
-        * PINCH             → scroll(+/-amount) — zoom (hysteresis + deadzone).
         * ILoveYou swipe    → right=presentation, left=standby.
-        * Other / None      → end any active rotate/pan.
+        * Other / None      → end any active rotate/pan (tracker handles
+          the precise release via EVT_*_END, but as a safety net we also
+          clean up here if the tracker missed an event).
 
-        Mutual exclusion (spec §10.5): rotate / pan / zoom are exclusive.
+        Open_Palm, Victory, and PINCH fall through to the cleanup section
+        when no tracker event was emitted for them (e.g. tracker session
+        in SESSION_IDLE without enough motion).
         """
         g = hand.gesture_name
         cfg = self.config
         intents: List[ActionIntent] = []
 
-        # ── 1. Closed_Fist HOLD → standby (release_all) ─────────────────────
+        # ── 1. Closed_Fist HOLD: migrated to tracker event path ──────────
+        #    (EVT_FIST_HOLD_COMMITTED → _handle_events()).
+        #    Tracker ends any active session via gesture change before
+        #    the hold commits, so no need to _end_solidworks_action() here.
         if g == G_CLOSED_FIST:
-            if self.active_continuous_action:
-                intents.extend(self._end_solidworks_action())
-            if self._hold_triggered(G_CLOSED_FIST, cfg.exit_mode_hold, now):
-                self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
-                self._enter_mode(MODE_STANDBY, now)
-                intents.append(ActionIntent.release_all())
-                return intents, "Closed_Fist HOLD → standby (release)"
-            return intents, "SolidWorks: Closed_Fist (holding)"
+            return intents, self._SOLIDWORKS_STATUS
 
-        # ── 2. ILoveYou swipe → mode switch ─────────────────────────────────
+        # ── 2. ILoveYou swipe — migrated to tracker event path ───────────
+        # ILoveYou mode switching is now handled by GestureIntentTracker →
+        # EVT_MODE_SWIPE_LEFT/RIGHT → _handle_events().  No legacy swipe
+        # detection here to avoid dual-trigger.
         if g == G_ILOVEYOU:
             if self.active_continuous_action:
                 intents.extend(self._end_solidworks_action())
-            result = self._detect_iloveyou_swipe(hand, now, from_mode=MODE_SOLIDWORKS)
-            if self.mode != MODE_SOLIDWORKS:
-                # Mode changed — add release_all for safety.
-                intents.extend(result[0])
-                intents.append(ActionIntent.release_all())
-                return intents, result[1]
-            return result
+            return intents, self._SOLIDWORKS_STATUS
 
-        # ── 3. Open_Palm → rotate (mouse_down middle + move_rel) ───────────
-        if g == G_OPEN_PALM:
-            # Switch from pan to rotate: release shift + middle first.
-            if self.active_continuous_action == "solidworks_pan":
-                intents.extend(self._end_solidworks_action())
-            # Begin rotate if not already active.
-            if self.active_continuous_action != "solidworks_rotate":
-                intents.extend(self._begin_solidworks_rotate())
-            # Move.
-            if hand.palm_xy is not None:
-                mv = self._solidworks_move(hand.palm_xy)
-                if mv is not None:
-                    intents.append(mv)
-            return intents, "SolidWorks: Open_Palm (rotate)"
+        # ── 3. Open_Palm / Victory / PINCH — migrated to tracker events ────
+        # These gestures are now handled by tracker events (EVT_ROTATE_*,
+        # EVT_PAN_*, EVT_ZOOM_UPDATE) processed in _handle_events.  When
+        # the tracker has an active session, events drive the actions and
+        # this method is a no-op for these gestures.  When the tracker
+        # session is in IDLE (not enough motion yet), we also do nothing
+        # here — the begin event will fire once motion exceeds threshold.
+        if g in (G_OPEN_PALM, G_VICTORY, G_PINCH):
+            return intents, self._SOLIDWORKS_STATUS
 
-        # ── 4. Victory → pan (key_down shift + mouse_down middle + move_rel)
-        if g == G_VICTORY:
-            # Switch from rotate to pan: release middle first.
-            if self.active_continuous_action == "solidworks_rotate":
-                intents.extend(self._end_solidworks_action())
-            # Begin pan if not already active.
-            if self.active_continuous_action != "solidworks_pan":
-                intents.extend(self._begin_solidworks_pan())
-            # Move.
-            if hand.palm_xy is not None:
-                mv = self._solidworks_move(hand.palm_xy)
-                if mv is not None:
-                    intents.append(mv)
-            return intents, "SolidWorks: Victory (pan)"
-
-        # ── 5. PINCH → zoom (scroll) ────────────────────────────────────────
-        if g == G_PINCH and hand.pinch_distance is not None:
-            # End any active rotate/pan before zooming (spec §10.5).
-            if self.active_continuous_action in ("solidworks_rotate",
-                                                  "solidworks_pan"):
-                intents.extend(self._end_solidworks_action())
-            zoom_intents = self._solidworks_zoom(hand.pinch_distance)
-            intents.extend(zoom_intents)
-            return intents, "SolidWorks: PINCH (zoom)"
-
-        # ── 6. Other gestures — end any active action ──────────────────────
+        # ── 4. Other gestures — end any active action ──────────────────────
         if self.active_continuous_action:
             intents.extend(self._end_solidworks_action())
 
@@ -874,7 +1004,12 @@ class GestureState:
 
         return intents, self._SOLIDWORKS_STATUS
 
-    # ── SolidWorks helpers (Phase 5, spec §10.3–§10.6) ──────────────────────
+    # ── DEAD CODE: Legacy SolidWorks rotate/pan/move — superseded by tracker ──
+    #
+    # These methods are retained for reference but are NOT called by any
+    # production path.  SolidWorks rotate/pan begin/update/end are now
+    # handled by tracker events (EVT_ROTATE_*, EVT_PAN_*) → _handle_events()
+    # → _on_sw_rotate_begin / _on_sw_pan_begin / _on_sw_move_update.
 
     def _begin_solidworks_rotate(self) -> List[ActionIntent]:
         """Begin rotate: mouse_down("middle") once (spec §10.3)."""
@@ -961,6 +1096,187 @@ class GestureState:
         dx = raw_dx * cfg.solidworks_drag_sensitivity
         dy = raw_dy * cfg.solidworks_drag_sensitivity
         return ActionIntent.move_rel(dx, dy)
+
+    # ── Tracker-event SolidWorks helpers (Phase 4) ─────────────────────────
+
+    def _on_sw_rotate_begin(self) -> List[ActionIntent]:
+        """Handle EVT_ROTATE_BEGIN from tracker.
+
+        Releases any active pan/zoom first (mutual exclusion), then presses
+        middle mouse button.  Does NOT re-press if already down.
+        """
+        intents: List[ActionIntent] = []
+        if self.active_continuous_action and self.active_continuous_action != "solidworks_rotate":
+            intents.extend(self._end_solidworks_action())
+        if not self.is_middle_mouse_down:
+            intents.append(ActionIntent.mouse_down(button="middle"))
+            self.is_middle_mouse_down = True
+        self.active_continuous_action = "solidworks_rotate"
+        self.last_hand_center = None
+        return intents
+
+    def _on_sw_pan_begin(self) -> List[ActionIntent]:
+        """Handle EVT_PAN_BEGIN from tracker.
+
+        Releases any active rotate/zoom first (mutual exclusion), then presses
+        shift + middle mouse button.
+        """
+        intents: List[ActionIntent] = []
+        if self.active_continuous_action and self.active_continuous_action != "solidworks_pan":
+            intents.extend(self._end_solidworks_action())
+        if not self.is_shift_down:
+            intents.append(ActionIntent.key_down("shift"))
+            self.is_shift_down = True
+        if not self.is_middle_mouse_down:
+            intents.append(ActionIntent.mouse_down(button="middle"))
+            self.is_middle_mouse_down = True
+        self.active_continuous_action = "solidworks_pan"
+        self.last_hand_center = None
+        return intents
+
+    def _on_sw_move_update(self, evt: ControlEvent) -> Optional[ActionIntent]:
+        """Handle EVT_ROTATE_UPDATE / EVT_PAN_UPDATE from tracker.
+
+        The tracker already applied deadzone, velocity limiting, and
+        max_motion_step.  We scale by sensitivity and emit move_rel.
+        """
+        cfg = self.config
+        dx = evt.dx * cfg.solidworks_drag_sensitivity
+        dy = evt.dy * cfg.solidworks_drag_sensitivity
+        if abs(dx) < 0.001 and abs(dy) < 0.001:
+            return None
+        return ActionIntent.move_rel(dx, dy)
+
+    def _on_sw_action_end(self) -> List[ActionIntent]:
+        """Handle EVT_ROTATE_END / EVT_PAN_END from tracker.
+
+        Releases middle mouse button and shift key as needed, clears
+        active_continuous_action.  Idempotent — safe to call when nothing
+        is active.
+        """
+        return self._end_solidworks_action()
+
+    # ── Phase 2 event handlers (fist hold, pen mode, pen draw) ─────────────
+
+    def _on_fist_hold_committed(self, now: float) -> List[ActionIntent]:
+        """Handle EVT_FIST_HOLD_COMMITTED: safe exit to standby.
+
+        Mode-specific release before entering standby:
+        * presentation_pen: mouse_up("left") if held, then esc + release_all.
+        * solidworks: precise release of middle/shift via _end_solidworks_action.
+        * presentation: esc + release_all.
+        * standby: release_all only.
+        * paused: ignored (no hardware actions).
+        """
+        if self.mode == MODE_PAUSED:
+            return []
+
+        cfg = self.config
+        intents: List[ActionIntent] = []
+
+        # Mode-specific release.
+        if self.mode == MODE_PRESENTATION_PEN:
+            if self.is_left_mouse_down:
+                intents.append(ActionIntent.mouse_up(button="left"))
+                self.is_left_mouse_down = False
+            self.is_pinching = False
+            self.active_continuous_action = None
+        elif self.mode == MODE_SOLIDWORKS:
+            if self.active_continuous_action:
+                intents.extend(self._end_solidworks_action())
+
+        # Common: esc + release_all (except standby which only needs release_all).
+        if self.mode != MODE_STANDBY:
+            intents.append(ActionIntent.press("esc"))
+        intents.append(ActionIntent.release_all())
+
+        self._set_cooldown(_COOLDOWN_MODE_SWITCH, cfg.mode_switch_cooldown, now)
+        self._enter_mode(MODE_STANDBY, now)
+        return intents
+
+    def _on_pen_mode_toggle(self, evt: ControlEvent,
+                            now: float) -> List[ActionIntent]:
+        """Handle EVT_PEN_MODE_TOGGLE: switch between presentation and presentation_pen.
+
+        Direction is determined by current mode, not by evt.reason:
+        - presentation     → presentation_pen (Ctrl+P).
+        - presentation_pen → presentation (Ctrl+A, release left mouse if held).
+        - other modes: ignored.
+        Cooldown-gated to prevent rapid toggling.
+        """
+        cfg = self.config
+        if not self._cooldown_ok(_COOLDOWN_PEN_TOGGLE, now):
+            return []
+
+        intents: List[ActionIntent] = []
+        if self.mode == MODE_PRESENTATION:
+            self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
+            self._enter_mode(MODE_PRESENTATION_PEN, now)
+            intents.append(ActionIntent.hotkey("ctrl", "p"))
+        elif self.mode == MODE_PRESENTATION_PEN:
+            self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
+            # Release left mouse if held before exiting.
+            if self.is_left_mouse_down:
+                intents.append(ActionIntent.mouse_up(button="left"))
+                self.is_left_mouse_down = False
+            self.is_pinching = False
+            self.active_continuous_action = None
+            self._enter_mode(MODE_PRESENTATION, now)
+            intents.append(ActionIntent.hotkey("ctrl", "a"))
+        # Other modes: ignore.
+        return intents
+
+    def _on_pen_draw_begin(self) -> List[ActionIntent]:
+        """Handle EVT_PEN_DRAW_BEGIN: press left mouse button once.
+
+        Only acts in presentation_pen mode.  Idempotent — will not
+        re-press if already down.
+        """
+        if self.mode != MODE_PRESENTATION_PEN:
+            return []
+        if self.is_left_mouse_down:
+            return []
+        self.is_left_mouse_down = True
+        self.is_pinching = True
+        self.active_continuous_action = "pen_draw"
+        return [ActionIntent.mouse_down(button="left")]
+
+    def _on_pen_draw_update(self, evt: ControlEvent,
+                             now: float) -> Optional[ActionIntent]:
+        """Handle EVT_PEN_DRAW_UPDATE: move cursor while drawing.
+
+        Uses _maybe_move with the event's normalized palm position,
+        consistent with the legacy presentation_pen move path.
+        """
+        if self.mode != MODE_PRESENTATION_PEN:
+            return None
+        if evt.position is None:
+            return None
+        return self._maybe_move(evt.position, now)
+
+    def _on_pen_draw_end(self) -> List[ActionIntent]:
+        """Handle EVT_PEN_DRAW_END: release left mouse button.
+
+        Only acts in presentation_pen mode.  Does NOT release_all —
+        pen draw end is a natural drawing release, not a mode exit.
+        Idempotent.
+        """
+        if self.mode != MODE_PRESENTATION_PEN:
+            return []
+        if not self.is_left_mouse_down:
+            return []
+        self.is_left_mouse_down = False
+        self.is_pinching = False
+        self.active_continuous_action = None
+        return [ActionIntent.mouse_up(button="left")]
+
+    # ── DEAD CODE: Legacy SolidWorks zoom — superseded by tracker zoom path ──
+    #
+    # This method is retained for reference but is NOT called by any
+    # production path.  SolidWorks zoom is now handled by GestureIntentTracker
+    # → EVT_ZOOM_UPDATE → _handle_events(), using pinch_distance_norm
+    # (scale-invariant), not pinch_distance (pixel-level).
+    # Do NOT call this from any mode handler.
 
     def _solidworks_zoom(self, pinch_distance: float) -> List[ActionIntent]:
         """Handle PINCH zoom with hysteresis + deadzone + min step (spec §10.3, §5).
@@ -1227,7 +1543,12 @@ class GestureState:
                     self.active_continuous_action = None
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 9: ILoveYou swipe — unified mode switching (spec GESTURE_MAPPING_SPEC §5)
+    # DEAD CODE: Phase 9 ILoveYou swipe — superseded by tracker event path
+    #
+    # This method is retained for reference but is NOT called by any
+    # production path.  ILoveYou mode switching is now handled by
+    # GestureIntentTracker → EVT_MODE_SWIPE_LEFT/RIGHT → _handle_events().
+    # Do NOT call this from any mode handler — it would cause dual-trigger.
     # ═══════════════════════════════════════════════════════════════════════
 
     def _detect_iloveyou_swipe(
@@ -1335,6 +1656,15 @@ class GestureState:
 
     # ═══════════════════════════════════════════════════════════════════════
     # Legacy behaviour helpers (preserved from phase 1)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # DEAD CODE: Open_Palm swipe detection — superseded by tracker event path
+    #
+    # This method is retained for reference but is NOT called by any
+    # production path.  Open_Palm page turning is now handled by
+    # GestureIntentTracker → EVT_PAGE_SWIPE_LEFT/RIGHT → _handle_events().
+    # Do NOT call this from any mode handler — it would cause dual-trigger.
     # ═══════════════════════════════════════════════════════════════════════
 
     def _detect_swipe(self, hand: HandInput, now: float) -> Tuple[List[ActionIntent], str]:

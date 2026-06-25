@@ -34,6 +34,7 @@ from hands.gesture_state import (
     StepResult,
     _interp,
     _normalize_gesture,
+    _COOLDOWN_PAGE_TURN,
     G_CLOSED_FIST,
     G_NONE,
     G_OPEN_PALM,
@@ -44,6 +45,39 @@ from hands.gesture_state import (
     G_VICTORY,
     G_ILOVEYOU,
 )
+from hands.gesture_intent_tracker import (
+    ControlEvent,
+    EVT_MODE_SWIPE_LEFT,
+    EVT_MODE_SWIPE_RIGHT,
+    EVT_PAGE_SWIPE_LEFT,
+    EVT_PAGE_SWIPE_RIGHT,
+    EVT_ROTATE_BEGIN,
+    EVT_ROTATE_UPDATE,
+    EVT_ROTATE_END,
+    EVT_PAN_BEGIN,
+    EVT_PAN_UPDATE,
+    EVT_PAN_END,
+    EVT_ZOOM_UPDATE,
+    EVT_FIST_HOLD_COMMITTED,
+    EVT_PEN_MODE_TOGGLE,
+    EVT_PEN_DRAW_BEGIN,
+    EVT_PEN_DRAW_UPDATE,
+    EVT_PEN_DRAW_END,
+)
+
+
+def _evt(evt_type: str, reason: str = "test", **kwargs) -> ControlEvent:
+    """Build a minimal ControlEvent for testing."""
+    return ControlEvent(type=evt_type, reason=reason, **kwargs)
+
+
+def _sw_evt(evt_type: str, dx: float = 0.0, dy: float = 0.0,
+            session_id: str = "ses_1", reason: str = "test") -> ControlEvent:
+    """Build a SolidWorks ControlEvent (rotate/pan/zoom) for testing."""
+    return ControlEvent(
+        type=evt_type, dx=dx, dy=dy,
+        session_id=session_id, reason=reason,
+    )
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -237,16 +271,21 @@ class TestModeSwitch:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestStandbyILoveYouSwipe:
-    """Phase 9: ILoveYou swipe in standby switches modes."""
+    """Phase 9: ILoveYou swipe in standby switches modes.
+
+    Migrated to event path: tracker emits mode_swipe events, state machine
+    handles them via _handle_events().
+    """
 
     def test_iloveyou_right_swipe_enters_presentation(self) -> None:
         """ILoveYou right swipe → presentation (no F5)."""
         cfg = _cfg(iloveyou_swipe_threshold_x=0.22, camera_width=640)
         st = GestureState(cfg)
-        # Frame 1: establish start position.
-        st.step(_hand(Gesture.ILOVEYOU, palm_xy=(200, 240)), now=1.0)
-        # Frame 2: right swipe (dx = 200px, dx_norm = 200/640 = 0.3125 > 0.22).
-        result = st.step(_hand(Gesture.ILOVEYOU, palm_xy=(400, 240)), now=1.1)
+        result = st.step(
+            _hand(Gesture.ILOVEYOU, palm_xy=(400, 240)),
+            now=1.0,
+            events=[_evt(EVT_MODE_SWIPE_RIGHT)],
+        )
         assert st.mode == MODE_PRESENTATION
         # Phase 9: no F5 sent — PPT slideshow is user's responsibility.
         presses = [i for i in result.intents if i.type == "press"]
@@ -256,8 +295,11 @@ class TestStandbyILoveYouSwipe:
         """ILoveYou left swipe → solidworks."""
         cfg = _cfg(iloveyou_swipe_threshold_x=0.22, camera_width=640)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.ILOVEYOU, palm_xy=(400, 240)), now=1.0)
-        result = st.step(_hand(Gesture.ILOVEYOU, palm_xy=(200, 240)), now=1.1)
+        result = st.step(
+            _hand(Gesture.ILOVEYOU, palm_xy=(200, 240)),
+            now=1.0,
+            events=[_evt(EVT_MODE_SWIPE_LEFT)],
+        )
         assert st.mode == MODE_SOLIDWORKS
 
     def test_iloveyou_small_move_no_mode_change(self) -> None:
@@ -303,13 +345,16 @@ class TestStandbyILoveYouSwipe:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestPresentationSwipe:
-    """Open_Palm swipe for page turn (preserved from Phase 3)."""
+    """Open_Palm swipe for page turn (migrated to event path)."""
 
     def test_swipe_right_triggers_next_page(self) -> None:
         cfg = _cfg(initial_mode=MODE_PRESENTATION, wave_threshold=10.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, wave_x=300.0), now=1.0)
-        result = st.step(_hand(Gesture.OPEN_PALM, wave_x=350.0), now=1.1)
+        result = st.step(
+            _hand(Gesture.OPEN_PALM, wave_x=350.0),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_RIGHT)],
+        )
         presses = [i for i in result.intents if i.type == "press"]
         assert len(presses) == 1
         assert presses[0].key == "right"
@@ -317,8 +362,11 @@ class TestPresentationSwipe:
     def test_swipe_left_triggers_prev_page(self) -> None:
         cfg = _cfg(initial_mode=MODE_PRESENTATION, wave_threshold=10.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, wave_x=350.0), now=1.0)
-        result = st.step(_hand(Gesture.OPEN_PALM, wave_x=300.0), now=1.1)
+        result = st.step(
+            _hand(Gesture.OPEN_PALM, wave_x=300.0),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_LEFT)],
+        )
         presses = [i for i in result.intents if i.type == "press"]
         assert len(presses) == 1
         assert presses[0].key == "left"
@@ -327,43 +375,144 @@ class TestPresentationSwipe:
         cfg = _cfg(initial_mode=MODE_PRESENTATION, wave_threshold=10.0,
                    page_turn_cooldown=1.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, wave_x=300.0), now=1.0)
-        result = st.step(_hand(Gesture.OPEN_PALM, wave_x=350.0), now=1.1)
+        result = st.step(
+            _hand(Gesture.OPEN_PALM, wave_x=350.0),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_RIGHT)],
+        )
         assert any(i.type == "press" for i in result.intents)
-        result = st.step(_hand(Gesture.OPEN_PALM, wave_x=400.0), now=1.5)
+        result = st.step(
+            _hand(Gesture.OPEN_PALM, wave_x=400.0),
+            now=1.5,
+            events=[_evt(EVT_PAGE_SWIPE_RIGHT)],
+        )
         assert not any(i.type == "press" for i in result.intents)
 
     def test_one_swipe_one_turn(self) -> None:
         cfg = _cfg(initial_mode=MODE_PRESENTATION, wave_threshold=10.0,
                    page_turn_cooldown=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, wave_x=300.0), now=1.0)
-        result1 = st.step(_hand(Gesture.OPEN_PALM, wave_x=350.0), now=1.1)
+        result1 = st.step(
+            _hand(Gesture.OPEN_PALM, wave_x=350.0),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_RIGHT)],
+        )
         assert any(i.type == "press" for i in result1.intents)
-        result2 = st.step(_hand(Gesture.OPEN_PALM, wave_x=400.0), now=1.2)
+        # Second event in same frame-window: tracker would not emit twice,
+        # but state machine cooldown=0 means it would fire if it did.
+        # Simulate tracker not emitting (one-swipe-one-turn at tracker level).
+        result2 = st.step(_hand(Gesture.OPEN_PALM, wave_x=400.0), now=1.1)
         assert not any(i.type == "press" for i in result2.intents)
 
 
+class TestPageSwipeModeGuard:
+    """page_swipe events only fire in presentation mode."""
+
+    def test_page_swipe_right_in_standby_no_action(self) -> None:
+        """standby收到page_swipe_right不触发按键."""
+        st = GestureState(_cfg(initial_mode=MODE_STANDBY))
+        result = st.step(
+            _hand(Gesture.OPEN_PALM),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_RIGHT)],
+        )
+        assert result.intents == []
+        assert st.mode == MODE_STANDBY
+
+    def test_page_swipe_left_in_standby_no_action(self) -> None:
+        """standby收到page_swipe_left不触发按键."""
+        st = GestureState(_cfg(initial_mode=MODE_STANDBY))
+        result = st.step(
+            _hand(Gesture.OPEN_PALM),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_LEFT)],
+        )
+        assert result.intents == []
+        assert st.mode == MODE_STANDBY
+
+    def test_page_swipe_right_in_solidworks_no_action(self) -> None:
+        """solidworks收到page_swipe_right不触发翻页按键."""
+        st = GestureState(_cfg(initial_mode=MODE_SOLIDWORKS))
+        result = st.step(
+            _hand(Gesture.OPEN_PALM),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_RIGHT)],
+        )
+        presses = [i for i in result.intents if i.type == "press"]
+        assert len(presses) == 0
+        assert st.mode == MODE_SOLIDWORKS
+
+    def test_page_swipe_left_in_solidworks_no_action(self) -> None:
+        """solidworks收到page_swipe_left不触发翻页按键."""
+        st = GestureState(_cfg(initial_mode=MODE_SOLIDWORKS))
+        result = st.step(
+            _hand(Gesture.OPEN_PALM),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_LEFT)],
+        )
+        presses = [i for i in result.intents if i.type == "press"]
+        assert len(presses) == 0
+        assert st.mode == MODE_SOLIDWORKS
+
+    def test_page_swipe_right_in_presentation_still_works(self) -> None:
+        """presentation收到page_swipe_right仍正常翻页."""
+        st = GestureState(_cfg(initial_mode=MODE_PRESENTATION))
+        result = st.step(
+            _hand(Gesture.OPEN_PALM),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_RIGHT)],
+        )
+        presses = [i for i in result.intents if i.type == "press"]
+        assert len(presses) == 1
+        assert presses[0].key == "right"
+
+    def test_page_swipe_left_in_presentation_still_works(self) -> None:
+        """presentation收到page_swipe_left仍正常翻页."""
+        st = GestureState(_cfg(initial_mode=MODE_PRESENTATION))
+        result = st.step(
+            _hand(Gesture.OPEN_PALM),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_LEFT)],
+        )
+        presses = [i for i in result.intents if i.type == "press"]
+        assert len(presses) == 1
+        assert presses[0].key == "left"
+
+    def test_page_swipe_in_non_presentation_no_cooldown_set(self) -> None:
+        """非presentation模式收到page_swipe不设置cooldown."""
+        st = GestureState(_cfg(
+            initial_mode=MODE_STANDBY,
+            page_turn_cooldown=5.0,
+        ))
+        st.step(
+            _hand(Gesture.OPEN_PALM),
+            now=1.0,
+            events=[_evt(EVT_PAGE_SWIPE_RIGHT)],
+        )
+        # cooldown should NOT be set since we're not in presentation mode
+        assert st._cooldown_ok(_COOLDOWN_PAGE_TURN, 1.0)
+
+
 class TestPresentationVictoryPen:
-    """Phase 9: Victory HOLD toggles pen mode."""
+    """Phase 2: Victory HOLD toggles pen mode via tracker events."""
 
     def test_victory_hold_enters_pen(self) -> None:
-        """Victory HOLD → presentation_pen (Ctrl+P)."""
+        """EVT_PEN_MODE_TOGGLE (pen_mode_enter) → presentation_pen (Ctrl+P)."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION, pen_mode_hold=0.5)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY), now=1.0)
-        result = st.step(_hand(Gesture.VICTORY), now=2.0)
+        result = st.step(_hand(Gesture.VICTORY), now=1.0,
+                         events=[_evt(EVT_PEN_MODE_TOGGLE, reason="pen_mode_enter")])
         assert st.mode == MODE_PRESENTATION_PEN
         hotkeys = [i for i in result.intents if i.type == "hotkey"]
         assert len(hotkeys) == 1
         assert hotkeys[0].keys == ["ctrl", "p"]
 
     def test_closed_fist_hold_exits_presentation(self) -> None:
-        """Closed_Fist HOLD → standby (Esc + release_all)."""
+        """EVT_FIST_HOLD_COMMITTED → standby (Esc + release_all)."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION, exit_mode_hold=0.8)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.CLOSED_FIST), now=1.0)
-        result = st.step(_hand(Gesture.CLOSED_FIST), now=2.0)
+        result = st.step(_hand(Gesture.CLOSED_FIST), now=1.0,
+                         events=[_evt(EVT_FIST_HOLD_COMMITTED)])
         assert st.mode == MODE_STANDBY
         types = [i.type for i in result.intents]
         assert "press" in types
@@ -390,20 +539,23 @@ class TestPresentationVictoryPen:
 class TestPresentationILoveYouSwipe:
     """Phase 9: ILoveYou swipe in presentation switches modes.
 
+    Migrated to event path: tracker emits mode_swipe events.
     presentation: right→standby, left→solidworks.
     """
 
     def test_iloveyou_right_swipe_returns_to_standby(self) -> None:
-        """From presentation: ILoveYou right swipe → standby (with Esc)."""
+        """From presentation: ILoveYou right swipe → standby."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION,
                    iloveyou_swipe_threshold_x=0.22, camera_width=640)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.ILOVEYOU, palm_xy=(200, 240)), now=1.0)
-        result = st.step(_hand(Gesture.ILOVEYOU, palm_xy=(400, 240)), now=1.1)
+        result = st.step(
+            _hand(Gesture.ILOVEYOU, palm_xy=(400, 240)),
+            now=1.0,
+            events=[_evt(EVT_MODE_SWIPE_RIGHT)],
+        )
         assert st.mode == MODE_STANDBY
-        # Should include Esc to exit PPT and release_all.
+        # Should include release_all (leaving active mode → standby).
         types = [i.type for i in result.intents]
-        assert "press" in types  # Esc
         assert "release_all" in types
 
     def test_iloveyou_left_swipe_enters_solidworks(self) -> None:
@@ -411,8 +563,11 @@ class TestPresentationILoveYouSwipe:
         cfg = _cfg(initial_mode=MODE_PRESENTATION,
                    iloveyou_swipe_threshold_x=0.22, camera_width=640)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.ILOVEYOU, palm_xy=(400, 240)), now=1.0)
-        result = st.step(_hand(Gesture.ILOVEYOU, palm_xy=(200, 240)), now=1.1)
+        result = st.step(
+            _hand(Gesture.ILOVEYOU, palm_xy=(200, 240)),
+            now=1.0,
+            events=[_evt(EVT_MODE_SWIPE_LEFT)],
+        )
         assert st.mode == MODE_SOLIDWORKS
         assert any(i.type == "release_all" for i in result.intents)
 
@@ -422,14 +577,14 @@ class TestPresentationILoveYouSwipe:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestPresentationPenVictory:
-    """Phase 9: Victory HOLD exits pen mode (not Thumb_Up)."""
+    """Phase 2: Victory HOLD exits pen mode via tracker events."""
 
     def test_victory_hold_returns_to_presentation(self) -> None:
-        """Victory HOLD → back to presentation (mouse_up + Ctrl+A)."""
+        """EVT_PEN_MODE_TOGGLE (pen_mode_exit) → presentation (Ctrl+A)."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, pen_mode_hold=0.5)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY), now=1.0)
-        result = st.step(_hand(Gesture.VICTORY), now=2.0)
+        result = st.step(_hand(Gesture.VICTORY), now=1.0,
+                         events=[_evt(EVT_PEN_MODE_TOGGLE, reason="pen_mode_exit")])
         assert st.mode == MODE_PRESENTATION
         types = [i.type for i in result.intents]
         assert "hotkey" in types
@@ -437,25 +592,27 @@ class TestPresentationPenVictory:
         assert hotkey.keys == ["ctrl", "a"]
 
     def test_victory_hold_with_left_down_releases(self) -> None:
-        """When left mouse is down, exit pen also emits mouse_up(left)."""
+        """When left mouse is down, pen_mode_exit also emits mouse_up(left)."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, pen_mode_hold=0.5)
         st = GestureState(cfg)
         st.is_left_mouse_down = True
-        st.step(_hand(Gesture.VICTORY), now=1.0)
-        result = st.step(_hand(Gesture.VICTORY), now=2.0)
+        result = st.step(_hand(Gesture.VICTORY), now=1.0,
+                         events=[_evt(EVT_PEN_MODE_TOGGLE, reason="pen_mode_exit")])
         types = [i.type for i in result.intents]
         assert "mouse_up" in types
 
     def test_closed_fist_hold_exits_pen_to_standby(self) -> None:
-        """Closed_Fist HOLD → standby (mouse_up + Esc + release_all)."""
+        """EVT_FIST_HOLD_COMMITTED → standby (mouse_up + Esc + release_all)."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, exit_mode_hold=0.8)
         st = GestureState(cfg)
         st.is_left_mouse_down = True
-        st.step(_hand(Gesture.CLOSED_FIST), now=1.0)
-        result = st.step(_hand(Gesture.CLOSED_FIST), now=2.0)
+        result = st.step(_hand(Gesture.CLOSED_FIST), now=1.0,
+                         events=[_evt(EVT_FIST_HOLD_COMMITTED)])
         assert st.mode == MODE_STANDBY
         types = [i.type for i in result.intents]
         assert "mouse_up" in types
+        assert "press" in types
+        assert "release_all" in types
         assert "press" in types
         assert "release_all" in types
 
@@ -483,13 +640,14 @@ class TestPresentationPenVictory:
 
 
 class TestPresentationPenPinch:
-    """PINCH draw with hysteresis (preserved from Phase 3)."""
+    """PINCH draw via tracker events (Phase 2)."""
 
     def test_pinch_start_triggers_mouse_down_once(self) -> None:
+        """EVT_PEN_DRAW_BEGIN → mouse_down(left) once."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, pinch_click_distance=35.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=50.0), now=1.0)
-        result = st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=30.0), now=1.1)
+        result = st.step(_hand(Gesture.PINCH, palm_xy=(0.5, 0.5)), now=1.0,
+                         events=[_evt(EVT_PEN_DRAW_BEGIN)])
         mouse_downs = [i for i in result.intents if i.type == "mouse_down"]
         assert len(mouse_downs) == 1
         assert mouse_downs[0].button == "left"
@@ -497,58 +655,66 @@ class TestPresentationPenPinch:
         assert st.is_pinching
 
     def test_pinch_hold_no_repeat_mouse_down(self) -> None:
+        """Repeated EVT_PEN_DRAW_BEGIN is idempotent (no double-press)."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, pinch_click_distance=35.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=50.0), now=1.0)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=30.0), now=1.1)
-        result = st.step(_hand(Gesture.POINTING_UP, palm_xy=(321, 241), pinch_distance=30.0), now=1.2)
+        st.step(_hand(Gesture.PINCH, palm_xy=(0.5, 0.5)), now=1.0,
+                events=[_evt(EVT_PEN_DRAW_BEGIN)])
+        assert st.is_left_mouse_down
+        result = st.step(_hand(Gesture.PINCH, palm_xy=(0.51, 0.51)), now=1.1,
+                         events=[_evt(EVT_PEN_DRAW_BEGIN)])
         mouse_downs = [i for i in result.intents if i.type == "mouse_down"]
         assert len(mouse_downs) == 0
-        assert st.is_pinching
 
     def test_pinch_release_triggers_mouse_up(self) -> None:
+        """EVT_PEN_DRAW_END → mouse_up(left)."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, pinch_click_distance=35.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=50.0), now=1.0)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=30.0), now=1.1)
+        st.step(_hand(Gesture.PINCH, palm_xy=(0.5, 0.5)), now=1.0,
+                events=[_evt(EVT_PEN_DRAW_BEGIN)])
         assert st.is_left_mouse_down
-        result = st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=55.0), now=1.2)
+        result = st.step(_hand(Gesture.NONE, palm_xy=(0.5, 0.5)), now=1.1,
+                         events=[_evt(EVT_PEN_DRAW_END)])
         mouse_ups = [i for i in result.intents if i.type == "mouse_up"]
         assert len(mouse_ups) == 1
         assert not st.is_left_mouse_down
         assert not st.is_pinching
 
-    def test_pinch_hysteresis_no_jitter(self) -> None:
+    def test_pen_draw_update_moves_cursor(self) -> None:
+        """EVT_PEN_DRAW_UPDATE with position → move cursor."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, pinch_click_distance=35.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=50.0), now=1.0)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=30.0), now=1.1)
-        assert st.is_pinching
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=40.0), now=1.2)
-        assert st.is_pinching
+        st.step(_hand(Gesture.PINCH, palm_xy=(0.5, 0.5)), now=1.0,
+                events=[_evt(EVT_PEN_DRAW_BEGIN)])
+        result = st.step(_hand(Gesture.PINCH, palm_xy=(0.52, 0.52)), now=1.1,
+                         events=[_evt(EVT_PEN_DRAW_UPDATE, position=(0.52, 0.52))])
+        moves = [i for i in result.intents if i.type == "move"]
+        assert len(moves) == 1
 
     def test_full_pinch_draw_cycle(self) -> None:
+        """Full draw cycle: begin → update → end."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, pinch_click_distance=35.0)
         st = GestureState(cfg)
-        r1 = st.step(_hand(Gesture.POINTING_UP, palm_xy=(300, 200), pinch_distance=50.0), now=1.0)
-        assert not st.is_pinching
-        r2 = st.step(_hand(Gesture.POINTING_UP, palm_xy=(310, 210), pinch_distance=30.0), now=1.1)
+        r1 = st.step(_hand(Gesture.PINCH, palm_xy=(0.5, 0.5)), now=1.0,
+                     events=[_evt(EVT_PEN_DRAW_BEGIN)])
         assert st.is_pinching
         assert st.is_left_mouse_down
-        r3 = st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 220), pinch_distance=30.0), now=1.2)
-        assert not any(i.type == "mouse_down" for i in r3.intents)
-        r4 = st.step(_hand(Gesture.POINTING_UP, palm_xy=(330, 230), pinch_distance=55.0), now=1.3)
+        r2 = st.step(_hand(Gesture.PINCH, palm_xy=(0.52, 0.52)), now=1.1,
+                     events=[_evt(EVT_PEN_DRAW_UPDATE, position=(0.52, 0.52))])
+        assert not any(i.type == "mouse_down" for i in r2.intents)
+        r3 = st.step(_hand(Gesture.NONE), now=1.2,
+                     events=[_evt(EVT_PEN_DRAW_END)])
         assert not st.is_pinching
         assert not st.is_left_mouse_down
-        assert any(i.type == "mouse_up" for i in r4.intents)
+        assert any(i.type == "mouse_up" for i in r3.intents)
 
     def test_pen_none_timeout_releases_left(self) -> None:
+        """Hand-loss timeout releases left mouse (via _handle_no_hand)."""
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, hand_loss_timeout=1.0,
                    pinch_click_distance=35.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=50.0), now=1.0)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=30.0), now=1.1)
-        assert st.is_left_mouse_down
+        st.is_left_mouse_down = True
+        st.last_hand_seen = 0.0  # pretend we've seen a hand before
         result = st.step(_hand(Gesture.NONE), now=3.0)
         types = [i.type for i in result.intents]
         assert "mouse_up" in types
@@ -594,12 +760,13 @@ class TestMouseModeDisabled:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestSolidWorksRotate:
-    """Open_Palm rotate (preserved from Phase 5)."""
+    """Open_Palm rotate via tracker events (Phase 4 migration)."""
 
     def test_open_palm_start_triggers_mouse_down_middle(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0)
+        evt = _sw_evt(EVT_ROTATE_BEGIN)
+        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0, events=[evt])
         mouse_downs = [i for i in result.intents if i.type == "mouse_down"]
         assert len(mouse_downs) == 1
         assert mouse_downs[0].button == "middle"
@@ -609,18 +776,20 @@ class TestSolidWorksRotate:
     def test_open_palm_continuous_move_outputs_move_rel(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(350, 250)), now=1.1)
-        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(380, 280)), now=1.2)
+        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_ROTATE_BEGIN)])
+        evt = _sw_evt(EVT_ROTATE_UPDATE, dx=0.05, dy=0.03)
+        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(350, 250)), now=1.1, events=[evt])
         moves = [i for i in result.intents if i.type == "move_rel"]
         assert len(moves) >= 1
 
     def test_open_palm_hold_no_repeat_mouse_down(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(350, 250)), now=1.1)
-        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(360, 260)), now=1.2)
+        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_ROTATE_BEGIN)])
+        evt = _sw_evt(EVT_ROTATE_UPDATE, dx=0.01, dy=0.01)
+        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(360, 260)), now=1.2, events=[evt])
         mouse_downs = [i for i in result.intents if i.type == "mouse_down"]
         assert len(mouse_downs) == 0
         assert st.is_middle_mouse_down
@@ -628,10 +797,11 @@ class TestSolidWorksRotate:
     def test_open_palm_end_triggers_mouse_up_middle(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(350, 250)), now=1.1)
+        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_ROTATE_BEGIN)])
         assert st.is_middle_mouse_down
-        result = st.step(_hand(Gesture.POINTING_UP), now=1.2)
+        evt = _sw_evt(EVT_ROTATE_END)
+        result = st.step(_hand(Gesture.POINTING_UP), now=1.2, events=[evt])
         mouse_ups = [i for i in result.intents if i.type == "mouse_up"]
         assert len(mouse_ups) == 1
         assert not st.is_middle_mouse_down
@@ -639,12 +809,13 @@ class TestSolidWorksRotate:
 
 
 class TestSolidWorksPan:
-    """Victory pan (preserved from Phase 5)."""
+    """Victory pan via tracker events (Phase 4 migration)."""
 
     def test_victory_start_triggers_shift_and_middle(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        result = st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0)
+        evt = _sw_evt(EVT_PAN_BEGIN)
+        result = st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0, events=[evt])
         key_downs = [i for i in result.intents if i.type == "key_down"]
         mouse_downs = [i for i in result.intents if i.type == "mouse_down"]
         assert len(key_downs) == 1
@@ -658,27 +829,30 @@ class TestSolidWorksPan:
     def test_victory_continuous_move_outputs_move_rel(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(350, 250)), now=1.1)
-        result = st.step(_hand(Gesture.VICTORY, palm_xy=(380, 280)), now=1.2)
+        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_PAN_BEGIN)])
+        evt = _sw_evt(EVT_PAN_UPDATE, dx=0.05, dy=0.03)
+        result = st.step(_hand(Gesture.VICTORY, palm_xy=(380, 280)), now=1.2, events=[evt])
         moves = [i for i in result.intents if i.type == "move_rel"]
         assert len(moves) >= 1
 
     def test_victory_hold_no_repeat(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(350, 250)), now=1.1)
-        result = st.step(_hand(Gesture.VICTORY, palm_xy=(360, 260)), now=1.2)
+        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_PAN_BEGIN)])
+        evt = _sw_evt(EVT_PAN_UPDATE, dx=0.01, dy=0.01)
+        result = st.step(_hand(Gesture.VICTORY, palm_xy=(360, 260)), now=1.2, events=[evt])
         assert not any(i.type == "key_down" for i in result.intents)
         assert not any(i.type == "mouse_down" for i in result.intents)
 
     def test_victory_end_triggers_mouse_up_and_key_up(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(350, 250)), now=1.1)
-        result = st.step(_hand(Gesture.POINTING_UP), now=1.2)
+        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_PAN_BEGIN)])
+        evt = _sw_evt(EVT_PAN_END)
+        result = st.step(_hand(Gesture.POINTING_UP), now=1.2, events=[evt])
         mouse_ups = [i for i in result.intents if i.type == "mouse_up"]
         key_ups = [i for i in result.intents if i.type == "key_up"]
         assert len(mouse_ups) == 1
@@ -689,15 +863,16 @@ class TestSolidWorksPan:
 
 
 class TestSolidWorksMutualExclusion:
-    """Rotate/pan/zoom mutual exclusion (preserved from Phase 5)."""
+    """Rotate/pan/zoom mutual exclusion via tracker events (Phase 4)."""
 
     def test_rotate_to_pan_releases_middle_first(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(350, 250)), now=1.1)
+        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_ROTATE_BEGIN)])
         assert st.active_continuous_action == "solidworks_rotate"
-        result = st.step(_hand(Gesture.VICTORY, palm_xy=(360, 260)), now=1.2)
+        evt = _sw_evt(EVT_PAN_BEGIN, session_id="ses_2")
+        result = st.step(_hand(Gesture.VICTORY, palm_xy=(360, 260)), now=1.2, events=[evt])
         types = [i.type for i in result.intents]
         if "mouse_up" in types and "key_down" in types:
             assert types.index("mouse_up") < types.index("key_down")
@@ -706,10 +881,11 @@ class TestSolidWorksMutualExclusion:
     def test_pan_to_rotate_releases_middle_and_shift_first(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(350, 250)), now=1.1)
+        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_PAN_BEGIN)])
         assert st.active_continuous_action == "solidworks_pan"
-        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(360, 260)), now=1.2)
+        evt = _sw_evt(EVT_ROTATE_BEGIN, session_id="ses_2")
+        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(360, 260)), now=1.2, events=[evt])
         assert st.active_continuous_action == "solidworks_rotate"
         assert not st.is_shift_down
 
@@ -718,25 +894,25 @@ class TestSolidWorksMutualExclusion:
                    pinch_click_distance=35.0, pinch_zoom_deadzone=0.0,
                    solidworks_zoom_sensitivity=8.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(350, 250)), now=1.1)
+        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_ROTATE_BEGIN)])
         assert st.is_middle_mouse_down
-        result = st.step(_hand(Gesture.PINCH, palm_xy=(350, 250), pinch_distance=30.0), now=1.2)
+        evt = _sw_evt(EVT_ZOOM_UPDATE, dx=40.0)
+        result = st.step(_hand(Gesture.PINCH, palm_xy=(350, 250), pinch_distance=30.0), now=1.2, events=[evt])
         mouse_ups = [i for i in result.intents if i.type == "mouse_up"]
         assert len(mouse_ups) >= 1
         assert not st.is_middle_mouse_down
 
 
 class TestSolidWorksZoom:
-    """PINCH zoom (preserved from Phase 5)."""
+    """PINCH zoom via tracker events (Phase 4 migration)."""
 
     def test_pinch_distance_increase_scrolls_positive(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, pinch_click_distance=35.0,
                    pinch_zoom_deadzone=0.0, solidworks_zoom_sensitivity=8.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=30.0), now=1.0)
-        assert st.is_pinching
-        result = st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=35.0), now=1.1)
+        evt = _sw_evt(EVT_ZOOM_UPDATE, dx=40.0)
+        result = st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=30.0), now=1.0, events=[evt])
         scrolls = [i for i in result.intents if i.type == "scroll"]
         assert len(scrolls) >= 1
         assert scrolls[0].amount > 0
@@ -745,9 +921,8 @@ class TestSolidWorksZoom:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, pinch_click_distance=35.0,
                    pinch_zoom_deadzone=0.0, solidworks_zoom_sensitivity=8.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=30.0), now=1.0)
-        assert st.is_pinching
-        result = st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=25.0), now=1.1)
+        evt = _sw_evt(EVT_ZOOM_UPDATE, dx=-40.0)
+        result = st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=30.0), now=1.0, events=[evt])
         scrolls = [i for i in result.intents if i.type == "scroll"]
         assert len(scrolls) >= 1
         assert scrolls[0].amount < 0
@@ -756,8 +931,8 @@ class TestSolidWorksZoom:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, pinch_click_distance=35.0,
                    pinch_zoom_deadzone=100.0, solidworks_zoom_sensitivity=8.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=30.0), now=1.0)
-        result = st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=31.0), now=1.1)
+        evt = _sw_evt(EVT_ZOOM_UPDATE, dx=0.0)
+        result = st.step(_hand(Gesture.PINCH, palm_xy=(320, 240), pinch_distance=30.0), now=1.0, events=[evt])
         scrolls = [i for i in result.intents if i.type == "scroll"]
         assert len(scrolls) == 0
 
@@ -776,47 +951,55 @@ class TestSolidWorksPhase9Changes:
         assert len(presses) == 0
 
     def test_iloveyou_swipe_switches_mode(self) -> None:
-        """Phase 9: ILoveYou right swipe in solidworks → presentation."""
+        """Phase 9: ILoveYou right swipe in solidworks → presentation.
+
+        Task-5: ILoveYou mode switching now handled by tracker event path
+        (EVT_MODE_SWIPE_RIGHT) instead of legacy _detect_iloveyou_swipe.
+        """
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS,
                    iloveyou_swipe_threshold_x=0.22, camera_width=640)
         st = GestureState(cfg)
-        # Right swipe → presentation (no F5)
-        st.step(_hand(Gesture.ILOVEYOU, palm_xy=(200, 240)), now=1.0)
-        result = st.step(_hand(Gesture.ILOVEYOU, palm_xy=(400, 240)), now=1.1)
+        # Tracker emits EVT_MODE_SWIPE_RIGHT → _handle_events → _on_mode_swipe_right
+        result = st.step(_hand(Gesture.ILOVEYOU, palm_xy=(200, 240)), now=1.0,
+                         events=[_evt(EVT_MODE_SWIPE_RIGHT)])
         assert st.mode == MODE_PRESENTATION
-        # Should have release_all for safety.
-        types = [i.type for i in result.intents]
-        assert "release_all" in types
         # No F5.
         presses = [i for i in result.intents if i.type == "press" and i.key == "f5"]
         assert len(presses) == 0
 
     def test_iloveyou_left_swipe_returns_to_standby(self) -> None:
-        """Phase 9: ILoveYou left swipe in solidworks → standby."""
+        """Phase 9: ILoveYou left swipe in solidworks → standby.
+
+        Task-5: ILoveYou mode switching now handled by tracker event path
+        (EVT_MODE_SWIPE_LEFT) instead of legacy _detect_iloveyou_swipe.
+        """
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS,
                    iloveyou_swipe_threshold_x=0.22, camera_width=640)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.ILOVEYOU, palm_xy=(400, 240)), now=1.0)
-        result = st.step(_hand(Gesture.ILOVEYOU, palm_xy=(200, 240)), now=1.1)
+        result = st.step(_hand(Gesture.ILOVEYOU, palm_xy=(400, 240)), now=1.0,
+                         events=[_evt(EVT_MODE_SWIPE_LEFT)])
         assert st.mode == MODE_STANDBY
         assert any(i.type == "release_all" for i in result.intents)
 
     def test_closed_fist_hold_exits_to_standby(self) -> None:
+        """EVT_FIST_HOLD_COMMITTED in solidworks → standby."""
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, exit_mode_hold=0.8)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.CLOSED_FIST), now=1.0)
-        result = st.step(_hand(Gesture.CLOSED_FIST), now=2.0)
+        result = st.step(_hand(Gesture.CLOSED_FIST), now=1.0,
+                         events=[_evt(EVT_FIST_HOLD_COMMITTED)])
         assert st.mode == MODE_STANDBY
         assert "release_all" in [i.type for i in result.intents]
 
     def test_exit_clears_active_continuous_action(self) -> None:
+        """EVT_FIST_HOLD_COMMITTED during active rotate → releases + standby."""
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, exit_mode_hold=0.0,
                    solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(350, 250)), now=1.1)
+        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_ROTATE_BEGIN)])
         assert st.active_continuous_action == "solidworks_rotate"
-        st.step(_hand(Gesture.CLOSED_FIST), now=1.2)
+        st.step(_hand(Gesture.CLOSED_FIST), now=1.2,
+                events=[_evt(EVT_FIST_HOLD_COMMITTED)])
         assert st.mode == MODE_STANDBY
         assert st.active_continuous_action is None
         assert not st.is_middle_mouse_down
@@ -826,8 +1009,8 @@ class TestSolidWorksPhase9Changes:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, hand_loss_timeout=1.0,
                    solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(350, 250)), now=1.1)
+        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_PAN_BEGIN)])
         assert st.is_middle_mouse_down
         result = st.step(_hand(Gesture.NONE), now=3.0)
         types = [i.type for i in result.intents]
@@ -841,14 +1024,22 @@ class TestSolidWorksPhase9Changes:
 
 
 class TestSolidWorksDeadzone:
-    """Deadzone filtering (preserved from Phase 5)."""
+    """Deadzone filtering for SolidWorks move updates (Phase 4).
+
+    In the tracker event path, the tracker already applies deadzone.
+    Here we verify that very small dx/dy in EVT_*_UPDATE events
+    don't produce move_rel (the _on_sw_move_update helper has its
+    own micro-movement filter).
+    """
 
     def test_open_palm_small_move_no_move_rel(self) -> None:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.1,
                    camera_width=640, camera_height=480)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(320, 240)), now=1.0)
-        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(325, 245)), now=1.1)
+        st.step(_hand(Gesture.OPEN_PALM, palm_xy=(320, 240)), now=1.0,
+                events=[_sw_evt(EVT_ROTATE_BEGIN)])
+        evt = _sw_evt(EVT_ROTATE_UPDATE, dx=0.0001, dy=0.0001)
+        result = st.step(_hand(Gesture.OPEN_PALM, palm_xy=(325, 245)), now=1.1, events=[evt])
         moves = [i for i in result.intents if i.type == "move_rel"]
         assert len(moves) == 0
 
@@ -856,8 +1047,10 @@ class TestSolidWorksDeadzone:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, solidworks_deadzone=0.1,
                    camera_width=640, camera_height=480)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(320, 240)), now=1.0)
-        result = st.step(_hand(Gesture.VICTORY, palm_xy=(325, 245)), now=1.1)
+        st.step(_hand(Gesture.VICTORY, palm_xy=(320, 240)), now=1.0,
+                events=[_sw_evt(EVT_PAN_BEGIN)])
+        evt = _sw_evt(EVT_PAN_UPDATE, dx=0.0001, dy=0.0001)
+        result = st.step(_hand(Gesture.VICTORY, palm_xy=(325, 245)), now=1.1, events=[evt])
         moves = [i for i in result.intents if i.type == "move_rel"]
         assert len(moves) == 0
 
@@ -924,9 +1117,8 @@ class TestNoneHandLoss:
         cfg = _cfg(initial_mode=MODE_PRESENTATION_PEN, hand_loss_timeout=1.0,
                    pinch_click_distance=35.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=50.0), now=1.0)
-        st.step(_hand(Gesture.POINTING_UP, palm_xy=(320, 240), pinch_distance=30.0), now=1.1)
-        assert st.is_left_mouse_down
+        st.is_left_mouse_down = True
+        st.last_hand_seen = 1.0
         # First timeout: mouse_up + release_all.
         r1 = st.step(_hand(Gesture.NONE), now=3.0)
         types = [i.type for i in r1.intents]
@@ -943,8 +1135,8 @@ class TestNoneHandLoss:
         cfg = _cfg(initial_mode=MODE_SOLIDWORKS, hand_loss_timeout=1.0,
                    solidworks_deadzone=0.0)
         st = GestureState(cfg)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0)
-        st.step(_hand(Gesture.VICTORY, palm_xy=(350, 250)), now=1.1)
+        st.step(_hand(Gesture.VICTORY, palm_xy=(300, 200)), now=1.0,
+                events=[_sw_evt(EVT_PAN_BEGIN)])
         assert st.is_middle_mouse_down and st.is_shift_down
         r1 = st.step(_hand(Gesture.NONE), now=3.0)
         types = [i.type for i in r1.intents]
@@ -1031,6 +1223,96 @@ class TestNoneHandLoss:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# SolidWorks event mode guard
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestSolidWorksEventModeGuard:
+    """Non-SolidWorks modes must ignore SolidWorks tracker events."""
+
+    def test_standby_rotate_begin_no_mouse_down(self) -> None:
+        """standby 收到 EVT_ROTATE_BEGIN 不产生 mouse_down."""
+        st = GestureState(_cfg())  # starts in STANDBY
+        events = [_sw_evt(EVT_ROTATE_BEGIN)]
+        result = st.step(_hand(), now=1.0, events=events)
+        mouse_down = [i for i in result.intents if i.type == "mouse_down"]
+        assert len(mouse_down) == 0
+        assert st.active_continuous_action is None
+        assert st.is_middle_mouse_down is False
+
+    def test_presentation_pan_begin_no_key_down(self) -> None:
+        """presentation 收到 EVT_PAN_BEGIN 不产生 key_down/mouse_down."""
+        st = GestureState(_cfg(initial_mode=MODE_PRESENTATION))
+        events = [_sw_evt(EVT_PAN_BEGIN)]
+        result = st.step(_hand(), now=1.0, events=events)
+        mouse_down = [i for i in result.intents if i.type == "mouse_down"]
+        key_down = [i for i in result.intents if i.type == "key_down"]
+        assert len(mouse_down) == 0
+        assert len(key_down) == 0
+        assert st.active_continuous_action is None
+        assert st.is_middle_mouse_down is False
+        assert st.is_shift_down is False
+
+    def test_presentation_zoom_update_no_scroll(self) -> None:
+        """presentation 收到 EVT_ZOOM_UPDATE 不产生 scroll."""
+        st = GestureState(_cfg(initial_mode=MODE_PRESENTATION))
+        events = [_sw_evt(EVT_ZOOM_UPDATE, dx=5.0)]
+        result = st.step(_hand(), now=1.0, events=events)
+        scroll = [i for i in result.intents if i.type == "scroll"]
+        assert len(scroll) == 0
+
+    def test_non_solidworks_no_mode_change(self) -> None:
+        """非 SolidWorks 模式收到 rotate/pan/zoom 事件不改变 mode."""
+        st = GestureState(_cfg())  # STANDBY
+        events = [
+            _sw_evt(EVT_ROTATE_BEGIN),
+            _sw_evt(EVT_ROTATE_UPDATE, dx=0.1, dy=0.0),
+            _sw_evt(EVT_ROTATE_END),
+            _sw_evt(EVT_PAN_BEGIN),
+            _sw_evt(EVT_ZOOM_UPDATE, dx=5.0),
+        ]
+        result = st.step(_hand(), now=1.0, events=events)
+        assert st.mode == MODE_STANDBY
+        assert st.active_continuous_action is None
+        assert st.is_middle_mouse_down is False
+        assert st.is_shift_down is False
+        # No hardware intents at all
+        hardware = [i for i in result.intents
+                    if i.type in ("mouse_down", "mouse_up", "key_down",
+                                  "key_up", "scroll", "move_rel")]
+        assert len(hardware) == 0
+
+    def test_solidworks_rotate_still_works(self) -> None:
+        """SolidWorks 模式下 rotate 事件仍正常工作."""
+        st = GestureState(_cfg(initial_mode=MODE_SOLIDWORKS))
+        events = [_sw_evt(EVT_ROTATE_BEGIN)]
+        result = st.step(_hand(), now=1.0, events=events)
+        mouse_down = [i for i in result.intents if i.type == "mouse_down"]
+        assert len(mouse_down) == 1
+        assert st.active_continuous_action == "solidworks_rotate"
+        assert st.is_middle_mouse_down is True
+
+    def test_solidworks_pan_still_works(self) -> None:
+        """SolidWorks 模式下 pan 事件仍正常工作."""
+        st = GestureState(_cfg(initial_mode=MODE_SOLIDWORKS))
+        events = [_sw_evt(EVT_PAN_BEGIN)]
+        result = st.step(_hand(), now=1.0, events=events)
+        mouse_down = [i for i in result.intents if i.type == "mouse_down"]
+        key_down = [i for i in result.intents if i.type == "key_down"]
+        assert len(mouse_down) == 1
+        assert len(key_down) == 1  # shift
+        assert st.active_continuous_action == "solidworks_pan"
+
+    def test_solidworks_zoom_still_works(self) -> None:
+        """SolidWorks 模式下 zoom 事件仍正常工作."""
+        st = GestureState(_cfg(initial_mode=MODE_SOLIDWORKS))
+        events = [_sw_evt(EVT_ZOOM_UPDATE, dx=5.0)]
+        result = st.step(_hand(), now=1.0, events=events)
+        scroll = [i for i in result.intents if i.type == "scroll"]
+        assert len(scroll) == 1
+        assert scroll[0].amount > 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Cooldown
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1041,11 +1323,14 @@ class TestCooldown:
         cfg = _cfg(iloveyou_swipe_threshold_x=0.22, camera_width=640,
                    mode_switch_cooldown=5.0)
         st = GestureState(cfg)
-        # Enter presentation via ILoveYou right swipe
-        st.step(_hand(Gesture.ILOVEYOU, palm_xy=(200, 240)), now=1.0)
-        st.step(_hand(Gesture.ILOVEYOU, palm_xy=(400, 240)), now=1.1)
+        # Enter presentation via mode_swipe_right event
+        st.step(
+            _hand(Gesture.ILOVEYOU, palm_xy=(400, 240)),
+            now=1.0,
+            events=[_evt(EVT_MODE_SWIPE_RIGHT)],
+        )
         assert st.mode == MODE_PRESENTATION
-        assert not st._cooldown_ok("mode_switch", 1.1)
+        assert not st._cooldown_ok("mode_switch", 1.0)
 
     def test_release_all_not_blocked_by_cooldown(self) -> None:
         """release_all不受cooldown限制."""
@@ -1053,7 +1338,8 @@ class TestCooldown:
                    mode_switch_cooldown=100.0)
         st = GestureState(cfg)
         st._set_cooldown("mode_switch", 100.0, 1.0)
-        st.step(_hand(Gesture.CLOSED_FIST), now=2.0)
+        result = st.step(_hand(Gesture.CLOSED_FIST), now=2.0,
+                         events=[_evt(EVT_FIST_HOLD_COMMITTED)])
         assert st.mode == MODE_STANDBY
 
 

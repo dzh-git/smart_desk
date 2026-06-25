@@ -10,6 +10,8 @@
 
 动作层 `gesture_actions.py` 只负责接收 `ActionIntent` 并执行实际鼠标、键盘操作。
 
+控制流程驱动重构后，`GestureIntentTracker` 输出稳定的 `ControlEvent`，`GestureState` 再把 `ControlEvent` 映射为 `ActionIntent`。`ActionIntent` 类型集合保持稳定，不因新增 Tracker 而扩展。
+
 本文档重点解决以下问题：
 
 1. 状态机可以输出哪些动作。
@@ -42,6 +44,8 @@ ActionIntent(...)
 ```
 
 实际执行由 `gesture_actions.py` 完成。
+
+同样禁止 `hands/gesture_intent_tracker.py` 直接调用 PyAutoGUI 或构造系统驱动调用；Tracker 只能输出 `ControlEvent`。
 
 ---
 
@@ -91,6 +95,45 @@ quit
 
 即使系统处于冷却时间内，也必须允许安全释放。
 
+正常连续会话结束优先输出精确释放：
+
+```text
+rotate_end → mouse_up("middle")
+pan_end → mouse_up("middle") + key_up("shift")
+```
+
+`release_all` 只用于模式切换、暂停、真正手丢失超时、异常、退出和 Closed_Fist 安全退出，不得因为同一次无手事件逐帧重复输出。
+
+---
+
+## 2.5 ControlEvent 到 ActionIntent 的映射
+
+第一阶段固定支持以下事件映射：
+
+| ControlEvent.type | 状态机输出 |
+| --- | --- |
+| `mode_swipe_right` / `mode_swipe_left` | 根据当前 mode 切换；离开活动模式时输出必要的 `press("esc")` 和一次 `release_all` |
+| `page_swipe_right` | `press("right")` |
+| `page_swipe_left` | `press("left")` |
+| `rotate_begin` | `mouse_down("middle")` |
+| `rotate_update` | `move_rel(dx, dy)` |
+| `rotate_end` | `mouse_up("middle")` |
+| `pan_begin` | `key_down("shift")` + `mouse_down("middle")` |
+| `pan_update` | `move_rel(dx, dy)` |
+| `pan_end` | `mouse_up("middle")` + `key_up("shift")` |
+| `zoom_update` | `scroll(amount)` |
+| `hand_lost_timeout` | 按需精确释放当前会话后输出一次 `release_all` |
+| `cancel` | 按 reason 决定精确释放或安全释放；不得直接重复 down/up |
+
+约束：
+
+```text
+同一个 attempt_id 对应的 page/mode committed 事件只能产生一次离散 ActionIntent。
+同一个 session_id 内 mouse_down / key_down 只能在 begin 时产生一次。
+update 事件不得重复产生 mouse_down / key_down。
+正常 end 不输出 release_all。
+```
+
 ---
 
 ## 3. ActionIntent 数据结构
@@ -131,6 +174,18 @@ class ActionIntent:
 | `amount` | `int`       | 滚轮滚动量                            |
 | `text`   | `str`       | 状态提示或调试文本                        |
 | `meta`   | `dict`      | 调试信息或扩展信息                        |
+
+`meta` 可记录但不要求动作层解释的调试字段：
+
+```text
+attempt_id
+session_id
+control_type
+phase
+reason
+```
+
+这些字段用于测试和日志审查，不应改变动作层执行语义。
 
 ---
 
@@ -333,7 +388,7 @@ SolidWorks 平移
 约束：
 
 ```text
-当前动作层只校验 dx/dy 非空；SolidWorks 状态机负责灵敏度和 deadzone 处理
+当前动作层只校验 dx/dy 非空；第一阶段由 GestureIntentTracker 和 GestureState 事件映射负责灵敏度、deadzone、限幅和互斥处理
 ```
 
 ---
@@ -453,7 +508,7 @@ SolidWorks 缩放模型
 
 ```text
 amount 必须非空
-当前动作层直接转发滚轮量；SolidWorks 状态机负责 deadzone、灵敏度和最小步长
+当前动作层直接转发滚轮量；第一阶段由 GestureIntentTracker 和 GestureState 事件映射负责 deadzone、灵敏度、限幅和最小步长
 ```
 
 ---

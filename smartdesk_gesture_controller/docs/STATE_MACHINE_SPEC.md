@@ -24,14 +24,15 @@
 
 `gesture_state.py` 不应直接调用 PyAutoGUI。
 
-状态机输入：
+第一阶段采用混合输入：已迁移功能不再由状态机直接消费帧级手势，未迁移功能继续使用兼容路径。
 
 ```text
-HandInput
+ControlEvent[]（模式切换、PPT 翻页、SolidWorks 旋转/平移/缩放）
+HandInput（PPT 画笔、Closed_Fist、暂停恢复等未迁移功能的兼容路径）
 当前 mode
 当前时间 now
-上一次手势状态
-上一次连续动作状态
+cooldown 状态
+安全释放状态
 ```
 
 状态机输出：
@@ -76,7 +77,7 @@ Closed_Fist → standby
 
 ### 2.3 连续动作必须有 begin / update / end
 
-涉及拖动、画笔、中键旋转、Shift+中键平移时，状态机必须维护连续动作状态。
+涉及拖动、画笔、中键旋转、Shift+中键平移时，必须有 begin / update / end。第一阶段中，SolidWorks 旋转和平移的连续会话由 `GestureIntentTracker` 管理，状态机只消费 `rotate_begin/update/end`、`pan_begin/update/end` 事件并映射为 `ActionIntent`。
 
 连续动作包括：
 
@@ -97,6 +98,61 @@ update
 end
 cancel
 ```
+
+---
+
+### 2.5 控制流程驱动边界
+
+第一阶段新增中间层：
+
+```text
+Recognizer → GestureFrame
+→ GestureIntentTracker.update(frame, current_mode, now)
+→ ControlEvent[]
+→ GestureState
+→ ActionIntent[]
+→ ActionLayer
+```
+
+`GestureIntentTracker` 负责：
+
+```text
+稳定候选
+管理 gesture_attempt_id
+管理 ControlSession
+跟踪标准化轨迹
+容忍短暂分类失败
+输出稳定 ControlEvent
+```
+
+`GestureState` 负责：
+
+```text
+当前 mode
+cooldown
+模式转换
+安全释放策略
+ControlEvent 到 ActionIntent 的映射
+未迁移功能的兼容 HandInput 处理
+```
+
+Tracker 不得直接切换模式、执行系统动作或管理 cooldown。cooldown 只由状态机管理。
+
+### 2.6 raw_gesture None 与真正手丢失
+
+必须区分：
+
+```text
+hand_present=True, raw_gesture=None
+```
+
+表示检测到手，但分类器暂时无法确定类别。该情况只计入分类失败容忍，不启动手丢失计时，不立即 `release_all`。
+
+```text
+hand_present=False
+```
+
+才表示真正没有检测到手。只有该状态连续超过 `hand_loss_timeout`，Tracker 才输出一次 `hand_lost_timeout`，由状态机执行安全释放。有效手重新出现后重新布防下一次手丢失。
 
 ---
 
@@ -180,10 +236,10 @@ SolidWorks 模式退出
 
 ### 5.3 允许动作
 
-| 手势            | 条件       | 输出动作          | 新状态            |
+| 输入事件 / 手势   | 条件       | 输出动作          | 新状态            |
 | ------------- | -------- | ------------- | -------------- |
-| `ILoveYou`    | 向右滑动    | 无键盘动作         | `presentation` |
-| `ILoveYou`    | 向左滑动    | 无键盘动作         | `solidworks`   |
+| `mode_swipe_right` | attempt 已提交且不在冷却 | 无键盘动作         | `presentation` |
+| `mode_swipe_left`  | attempt 已提交且不在冷却 | 无键盘动作         | `solidworks`   |
 | `Open_Palm`   | 任意       | 无动作           | `standby`      |
 | `Closed_Fist` | 任意       | `release_all` | `standby`      |
 | `None`        | 任意       | 无动作           | `standby`      |
@@ -194,8 +250,9 @@ SolidWorks 模式退出
 Standby 不再通过 Thumb_Up 启动 PPT，也不再进入 mouse 模式。
 模式切换统一由 ILoveYou 左右滑完成。
 
-ILoveYou 右滑: standby → presentation
-ILoveYou 左滑: standby → solidworks
+ILoveYou 稳定进入 attempt 后，Tracker 根据轨迹输出：
+mode_swipe_right: standby → presentation
+mode_swipe_left: standby → solidworks
 
 从 standby 切换到活动模式时不输出键盘或鼠标动作；只更新内部模式。
 ```
@@ -234,16 +291,16 @@ Standby: ILoveYou Swipe Right = PPT, Swipe Left = SolidWorks, Fist = Exit
 
 ### 6.3 允许动作
 
-| 手势              | 条件                   | 输出动作                           | 新状态                |
+| 输入事件 / 手势      | 条件                   | 输出动作                           | 新状态                |
 | --------------- | -------------------- | ------------------------------ | ------------------ |
-| `Open_Palm` 向右挥 | 达到 SWIPE_RIGHT 条件    | `press("right")`               | `presentation`     |
-| `Open_Palm` 向左挥 | 达到 SWIPE_LEFT 条件     | `press("left")`                | `presentation`     |
+| `page_swipe_right` | attempt 已提交且不在冷却 | `press("right")`               | `presentation`     |
+| `page_swipe_left`  | attempt 已提交且不在冷却 | `press("left")`                | `presentation`     |
 | `Victory`       | 保持 0.5 秒             | `hotkey("ctrl", "p")`          | `presentation_pen` |
-| `ILoveYou`      | 向右滑动                | `press("esc")` + `release_all` | `standby`         |
-| `ILoveYou`      | 向左滑动                | `release_all`                    | `solidworks`      |
+| `mode_swipe_right` | attempt 已提交且不在冷却 | `press("esc")` + `release_all` | `standby`         |
+| `mode_swipe_left`  | attempt 已提交且不在冷却 | `release_all`                    | `solidworks`      |
 | `Closed_Fist`   | 保持 0.8 秒             | `press("esc")` + `release_all` | `standby`          |
-| `None`          | 短暂丢失                 | 无动作                            | `presentation`     |
-| `None`          | 每次连续丢失首次超过 hand_lost_timeout | `release_all`       | `presentation`     |
+| `raw_gesture=None` 且 `hand_present=True` | 短暂分类失败 | 无动作 | `presentation` |
+| `hand_lost_timeout` | 每次连续真正手丢失首次超过 hand_loss_timeout | `release_all` | `presentation` |
 
 ### 6.4 冷却规则
 
@@ -424,31 +481,29 @@ presentation 模式下 ILoveYou 左滑，进入 solidworks
 
 ### 10.3 允许动作
 
-| 手势               | 条件                     | 输出动作                                         | 新状态          |
+| 输入事件 / 手势      | 条件                     | 输出动作                                         | 新状态          |
 | ---------------- | ---------------------- | -------------------------------------------- | ------------ |
-| `Open_Palm` 开始移动 | 稳定出现并超过移动死区            | `mouse_down("middle")`                       | `solidworks` |
-| `Open_Palm` 持续移动 | 已经 middle_down         | `move_rel(dx, dy)`                           | `solidworks` |
-| `Open_Palm` 结束   | 手势变化 / None            | `mouse_up("middle")`                         | `solidworks` |
-| `Victory` 开始移动   | 稳定出现并超过移动死区            | `key_down("shift")` + `mouse_down("middle")` | `solidworks` |
-| `Victory` 持续移动   | 已经 shift + middle_down | `move_rel(dx, dy)`                           | `solidworks` |
-| `Victory` 结束     | 手势变化 / None            | `mouse_up("middle")` + `key_up("shift")`     | `solidworks` |
-| `PINCH` 距离增大     | 超过缩放死区                 | `scroll(+amount)`                            | `solidworks` |
-| `PINCH` 距离减小     | 超过缩放死区                 | `scroll(-amount)`                            | `solidworks` |
-| `ILoveYou`      | 向右滑动                | `release_all`                                    | `presentation` |
-| `ILoveYou`      | 向左滑动                | `release_all`                                    | `standby`     |
+| `rotate_begin` | session 创建且不在其他会话中 | `mouse_down("middle")`                       | `solidworks` |
+| `rotate_update` | rotate session 活动 | `move_rel(dx, dy)`                           | `solidworks` |
+| `rotate_end`   | session 正常结束 | `mouse_up("middle")`                         | `solidworks` |
+| `pan_begin`   | session 创建且不在其他会话中 | `key_down("shift")` + `mouse_down("middle")` | `solidworks` |
+| `pan_update`   | pan session 活动 | `move_rel(dx, dy)`                           | `solidworks` |
+| `pan_end`     | session 正常结束 | `mouse_up("middle")` + `key_up("shift")`     | `solidworks` |
+| `zoom_update`     | pinch_distance 变化超过死区 | `scroll(amount)`                            | `solidworks` |
+| `mode_swipe_right` | attempt 已提交且不在冷却 | `release_all`                                    | `presentation` |
+| `mode_swipe_left`  | attempt 已提交且不在冷却 | `release_all`                                    | `standby`     |
 | `Closed_Fist`    | 保持 0.8 秒               | `release_all`                                | `standby`    |
-| `None`           | 每次连续丢失首次超过 hand_lost_timeout | 按需释放中键/Shift + `release_all`           | `solidworks` |
+| `hand_lost_timeout` | 每次连续真正手丢失首次超过 hand_loss_timeout | 按需释放中键/Shift + `release_all`           | `solidworks` |
 
 ### 10.4 连续动作状态
 
-`solidworks` 需要维护：
+第一阶段中，`solidworks` 的 rotate/pan 会话由 Tracker 维护，状态机只需要记录已输出的按键/鼠标释放状态，避免重复 down/up：
 
 ```text
-solidworks_action = none | rotate | pan | zoom
 is_middle_mouse_down
 is_shift_down
-last_hand_center
-last_pinch_distance
+active_session_id
+active_control_type
 ```
 
 ### 10.5 旋转与平移互斥
@@ -464,18 +519,18 @@ zoom
 如果当前正在 rotate，突然识别到 Victory：
 
 ```text
-先 mouse_up("middle")
-再 key_down("shift") + mouse_down("middle")
-进入 pan
+不立即切换到 pan
+保持当前 rotate session，直到 rotate_end / cancel / hand_lost_timeout
 ```
 
 如果当前正在 pan，突然识别到 Open_Palm：
 
 ```text
-先 mouse_up("middle") + key_up("shift")
-再 mouse_down("middle")
-进入 rotate
+不立即切换到 rotate
+保持当前 pan session，直到 pan_end / cancel / hand_lost_timeout
 ```
+
+活动 session 期间同时屏蔽模式切换、缩放和其他连续控制候选。
 
 ### 10.6 退出条件
 
@@ -550,16 +605,16 @@ Paused: Ctrl+Alt+G = Resume to Standby, Ctrl+Alt+Q = Quit
 
 | 当前状态               | 输入                 | 下一个状态              | 必须动作                                                |
 | ------------------ | ------------------ | ------------------ | --------------------------------------------------- |
-| `standby`          | `ILoveYou` 右滑     | `presentation`     | 无系统动作                                             |
-| `standby`          | `ILoveYou` 左滑     | `solidworks`       | 无系统动作                                             |
+| `standby`          | `mode_swipe_right` | `presentation`     | 无系统动作                                             |
+| `standby`          | `mode_swipe_left`  | `solidworks`       | 无系统动作                                             |
 | `presentation`     | `Victory` HOLD     | `presentation_pen` | `hotkey("ctrl", "p")`                               |
-| `presentation`     | `ILoveYou` 右滑     | `standby`          | `press("esc")` + `release_all`                      |
-| `presentation`     | `ILoveYou` 左滑     | `solidworks`       | `release_all`                                       |
+| `presentation`     | `mode_swipe_right` | `standby`          | `press("esc")` + `release_all`                      |
+| `presentation`     | `mode_swipe_left`  | `solidworks`       | `release_all`                                       |
 | `presentation`     | `Closed_Fist` HOLD | `standby`          | `press("esc")` + `release_all`                      |
 | `presentation_pen` | `Victory` HOLD     | `presentation`     | `mouse_up("left")` + `hotkey("ctrl", "a")`          |
 | `presentation_pen` | `Closed_Fist` HOLD | `standby`          | `mouse_up("left")` + `press("esc")` + `release_all` |
-| `solidworks`       | `ILoveYou` 右滑     | `presentation`     | `release_all`                                       |
-| `solidworks`       | `ILoveYou` 左滑     | `standby`          | `release_all`                                       |
+| `solidworks`       | `mode_swipe_right` | `presentation`     | `release_all`                                       |
+| `solidworks`       | `mode_swipe_left`  | `standby`          | `release_all`                                       |
 | `solidworks`       | `Closed_Fist` HOLD | `standby`          | `release_all`                                       |
 | 任意状态               | `Ctrl+Alt+G`       | `paused`           | `release_all`                                       |
 | `paused`           | `Ctrl+Alt+G`       | `standby`          | 无新增系统动作；进入 paused 时已经释放                         |
@@ -607,7 +662,7 @@ right
 
 ```text
 Closed_Fist 退出
-每次连续 None 首次超时
+每次连续真正手丢失首次超过 hand_loss_timeout
 从活动模式切换
 暂停
 退出程序
@@ -631,17 +686,25 @@ MediaPipe 推理异常
 
 ### 14.1 短暂 None
 
-如果手势短暂丢失，但未超过 `hand_lost_timeout`：
+如果检测到手但分类暂时失败：
+
+```text
+hand_present=True
+raw_gesture=None
+```
+
+则：
 
 ```text
 不立即切换模式
 不触发离散动作
 连续拖拽动作可以暂时保持，但不再更新移动
+不启动 hand_loss_timeout
 ```
 
 ### 14.2 长时间 None
 
-如果手势丢失超过 `hand_lost_timeout`：
+如果真正无手超过 `hand_loss_timeout`：
 
 ```text
 同一次连续丢失事件首次超时时输出 release_all
@@ -709,23 +772,36 @@ now >= cooldown_until
 
 ### 15.2 动态手势判定
 
-动态手势需要维护轨迹窗口：
+第一阶段已迁移的动态手势由 `GestureIntentTracker` 判定，不再由状态机直接维护原始轨迹窗口：
 
 ```text
-hand_center_history = [(time, x, y), ...]
+模式切换：ILoveYou 稳定进入 attempt → palm_xy 轨迹 → mode_swipe_left/right
+PPT 翻页：Open_Palm 稳定进入 attempt → palm_xy 轨迹 → page_swipe_left/right
+SolidWorks 旋转/平移：Open_Palm/Victory 稳定进入 session → rotate/pan events
+SolidWorks 缩放：pinch_distance 滞回和 deadzone → zoom_update
 ```
 
-只保留最近：
+状态机只检查 cooldown、当前 mode 和互斥条件，并将事件映射为动作意图。
+
+未迁移功能仍可暂时使用旧 HOLD / PINCH / Pointing_Up 逻辑。
+
+### 15.3 attempt 与 session 约束
+
+模式切换、翻页和缩放使用短期 `attempt_id`：
 
 ```text
-swipe_time_window = 0.8s
+同一 attempt committed 后，直到 released/cancelled/timeout 前不得再次 committed
+新一次滑动必须生成新的 attempt_id
+一次 page_swipe 只能翻一页
+一次 mode_swipe 只能切换一次
 ```
 
-根据窗口内位移判断：
+旋转和平移使用 `ControlSession`：
 
 ```text
-dx = latest_x - oldest_x
-dy = latest_y - oldest_y
+mouse_down / key_down 每个 session 只能输出一次
+正常结束只精确释放 session 拥有的鼠标键/键盘键
+session 活动期间不得启动第二个控制或模式切换
 ```
 
 ---
@@ -769,9 +845,14 @@ class StepResult:
 
 ```text
 current_gesture
+raw_gesture
+stable_gesture
 stable_duration
 cooldown_until
 active_continuous_action
+active_attempt_id
+active_session_id
+intent_phase
 hand_lost_duration
 pinch_distance
 swipe_dx
@@ -795,6 +876,10 @@ class GestureState:
 
     hand_lost_start_time: float | None
     _hand_loss_released: bool
+
+    active_attempt_id: str | None
+    active_session_id: str | None
+    active_control_type: str | None
 
     is_left_mouse_down: bool
     is_middle_mouse_down: bool

@@ -702,3 +702,137 @@ def test_no_pause_on_start_argument():
     config = config_from_args(["--no-pause-on-start"])
     assert config.pause_on_start is False
     assert config.start_paused is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Task-2 — GestureFrame construction in controller
+# ═══════════════════════════════════════════════════════════════════════════
+
+from hands.gesture_intent_tracker import GestureFrame, GestureSource
+from hands.gesture_recognition import _FrameResult
+
+
+def test_controller_constructs_gesture_frame_from_frame_result() -> None:
+    """The controller's recognizer can produce a GestureFrame from _FrameResult."""
+    controller, driver = _controller_with_fake_driver()
+    recognizer = controller.recognizer
+
+    # Build a _FrameResult with raw hand landmarks.
+    class _FakeLM:
+        def __init__(self, x, y):
+            self.x = x
+            self.y = y
+
+    raw_hand = [[_FakeLM(0.4, 0.6) if i == 0 else
+                 _FakeLM(0.5, 0.4) if i == 9 else
+                 _FakeLM(0.55, 0.3) if i == 8 else
+                 _FakeLM(0.45, 0.35) if i == 4 else
+                 _FakeLM(0.0, 0.0) for i in range(21)]]
+    # Fix: need individual landmarks, not nested list
+    raw_hand = []
+    hand_lms = []
+    for i in range(21):
+        if i == 0:
+            hand_lms.append(_FakeLM(0.4, 0.6))
+        elif i == 4:
+            hand_lms.append(_FakeLM(0.45, 0.35))
+        elif i == 8:
+            hand_lms.append(_FakeLM(0.55, 0.3))
+        elif i == 9:
+            hand_lms.append(_FakeLM(0.5, 0.4))
+        else:
+            hand_lms.append(_FakeLM(0.0, 0.0))
+    raw_hand = [hand_lms]
+
+    fr = _FrameResult(
+        landmarks=[[i, 0, 0] for i in range(21)],
+        raw_hand_landmarks=raw_hand,
+        gesture="Open_Palm",
+        gesture_confidence=0.9,
+        gesture_source="gesture_recognizer",
+        raw_gesture="Open_Palm",
+    )
+    gf = recognizer.to_gesture_frame(fr)
+
+    assert gf.hand_present is True
+    assert gf.raw_gesture == "Open_Palm"
+    assert gf.gesture_source == GestureSource.RECOGNIZER
+    assert gf.palm_xy is not None
+    assert gf.index_tip_xy is not None
+    assert gf.hand_size is not None
+    assert gf.pinch_distance_norm is not None
+
+
+def test_controller_no_hand_gesture_frame() -> None:
+    """No-hand _FrameResult produces hand_present=False GestureFrame."""
+    controller, driver = _controller_with_fake_driver()
+    recognizer = controller.recognizer
+
+    fr = _FrameResult(landmarks=None, gesture="None", gesture_source="none")
+    gf = recognizer.to_gesture_frame(fr)
+
+    assert gf.hand_present is False
+    assert gf.raw_gesture is None
+    assert gf.palm_xy is None
+    assert gf.pinch_distance_norm is None
+
+
+# ── Phase 3 fix: tracker.update receives monotonic time ─────────────────────
+
+def test_tracker_update_receives_monotonic_time() -> None:
+    """Controller._process_frame passes monotonic time to tracker.update.
+
+    We patch tracker.update to capture the ``now`` argument, then call
+    _process_frame with a no-hand frame.  The captured value must be
+    close to time.monotonic() (not time.time()).
+    """
+    import time as _time
+
+    controller, driver = _controller_with_fake_driver()
+
+    captured_now = {}
+    original_update = controller.tracker.update
+
+    def _capture_update(frame, current_mode, now):
+        captured_now["value"] = now
+        return original_update(frame, current_mode, now)
+
+    controller.tracker.update = _capture_update
+
+    # Build a no-hand frame result (avoids needing mediapipe/cv2).
+    from hands.gesture_recognition import _FrameResult
+    fr = _FrameResult(landmarks=None, gesture="None", gesture_source="none")
+    hand_input = controller.recognizer.to_hand_input(fr)
+    gesture_frame = controller.recognizer.to_gesture_frame(fr)
+
+    mono_before = _time.monotonic()
+    controller._process_frame.__wrapped__ if hasattr(controller._process_frame, "__wrapped__") else None
+
+    # Call _process_frame directly with a dummy image and monotonic time.
+    import numpy as np
+    img = np.zeros((480, 640, 3), dtype=np.uint8)
+    now_mono = _time.monotonic()
+    controller._process_frame(img, now_mono)
+    mono_after = _time.monotonic()
+
+    assert "value" in captured_now, "tracker.update was not called"
+    captured = captured_now["value"]
+    # The captured value must be within the monotonic window we measured,
+    # proving it came from time.monotonic() — not time.time() (which would
+    # be ~1.7 billion, far outside this range on any current machine).
+    assert mono_before - 1.0 <= captured <= mono_after + 1.0, \
+        f"captured now={captured} is not monotonic; expected ~[{mono_before}, {mono_after}]"
+
+    # Sanity: time.time() should be much larger than monotonic on this machine.
+    wall = _time.time()
+    assert abs(wall - captured) > 1000, \
+        f"captured now={captured} looks like wall-clock time={wall}; expected monotonic"
+
+
+def test_controller_loop_uses_monotonic_time() -> None:
+    """The _loop method uses time.monotonic(), not time.time()."""
+    import inspect
+    from hands.gesture_controller import GestureController
+    src = inspect.getsource(GestureController._loop)
+    assert "time.monotonic()" in src, "_loop must use time.monotonic()"
+    assert "time.time()" not in src, "_loop must NOT use time.time()"

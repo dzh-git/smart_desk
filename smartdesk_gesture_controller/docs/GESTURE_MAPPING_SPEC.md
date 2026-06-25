@@ -22,10 +22,12 @@
 
 ```text
 hands/gesture_recognition.py
+hands/gesture_intent_tracker.py
 hands/gesture_state.py
 hands/gesture_actions.py
 hands/gesture_config.py
 tests/test_gesture_recognition.py
+tests/test_gesture_intent_tracker.py
 tests/test_gesture_state.py
 tests/test_gesture_actions.py
 ```
@@ -78,6 +80,8 @@ Pointing_Up：精确指针、鼠标移动、画笔移动
 Victory：二级工具、平移、滚轮子模式
 PINCH：点击、拖拽、缩放
 ```
+
+第一阶段中，手势类别只作为进入控制流程的信号。进入 attempt/session 后，不要求每一帧继续识别为同一个手势，后续主要由标准化位置、位移、速度、pinch_distance 和超时规则维持流程。
 
 ### 3.4 所有连续动作必须有释放条件
 
@@ -229,10 +233,12 @@ Thumb_Up / Thumb_Down 在真实摄像头环境中容易受手腕角度、左右�
 3. 如果兜底规则也无法稳定判断：
    输出 None。
 
-4. 对安全相关手势 Closed_Fist，可以允许规则判断兜底优先保留。
+4. 规则回退结果不参与 `gesture_enter_confidence` 判断，但不能直接绕过稳定确认。进入控制流程仍必须满足 `gesture_enter_frames`、`gesture_enter_window_frames`、必要的 `arm_duration` 和轨迹一致性。
+
+5. 对安全相关手势 Closed_Fist，可以允许规则判断兜底优先保留。
    原因：Closed_Fist 用于退出和 release_all，不能因为官方分类不稳定而完全失效。
 
-5. **Thumb_Up、Thumb_Down 在第一版中禁用**。
+6. **Thumb_Up、Thumb_Down 在第一版中禁用**。
    原因：这些手势使用纯规则判断受摄像头角度影响较大，容易不稳定。
    第一版稳定演示中不再使用这两个手势触发动作。
 
@@ -278,7 +284,7 @@ pinch_release_threshold = 0.065
 
 ### 7.1 SWIPE_LEFT / SWIPE_RIGHT
 
-用于 PPT 翻页。
+用于 PPT 翻页。第一阶段由 `GestureIntentTracker` 输出 `page_swipe_left/right`，状态机不再直接根据 raw gesture 维护翻页轨迹。
 
 基础手势：
 
@@ -289,8 +295,9 @@ Open_Palm
 判断条件：
 
 ```text
-在 swipe_time_window 内，手掌中心 x 方向位移超过 swipe_threshold_x
+Open_Palm 稳定进入 page attempt 后，在 `page_swipe_timeout` 内，手掌中心 x 方向位移超过 swipe_threshold_x
 同时 y 方向位移不能过大
+同一 attempt 只能 committed 一次
 ```
 
 推荐规则：
@@ -310,7 +317,7 @@ SWIPE_LEFT:
 ```text
 swipe_threshold_x = 0.18
 swipe_threshold_y_limit = 0.12
-swipe_time_window = 0.8s
+page_swipe_timeout = 0.8s
 swipe_cooldown = 0.8s
 ```
 
@@ -334,7 +341,7 @@ HOLD 触发后必须进入 cooldown
 
 ### 7.3 DRAG
 
-用于鼠标拖拽、SolidWorks 旋转、SolidWorks 平移。
+用于鼠标拖拽、SolidWorks 旋转、SolidWorks 平移。第一阶段 SolidWorks 旋转和平移由 `ControlSession` 管理。
 
 判断方式：
 
@@ -347,7 +354,30 @@ HOLD 触发后必须进入 cooldown
 ```text
 DRAG 必须有 begin / update / end 三个阶段
 禁止每帧重复 mouseDown + mouseUp
+session 活动期间不得启动第二种控制或模式切换
 ```
+
+### 7.4 GestureIntentTracker 第一阶段事件
+
+第一阶段固定输出以下 `ControlEvent.type`：
+
+```text
+mode_swipe_left
+mode_swipe_right
+page_swipe_left
+page_swipe_right
+rotate_begin
+rotate_update
+rotate_end
+pan_begin
+pan_update
+pan_end
+zoom_update
+cancel
+hand_lost_timeout
+```
+
+模式切换、翻页和缩放使用短期 `attempt_id`。旋转和平移使用 `session_id`。同一个 attempt 在 committed 后，直到 released / cancelled / timeout 前不得再次 committed。
 
 ---
 
@@ -415,13 +445,15 @@ standby → presentation / solidworks 只更新内部模式，不输出系统动
 **滑动检测要求**：
 
 ```text
-1. ILoveYou swipe 必须有 mode_switch_cooldown
-2. ILoveYou 静止不触发切换
-3. swipe 必须满足 x 方向阈值和 y 方向限制
-4. 推荐参数：
+1. ILoveYou 必须先满足 gesture_enter_frames / gesture_enter_window_frames、gesture_enter_confidence 和 mode_arm_duration。
+2. armed 后只跟踪 palm_xy 轨迹，不要求后续帧继续识别为 ILoveYou。
+3. swipe 必须满足 x 方向阈值、y 方向限制、min_motion_duration 和 direction_consistency_frames。
+4. 同一 gesture_attempt_id committed 后，直到 released/cancelled/timeout 前不得再次 committed。
+5. mode_switch_cooldown 由 GestureState 管理。
+6. 推荐参数：
    - iloveyou_swipe_threshold_x = 0.22
    - swipe_threshold_y_limit = 0.12（ILoveYou 复用）
-   - swipe_time_window = 0.8s（ILoveYou 复用）
+   - mode_swipe_timeout = 0.8s
    - mode_switch_cooldown = 1.0s
 ```
 
@@ -577,48 +609,56 @@ solidworks
 ### 14.1 旋转模型规则
 
 ```text
-Open_Palm 首次稳定出现并产生移动：
+Open_Palm 通过 Tracker 稳定确认并超过最小运动要求后：
     mouse_down("middle")
 
-Open_Palm 持续移动：
+rotate session 持续：
     move_rel(dx, dy)
 
-Open_Palm 消失、手势变化、手丢失、Closed_Fist：
+rotate session 正常结束：
     mouse_up("middle")
+
+真正手丢失超时、模式切换、异常或退出：
+    mouse_up("middle")（如需要）+ release_all
 ```
 
 禁止：
 
 ```text
 每帧执行 mouse_down + move + mouse_up
+分类抖动时立即结束 rotate
+rotate 活动期间启动 pan / zoom / mode switch
 ```
 
 ### 14.2 平移模型规则
 
 ```text
-Victory 首次稳定出现并产生移动：
+Victory 通过 Tracker 稳定确认并超过最小运动要求后：
     key_down("shift")
     mouse_down("middle")
 
-Victory 持续移动：
+pan session 持续：
     move_rel(dx, dy)
 
-Victory 消失、手势变化、手丢失、Closed_Fist：
+pan session 正常结束：
     mouse_up("middle")
     key_up("shift")
+
+真正手丢失超时、模式切换、异常或退出：
+    mouse_up("middle") + key_up("shift")（如需要）+ release_all
 ```
 
 ### 14.3 缩放模型规则
 
 ```text
-PINCH 距离增大：
+pinch_distance 距离增大且超过 deadzone：
     scroll(+amount)
 
-PINCH 距离减小：
+pinch_distance 距离减小且超过 deadzone：
     scroll(-amount)
 ```
 
-如果 PINCH 距离变化在死区内，不触发滚轮。
+如果 pinch_distance 变化在死区内，不触发滚轮。SolidWorks 缩放不得依赖 `PINCH` 静态分类名称。
 
 ---
 
@@ -696,7 +736,8 @@ isometric_view_hold       # 不再使用 ILoveYou 等轴测
 ```text
 iloveyou_swipe_threshold_x = 0.22  # ILoveYou 专用 x 方向阈值
 swipe_threshold_y_limit = 0.12     # Open_Palm / ILoveYou 共用 y 限制
-swipe_time_window = 0.8s           # Open_Palm / ILoveYou 共用轨迹窗口
+mode_swipe_timeout = 0.8s          # 模式切换 attempt 最长追踪时间
+page_swipe_timeout = 0.8s          # 翻页 attempt 最长追踪时间
 mode_switch_cooldown = 1.0s        # 模式切换冷却时间
 pen_mode_hold = 0.5s               # Victory 进入/退出画笔的保持时间
 exit_mode_hold = 0.8s              # Closed_Fist 退出活动模式保持时间
@@ -706,20 +747,20 @@ exit_mode_hold = 0.8s              # Closed_Fist 退出活动模式保持时间
 
 ## 18. 第一版简化实现范围
 
-当前版本在原有 landmarks 规则识别的基础上，新增 MediaPipe GestureRecognizer 接入要求。
+当前阶段在已有 GestureRecognizer / landmarks 识别基础上，新增 `GestureIntentTracker` 控制流程层。
 
-接入后，各模式下的手势操作映射保持不变，只改变静态手势的识别来源。
+第一阶段只迁移模式切换、PPT 翻页、SolidWorks 旋转 / 平移 / 缩放。PPT 画笔、Victory 画笔切换、Closed_Fist 退出和暂停恢复继续走兼容路径。
 
 **第一版简化实现范围**：
 
 ```text
 1. Standby:
-   - ILoveYou 右滑进入 presentation
-   - ILoveYou 左滑进入 solidworks
+   - ILoveYou 稳定进入 attempt 后右滑进入 presentation
+   - ILoveYou 稳定进入 attempt 后左滑进入 solidworks
    - Closed_Fist 保持待机 / release_all
 
 2. PPT:
-   - Open_Palm 左右翻页
+   - Open_Palm 稳定进入 attempt 后左右翻页
    - Victory 进入画笔
    - Victory 退出画笔
    - Closed_Fist 退出演示
@@ -731,10 +772,10 @@ exit_mode_hold = 0.8s              # Closed_Fist 退出活动模式保持时间
    - Closed_Fist 退出演示
 
 4. SolidWorks:
-   - Open_Palm 旋转
-   - Victory 平移
-   - PINCH 缩放
-   - ILoveYou 右滑/左滑切换模式
+   - Open_Palm 稳定进入 rotate session 后旋转
+   - Victory 稳定进入 pan session 后平移
+   - pinch_distance 缩放
+   - ILoveYou 稳定进入 attempt 后右滑/左滑切换模式
    - Closed_Fist 退出
 ```
 
@@ -755,9 +796,9 @@ exit_mode_hold = 0.8s              # Closed_Fist 退出活动模式保持时间
 - 复杂手势教学 UI
 ```
 
-### 18.1 GestureRecognizer 接入后不改变的内容
+### 18.1 控制流程驱动后不改变的内容
 
-接入 GestureRecognizer 后，以下内容不应改变：
+接入 `GestureIntentTracker` 后，以下内容不应改变：
 
 1. 状态机模式名称不变：
    standby
@@ -770,19 +811,19 @@ exit_mode_hold = 0.8s              # Closed_Fist 退出活动模式保持时间
 
 2. ActionIntent 接口不变。
 
-3. release_all 逻辑不变。
+3. release_all 的安全用途不变，但同一次手丢失事件不得逐帧重复输出。
 
-4. PINCH 仍然通过 landmarks 距离计算。
+4. PINCH / 缩放仍然通过 landmarks 的 pinch_distance 计算，不依赖静态 PINCH 分类名。
 
-5. SWIPE_LEFT / SWIPE_RIGHT 仍然通过 Open_Palm 的轨迹计算。
+5. SWIPE_LEFT / SWIPE_RIGHT 仍然通过轨迹计算，但由 Tracker 输出 page/mode ControlEvent。
 
-6. HOLD 仍然由状态机根据 stable_duration 计算。
+6. 未迁移的 HOLD 仍然由状态机兼容路径根据 stable_duration 计算。
 
-7. DRAG / move_rel / scroll 等连续动作逻辑不变。
+7. move_rel / scroll / mouse_down / mouse_up 等 ActionIntent 不新增类型。
 
 8. PPT、SolidWorks 的操作映射不变（已简化）。
 
-本次接入 GestureRecognizer 的目标是提升静态手势识别稳定性，而不是重新设计交互。
+本次目标是提升动态控制稳定性，而不是一次重写所有模式。
 
 ### 18.2 GestureRecognizer 接入后的模型文件要求
 
@@ -800,34 +841,24 @@ gesture_recognizer.task
 3. 现场演示不应依赖自动下载模型文件。
 4. 如果缺少 gesture_recognizer.task，应给出明确错误提示。
 
-### 18.3 最小代码改动目标
+### 18.3 第一阶段最小代码改动目标
 
 代码实现时应遵循最小改动原则：
 
-1. 在 gesture_recognition.py 中新增 GestureRecognizer 初始化和推理逻辑。
-2. 新增 gesture_recognizer.task 模型文件检查。
-3. 输出统一 HandInput，字段尽量保持兼容。
-4. HandInput 中的 gesture 名称统一为官方标准名称：
-   Closed_Fist
-   Open_Palm
-   Pointing_Up
-   Victory
-   ILoveYou
-   None
-   ~~Thumb_Up（已废弃）~~
-   ~~Thumb_Down（已废弃）~~
-
-5. 保留 landmarks 输出，继续支持 PINCH / SWIPE / DRAG。
-6. 状态机 gesture_state.py 尽量不大改。
-7. 动作层 gesture_actions.py 不应修改。
-8. 已有阶段 1–7 测试必须继续通过。
-9. 新增测试应重点覆盖：
-   - GestureRecognizer 官方手势名归一化
-   - 低置信度结果回退 None
-   - PINCH 仍由 landmarks 计算
-   - SWIPE 仍由 Open_Palm 轨迹计算
-   - 状态机不因识别来源变化而改变行为
-   - Thumb_Up / Thumb_Down 出现时不触发任何动作
+1. 新增 `hands/gesture_intent_tracker.py`。
+2. 识别层输出 `GestureFrame` 所需字段：hand_present、raw_gesture、gesture_confidence、gesture_source、palm_xy、index_tip_xy、pinch_distance、timestamp。
+3. `GestureState` 新增 ControlEvent 处理路径，同时保留未迁移功能的 HandInput 兼容路径。
+4. 模式切换、PPT 翻页、SolidWorks 旋转/平移/缩放只消费 Tracker 输出事件。
+5. PPT 画笔、Victory 画笔切换、Closed_Fist 退出、暂停恢复不在第一阶段迁移。
+6. 动作层 `gesture_actions.py` 不应新增动作类型。
+7. 已有测试必须继续通过。
+8. 新增测试应重点覆盖：
+   - raw_gesture=None 与 hand_present=False 的区别
+   - attempt_id 防重复提交
+   - session_id 防重复 mouse_down/key_down
+   - 分类抖动不打断 rotate/pan
+   - pinch_distance 缩放不依赖 PINCH 分类名
+   - hand_lost_timeout 只触发一次安全释放
 
 ---
 

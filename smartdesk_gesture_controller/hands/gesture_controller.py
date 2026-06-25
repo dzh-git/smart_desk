@@ -38,6 +38,8 @@ from .gesture_config import (
 from .gesture_recognition import HandRecognizer
 from .gesture_state import ActionIntent, GestureState, StepResult
 from .gesture_status_server import GestureStatusServer
+from .gesture_intent_tracker import GestureFrame, GestureIntentTracker, TrackerResult
+from .gesture_replay import GestureFrameRecorder
 
 logger = logging.getLogger("hands.controller")
 
@@ -104,6 +106,7 @@ class GestureController:
         )
         self.actions = actions or ActionLayer(enable_system_mouse=self.config.enable_system_mouse)
         self.state = GestureState(self.config)
+        self.tracker = GestureIntentTracker(self.config)
         self.status_server = status_server  # built in start() if enabled
 
         # External resources we own (and must release in _shutdown).
@@ -116,6 +119,11 @@ class GestureController:
         self._running = False
         self._prev_fps_time: float = 0.0
         self._debug_window_topmost_set = False
+
+        # Gesture frame recorder (only active when config.record_gestures=True).
+        self.recorder = GestureFrameRecorder(self.config)
+        if self.config.record_gestures:
+            self.recorder.start()
 
     # ── public lifecycle ───────────────────────────────────────────────────
     def start(self) -> int:
@@ -204,7 +212,9 @@ class GestureController:
                 logger.warning("camera read failed; exiting loop")
                 break
 
-            now = time.time()
+            # tracker uses monotonic time for consistent interval
+            # measurement; legacy state machine also receives it (compatible).
+            now = time.monotonic()
             try:
                 self._process_frame(img, now)
             except Exception:
@@ -226,13 +236,42 @@ class GestureController:
         frame_result = self.recognizer.process_frame(img_rgb)
         hand_input = self.recognizer.to_hand_input(frame_result)
 
-        result: StepResult = self.state.step(hand_input, now)
+        # Construct GestureFrame and feed to tracker (migrated path).
+        gesture_frame = self.recognizer.to_gesture_frame(frame_result)
+        tracker_result = self.tracker.update(gesture_frame, self.state.mode, now)
+
+        # Track mode before step to detect post-step mode changes.
+        mode_before = self.state.mode
+
+        # Pass both HandInput (legacy path) and events (migrated path) to
+        # the state machine.  The state machine prioritises event-path
+        # intents for migrated gestures and falls back to HandInput for
+        # non-migrated gestures (Closed_Fist, Victory HOLD, PINCH, etc.).
+        result: StepResult = self.state.step(
+            hand_input, now, events=tracker_result.events
+        )
         self._dispatch_intents(result.intents)
+
+        # If mode changed during this frame, reset tracker so stale
+        # attempts/sessions don't carry into the new mode.
+        mode_changed = self.state.mode != mode_before
+        if mode_changed:
+            self.tracker.reset()
+
+        # Record frame data AFTER state.step() so we capture the post-step
+        # mode and whether a mode change occurred this frame.
+        self.recorder.record_frame(
+            gesture_frame, tracker_result, mode_before, tracker_result.events,
+            mode_after=self.state.mode,
+            state_result_mode=result.mode,
+            state_paused=self.state.paused,
+            mode_changed=mode_changed,
+        )
 
         # Debug window + status broadcast.
         if self.config.show_debug_window:
             self.recognizer.draw(img, frame_result)
-            self._render_debug(img, result, now, frame_result)
+            self._render_debug(img, result, now, frame_result, gesture_frame, tracker_result)
             display_img = self._scale_for_display(img)
             cv2.imshow(self._DEBUG_WINDOW_NAME, display_img)
             self._pin_debug_window_once(self._DEBUG_WINDOW_NAME)
@@ -272,10 +311,20 @@ class GestureController:
             self.actions.release_all()
         except Exception:  # pragma: no cover - defensive
             logger.exception("actions.release_all failed")
+        # Reset tracker state so stale attempts/sessions don't carry over.
+        try:
+            self.tracker.reset()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("tracker reset failed")
 
     def _shutdown(self) -> None:
         """Single exit path: release everything, close resources."""
         logger.info("shutting down gesture controller")
+        # Close recorder first so all frames are flushed.
+        try:
+            self.recorder.close()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("recorder close failed")
         self._safe_release()
         try:
             self.recognizer.close()
@@ -487,58 +536,115 @@ class GestureController:
         return cv2.resize(img, (int(w * scale), int(h * scale)),
                           interpolation=cv2.INTER_LINEAR)
 
-    def _render_debug(self, img, result: StepResult, now: float, frame_result=None) -> None:
+    def _render_debug(self, img, result: StepResult, now: float,
+                      frame_result=None, gesture_frame: Optional[GestureFrame] = None,
+                      tracker_result: Optional[TrackerResult] = None) -> None:
+        """Render comprehensive dry-run debug overlay.
+
+        Displays all fields required by task-5 acceptance:
+        mode, raw_gesture, stable_gesture, attempt phase/id, session id/type,
+        palm_xy, index_tip_xy, dx/dy, velocity, hand_size, pinch_distance_norm,
+        lost time, cooldown remaining, FPS.
+        """
         import cv2
 
         fps = self._compute_fps(now)
+        di = result.debug_info
+        # Tracker debug info (may be None if tracker wasn't called).
+        tdi = tracker_result.debug_info if tracker_result is not None else {}
+
+        # ── Line 1: FPS ──
         cv2.putText(img, f"FPS: {int(fps)}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+
+        # ── Line 2: Mode ──
         mode_text = f"[{result.mode.upper()}]{' (PAUSED)' if self.state.paused else ''}"
         cv2.putText(img, mode_text, (10, 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
-        # ── Current recognized gesture (always shown, even when paused) ────
-        di = result.debug_info
-        current_gesture = di.get("current_gesture", "none")
-        gesture_color = (0, 255, 0) if current_gesture != "none" else (120, 120, 120)
-        cv2.putText(img, f"gesture: {current_gesture}", (10, 90),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, gesture_color, 2)
+        # ── Line 3: Raw gesture (from recognizer) ──
+        raw_g = di.get("raw_gesture", "none")
+        cur_g = di.get("current_gesture", "none")
+        gesture_color = (0, 255, 0) if cur_g != "none" else (120, 120, 120)
+        cv2.putText(img, f"raw_gesture: {raw_g}", (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, gesture_color, 2)
 
-        cv2.putText(img, result.note[:60], (10, 120),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        # ── Line 4: Stable gesture (from tracker) ──
+        stable_g = tdi.get("stable_gesture", None) or "none"
+        cv2.putText(img, f"stable_gesture: {stable_g}", (10, 115),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 200, 255), 2)
 
-        # ── Phase 8: gesture recognition source / confidence / raw name ────
-        y_offset = 150
+        # ── Line 5: Status note ──
+        cv2.putText(img, result.note[:70], (10, 138),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+        # ── Lines 6+: Recognition source / confidence ──
+        y = 158
         if frame_result is not None:
             source = frame_result.gesture_source or "none"
             conf = frame_result.gesture_confidence
-            raw = frame_result.raw_gesture
-            if source != "none" or conf is not None or raw is not None:
-                cv2.putText(img, f"src: {source}", (10, y_offset),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 255), 1)
-                y_offset += 20
-                if conf is not None:
-                    cv2.putText(img, f"conf: {conf:.2f}", (10, y_offset),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 255), 1)
-                    y_offset += 20
-                if raw is not None and raw != current_gesture:
-                    cv2.putText(img, f"raw: {raw}", (10, y_offset),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 255), 1)
-                    y_offset += 20
+            cv2.putText(img, f"src: {source}  conf: {conf:.2f}" if conf is not None else f"src: {source}",
+                        (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 255), 1)
+            y += 18
 
-        # ── Phase 6: dry-run calibration info (spec §7) ────────────────────
-        # stable_duration
-        stable = di.get("stable_duration", 0.0)
-        cv2.putText(img, f"stable: {stable:.2f}s", (10, y_offset),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-        y_offset += 20
-        # active_continuous_action
-        action = di.get("active_continuous_action", None)
+        # ── Attempt / Session state (from tracker) ──
+        att_id = tdi.get("active_attempt_id")
+        att_phase = tdi.get("active_attempt_phase")
+        att_intent = tdi.get("active_attempt_intent")
+        ses_id = tdi.get("active_session_id")
+        ses_type = tdi.get("active_session_type")
+        ses_phase = tdi.get("active_session_phase")
+        if att_id or att_phase:
+            cv2.putText(img, f"attempt: {att_intent or '?'}:{att_phase or '?'} id={att_id or '?'}",
+                        (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 200, 100), 1)
+            y += 18
+        if ses_id or ses_type:
+            cv2.putText(img, f"session: {ses_type or '?'}:{ses_phase or '?'} id={ses_id or '?'}",
+                        (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 200, 100), 1)
+            y += 18
+
+        # ── Tracker intent state ──
+        intent_state = tdi.get("tracker_state", "?")
+        cv2.putText(img, f"tracker: {intent_state}", (10, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+        y += 18
+
+        # ── GestureFrame: palm_xy, index_tip_xy, hand_size, pinch_distance_norm ──
+        if gesture_frame is not None and gesture_frame.hand_present:
+            if gesture_frame.palm_xy is not None:
+                cv2.putText(img, f"palm_xy: ({gesture_frame.palm_xy[0]:.3f}, {gesture_frame.palm_xy[1]:.3f})",
+                            (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 255, 100), 1)
+                y += 18
+            if gesture_frame.index_tip_xy is not None:
+                cv2.putText(img, f"index_xy: ({gesture_frame.index_tip_xy[0]:.3f}, {gesture_frame.index_tip_xy[1]:.3f})",
+                            (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 255, 100), 1)
+                y += 18
+            if gesture_frame.hand_size is not None:
+                cv2.putText(img, f"hand_size: {gesture_frame.hand_size:.3f}",
+                            (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 255, 100), 1)
+                y += 18
+            if gesture_frame.pinch_distance_norm is not None:
+                cv2.putText(img, f"pinch_norm: {gesture_frame.pinch_distance_norm:.3f}",
+                            (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 255, 100), 1)
+                y += 18
+
+        # ── dx/dy and velocity from tracker smoothed palm ──
+        smoothed = tdi.get("smoothed_palm")
+        if smoothed is not None and gesture_frame is not None and gesture_frame.palm_xy is not None:
+            dx = gesture_frame.palm_xy[0] - smoothed[0]
+            dy = gesture_frame.palm_xy[1] - smoothed[1]
+            dt = max(1e-6, 1.0 / max(1.0, fps))
+            vel = (dx * dx + dy * dy) ** 0.5 / dt
+            cv2.putText(img, f"dx/dy: {dx:+.4f}/{dy:+.4f}  vel: {vel:.2f}",
+                        (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+            y += 18
+
+        # ── Active continuous action + mouse/key flags ──
+        action = di.get("active_continuous_action")
         if action:
-            cv2.putText(img, f"action: {action}", (10, y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
-            y_offset += 20
-        # mouse / middle / shift state
+            cv2.putText(img, f"action: {action}", (10, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
+            y += 18
         flags = []
         if di.get("is_left_mouse_down"):
             flags.append("L-down")
@@ -549,32 +655,40 @@ class GestureController:
         if di.get("is_pinching"):
             flags.append("Pinch")
         if flags:
-            cv2.putText(img, " | ".join(flags), (10, y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 100, 255), 1)
-            y_offset += 20
+            cv2.putText(img, " | ".join(flags), (10, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 100, 255), 1)
+            y += 18
 
-        # Extra calibration fields (phase 7: pinch distance, swipe dx/dy, lost time, cooldown).
-        if di.get("pinch_distance") is not None:
-            cv2.putText(img, f"pinch: {di['pinch_distance']:.3f}", (10, y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            y_offset += 20
-        swipe_dx = di.get("swipe_dx", 0.0)
-        swipe_dy = di.get("swipe_dy", 0.0)
-        if swipe_dx or swipe_dy:
-            cv2.putText(img, f"swipe dx/dy: {swipe_dx:.2f}/{swipe_dy:.2f}", (10, y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            y_offset += 20
-        lost_duration = di.get("hand_lost_duration", 0.0)
-        if lost_duration > 0.0:
-            cv2.putText(img, f"lost: {lost_duration:.1f}s", (10, y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-            y_offset += 20
+        # ── Bad frames / intent lost ──
+        bad_frames = tdi.get("bad_frames", 0)
+        if bad_frames:
+            cv2.putText(img, f"bad_frames: {bad_frames}", (10, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 150, 0), 1)
+            y += 18
+
+        # ── Hand lost duration ──
+        lost_dur = di.get("hand_lost_duration", 0.0)
+        if lost_dur > 0.0:
+            cv2.putText(img, f"hand_lost: {lost_dur:.1f}s", (10, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
+            y += 18
+
+        # ── Cooldown remaining ──
         cooldown_until = di.get("cooldown_until", 0.0)
         if cooldown_until > now:
-            cv2.putText(img, f"cooldown: {max(0.0, cooldown_until - now):.2f}s", (10, y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            y_offset += 20
+            cv2.putText(img, f"cooldown: {max(0.0, cooldown_until - now):.2f}s", (10, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+            y += 18
 
+        # ── Zoom state (if active) ──
+        zoom_active = tdi.get("zoom_active", False)
+        if zoom_active:
+            zoom_dist = tdi.get("zoom_last_distance")
+            cv2.putText(img, f"zoom: active dist={zoom_dist:.3f}" if zoom_dist else "zoom: active",
+                        (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 200, 0), 1)
+            y += 18
+
+        # ── Dry-run / paused banner ──
         if not self.config.enable_system_mouse:
             cv2.putText(img, "DRY-RUN (no system mouse)", (10, img.shape[0] - 12),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)

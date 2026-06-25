@@ -24,6 +24,7 @@
 
 ```text
 单元测试
+Tracker 测试
 状态机测试
 动作层测试
 Dry-run 端到端测试
@@ -35,6 +36,7 @@ Dry-run 端到端测试
 | 测试层级          | 目标                         | 是否真实控制鼠标键盘    |
 | ------------- | -------------------------- | ------------- |
 | 单元测试          | 验证函数逻辑                     | 否             |
+| Tracker 测试      | 验证帧级识别到稳定 ControlEvent   | 否             |
 | 状态机测试         | 验证手势到 ActionIntent         | 否             |
 | 动作层测试         | 验证 ActionIntent 到动作调用      | 使用 FakeDriver |
 | Dry-run 端到端测试 | 摄像头识别 + 状态机 + 动作日志         | 否             |
@@ -125,12 +127,12 @@ Thumb_Up / Thumb_Down 识别保留但不映射到任何动作
 测试项：
 
 ```text
-standby 中 ILoveYou 右滑进入 presentation（不发送 F5）
-standby 中 ILoveYou 左滑进入 solidworks
+standby 中 mode_swipe_right 进入 presentation（不发送 F5）
+standby 中 mode_swipe_left 进入 solidworks
 standby 中 Open_Palm 不触发动作
 standby 中 Thumb_Up / Thumb_Down 不触发动作
-presentation 中 Open_Palm 右挥触发 right
-presentation 中 Open_Palm 左挥触发 left
+presentation 中 page_swipe_right 触发 right
+presentation 中 page_swipe_left 触发 left
 presentation 中 Victory HOLD 触发 Ctrl+P 并进入 presentation_pen
 presentation 中 Closed_Fist 触发 Esc + release_all + standby
 presentation_pen 中 Pointing_Up 触发 move
@@ -138,11 +140,11 @@ presentation_pen 中 PINCH 触发 mouse_down(left)
 presentation_pen 中 PINCH 释放触发 mouse_up(left)
 presentation_pen 中 Victory HOLD 触发 Ctrl+A 并退回 presentation
 presentation_pen 中 Closed_Fist 触发 Esc + release_all + standby
-solidworks 中 Open_Palm 触发 middle mouse drag
-solidworks 中 Victory 触发 Shift + middle mouse drag
-solidworks 中 PINCH 距离变化触发 scroll
-solidworks 中 ILoveYou 右滑切换到 presentation
-solidworks 中 ILoveYou 左滑切换到 standby
+solidworks 中 rotate_begin/update/end 触发中键拖动和释放
+solidworks 中 pan_begin/update/end 触发 Shift + 中键拖动和释放
+solidworks 中 zoom_update 触发 scroll
+solidworks 中 mode_swipe_right 切换到 presentation
+solidworks 中 mode_swipe_left 切换到 standby
 solidworks 中 Closed_Fist 触发 release_all + standby
 paused 中任意手势不触发动作
 ```
@@ -156,6 +158,43 @@ ActionIntent 顺序正确
 cooldown 内不会重复触发离散动作
 Thumb_Up / Thumb_Down 不产生任何 ActionIntent
 mouse / mouse_scroll 模式不可达
+```
+
+---
+
+### 4.2a gesture_intent_tracker 测试
+
+目标：
+
+```text
+验证 GestureIntentTracker 能把不稳定帧级结果整理为稳定 ControlEvent。
+```
+
+测试项：
+
+```text
+hand_present=True, raw_gesture=None 不启动手丢失计时，也不产生 release_all。
+hand_present=False 短于 hand_loss_timeout 不释放；超过超时只产生一次 hand_lost_timeout。
+手重新出现后能够重新布防下一次手丢失事件。
+单帧或不足 4/5 帧的候选不得进入 armed。
+规则回退结果必须满足帧数、持续时间和轨迹条件，不能直接成为可信候选。
+ILoveYou 确认后，即使后续分类变化，也能根据轨迹完成一次 mode_swipe。
+一次 mode attempt 只能 committed 一次。
+一次 page attempt 只能 committed 一次。
+committed 后未 released/cancelled/timeout 前不得再次 committed。
+垂直偏移过大、方向不一致、超过 mode_swipe_timeout/page_swipe_timeout 必须 cancel。
+连续 5 帧分类错误在宽限范围内时不应中断 rotate/pan。
+短暂 raw_gesture=None 不应结束连续 session。
+active session 不得启动第二种控制或模式切换。
+缩放必须通过 pinch_distance 工作，不依赖 PINCH 分类名称。
+```
+
+验收标准：
+
+```text
+ControlEvent 类型只使用第一阶段固定集合。
+attempt_id / session_id 语义正确。
+debug_info 能解释 raw gesture、stable gesture、phase、dx/dy、pinch distance、bad frames、lost time。
 ```
 
 ---
@@ -311,9 +350,9 @@ SolidWorks 已打开
 | SW-08 | `ILoveYou` 右滑         | 切换到 presentation | 成功切换模式                |
 | SW-09 | `ILoveYou` 左滑         | 切换到 standby      | 成功切换模式                |
 | SW-10 | `Closed_Fist` 保持 0.8 秒 | 退出 solidworks    | 回 standby，release_all |
-| SW-11 | 旋转中切到 `Victory`         | 先释放中键，再 Shift+中键 | 旋转→平移切换平滑             |
-| SW-12 | 平移中切到 `Open_Palm`       | 先释放中键+Shift，再中键 | 平移→旋转切换平滑             |
-| SW-13 | 旋转/平移中进入 `PINCH`        | 先释放连续动作，再缩放     | 中键和 Shift 不卡住         |
+| SW-11 | 旋转中分类抖成 `Victory`       | 继续当前 rotate session，不立即切 pan | 分类抖动不打断旋转 |
+| SW-12 | 平移中分类抖成 `Open_Palm`     | 继续当前 pan session，不立即切 rotate | 分类抖动不打断平移 |
+| SW-13 | 旋转/平移中进入 `PINCH`        | 当前 session 结束前不启动缩放 | 中键和 Shift 不卡住 |
 | SW-14 | 手丢失超过 1 秒              | 释放中键+Shift       | release_all，保持 solidworks |
 | SW-15 | 退出后 `active_continuous_action` | 被清空        | 无残留状态                 |
 
@@ -323,6 +362,7 @@ SolidWorks 已打开
 中键卡住
 Shift 键卡住
 旋转和平移同时触发
+活动 session 中被另一种手势误打断
 手丢失后模型仍在旋转或平移
 Closed_Fist 后没有 release_all
 旋转/平移/缩放未互斥
@@ -363,6 +403,7 @@ PINCH 缩放时中键或 Shift 卡住
 | 指标         | 目标                  |
 | ---------- | ------------------- |
 | 平均 FPS     | ≥ 20                |
+| 真实动作模式 FPS 回退 | 相对当前正常基线下降不超过 10% |
 | 端到端主观延迟    | 无明显拖滞               |
 | 端到端 P95 延迟 | ≤ 150 ms            |
 | CPU 占用     | 普通演示电脑上可接受，建议 < 40% |
@@ -413,6 +454,9 @@ ActionIntent 日志正常显示
 不会实际按键盘
 stable_duration 正常显示
 active_continuous_action 正常显示
+intent phase / attempt_id / session_id 正常显示
+raw_gesture / stable_gesture 正常显示
+dx/dy、pinch_distance、bad frame 数、lost time、cooldown 剩余时间正常显示
 FPS 正常显示
 ```
 
@@ -423,6 +467,7 @@ FPS 正常显示
 所有计划动作都能输出正确 ActionIntent
 没有真实鼠标键盘动作发生
 dry-run 可用于调试 PPT 和 SolidWorks 两种模式
+能观察到 idle → armed → tracking → committed → released/cancelled 生命周期
 ```
 
 ---
@@ -530,7 +575,7 @@ dry-run 可用于调试 PPT 和 SolidWorks 两种模式
 | 旋转/平移太快 | 调小 solidworks_drag_sensitivity |
 | 旋转/平移发抖 | 调大 solidworks_deadzone |
 | ILoveYou 滑动不灵敏 | 调小 iloveyou_swipe_threshold_x |
-| ILoveYou 误触发 | 调大 iloveyou_swipe_threshold_x 或 iloveyou_swipe_time_window |
+| ILoveYou 误触发 | 调大 iloveyou_swipe_threshold_x、mode_arm_duration 或 direction_consistency_frames |
 
 ---
 
@@ -593,6 +638,7 @@ dry-run 可用于调试 PPT 和 SolidWorks 两种模式
 
 ```text
 gesture_recognition.py
+gesture_intent_tracker.py
 gesture_state.py
 gesture_actions.py
 gesture_config.py
@@ -603,6 +649,7 @@ gesture_controller.py
 
 ```bash
 pytest tests/test_gesture_recognition.py
+pytest tests/test_gesture_intent_tracker.py
 pytest tests/test_gesture_state.py
 pytest tests/test_gesture_actions.py
 pytest tests/test_gesture_controller.py

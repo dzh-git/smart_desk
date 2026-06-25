@@ -132,6 +132,23 @@ class GestureConfig:
     click_cooldown: float = 0.35
     pen_toggle_cooldown: float = 0.6
 
+    # control-flow tracker
+    gesture_enter_frames: int = 4
+    gesture_enter_window_frames: int = 5
+    gesture_keep_grace_frames: int = 6
+    gesture_enter_confidence: float = 0.70
+    gesture_keep_confidence: float = 0.45
+    intent_lost_timeout: float = 0.25
+    mode_arm_duration: float = 0.20
+    mode_swipe_timeout: float = 0.80
+    page_swipe_timeout: float = 0.80
+    landmark_smoothing: float = 0.45
+    motion_deadzone: float = 0.015
+    max_motion_step: float = 0.08
+    max_motion_velocity: float = 1.5
+    min_motion_duration: float = 0.12
+    direction_consistency_frames: int = 3
+
     # ILoveYou swipe
     iloveyou_swipe_threshold_x: float = 0.22
 
@@ -404,6 +421,41 @@ Closed_Fist 保持多久退出当前模式。
 
 ---
 
+### 6.6 控制流程稳定参数
+
+以下参数用于 `GestureIntentTracker`，只控制模式切换、PPT 翻页和 SolidWorks 旋转 / 平移 / 缩放的第一阶段迁移流程。
+
+| 参数 | 默认值 | 单位 | 含义 |
+| ---- | ---- | ---- | ---- |
+| `gesture_enter_frames` | 4 | 帧 | 进入候选所需匹配帧数 |
+| `gesture_enter_window_frames` | 5 | 帧 | 进入候选统计窗口 |
+| `gesture_keep_grace_frames` | 6 | 帧 | attempt/session 中允许的短暂分类异常帧数 |
+| `gesture_enter_confidence` | 0.70 | 0–1 | 官方分类进入候选的最低置信度 |
+| `gesture_keep_confidence` | 0.45 | 0–1 | 已进入流程后的保持参考置信度 |
+| `intent_lost_timeout` | 0.25 | 秒 | 分类保持失败的最长容忍时间 |
+| `mode_arm_duration` | 0.20 | 秒 | ILoveYou 进入模式切换 armed 前的最短稳定时间 |
+| `mode_swipe_timeout` | 0.80 | 秒 | 模式切换 attempt 的最长追踪时间 |
+| `page_swipe_timeout` | 0.80 | 秒 | 翻页 attempt 的最长追踪时间 |
+| `landmark_smoothing` | 0.45 | 0–1 | landmarks 低通滤波中当前观测值权重 |
+| `motion_deadzone` | 0.015 | 归一化坐标 | 运动死区 |
+| `max_motion_step` | 0.08 | 归一化坐标/帧 | 单帧位移限幅 |
+| `max_motion_velocity` | 1.5 | 归一化坐标/秒 | 速度限制 |
+| `min_motion_duration` | 0.12 | 秒 | 动态动作最短持续时间 |
+| `direction_consistency_frames` | 3 | 帧 | 方向一致性确认帧数 |
+
+约束：
+
+```text
+官方分类结果进入候选必须满足 gesture_enter_frames / gesture_enter_window_frames 和 gesture_enter_confidence。
+规则回退结果不参与 confidence 判断，但仍必须满足帧数、arm_duration 和轨迹一致性。
+raw_gesture=None 且 hand_present=True 只计入分类失败容忍。
+hand_present=False 才使用 hand_loss_timeout。
+intent_lost_timeout 不得代替 hand_loss_timeout。
+位移、速度、死区和轨迹阈值统一使用标准化坐标。
+```
+
+---
+
 ## 7. 冷却时间参数
 
 ### 7.1 page_turn_cooldown
@@ -532,7 +584,9 @@ Open_Palm 在 x 方向移动超过该距离，才认为是左右挥手。
 含义：
 
 ```text
-用于判断挥手轨迹的时间窗口。
+旧状态机轨迹窗口兼容字段。
+第一阶段控制流程驱动后，模式切换使用 mode_swipe_timeout，PPT 翻页使用 page_swipe_timeout。
+未迁移的兼容逻辑仍可临时读取 swipe_time_window。
 ```
 
 ---
@@ -581,7 +635,7 @@ ILoveYou 手势在 x 方向移动超过该距离，才认为是模式切换滑�
 
 ---
 
-### 8.x.3 时间窗口（复用 swipe_time_window）
+### 8.x.3 时间窗口
 
 ```text
 默认值：0.8
@@ -591,7 +645,8 @@ ILoveYou 手势在 x 方向移动超过该距离，才认为是模式切换滑�
 含义：
 
 ```text
-当前代码没有独立的 `iloveyou_swipe_time_window` 字段。ILoveYou 滑动复用 `swipe_time_window = 0.8`。
+第一阶段新增 `mode_swipe_timeout = 0.80`，用于 ILoveYou 模式切换 attempt 的最长追踪时间。
+旧兼容逻辑可继续读取 `swipe_time_window`，但新 Tracker 不应把模式切换和翻页强行复用同一个时间窗口。
 ```
 
 ---
@@ -666,6 +721,13 @@ pinch_release_threshold 必须大于 pinch_threshold。
 
 ```text
 SolidWorks 缩放时，PINCH 距离变化小于该值则不触发滚轮。
+```
+
+说明：
+
+```text
+SolidWorks 缩放必须基于 pinch_distance、pinch_threshold、pinch_release_threshold 和 pinch_zoom_deadzone。
+不得依赖 MediaPipe GestureRecognizer 输出名为 PINCH 的静态类别。
 ```
 
 ---
@@ -1131,13 +1193,27 @@ pinch_threshold
 pinch_release_threshold
 swipe_threshold_x
 swipe_threshold_y_limit
-swipe_time_window
+mode_swipe_timeout
+page_swipe_timeout
 page_turn_cooldown
 click_cooldown
 mouse_smoothing
 mouse_speed
 solidworks_drag_sensitivity
 solidworks_zoom_sensitivity
+gesture_enter_frames
+gesture_enter_window_frames
+gesture_keep_grace_frames
+gesture_enter_confidence
+gesture_keep_confidence
+intent_lost_timeout
+mode_arm_duration
+landmark_smoothing
+motion_deadzone
+max_motion_step
+max_motion_velocity
+min_motion_duration
+direction_consistency_frames
 start_paused
 dry_run
 show_debug_window

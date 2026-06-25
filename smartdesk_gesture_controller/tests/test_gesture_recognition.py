@@ -742,3 +742,340 @@ class TestGestureRecognizerModelExists:
 
     def test_returns_false_for_nonexistent_file(self) -> None:
         assert gesture_recognizer_model_exists("nonexistent_model.task") is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Task-2 — to_gesture_frame: GestureFrame construction tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+from hands.gesture_intent_tracker import GestureFrame, GestureSource
+
+
+def _fake_raw_hand_full(
+    *,
+    wrist=(0.4, 0.6),
+    middle_mcp=(0.5, 0.4),
+    index_tip=(0.55, 0.3),
+    thumb_tip=(0.45, 0.35),
+) -> list:
+    """Build a fake raw hand-landmark list with configurable key points.
+
+    Returns ``[[lm0, lm1, ..., lm20]]`` (one hand, 21 landmarks) using
+    ``_FakeNormalizedLandmark``.
+    """
+    lms = [_FakeNormalizedLandmark(0.0, 0.0) for _ in range(21)]
+    lms[0] = _FakeNormalizedLandmark(*wrist)
+    lms[4] = _FakeNormalizedLandmark(*thumb_tip)
+    lms[8] = _FakeNormalizedLandmark(*index_tip)
+    lms[9] = _FakeNormalizedLandmark(*middle_mcp)
+    return [lms]
+
+
+class TestToGestureFrame:
+    """Test to_gesture_frame construction from _FrameResult."""
+
+    def _recognizer(self) -> HandRecognizer:
+        return HandRecognizer(use_gesture_recognizer=False)
+
+    # ── hand_present=False ────────────────────────────────────────────────
+    def test_no_hand_returns_hand_present_false(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(landmarks=None, gesture="None", gesture_source="none")
+        gf = r.to_gesture_frame(fr)
+        assert gf.hand_present is False
+
+    def test_no_hand_raw_gesture_is_none(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(landmarks=None, gesture="None", gesture_source="none")
+        gf = r.to_gesture_frame(fr)
+        assert gf.raw_gesture is None
+
+    def test_no_hand_spatial_fields_are_none(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(landmarks=None, gesture="None", gesture_source="none")
+        gf = r.to_gesture_frame(fr)
+        assert gf.palm_xy is None
+        assert gf.index_tip_xy is None
+        assert gf.hand_size is None
+        assert gf.pinch_distance_norm is None
+        assert gf.pinch_distance is None
+
+    # ── hand_present=True ─────────────────────────────────────────────────
+    def test_hand_present_true(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="Open_Palm",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.hand_present is True
+
+    def test_gesture_none_becomes_raw_gesture_none(self) -> None:
+        """When gesture is 'None' string, raw_gesture should be None (not 'None')."""
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="None",
+            gesture_source="none",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.hand_present is True
+        assert gf.raw_gesture is None
+
+    def test_hand_present_true_raw_gesture_none_distinguishable(self) -> None:
+        """hand_present=True with raw_gesture=None must be distinguishable from
+        hand_present=False."""
+        r = self._recognizer()
+        # Hand present but unclassified
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="None",
+            gesture_source="none",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.hand_present is True
+        assert gf.raw_gesture is None
+
+        # No hand
+        fr_no_hand = _make_frame_result(landmarks=None, gesture="None", gesture_source="none")
+        gf_no_hand = r.to_gesture_frame(fr_no_hand)
+        assert gf_no_hand.hand_present is False
+        assert gf_no_hand.raw_gesture is None
+
+        # The key distinction: hand_present differs
+        assert gf.hand_present != gf_no_hand.hand_present
+
+    # ── palm_xy normalised coordinates ────────────────────────────────────
+    def test_palm_xy_is_midpoint_wrist_middle_mcp(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(
+                wrist=(0.4, 0.6), middle_mcp=(0.6, 0.4),
+            ),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.palm_xy is not None
+        assert abs(gf.palm_xy[0] - 0.5) < 1e-6  # (0.4 + 0.6) / 2
+        assert abs(gf.palm_xy[1] - 0.5) < 1e-6  # (0.6 + 0.4) / 2
+
+    def test_palm_xy_in_zero_one_range(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(
+                wrist=(0.3, 0.7), middle_mcp=(0.5, 0.5),
+            ),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.palm_xy is not None
+        assert 0.0 <= gf.palm_xy[0] <= 1.0
+        assert 0.0 <= gf.palm_xy[1] <= 1.0
+
+    # ── index_tip_xy normalised coordinates ───────────────────────────────
+    def test_index_tip_xy_matches_landmark_8(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(
+                index_tip=(0.55, 0.3),
+            ),
+            gesture="Pointing_Up",
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.index_tip_xy is not None
+        assert abs(gf.index_tip_xy[0] - 0.55) < 1e-6
+        assert abs(gf.index_tip_xy[1] - 0.3) < 1e-6
+
+    def test_index_tip_xy_in_zero_one_range(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.index_tip_xy is not None
+        assert 0.0 <= gf.index_tip_xy[0] <= 1.0
+        assert 0.0 <= gf.index_tip_xy[1] <= 1.0
+
+    # ── hand_size ─────────────────────────────────────────────────────────
+    def test_hand_size_is_wrist_to_middle_mcp_distance(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(
+                wrist=(0.4, 0.6), middle_mcp=(0.4, 0.4),  # vertical, dy=0.2
+            ),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.hand_size is not None
+        expected = math.hypot(0.4 - 0.4, 0.6 - 0.4)  # 0.2
+        assert abs(gf.hand_size - expected) < 1e-6
+
+    # ── pinch_distance_norm ───────────────────────────────────────────────
+    def test_pinch_distance_norm_is_scale_invariant(self) -> None:
+        """pinch_distance_norm should be stable when hand scale changes."""
+        r = self._recognizer()
+        # Scenario 1: hand at normal scale
+        # wrist=(0.4,0.6), middle_mcp=(0.5,0.4) → hand_size = hypot(0.1, 0.2)
+        # thumb=(0.45,0.35), index=(0.55,0.3) → pinch = hypot(0.1, 0.05)
+        fr1 = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(
+                wrist=(0.4, 0.6), middle_mcp=(0.5, 0.4),
+                thumb_tip=(0.45, 0.35), index_tip=(0.55, 0.3),
+            ),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf1 = r.to_gesture_frame(fr1)
+
+        # Scenario 2: same proportions but 2x scale
+        fr2 = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(
+                wrist=(0.3, 0.7), middle_mcp=(0.5, 0.3),
+                thumb_tip=(0.4, 0.4), index_tip=(0.6, 0.3),
+            ),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf2 = r.to_gesture_frame(fr2)
+
+        assert gf1.pinch_distance_norm is not None
+        assert gf2.pinch_distance_norm is not None
+        # The normalised pinch should be approximately the same (within 5%)
+        # because the thumb-index distance and hand_size scale proportionally.
+        ratio1 = gf1.pinch_distance_norm
+        ratio2 = gf2.pinch_distance_norm
+        assert abs(ratio1 - ratio2) < 0.05, (
+            f"pinch_distance_norm not scale-invariant: {ratio1:.4f} vs {ratio2:.4f}"
+        )
+
+    def test_pinch_distance_norm_divides_by_hand_size(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(
+                wrist=(0.4, 0.6), middle_mcp=(0.5, 0.4),
+                thumb_tip=(0.45, 0.55), index_tip=(0.55, 0.55),
+            ),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.pinch_distance is not None
+        assert gf.hand_size is not None
+        assert gf.pinch_distance_norm is not None
+        expected = gf.pinch_distance / gf.hand_size
+        assert abs(gf.pinch_distance_norm - expected) < 1e-6
+
+    # ── timestamp from monotonic ─────────────────────────────────────────
+    def test_timestamp_is_monotonic(self) -> None:
+        import time as _time
+        r = self._recognizer()
+        before = _time.monotonic()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        after = _time.monotonic()
+        assert before <= gf.timestamp <= after
+
+    def test_no_hand_timestamp_is_monotonic(self) -> None:
+        import time as _time
+        r = self._recognizer()
+        before = _time.monotonic()
+        fr = _make_frame_result(landmarks=None, gesture="None", gesture_source="none")
+        gf = r.to_gesture_frame(fr)
+        after = _time.monotonic()
+        assert before <= gf.timestamp <= after
+
+    # ── gesture_source mapping ────────────────────────────────────────────
+    def test_source_recognizer_mapped(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="Open_Palm",
+            gesture_confidence=0.9,
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.gesture_source == GestureSource.RECOGNIZER
+
+    def test_source_rule_fallback_mapped(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="Open_Palm",
+            gesture_confidence=0.3,
+            gesture_source="rule_fallback",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.gesture_source == GestureSource.RULE_FALLBACK
+
+    def test_source_none_mapped(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(landmarks=None, gesture="None", gesture_source="none")
+        gf = r.to_gesture_frame(fr)
+        assert gf.gesture_source == GestureSource.NONE
+
+    # ── gesture_confidence passthrough ────────────────────────────────────
+    def test_confidence_passthrough(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="Open_Palm",
+            gesture_confidence=0.85,
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert abs(gf.gesture_confidence - 0.85) < 1e-6
+
+    def test_no_confidence_defaults_to_zero(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(),
+            gesture="Open_Palm",
+            gesture_confidence=None,
+            gesture_source="rule_fallback",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.gesture_confidence == 0.0
+
+    # ── pinch_distance (raw, not normalised) ──────────────────────────────
+    def test_pinch_distance_is_raw_thumb_index(self) -> None:
+        r = self._recognizer()
+        fr = _make_frame_result(
+            landmarks=_open_palm(),
+            raw_hand_landmarks=_fake_raw_hand_full(
+                thumb_tip=(0.45, 0.5), index_tip=(0.55, 0.5),
+            ),
+            gesture="Open_Palm",
+            gesture_source="gesture_recognizer",
+        )
+        gf = r.to_gesture_frame(fr)
+        assert gf.pinch_distance is not None
+        expected = math.hypot(0.55 - 0.45, 0.5 - 0.5)  # 0.1
+        assert abs(gf.pinch_distance - expected) < 1e-6
