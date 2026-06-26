@@ -54,6 +54,13 @@ class GestureConfig:
     camera_width: int = 640
     camera_height: int = 480
     camera_fps: int = 30
+    # Disable auto exposure and set manual exposure time (driver-dependent).
+    # Windows DirectShow: 0.25 = manual, 0.75 = auto.
+    # Linux V4L2: 0 = manual, 1 = auto.
+    camera_auto_exposure: float = 0  # Windows DirectShow: 0 = manual
+    camera_exposure: int = -5           # manual exposure value (driver-dependent, often log scale e.g. -1~-13)
+    camera_brightness: int = 60         # CAP_PROP_BRIGHTNESS (range 0~60 on this camera)
+    camera_gain: int = 100              # CAP_PROP_GAIN (range 0~100 on this camera)
     # Legacy alias kept for controller compat (controller reads cam_width/cam_height).
     map_margin: int = 50
 
@@ -100,7 +107,7 @@ class GestureConfig:
     wave_threshold: float = 10.0
     wave_cooldown: float = 1.0
     # Normalised thresholds (spec, for future state-machine rewrite)
-    swipe_threshold_x: float = 0.18
+    swipe_threshold_x: float = 0.15
     swipe_threshold_y_limit: float = 0.12
     swipe_time_window: float = 0.8
     # Phase 9: ILoveYou swipe threshold for mode switching.
@@ -156,7 +163,7 @@ class GestureConfig:
     # mode_swipe_timeout set to 3.0: gives ILoveYou swipe commits ample time.
     # page_swipe_timeout stays at 0.80 (Open_Palm swipes are faster).
     mode_swipe_timeout: float = 3.0
-    page_swipe_timeout: float = 0.80
+    page_swipe_timeout: float = 2.0
     # Landmark low-pass filter: weight of the new observation (0-1).
     landmark_smoothing: float = 0.45
     # Motion constraints (all in normalised coordinates).

@@ -747,12 +747,43 @@ class GestureController:
     # ── camera ─────────────────────────────────────────────────────────────
     def _open_camera(self) -> None:
         import cv2
+        import time
 
-        cap = cv2.VideoCapture(self.config.camera_index)
-        cap.set(3, self.config.cam_width)
-        cap.set(4, self.config.cam_height)
+        # Force DirectShow backend for reliable manual exposure control on Windows.
+        cap = cv2.VideoCapture(self.config.camera_index, cv2.CAP_DSHOW)
         if not cap.isOpened():
             raise RuntimeError(f"camera index {self.config.camera_index} could not be opened")
+
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.cam_width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.cam_height)
+
+        # Disable auto exposure and set manual exposure time.
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, self.config.camera_auto_exposure)
+        cap.set(cv2.CAP_PROP_EXPOSURE, self.config.camera_exposure)
+        # Adjust brightness and gain (driver-dependent ranges).
+        cap.set(cv2.CAP_PROP_BRIGHTNESS, self.config.camera_brightness)
+        cap.set(cv2.CAP_PROP_GAIN, self.config.camera_gain)
+        time.sleep(1)
+        # Read back actual values — drivers may silently ignore or clamp.
+        actual_auto = cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+        actual_exp = cap.get(cv2.CAP_PROP_EXPOSURE)
+        actual_fps_cfg = cap.get(cv2.CAP_PROP_FPS)
+        actual_brightness = cap.get(cv2.CAP_PROP_BRIGHTNESS)
+        actual_gain = cap.get(cv2.CAP_PROP_GAIN)
+        logger.info(
+            "camera exposure: requested auto=%s exp=%s brightness=%s gain=%s | "
+            "actual auto=%s exp=%s brightness=%s gain=%s fps=%s",
+            self.config.camera_auto_exposure,
+            self.config.camera_exposure,
+            self.config.camera_brightness,
+            self.config.camera_gain,
+            actual_auto,
+            actual_exp,
+            actual_brightness,
+            actual_gain,
+            actual_fps_cfg,
+        )
+
         self._cap = cap
 
     # ── misc ───────────────────────────────────────────────────────────────
