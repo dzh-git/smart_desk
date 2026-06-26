@@ -6,9 +6,9 @@
 
 本文档用于定义 SmartDesk Gesture Controller 中状态机与动作层之间的接口。
 
-状态机 `gesture_state.py` 不直接调用 PyAutoGUI，而是输出声明式动作意图 `ActionIntent`。
+状态机 `gesture_state.py` 不直接调用 PyAutoGUI，而是输出声明式动作意图 `ActionIntent`（定义在 `gesture_state.py` 中）。
 
-动作层 `gesture_actions.py` 只负责接收 `ActionIntent` 并执行实际鼠标、键盘操作。
+动作层 `gesture_actions.py` 负责接收 `ActionIntent` 并执行实际鼠标、键盘操作。
 
 控制流程驱动重构后，`GestureIntentTracker` 输出稳定的 `ControlEvent`，`GestureState` 再把 `ControlEvent` 映射为 `ActionIntent`。`ActionIntent` 类型集合保持稳定，不因新增 Tracker 而扩展。
 
@@ -138,25 +138,25 @@ update 事件不得重复产生 mouse_down / key_down。
 
 ## 3. ActionIntent 数据结构
 
-建议定义：
+实际定义（位于 `hands/gesture_state.py`）：
 
 ```python
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 @dataclass
 class ActionIntent:
     type: str
-    key: str | None = None
-    keys: list[str] = field(default_factory=list)
-    button: str | None = None
-    x: float | None = None
-    y: float | None = None
-    dx: float | None = None
-    dy: float | None = None
-    amount: int | None = None
-    text: str | None = None
-    meta: dict[str, Any] = field(default_factory=dict)
+    key: Optional[str] = None
+    keys: List[str] = field(default_factory=list)
+    button: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    dx: Optional[float] = None
+    dy: Optional[float] = None
+    amount: Optional[int] = None
+    text: Optional[str] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
 ```
 
 字段说明：
@@ -209,6 +209,29 @@ release_all
 status
 noop
 ```
+
+### 4.1 ActionIntent 类型常量
+
+代码中定义了以下类型常量（位于 `hands/gesture_state.py`）：
+
+```python
+INTENT_PRESS = "press"
+INTENT_HOTKEY = "hotkey"
+INTENT_MOUSE_DOWN = "mouse_down"
+INTENT_MOUSE_UP = "mouse_up"
+INTENT_CLICK = "click"
+INTENT_MOVE_TO = "move_to"
+INTENT_MOVE = "move"            # 遗留别名
+INTENT_MOVE_REL = "move_rel"
+INTENT_SCROLL = "scroll"
+INTENT_KEY_DOWN = "key_down"
+INTENT_KEY_UP = "key_up"
+INTENT_RELEASE_ALL = "release_all"
+INTENT_STATUS = "status"
+INTENT_NOOP = "noop"
+```
+
+建议使用常量而不是字符串字面量，以避免拼写错误。
 
 ---
 
@@ -835,6 +858,50 @@ drag_to
 typewrite
 screenshot
 window_activate
+```
+
+### 14.1 ActionIntent 工厂方法
+
+代码中提供了以下工厂方法（位于 `hands/gesture_state.py`），推荐使用这些方法创建 ActionIntent：
+
+```python
+# 键盘动作
+ActionIntent.press(key)           # 单个按键
+ActionIntent.hotkey(*keys)        # 组合快捷键
+ActionIntent.key_down(key)        # 按住键
+ActionIntent.key_up(key)          # 释放键
+
+# 鼠标动作
+ActionIntent.mouse_down(button)   # 按住鼠标键
+ActionIntent.mouse_up(button)     # 释放鼠标键
+ActionIntent.click(button)        # 单击
+ActionIntent.move_to(x, y)        # 绝对移动
+ActionIntent.move(x, y)           # move_to 别名
+ActionIntent.move_rel(dx, dy)     # 相对移动
+ActionIntent.scroll(amount)       # 滚轮滚动
+
+# 安全动作
+ActionIntent.release_all()        # 释放所有
+
+# 其他
+ActionIntent.status(text)         # 状态提示
+ActionIntent.noop()               # 空操作
+```
+
+示例使用：
+
+```python
+# 推荐使用工厂方法
+intents = [
+    ActionIntent.release_all(),
+    ActionIntent.press("esc"),
+]
+
+# 等价写法（不推荐）
+intents = [
+    ActionIntent(type="release_all"),
+    ActionIntent(type="press", key="esc"),
+]
 ```
 
 ---

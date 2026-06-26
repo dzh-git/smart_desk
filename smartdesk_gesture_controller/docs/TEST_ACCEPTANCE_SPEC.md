@@ -63,7 +63,8 @@ mediapipe
 opencv-python
 pyautogui
 pywin32
-pynput
+keyboard>=0.13.5
+pynput (可选兼容)
 websockets
 pytest
 ```
@@ -168,13 +169,14 @@ mouse / mouse_scroll 模式不可达
 
 ```text
 验证 GestureIntentTracker 能把不稳定帧级结果整理为稳定 ControlEvent。
+测试文件：tests/test_gesture_intent_tracker.py（基础测试）和 tests/test_gesture_intent_tracker_phase2.py（Phase 2 扩展测试）
 ```
 
 测试项：
 
 ```text
 hand_present=True, raw_gesture=None 不启动手丢失计时，也不产生 release_all。
-hand_present=False 短于 hand_loss_timeout 不释放；超过超时只产生一次 hand_lost_timeout。
+hand_present=False 短于 hand_lost_timeout 不释放；超过超时只产生一次 hand_lost。
 手重新出现后能够重新布防下一次手丢失事件。
 单帧或不足 4/5 帧的候选不得进入 armed。
 规则回退结果必须满足帧数、持续时间和轨迹条件，不能直接成为可信候选。
@@ -650,9 +652,17 @@ gesture_controller.py
 ```bash
 pytest tests/test_gesture_recognition.py
 pytest tests/test_gesture_intent_tracker.py
+pytest tests/test_gesture_intent_tracker_phase2.py
 pytest tests/test_gesture_state.py
 pytest tests/test_gesture_actions.py
+pytest tests/test_gesture_replay.py
 pytest tests/test_gesture_controller.py
+```
+
+或使用单个命令运行所有测试：
+
+```bash
+pytest tests/
 ```
 
 如果测试命令不同，应在 README 或测试说明中更新。

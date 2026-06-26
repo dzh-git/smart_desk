@@ -14,7 +14,7 @@
 2. 每个模式下，每个手势对应什么动作。
 3. 如何避免同一个手势在同一个模式下承担多个含义。
 
----
+--- 
 
 ## 2. 适用范围
 
@@ -315,9 +315,9 @@ SWIPE_LEFT:
 推荐默认值：
 
 ```text
-swipe_threshold_x = 0.18
+swipe_threshold_x = 0.15
 swipe_threshold_y_limit = 0.12
-page_swipe_timeout = 0.8s
+page_swipe_timeout = 2.0s
 swipe_cooldown = 0.8s
 ```
 
@@ -453,7 +453,7 @@ standby → presentation / solidworks 只更新内部模式，不输出系统动
 6. 推荐参数：
    - iloveyou_swipe_threshold_x = 0.22
    - swipe_threshold_y_limit = 0.12（ILoveYou 复用）
-   - mode_swipe_timeout = 0.8s
+   - mode_swipe_timeout = 3.0s
    - mode_switch_cooldown = 1.0s
 ```
 

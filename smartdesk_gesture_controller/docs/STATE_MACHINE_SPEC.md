@@ -828,20 +828,25 @@ Ctrl+Alt+Q 不受冷却限制
 
 ---
 
-## 17. 状态机输出结构建议
+## 17. 状态机输出结构（实际实现）
 
-建议 `StepResult` 包含：
+`StepResult` 实际定义（位于 `hands/gesture_state.py`）：
 
 ```python
 @dataclass
 class StepResult:
-    mode: str
-    intents: list[ActionIntent]
-    status_text: str
-    debug_info: dict
+    mode: str = MODE_STANDBY
+    intents: List[ActionIntent] = field(default_factory=list)
+    status_text: str = ""
+    debug_info: Dict[str, Any] = field(default_factory=dict)
+    
+    # 遗留别名
+    @property
+    def note(self) -> str:
+        return self.status_text
 ```
 
-建议 `debug_info` 包含：
+`debug_info` 可包含以下调试信息：
 
 ```text
 current_gesture
@@ -861,37 +866,70 @@ swipe_dy
 
 ---
 
-## 18. 状态机内部变量建议
+## 18. GestureState 内部变量（实际实现）
 
-建议 `GestureState` 维护：
+`GestureState` 实际维护以下变量（位于 `hands/gesture_state.py`）：
 
 ```python
 class GestureState:
+    # 模式
     mode: str
-    previous_mode: str | None
+    paused: bool
+    previous_mode: Optional[str]
 
+    # 统一 HOLD 跟踪
     last_gesture: str
     gesture_start_time: float
-    cooldown_until: float
+    gesture_stable_duration: float
+    _cooldowns: Dict[str, float]
 
-    hand_lost_start_time: float | None
+    # 手丢失安全
+    last_hand_seen: Optional[float]
+    hand_lost_start_time: Optional[float]
     _hand_loss_released: bool
 
-    active_attempt_id: str | None
-    active_session_id: str | None
-    active_control_type: str | None
-
+    # 连续动作状态
+    active_continuous_action: Optional[str]
     is_left_mouse_down: bool
     is_middle_mouse_down: bool
     is_shift_down: bool
+    last_pointer_position: Optional[Tuple[float, float]]
+    last_hand_center: Optional[Tuple[float, float]]
+    last_pinch_distance: Optional[float]
 
-    active_continuous_action: str | None
+    # Phase 3: PINCH 滞回状态
+    is_pinching: bool
 
-    last_pointer_position: tuple[float, float] | None
-    last_hand_center: tuple[float, float] | None
-    last_pinch_distance: float | None
+    # Phase 4: 鼠标 PINCH 点击/拖拽区分
+    _pinch_start_time: float
+    _pinch_start_pos: Optional[Tuple[float, float]]
+    _pinch_click_candidate: bool
 
-    hand_center_history: list[tuple[float, float, float]]
+    # Phase 4: 鼠标_scroll 跟踪
+    _scroll_last_y: Optional[float]
+
+    # Phase 3: SWIPE 轨迹跟踪
+    _swipe_history: List[Tuple[float, float, float]]
+    _swipe_armed: bool
+
+    # 鼠标移动平滑（遗留，控制器兼容）
+    ploc_x: float
+    ploc_y: float
+    cloc_x: float
+    cloc_y: float
+    last_mouse_time: float
+
+    # 遗留稳定化窗口
+    _drag_start: float
+    _single_start: float
+    is_single_mouse_active: bool
+
+    # 遗留边沿触发手势记录
+    prev_pinch: bool
+    last_click_time: float
+    prev_wave_x: Optional[float]
+    cooldown_wave: float
+    cooldown_fist: float
 ```
 
 ---

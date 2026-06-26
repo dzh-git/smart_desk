@@ -102,37 +102,92 @@ hand_lost_timeout
 
 ```python
 from dataclasses import dataclass
+from typing import Tuple
 
 @dataclass
 class GestureConfig:
-    # camera
+    # ── Camera ──────────────────────────────────────────────────────────────
     camera_index: int = 0
     camera_width: int = 640
     camera_height: int = 480
     camera_fps: int = 30
+    camera_auto_exposure: float = 0  # Windows DirectShow: 0 = manual
+    camera_exposure: int = -5
+    camera_brightness: int = 0
+    camera_gain: int = 10
+    map_margin: int = 50  # legacy alias for controller compat
 
-    # recognizer
+    # ── Recognizer confidence ───────────────────────────────────────────────
     min_hand_detection_confidence: float = 0.7
     min_hand_presence_confidence: float = 0.6
     min_tracking_confidence: float = 0.5
     min_gesture_confidence: float = 0.65
     max_num_hands: int = 1
 
-    # GestureRecognizer
+    # ── GestureRecognizer (Phase 8) ────────────────────────────────────────
     use_gesture_recognizer: bool = True
     gesture_recognizer_model_path: str = "gesture_recognizer.task"
     fallback_to_rule_gestures: bool = True
 
-    # timing
+    # ── Timing / hold times (seconds) ───────────────────────────────────────
     hand_loss_timeout: float = 1.0
+    start_presentation_hold: float = 1.5  # deprecated
+    enter_mouse_hold: float = 1.0  # deprecated
+    enter_solidworks_hold: float = 1.5  # deprecated
     exit_mode_hold: float = 0.8
     pen_mode_hold: float = 0.5
+    erase_hold: float = 0.5  # deprecated
+    right_click_hold: float = 0.5  # deprecated
+    fit_view_hold: float = 0.5  # deprecated
+    isometric_view_hold: float = 0.8  # deprecated
+
+    # ── Cooldowns (seconds) ─────────────────────────────────────────────────
     page_turn_cooldown: float = 0.8
     mode_switch_cooldown: float = 1.0
     click_cooldown: float = 0.35
+    right_click_cooldown: float = 0.5
     pen_toggle_cooldown: float = 0.6
+    solidworks_view_cooldown: float = 0.8
 
-    # control-flow tracker
+    # ── Wave / swipe detection ──────────────────────────────────────────────
+    wave_threshold: float = 10.0  # legacy, camera-px threshold
+    wave_cooldown: float = 1.0
+    swipe_threshold_x: float = 0.15
+    swipe_threshold_y_limit: float = 0.12
+    swipe_time_window: float = 0.8
+    iloveyou_swipe_threshold_x: float = 0.22
+
+    # ── Pinch ───────────────────────────────────────────────────────────────
+    pinch_click_distance: float = 35.0  # legacy, camera-px
+    pinch_threshold: float = 0.045
+    pinch_release_threshold: float = 0.065
+    pinch_zoom_deadzone: float = 0.01
+
+    # ── Mouse movement (deprecated: mouse mode disabled) ───────────────────
+    smoothening: float = 1.0  # legacy
+    mouse_smoothing: float = 0.35
+    mouse_speed: float = 1.0
+    mouse_max_step_px: int = 80
+    mouse_fps: int = 20
+    drag_cooldown: float = 0.3
+    drag_hold_time: float = 0.35
+    single_cooldown: float = 0.25
+    click_max_movement_px: int = 25
+    fist_exit_cooldown: float = 1.0
+
+    # ── Scroll (deprecated: mouse_scroll mode disabled) ─────────────────────
+    scroll_threshold_y: float = 0.08
+    scroll_amount: int = 5
+    scroll_cooldown: float = 0.12
+    invert_scroll: bool = False
+
+    # ── SolidWorks ──────────────────────────────────────────────────────────
+    solidworks_drag_sensitivity: float = 1.2
+    solidworks_zoom_sensitivity: float = 8.0
+    solidworks_min_zoom_step: int = 1
+    solidworks_deadzone: float = 0.01
+
+    # ── Control-flow tracker (Phase 1) ───────────────────────────────────
     gesture_enter_frames: int = 4
     gesture_enter_window_frames: int = 5
     gesture_keep_grace_frames: int = 6
@@ -141,7 +196,7 @@ class GestureConfig:
     intent_lost_timeout: float = 0.25
     mode_arm_duration: float = 0.20
     mode_swipe_timeout: float = 3.0
-    page_swipe_timeout: float = 0.80
+    page_swipe_timeout: float = 2.0
     landmark_smoothing: float = 0.45
     motion_deadzone: float = 0.015
     max_motion_step: float = 0.08
@@ -149,58 +204,38 @@ class GestureConfig:
     min_motion_duration: float = 0.12
     direction_consistency_frames: int = 3
 
-    # ILoveYou swipe
-    iloveyou_swipe_threshold_x: float = 0.22
-
-    # swipe
-    swipe_threshold_x: float = 0.18
-    swipe_threshold_y_limit: float = 0.12
-    swipe_time_window: float = 0.8
-
-    # pinch
-    pinch_threshold: float = 0.045
-    pinch_release_threshold: float = 0.065
-    pinch_zoom_deadzone: float = 0.01
-
-    # deprecated compatibility fields (still present, but simplified flow does not use them)
-    start_presentation_hold: float = 1.5
-    enter_mouse_hold: float = 1.0
-    enter_solidworks_hold: float = 1.5
-    erase_hold: float = 0.5
-    right_click_hold: float = 0.5
-    fit_view_hold: float = 0.5
-    isometric_view_hold: float = 0.8
-    right_click_cooldown: float = 0.5
-
-    # mouse（保留为后续版本兼容，第一版简化演示不使用）
-    mouse_smoothing: float = 0.35  # 保留
-    mouse_speed: float = 1.0  # 保留
-    mouse_max_step_px: int = 80  # 保留
-    drag_hold_time: float = 0.35  # 保留
-    click_max_movement_px: int = 25  # 保留
-
-    # scroll（保留为后续版本兼容，第一版简化演示不使用；mouse_scroll 模式已废弃）
-    scroll_threshold_y: float = 0.08  # 保留
-    scroll_amount: int = 5  # 保留
-    scroll_cooldown: float = 0.12  # 保留
-
-    # solidworks
-    solidworks_drag_sensitivity: float = 1.2
-    solidworks_zoom_sensitivity: float = 8.0
-    solidworks_min_zoom_step: int = 1
-    solidworks_deadzone: float = 0.01
-
-    # debug
+    # ── Behavior / safety switches ──────────────────────────────────────────
+    initial_mode: str = "standby"
+    enable_system_mouse: bool = True
+    dry_run: bool = False
     show_debug_window: bool = True
-    debug_window_always_on_top: bool = True
+    debug_window_topmost: bool = True
+    debug_window_always_on_top: bool = True  # legacy alias
+    debug_window_scale: float = 1.5
     show_landmarks: bool = True
     show_fps: bool = True
     show_action_log: bool = True
-
-    # safety
-    start_paused: bool = True
-    dry_run: bool = False
+    pause_on_start: bool = False
+    start_paused: bool = False  # alias for pause_on_start
     enable_hotkeys: bool = True
+    exit_key: str = "q"
+
+    # ── Global hotkeys ───────────────────────────────────────────────────────
+    hotkey_toggle_pause: str = "<ctrl>+<alt>+g"
+    hotkey_emergency_exit: str = "<ctrl>+<alt>+q"
+
+    # ── Gesture recording / replay ─────────────────────────────────────────
+    record_gestures: bool = True
+    gesture_record_dir: str = "logs"
+
+    # ── Status broadcast server ─────────────────────────────────────────────
+    status_server_enabled: bool = True
+    status_server_host: str = "127.0.0.1"
+    status_server_port: int = 8765
+    status_broadcast_interval: float = 0.2
+
+    # ── Derived (filled lazily) ─────────────────────────────────────────────
+    screen_size: Tuple[int, int] = (0, 0)
 ```
 
 ---
@@ -215,14 +250,7 @@ class GestureConfig:
 含义：OpenCV 摄像头索引
 ```
 
-说明：
-
-```text
-0 通常代表默认摄像头
-如果外接 USB 摄像头无法打开，可以尝试 1、2、3
-```
-
----
+说明：0 通常代表默认摄像头。如果外接 USB 摄像头无法打开，可以尝试 1、2、3。
 
 ### 4.2 camera_width / camera_height
 
@@ -231,22 +259,7 @@ class GestureConfig:
 单位：像素
 ```
 
-影响：
-
-```text
-分辨率越高，识别画面越清晰，但 CPU 占用更高
-分辨率越低，速度更快，但手势细节可能变差
-```
-
-推荐：
-
-```text
-开发调试：640 × 480
-性能优先：320 × 240
-现场演示：640 × 480
-```
-
----
+影响：分辨率越高，识别画面越清晰，但 CPU 占用更高。推荐：开发调试 640×480，性能优先 320×240。
 
 ### 4.3 camera_fps
 
@@ -255,12 +268,42 @@ class GestureConfig:
 单位：fps
 ```
 
-说明：
+说明：该字段记录目标帧率；实际 FPS 在 debug 窗口显示。
+
+### 4.4 camera_auto_exposure
 
 ```text
-该字段记录目标帧率；当前 _open_camera() 只设置宽度和高度，尚未把 camera_fps 写入 VideoCapture
-实际 FPS 在 debug 窗口显示
+默认值：0（Windows DirectShow：0 = 手动曝光）
 ```
+
+说明：摄像头自动曝光设置。Windows DirectShow: 0.25 = manual, 0.75 = auto。Linux V4L2: 0 = manual, 1 = auto。
+
+### 4.5 camera_exposure
+
+```text
+默认值：-5
+单位：对数尺度
+```
+
+说明：手动曝光值（驱动相关，通常 -1 ~ -13）。
+
+### 4.6 camera_brightness
+
+```text
+默认值：0
+单位：0~60（该摄像头）
+```
+
+说明：摄像头亮度设置。
+
+### 4.7 camera_gain
+
+```text
+默认值：10
+单位：0~100（该摄像头）
+```
+
+说明：摄像头增益设置。
 
 ---
 
@@ -318,6 +361,8 @@ class GestureConfig:
 ### 6.1 hand_loss_timeout / hand_lost_timeout
 
 ```text
+字段名：hand_loss_timeout（dataclass 字段）
+属性别名：hand_lost_timeout（property，指向同一个值）
 默认值：1.0
 单位：秒
 ```
@@ -325,9 +370,10 @@ class GestureConfig:
 含义：
 
 ```text
-`hand_loss_timeout` 是 dataclass 的实际字段名；`hand_lost_timeout` 是读写属性别名，两者指向同一个值。
-
 手离开摄像头画面超过该时间后，同一次连续手丢失事件只触发一次 `release_all`。有效手重新出现后重新布防。
+
+代码中使用：hand_loss_timeout（dataclass 字段）
+配置文件中可使用：hand_lost_timeout（property 别名，更符合命名规范）
 ```
 
 调大：
@@ -435,7 +481,7 @@ Closed_Fist 保持多久退出当前模式。
 | `intent_lost_timeout` | 0.25 | 秒 | 分类保持失败的最长容忍时间 |
 | `mode_arm_duration` | 0.20 | 秒 | ILoveYou 进入模式切换 armed 前的最短稳定时间 |
 | `mode_swipe_timeout` | 3.0 | 秒 | 模式切换 attempt 的最长追踪时间 |
-| `page_swipe_timeout` | 0.80 | 秒 | 翻页 attempt 的最长追踪时间 |
+| `page_swipe_timeout` | 2.0 | 秒 | 翻页 attempt 的最长追踪时间 |
 | `landmark_smoothing` | 0.45 | 0–1 | landmarks 低通滤波中当前观测值权重 |
 | `motion_deadzone` | 0.015 | 归一化坐标 | 运动死区 |
 | `max_motion_step` | 0.08 | 归一化坐标/帧 | 单帧位移限幅 |
@@ -967,16 +1013,21 @@ SolidWorks 旋转/平移时，手部位移小于该值不触发鼠标移动。
 
 ---
 
-### 13.2 debug_window_always_on_top
+### 13.2 debug_window_topmost / debug_window_always_on_top
 
 ```text
+字段名：debug_window_topmost（dataclass 字段）
+遗留字段：debug_window_always_on_top（保留为兼容）
 默认值：True
 ```
 
 含义：
 
 ```text
-兼容配置字段。当前控制器实际读取 `debug_window_topmost=True` 决定是否置顶。
+调试窗口是否置顶显示。
+
+主要字段：debug_window_topmost
+遗留字段：debug_window_always_on_top（为了兼容旧代码保留）
 ```
 
 ---
@@ -1025,22 +1076,28 @@ SolidWorks 旋转/平移时，手部位移小于该值不触发鼠标移动。
 
 ## 14. 安全参数
 
-### 14.1 start_paused
+### 14.1 pause_on_start / start_paused
 
 ```text
-默认值：True
+字段名：pause_on_start（dataclass 字段）
+属性别名：start_paused（property，指向同一个值）
+默认值：False
 ```
 
 含义：
 
 ```text
-兼容字段。状态机构造时实际读取 `pause_on_start=True`；CLI 会同步设置 `pause_on_start` 和 `start_paused`。
+启动时光标控制是否暂停。
+
+代码中使用：pause_on_start（dataclass 字段）
+配置文件中可使用：start_paused（property 别名，符合规范文档拼写）
 ```
 
 建议：
 
 ```text
-现场演示和真实控制时必须为 True。
+现场演示时建议设为 True，避免误触。
+双击 .bat 启动时默认为 False（立即激活），可通过 --no-pause-on-start 或 --start-unpaused 参数覆盖。
 ```
 
 ---

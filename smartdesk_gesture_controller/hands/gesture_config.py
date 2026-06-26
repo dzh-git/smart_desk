@@ -59,8 +59,8 @@ class GestureConfig:
     # Linux V4L2: 0 = manual, 1 = auto.
     camera_auto_exposure: float = 0  # Windows DirectShow: 0 = manual
     camera_exposure: int = -5           # manual exposure value (driver-dependent, often log scale e.g. -1~-13)
-    camera_brightness: int = 60         # CAP_PROP_BRIGHTNESS (range 0~60 on this camera)
-    camera_gain: int = 100              # CAP_PROP_GAIN (range 0~100 on this camera)
+    camera_brightness: int = 0         # CAP_PROP_BRIGHTNESS (range 0~60 on this camera)
+    camera_gain: int = 10              # CAP_PROP_GAIN (range 0~100 on this camera)
     # Legacy alias kept for controller compat (controller reads cam_width/cam_height).
     map_margin: int = 50
 
