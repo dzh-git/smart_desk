@@ -251,6 +251,19 @@ def palm_center(landmarks: LandmarkList) -> Optional[Tuple[int, int]]:
     return (x, y)
 
 
+def centroid_21(landmarks: LandmarkList) -> Optional[Tuple[float, float]]:
+    """Centroid of all 21 MediaPipe hand landmarks in camera pixels.
+
+    Used by presentation_pen as the cursor anchor so the pointer follows the
+    bulk of the hand rather than a single fingertip.
+    """
+    if len(landmarks) < 21:
+        return None
+    xs = [lm[1] for lm in landmarks]
+    ys = [lm[2] for lm in landmarks]
+    return (sum(xs) / 21.0, sum(ys) / 21.0)
+
+
 def pinch_distance(landmarks: LandmarkList) -> Optional[float]:
     """Euclidean distance between thumb tip(4) and index tip(8), in camera px."""
     if len(landmarks) <= THUMB_TIP or len(landmarks) <= TIPS[0]:
@@ -570,6 +583,7 @@ class HandRecognizer:
         gesture_enum = _canonical_gesture_enum(frame_result.gesture)
 
         palm = palm_center(frame_result.landmarks)
+        centroid = centroid_21(frame_result.landmarks)
 
         # Normalised pinch distance (0-1) from raw MediaPipe landmarks.
         # Falls back to camera-px for legacy/test paths that only provide
@@ -586,6 +600,7 @@ class HandRecognizer:
         return HandInput(
             gesture=gesture_enum,
             palm_xy=palm,
+            centroid_xy=centroid,
             wave_x=float(palm[0]) if palm is not None else None,
             pinch_distance=pinch_dist,
         )
@@ -632,6 +647,10 @@ class HandRecognizer:
         palm_x = (wrist.x + middle_mcp.x) / 2.0
         palm_y = (wrist.y + middle_mcp.y) / 2.0
 
+        # ── centroid_xy: average of all 21 landmarks ──────────────────────
+        centroid_x = sum(hand[i].x for i in range(21)) / 21.0
+        centroid_y = sum(hand[i].y for i in range(21)) / 21.0
+
         # ── index_tip_xy: landmark 8 ──────────────────────────────────────
         index_tip = hand[8]
 
@@ -667,6 +686,7 @@ class HandRecognizer:
             gesture_confidence=frame_result.gesture_confidence or 0.0,
             gesture_source=source,
             palm_xy=(palm_x, palm_y),
+            centroid_xy=(centroid_x, centroid_y),
             index_tip_xy=(index_tip.x, index_tip.y),
             pinch_distance=pinch_dist,
             hand_size=hand_size,

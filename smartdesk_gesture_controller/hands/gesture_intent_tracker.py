@@ -20,9 +20,13 @@ All positions and distances use normalised coordinates [0, 1].
 """
 from __future__ import annotations
 
+import logging
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger("hands.intent_tracker")
 
 from .gesture_config import (
     GestureConfig,
@@ -113,6 +117,7 @@ class GestureFrame:
     gesture_confidence: float = 0.0
     gesture_source: GestureSource = GestureSource.NONE
     palm_xy: Optional[Tuple[float, float]] = None
+    centroid_xy: Optional[Tuple[float, float]] = None
     index_tip_xy: Optional[Tuple[float, float]] = None
     pinch_distance: Optional[float] = None
     hand_size: Optional[float] = None
@@ -347,6 +352,29 @@ class GestureIntentTracker:
             return self._build_result(events, now)
 
         # Hand is present — reset hand-loss state.
+        # Before clearing, check if the hand just reappeared during an active
+        # pen_draw session.  A large jump (> 0.1 in normalised coords) means
+        # the hand left and came back elsewhere; end the old stroke and start
+        # a fresh session so PPT does not draw a connecting line.
+        if (self._hand_lost_start is not None and
+                self._session is not None and
+                self._session.control_type == CTRL_PEN_DRAW):
+            elapsed = now - self._hand_lost_start
+            if elapsed < self.config.hand_loss_timeout:
+                last_pos = self._session.last_position
+                new_pos = frame.centroid_xy
+                if last_pos is not None and new_pos is not None:
+                    dist = math.hypot(new_pos[0] - last_pos[0],
+                                      new_pos[1] - last_pos[1])
+                    if dist > 0.1:
+                        # Only restart if pinch is still held; otherwise the
+                        # normal bad-frame logic will end the session.
+                        if (frame.pinch_distance_norm is not None and
+                                frame.pinch_distance_norm < self.config.pinch_threshold):
+                            events.extend(self._end_session("hand_reappear_far", now))
+                            events.extend(self._begin_session_attempt(
+                                CTRL_PEN_DRAW, EVT_PEN_DRAW_BEGIN, frame, now))
+
         self._hand_lost_start = None
         self._hand_lost_fired = False
         self._last_hand_seen = now
@@ -377,6 +405,19 @@ class GestureIntentTracker:
 
         # ── 7. Check for intent lost timeout on active attempt/session ─────
         self._check_intent_lost(events, now)
+
+        # Diagnostic logging for pen_draw debugging.
+        session_phase = "None"
+        if self._session is not None:
+            session_phase = f"{self._session.control_type}:{self._session.phase}"
+        logger.info(
+            "[Tracker] mode=%s pinch_norm=%s stable_gesture=%s session=%s events=%s",
+            current_mode,
+            getattr(frame, "pinch_distance_norm", None),
+            self._stable_gesture,
+            session_phase,
+            [e.type for e in events],
+        )
 
         return self._build_result(events, now)
 
@@ -562,6 +603,7 @@ class GestureIntentTracker:
             gesture_confidence=frame.gesture_confidence,
             gesture_source=frame.gesture_source,
             palm_xy=smoothed_palm,
+            centroid_xy=frame.centroid_xy,
             index_tip_xy=frame.index_tip_xy,
             pinch_distance=frame.pinch_distance,
             hand_size=frame.hand_size,
@@ -1122,8 +1164,11 @@ class GestureIntentTracker:
         """
         self._session_counter += 1
         session_id = f"ses_{self._session_counter}"
-        # Pen draw prefers index_tip_xy for position; others use palm_xy.
-        if control_type == CTRL_PEN_DRAW and frame.index_tip_xy is not None:
+        # Pen draw uses the 21-landmark centroid for a stable cursor anchor;
+        # fall back to index_tip_xy / palm_xy if centroid is unavailable.
+        if control_type == CTRL_PEN_DRAW and frame.centroid_xy is not None:
+            palm = frame.centroid_xy
+        elif control_type == CTRL_PEN_DRAW and frame.index_tip_xy is not None:
             palm = frame.index_tip_xy
         else:
             palm = frame.palm_xy or (0.0, 0.0)
@@ -1152,6 +1197,10 @@ class GestureIntentTracker:
         self._state = _TrackerState.SESSION
         self._bad_frame_count = 0
         self._bad_frame_start = None
+        logger.info(
+            "[Session] begin control_type=%s session_id=%s position=%s",
+            control_type, session_id, palm,
+        )
         return []
 
     def _update_session(self, frame: GestureFrame, current_mode: str,
@@ -1203,8 +1252,10 @@ class GestureIntentTracker:
                 ses.bad_frames = 0
                 ses.bad_since = None
 
-        # Update position — pen_draw prefers index_tip_xy, others use palm_xy.
-        if ses.control_type == CTRL_PEN_DRAW and frame.index_tip_xy is not None:
+        # Update position — pen_draw uses centroid_xy, others use palm_xy.
+        if ses.control_type == CTRL_PEN_DRAW and frame.centroid_xy is not None:
+            pos = frame.centroid_xy
+        elif ses.control_type == CTRL_PEN_DRAW and frame.index_tip_xy is not None:
             pos = frame.index_tip_xy
         else:
             pos = frame.palm_xy
@@ -1243,6 +1294,13 @@ class GestureIntentTracker:
                 else:
                     ses.motion_duration = now - ses.started_at
 
+                logger.info(
+                    "[Session] IDLE control_type=%s dist=%.4f deadzone=%.4f "
+                    "motion_duration=%.3f min=%.3f bad_frames=%d",
+                    ses.control_type, dist, cfg.motion_deadzone,
+                    ses.motion_duration, cfg.min_motion_duration, ses.bad_frames,
+                )
+
                 if ses.motion_duration >= cfg.min_motion_duration:
                     ses.phase = SESSION_ACTIVE
                     if ses.control_type == CTRL_ROTATE:
@@ -1275,6 +1333,17 @@ class GestureIntentTracker:
                     dx=dx, dy=dy,
                     position=pos,
                 ))
+                logger.info(
+                    "[Session] ACTIVE update control_type=%s dx=%.4f dy=%.4f "
+                    "position=%s bad_frames=%d",
+                    ses.control_type, dx, dy, pos, ses.bad_frames,
+                )
+            else:
+                logger.info(
+                    "[Session] ACTIVE no-motion control_type=%s position=%s "
+                    "bad_frames=%d",
+                    ses.control_type, pos, ses.bad_frames,
+                )
 
         return events
 
@@ -1282,9 +1351,14 @@ class GestureIntentTracker:
         """End the active session and return end events."""
         events: List[ControlEvent] = []
         if self._session is None:
+            logger.info("[Session] end requested but no active session (reason=%s)", reason)
             return events
 
         ses = self._session
+        logger.info(
+            "[Session] end control_type=%s phase=%s session_id=%s reason=%s",
+            ses.control_type, ses.phase, ses.session_id, reason,
+        )
         if ses.phase == SESSION_ACTIVE:
             if ses.control_type == CTRL_ROTATE:
                 evt_type = EVT_ROTATE_END

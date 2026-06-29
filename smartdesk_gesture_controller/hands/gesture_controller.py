@@ -30,6 +30,7 @@ from .gesture_actions import ActionLayer
 from .gesture_config import (
     GestureConfig,
     MODE_PRESENTATION,
+    MODE_PRESENTATION_PEN,
     MODE_STANDBY,
     config_from_args,
     default_config,
@@ -699,6 +700,17 @@ class GestureController:
         elif self.state.paused:
             cv2.putText(img, "Press 'p' or Space to resume", (10, img.shape[0] - 12),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 100), 2)
+
+        # Draw centroid anchor as a red dot in presentation_pen mode.
+        if (self.state.mode == MODE_PRESENTATION_PEN and
+                gesture_frame is not None and
+                gesture_frame.centroid_xy is not None):
+            h, w = img.shape[:2]
+            cx = int(gesture_frame.centroid_xy[0] * w)
+            cy = int(gesture_frame.centroid_xy[1] * h)
+            cv2.circle(img, (cx, cy), 8, (0, 0, 255), -1)
+            cv2.putText(img, "centroid", (cx + 10, cy),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
         # Map region overlay.
         x1, x2, y1, y2 = self.config.map_region()

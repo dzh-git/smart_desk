@@ -20,9 +20,12 @@ and assert on the returned intents and the new mode.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+logger = logging.getLogger("hands.state")
 
 from .gesture_config import (
     GestureConfig,
@@ -292,12 +295,15 @@ class HandInput:
     The state machine normalizes it internally.
 
     ``palm_xy`` is the palm center in *camera* pixel coordinates;
+    ``centroid_xy`` is the centroid of all 21 landmarks in *camera* pixel
+    coordinates (used for presentation_pen cursor anchoring);
     ``wave_x`` is the palm center's x used for slide gesture differencing;
     ``pinch_distance`` is in camera px (legacy) or normalized 0–1 (spec).
     """
 
     gesture: Union[Gesture, str] = Gesture.NONE
     palm_xy: Optional[Tuple[float, float]] = None
+    centroid_xy: Optional[Tuple[float, float]] = None
     wave_x: Optional[float] = None
     pinch_distance: Optional[float] = None
 
@@ -628,6 +634,11 @@ class GestureState:
         intents: List[ActionIntent] = []
         notes: List[str] = []
 
+        logger.info(
+            "[State] handle_events mode=%s active_continuous_action=%s events=%s",
+            self.mode, self.active_continuous_action, [e.type for e in events],
+        )
+
         for evt in events:
             if evt.type == EVT_MODE_SWIPE_RIGHT:
                 intents.extend(self._on_mode_swipe_right(now))
@@ -682,12 +693,21 @@ class GestureState:
                 intents.extend(self._on_pen_mode_toggle(evt, now))
                 notes.append(f"pen_mode_toggle ({evt.reason})")
             elif evt.type == EVT_PEN_DRAW_BEGIN:
-                intents.extend(self._on_pen_draw_begin())
+                intents.extend(self._on_pen_draw_begin(evt, now))
                 notes.append("pen_draw_begin")
             elif evt.type == EVT_PEN_DRAW_UPDATE:
                 mv = self._on_pen_draw_update(evt, now)
                 if mv is not None:
                     intents.append(mv)
+                    logger.info(
+                        "[State] pen_draw_update -> move_to x=%s y=%s",
+                        mv.x, mv.y,
+                    )
+                else:
+                    logger.info(
+                        "[State] pen_draw_update -> no_move position=%s",
+                        evt.position,
+                    )
                 notes.append("pen_draw_update")
             elif evt.type == EVT_PEN_DRAW_END:
                 intents.extend(self._on_pen_draw_end())
@@ -863,10 +883,22 @@ class GestureState:
         # (active_continuous_action != "pen_draw"), allow cursor movement.
         # When pen_draw IS active, EVT_PEN_DRAW_UPDATE handles movement via
         # _on_pen_draw_update — skip here to avoid duplicate move intents.
-        if hand.palm_xy is not None and self.active_continuous_action != "pen_draw":
-            mv = self._maybe_move(hand.palm_xy, now)
+        # Use the 21-landmark centroid as the cursor anchor when available.
+        move_anchor = hand.centroid_xy if hand.centroid_xy is not None else hand.palm_xy
+        if move_anchor is not None and self.active_continuous_action != "pen_draw":
+            mv = self._maybe_move(move_anchor, now)
             if mv is not None:
                 intents.append(mv)
+                logger.info(
+                    "[State] presentation_pen fallback move -> x=%s y=%s gesture=%s",
+                    mv.x, mv.y, g,
+                )
+        elif move_anchor is not None:
+            logger.info(
+                "[State] presentation_pen fallback move SKIPPED "
+                "active_continuous_action=%s gesture=%s",
+                self.active_continuous_action, g,
+            )
 
         if intents:
             return intents, "Pen mode — active"
@@ -1271,33 +1303,49 @@ class GestureState:
         # Other modes: ignore.
         return intents
 
-    def _on_pen_draw_begin(self) -> List[ActionIntent]:
-        """Handle EVT_PEN_DRAW_BEGIN: press left mouse button once.
+    def _on_pen_draw_begin(self, evt: Optional[ControlEvent] = None,
+                            now: float = 0.0) -> List[ActionIntent]:
+        """Handle EVT_PEN_DRAW_BEGIN: move to anchor and press left mouse.
 
         Only acts in presentation_pen mode.  Idempotent — will not
-        re-press if already down.
+        re-press if already down.  When the event carries a position (e.g.
+        after a far hand reappearance), the cursor is first moved to that
+        camera-pixel location so the new stroke starts in the right place.
         """
         if self.mode != MODE_PRESENTATION_PEN:
             return []
         if self.is_left_mouse_down:
             return []
+        intents: List[ActionIntent] = []
+        if evt is not None and evt.position is not None:
+            px_pos = self._norm_to_camera_px(evt.position)
+            mv = self._maybe_move(px_pos, now)
+            if mv is not None:
+                intents.append(mv)
         self.is_left_mouse_down = True
         self.is_pinching = True
         self.active_continuous_action = "pen_draw"
-        return [ActionIntent.mouse_down(button="left")]
+        intents.append(ActionIntent.mouse_down(button="left"))
+        logger.info(
+            "[State] pen_draw_begin -> mouse_down active_continuous_action=%s",
+            self.active_continuous_action,
+        )
+        return intents
 
     def _on_pen_draw_update(self, evt: ControlEvent,
                              now: float) -> Optional[ActionIntent]:
         """Handle EVT_PEN_DRAW_UPDATE: move cursor while drawing.
 
-        Uses _maybe_move with the event's normalized palm position,
-        consistent with the legacy presentation_pen move path.
+        The tracker passes image-normalised positions (0--1); convert them
+        to camera pixels before _maybe_move so the screen mapping matches
+        the legacy HandInput path.
         """
         if self.mode != MODE_PRESENTATION_PEN:
             return None
         if evt.position is None:
             return None
-        return self._maybe_move(evt.position, now)
+        px_pos = self._norm_to_camera_px(evt.position)
+        return self._maybe_move(px_pos, now)
 
     def _on_pen_draw_end(self) -> List[ActionIntent]:
         """Handle EVT_PEN_DRAW_END: release left mouse button.
@@ -1313,6 +1361,7 @@ class GestureState:
         self.is_left_mouse_down = False
         self.is_pinching = False
         self.active_continuous_action = None
+        logger.info("[State] pen_draw_end -> mouse_up")
         return [ActionIntent.mouse_up(button="left")]
 
     # ── DEAD CODE: Legacy SolidWorks zoom — superseded by tracker zoom path ──
@@ -2020,6 +2069,17 @@ class GestureState:
                         self.is_left_mouse_down = True
                         self.active_continuous_action = "left_drag"
                         self._pinch_click_candidate = False
+
+    # ── coordinate conversion ──────────────────────────────────────────────
+    def _norm_to_camera_px(self, norm_xy: Tuple[float, float]) -> Tuple[float, float]:
+        """Convert image-normalised coordinates (0--1) to camera pixels.
+
+        The tracker works in normalised coordinates while _maybe_move expects
+        camera-pixel coordinates matching config.map_region().
+        """
+        cam_w = self.config.camera_width
+        cam_h = self.config.camera_height
+        return (norm_xy[0] * cam_w, norm_xy[1] * cam_h)
 
     # ── mouse move smoothing (legacy + spec migration) ─────────────────────
     def _maybe_move(self, palm_xy: tuple, now: float) -> Optional[ActionIntent]:

@@ -118,7 +118,7 @@ class GestureConfig:
     pinch_click_distance: float = 35.0
     # Spec: normalised landmark distance (0–1).
     pinch_threshold: float = 0.045
-    pinch_release_threshold: float = 0.065
+    pinch_release_threshold: float = 0.2
     pinch_zoom_deadzone: float = 0.01
 
     # ── Mouse movement ──────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ class GestureConfig:
     # Landmark low-pass filter: weight of the new observation (0-1).
     landmark_smoothing: float = 0.45
     # Motion constraints (all in normalised coordinates).
-    motion_deadzone: float = 0.015
+    motion_deadzone: float = 0.0001
     max_motion_step: float = 0.08      # max per-frame displacement
     max_motion_velocity: float = 1.5   # max normalised coords per second
     min_motion_duration: float = 0.12  # min dynamic action duration
