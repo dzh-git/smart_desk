@@ -252,11 +252,17 @@ class GestureController:
         )
         self._dispatch_intents(result.intents)
 
-        # If mode changed during this frame, reset tracker so stale
-        # attempts/sessions don't carry into the new mode.
-        mode_changed = self.state.mode != mode_before
-        if mode_changed:
+        # Phase 9: reset tracker when the state machine requests it.  The
+        # state machine sets this flag whenever a mode transition occurs
+        # (e.g. Victory HOLD toggling presentation <-> presentation_pen).
+        # Resetting immediately after step() clears the tracker's stable
+        # gesture/attempt state so the same pose cannot trigger the reverse
+        # switch on the very next frame.
+        if result.reset_tracker:
             self.tracker.reset()
+
+        # Keep the legacy mode-changed flag for recorder / debug display.
+        mode_changed = self.state.mode != mode_before
 
         # Record frame data AFTER state.step() so we capture the post-step
         # mode and whether a mode change occurred this frame.

@@ -322,12 +322,19 @@ class StepResult:
     Phase 2 adds ``status_text`` and ``debug_info`` per STATE_MACHINE_SPEC §17.
     ``note`` is kept as a read-only alias for ``status_text`` so the
     unmodified controller keeps working.
+
+    Phase 9 fix: ``reset_tracker`` tells the controller to reset the
+    GestureIntentTracker after this step.  This prevents a stable gesture
+    that just triggered a mode switch from immediately triggering the
+    reverse switch on the next frame (e.g. Victory HOLD toggling between
+    presentation and presentation_pen while the hand stays still).
     """
 
     mode: str = MODE_STANDBY
     intents: List[ActionIntent] = field(default_factory=list)
     status_text: str = ""
     debug_info: Dict[str, Any] = field(default_factory=dict)
+    reset_tracker: bool = False
 
     @property
     def note(self) -> str:
@@ -404,6 +411,18 @@ class GestureState:
         self._pinch_start_time: float = 0.0
         self._pinch_start_pos: Optional[Tuple[float, float]] = None
         self._pinch_click_candidate: bool = False
+
+        # ── Phase 9: pen mode toggle re-arm ─────────────────────────────────
+        # After a Victory HOLD toggles presentation <-> presentation_pen, the
+        # user must release Victory (switch to another gesture or no hand)
+        # before another Victory HOLD can toggle back.  This stops the mode
+        # from flip-flopping while the hand stays in the Victory pose.
+        self._pen_toggle_rearmed: bool = True
+
+        # ── Phase 9: tracker reset request ──────────────────────────────────
+        # Set by _enter_mode() whenever the mode changes; consumed by step()
+        # in the returned StepResult so the controller can reset the tracker.
+        self._needs_tracker_reset: bool = False
 
         # ── Phase 4: mouse_scroll tracking (spec §9.3) ──────────────────────
         # Last y position used for per-frame dy calculation in scroll mode.
@@ -525,6 +544,10 @@ class GestureState:
         gname = hand.gesture_name
         self._update_hold(gname, now)
 
+        # ── Phase 9: re-arm pen mode toggle when gesture leaves Victory ──────
+        if gname != G_VICTORY:
+            self._pen_toggle_rearmed = True
+
         # ── Process tracker events first (migrated path) ───────────────────
         event_intents: List[ActionIntent] = []
         event_note = ""
@@ -538,7 +561,13 @@ class GestureState:
             intents = event_intents + intents
             if event_note:
                 note = f"{event_note} | {note}" if note else event_note
-            return StepResult(self.mode, intents, note, self._debug_info(hand, now))
+            # Phase 9: consume tracker-reset request and surface it to controller.
+            reset_tracker = self._needs_tracker_reset
+            self._needs_tracker_reset = False
+            return StepResult(
+                self.mode, intents, note, self._debug_info(hand, now),
+                reset_tracker=reset_tracker,
+            )
 
         # Hand present.
         self.last_hand_seen = now
@@ -566,7 +595,14 @@ class GestureState:
         if event_note:
             note = f"{event_note} | {note}" if note else event_note
 
-        return StepResult(self.mode, all_intents, note, self._debug_info(hand, now))
+        # Phase 9: consume tracker-reset request and surface it to controller.
+        reset_tracker = self._needs_tracker_reset
+        self._needs_tracker_reset = False
+
+        return StepResult(
+            self.mode, all_intents, note, self._debug_info(hand, now),
+            reset_tracker=reset_tracker,
+        )
 
     # ═══════════════════════════════════════════════════════════════════════
     # Tracker event handling (migrated path)
@@ -1203,15 +1239,23 @@ class GestureState:
         - presentation_pen → presentation (Ctrl+A, release left mouse if held).
         - other modes: ignored.
         Cooldown-gated to prevent rapid toggling.
+
+        Phase 9 fix: requires ``self._pen_toggle_rearmed`` to be True.  After
+        a successful toggle the flag is cleared; it is only re-armed when the
+        user releases Victory (hand becomes no hand or a different gesture).
+        This prevents flip-flopping while the hand stays in the Victory pose.
         """
         cfg = self.config
         if not self._cooldown_ok(_COOLDOWN_PEN_TOGGLE, now):
+            return []
+        if not self._pen_toggle_rearmed:
             return []
 
         intents: List[ActionIntent] = []
         if self.mode == MODE_PRESENTATION:
             self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
             self._enter_mode(MODE_PRESENTATION_PEN, now)
+            self._pen_toggle_rearmed = False
             intents.append(ActionIntent.hotkey("ctrl", "p"))
         elif self.mode == MODE_PRESENTATION_PEN:
             self._set_cooldown(_COOLDOWN_PEN_TOGGLE, cfg.pen_toggle_cooldown, now)
@@ -1222,6 +1266,7 @@ class GestureState:
             self.is_pinching = False
             self.active_continuous_action = None
             self._enter_mode(MODE_PRESENTATION, now)
+            self._pen_toggle_rearmed = False
             intents.append(ActionIntent.hotkey("ctrl", "a"))
         # Other modes: ignore.
         return intents
@@ -1489,6 +1534,9 @@ class GestureState:
         """Switch to *new_mode*, resetting continuous state (spec §2.4)."""
         if new_mode != self.mode:
             self.previous_mode = self.mode
+            # Phase 9: request tracker reset on any real mode change so the
+            # controller can clear stale stable gestures / attempts.
+            self._needs_tracker_reset = True
         self._reset_continuous_state()
         self.mode = new_mode
         # Reset hold tracker so a fresh gesture is required in the new mode.

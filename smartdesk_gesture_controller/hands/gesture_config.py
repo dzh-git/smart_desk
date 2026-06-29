@@ -126,7 +126,7 @@ class GestureConfig:
     mouse_smoothing: float = 0.35       # spec (0–1, higher = smoother)
     mouse_speed: float = 1.0
     mouse_max_step_px: int = 80
-    mouse_fps: int = 20                 # throttle pyautogui.moveTo calls
+    mouse_fps: int = 20                 # throttle moveTo calls
     drag_cooldown: float = 0.3          # legacy: stabilization before entering drag
     drag_hold_time: float = 0.35        # spec: pinch hold before drag
     single_cooldown: float = 0.25       # legacy: stabilization before single-finger mouse
@@ -268,15 +268,15 @@ def default_config() -> GestureConfig:
 
 
 def resolve_screen_size(config: GestureConfig) -> GestureConfig:
-    """Populate ``screen_size`` from pyautogui if available.
+    """Populate ``screen_size`` from the SendInput helper if available.
 
     Kept separate from ``default_config`` so unit tests can construct a config
-    without importing pyautogui (which triggers display initialization).
+    without importing ``sendinput_utils`` (which fails on non-Windows).
     """
     try:
-        import pyautogui
+        from . import sendinput_utils
 
-        size = pyautogui.size()  # (width, height)
+        size = sendinput_utils.size()  # (width, height)
         return replace(config, screen_size=(int(size[0]), int(size[1])))
     except Exception:
         # Fall back to a common resolution; the controller will warn.

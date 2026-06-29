@@ -417,6 +417,7 @@ key_up("shift")    key_up("ctrl")       key_up("alt")
 4. 仍无效时加 --start-unpaused 启动：
    .venv\Scripts\python -m hands.gesture_controller --start-unpaused
 ```
+
 ### PPT 一次挥手翻多页
 
 调大 `page_turn_cooldown`（如 1.2 秒）。

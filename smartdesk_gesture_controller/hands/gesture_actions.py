@@ -1,6 +1,6 @@
-"""Thin wrapper around pyautogui system control actions.
+"""Thin wrapper around Windows SendInput system control actions.
 
-Why a wrapper instead of calling ``pyautogui`` directly from the state machine:
+Why a wrapper instead of calling ``SendInput`` directly from the state machine:
     1. Every action is gated by ``enable_system_mouse`` so the controller can
        run as a dry-run for demos and tests without hijacking the real cursor.
     2. The hot-path mouse-move throttle and the safety ``release_all`` live in
@@ -8,9 +8,10 @@ Why a wrapper instead of calling ``pyautogui`` directly from the state machine:
     3. Tests inject a fake driver and assert on call sequences instead of
        touching the real display.
 
-The real ``pyautogui`` import is deferred to ``_real_driver()`` so that simply
-importing this module (e.g. in tests on a headless CI) does not trigger
-pyautogui's failsafe / display initialization.
+The real Windows ``SendInput`` implementation is imported via ``sendinput_utils``
+and returned by ``_real_driver()``.  The module is only usable on Windows; on
+other platforms the import raises so that headless CI immediately fails fast
+if someone tries to use system mouse there.
 
 Phase 1 additions (ACTION_INTENT_SPEC.md):
     * ``execute(intents)`` — unified entry point accepting a single
@@ -23,9 +24,11 @@ Phase 1 additions (ACTION_INTENT_SPEC.md):
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
+from . import sendinput_utils
 from .gesture_state import ActionIntent
 
 logger = logging.getLogger("hands.actions")
@@ -62,7 +65,7 @@ class FakeDriver:
         self.calls: List[_Call] = []
         self.events: List[tuple] = []
 
-    # ── pyautogui-compatible methods ────────────────────────────────────────
+    # ── driver-compatible methods (mirroring pyautogui/SendInput signatures) ─
     def moveTo(self, *args: Any, **kwargs: Any) -> None:
         self.calls.append(_Call("moveTo", args, kwargs))
         # Extract x, y from positional or keyword args.
@@ -115,7 +118,7 @@ class FakeDriver:
         amount = args[0] if args else kwargs.get("amount", 0)
         self.events.append(("scroll", amount))
 
-    def size(self) -> Tuple[int, int]:  # pyautogui ships this too
+    def size(self) -> Tuple[int, int]:  # matches the pyautogui / SendInput signature
         return (1920, 1080)
 
     # ── convenience ─────────────────────────────────────────────────────────
@@ -132,20 +135,24 @@ class FakeDriver:
 
 
 def _real_driver() -> Any:
-    """Import pyautogui lazily and configure it for safety."""
-    import pyautogui
+    """Return the Windows SendInput driver module.
 
-    # Disable the move-to-corner failsafe by default (the gesture cursor can
-    # legitimately approach corners), but keep our own Ctrl+Alt+Q escape hatch.
-    pyautogui.FAILSAFE = False
-    return pyautogui
+    ``sendinput_utils`` implements the same functions used by ``ActionLayer``:
+    ``moveTo``, ``moveRel``, ``click``, ``mouseDown``, ``mouseUp``, ``press``,
+    ``hotkey``, ``keyDown``, ``keyUp``, ``scroll``, ``size``.
+    """
+    # The module import is unconditional; guard platform at the top level to
+    # surface a clear ImportError on non-Windows before any action is taken.
+    if sys.platform != "win32":
+        raise ImportError("sendinput_utils requires Windows")
+    return sendinput_utils
 
 
 class ActionLayer:
     """All OS-level side effects the gesture controller can perform.
 
     Phase 1: the layer accepts ``ActionIntent`` objects via :meth:`execute`
-    and dispatches them to the appropriate pyautogui / FakeDriver call.
+    and dispatches them to the appropriate SendInput / FakeDriver call.
     Existing positional methods (``move_to``, ``mouse_down`` …) are kept so
     the unmodified controller continues to work.
     """
@@ -169,7 +176,7 @@ class ActionLayer:
     # ── driver wiring ───────────────────────────────────────────────────────
     def _py(self) -> Any:
         if self._driver is None:
-            self._driver = _real_driver()
+            self._driver = sendinput_utils
         return self._driver
 
     def using_fake_driver(self) -> bool:
@@ -371,6 +378,6 @@ class ActionLayer:
         try:
             getattr(self._py(), name)(*args, **kwargs)
         except Exception:
-            # Never let a pyautogui error kill the control loop; the safety
+            # Never let a SendInput error kill the control loop; the safety
             # layer above still owes the user a release_all on the way out.
             logger.exception("action %s failed", name)
