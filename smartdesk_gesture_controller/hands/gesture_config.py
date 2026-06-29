@@ -111,7 +111,7 @@ class GestureConfig:
     swipe_threshold_y_limit: float = 0.12
     swipe_time_window: float = 0.8
     # Phase 9: ILoveYou swipe threshold for mode switching.
-    iloveyou_swipe_threshold_x: float = 0.22
+    iloveyou_swipe_threshold_x: float = 0.18
 
     # ── Pinch ───────────────────────────────────────────────────────────────
     # Legacy: camera-px distance between thumb(4) and index(8) tips.
@@ -153,7 +153,7 @@ class GestureConfig:
     gesture_enter_window_frames: int = 5
     # Grace frames for classification jitter while an attempt/session is active.
     gesture_keep_grace_frames: int = 6
-    gesture_enter_confidence: float = 0.70
+    gesture_enter_confidence: float = 0.65
     gesture_keep_confidence: float = 0.45
     # Max continuous classification failure before cancelling attempt/session.
     intent_lost_timeout: float = 0.25
