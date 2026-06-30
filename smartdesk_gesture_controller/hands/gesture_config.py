@@ -50,6 +50,7 @@ class GestureConfig:
     """
 
     # ── Camera ──────────────────────────────────────────────────────────────
+    camera_driver: str = "industrial"  # "industrial" or "opencv"
     camera_index: int = 0
     camera_width: int = 640
     camera_height: int = 480
@@ -63,6 +64,33 @@ class GestureConfig:
     camera_gain: int = 10              # CAP_PROP_GAIN (range 0~100 on this camera)
     # Legacy alias kept for controller compat (controller reads cam_width/cam_height).
     map_margin: int = 50
+
+    # ── Industrial camera (MV SDK) ──────────────────────────────────────────
+    industrial_sdk_module: str = "MvCameraControl_class"
+    industrial_camera_index: int = 0
+    industrial_width: int = 640
+    industrial_height: int = 480
+    industrial_pixel_format: str = ""
+    industrial_fps: float = 30.0
+    industrial_get_timeout_ms: int = 2000
+    # When True and the MV SDK fails to load or no device is found, silently
+    # fall back to the OpenCV camera driver.  When False, the controller
+    # reports the industrial-camera error and exits.
+    industrial_fallback_to_opencv: bool = True
+    # Number of internal image buffers allocated by the SDK.
+    industrial_image_node_num: int = 10
+    # Exposure time in microseconds (only used when industrial_exposure_auto is False).
+    industrial_exposure_time: float = 80000.0
+    # Set True to let the camera auto-adjust exposure.  False = manual.
+    industrial_exposure_auto: bool = False
+    # Gain in dB.  Negative means "do not set".
+    industrial_gain: float = -1.0
+    # True to let the camera auto-adjust gain.  False = manual.
+    industrial_gain_auto: bool = False
+    # True to let the camera auto white-balance.  False = manual.
+    industrial_balance_white_auto: bool = False
+    # Whether to attempt to configure the camera ROI to camera_width/camera_height.
+    industrial_set_resolution: bool = False
 
     # ── Recognizer confidence ───────────────────────────────────────────────
     min_hand_detection_confidence: float = 0.7
@@ -290,6 +318,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--camera", type=int, default=0, help="camera index (default 0)")
     parser.add_argument(
+        "--camera-driver",
+        choices=("industrial", "opencv"),
+        default=None,
+        help="camera backend: 'industrial' (default) uses the MV SDK, "
+             "'opencv' uses cv2.VideoCapture",
+    )
+    parser.add_argument(
+        "--no-industrial-fallback",
+        action="store_true",
+        help="when using the industrial driver, do not fall back to OpenCV if SDK/unavailable",
+    )
+    parser.add_argument(
+        "--industrial-exposure",
+        type=float,
+        default=None,
+        help="industrial camera manual exposure time in microseconds",
+    )
+    parser.add_argument(
         "--mode",
         choices=CLI_MODES,
         default=MODE_STANDBY,
@@ -328,6 +374,12 @@ def config_from_args(argv: list[str] | None = None) -> GestureConfig:
     args = build_arg_parser().parse_args(argv)
     config = default_config()
     config.camera_index = args.camera
+    if args.camera_driver is not None:
+        config.camera_driver = args.camera_driver
+    if args.no_industrial_fallback:
+        config.industrial_fallback_to_opencv = False
+    if args.industrial_exposure is not None:
+        config.industrial_exposure_time = args.industrial_exposure
     config.initial_mode = args.mode
     config.enable_system_mouse = not args.no_mouse
     config.dry_run = args.no_mouse

@@ -1,4 +1,4 @@
-﻿"""Main controller facade — wires recognition → state → actions, runs the loop.
+"""Main controller facade — wires recognition → state → actions, runs the loop.
 
 This is the only module that touches the camera (cv2) and the global hotkey
 listener (pynput, with a cv2-only fallback). Everything else is injected, so
@@ -27,6 +27,7 @@ import time
 from typing import Any, Optional
 
 from .gesture_actions import ActionLayer
+from .gesture_camera import create_camera
 from .gesture_config import (
     GestureConfig,
     MODE_PRESENTATION,
@@ -113,6 +114,7 @@ class GestureController:
         # External resources we own (and must release in _shutdown).
         self._cap: Optional[Any] = cap
         self._owns_cap = cap is None
+        self._camera_instance: Optional[Any] = None
         self._hotkey_listener: Optional[Any] = None
         self._hotkey_backend: Optional[str] = None
         self._hotkey_handles: list = []
@@ -207,11 +209,22 @@ class GestureController:
     def _loop(self) -> None:
         cap = self._cap
         assert cap is not None
+        # Allow a few consecutive read failures before giving up.  Industrial
+        # cameras may need a short warm-up after StartGrabbing, and transient
+        # USB/GigE frame drops should not kill the session immediately.
+        max_failures = 10
+        failures = 0
         while self._running:
             ok, img = cap.read()
             if not ok:
-                logger.warning("camera read failed; exiting loop")
-                break
+                failures += 1
+                if failures >= max_failures:
+                    logger.warning("camera read failed %d times; exiting loop", failures)
+                    break
+                logger.debug("camera read transient failure (%d/%d); retrying", failures, max_failures)
+                time.sleep(0.01)
+                continue
+            failures = 0
 
             # tracker uses monotonic time for consistent interval
             # measurement; legacy state machine also receives it (compatible).
@@ -336,11 +349,12 @@ class GestureController:
         except Exception:  # pragma: no cover
             logger.exception("recognizer close failed")
 
-        if self._owns_cap and self._cap is not None:
+        if self._owns_cap and self._camera_instance is not None:
             try:
-                self._cap.release()
+                self._camera_instance.release()
             except Exception:  # pragma: no cover
                 logger.exception("camera release failed")
+        self._camera_instance = None
         self._cap = None
 
         if self.config.show_debug_window:
@@ -374,7 +388,6 @@ class GestureController:
         """
         if not self.config.enable_hotkeys:
             logger.info("hotkeys disabled by config")
-            print("  hotkey backend: disabled")
             return
 
         # Primary: keyboard library.
@@ -387,9 +400,8 @@ class GestureController:
 
         # Final fallback: user can still control via the debug window.
         logger.warning("global hotkeys unavailable — use debug window keys")
-        print("  [WARN] Global hotkeys could not be installed.")
-        print("         Click the debug window and press 'p' or Space to resume")
-        print("         Press 'q' or Esc in the debug window to quit")
+        logger.warning("Click the debug window and press 'p' or Space to resume")
+        logger.warning("Press 'q' or Esc in the debug window to quit")
 
     def _install_keyboard_hotkeys(self) -> bool:
         """Try to install global hotkeys using the ``keyboard`` library.
@@ -411,9 +423,8 @@ class GestureController:
             self._hotkey_handles = [handle_pause, handle_exit]
             self._hotkey_backend = "keyboard"
             logger.info("global hotkeys active (keyboard): %s / %s", pause_hotkey, exit_hotkey)
-            print("  hotkey backend: keyboard")
-            print(f"    pause/resume: {pause_hotkey}")
-            print(f"    emergency exit: {exit_hotkey}")
+            logger.info("  pause/resume: %s", pause_hotkey)
+            logger.info("  emergency exit: %s", exit_hotkey)
             return True
         except Exception:
             logger.exception("keyboard.add_hotkey failed — falling back")
@@ -473,7 +484,6 @@ class GestureController:
             self._hotkey_listener = listener
             self._hotkey_backend = "pynput"
             logger.info("global hotkeys active (pynput fallback): %s / %s", self.config.hotkey_toggle_pause, self.config.hotkey_emergency_exit)
-            print("  hotkey backend: pynput (fallback)")
             return True
         except Exception:  # pragma: no cover - environment dependent
             logger.exception("failed to install pynput hotkey listener")
@@ -764,45 +774,18 @@ class GestureController:
 
     # ── camera ─────────────────────────────────────────────────────────────
     def _open_camera(self) -> None:
-        import cv2
-        import time
+        """Open camera through the configured driver factory.
 
-        # Force DirectShow backend for reliable manual exposure control on Windows.
-        cap = cv2.VideoCapture(self.config.camera_index, cv2.CAP_DSHOW)
-        if not cap.isOpened():
-            raise RuntimeError(f"camera index {self.config.camera_index} could not be opened")
+        If an externally provided ``cap`` was passed to ``__init__``,
+        that instance is reused unchanged.
+        """
+        if self._cap is not None:
+            # Caller provided an external camera instance (tests / mocks).
+            self._camera_instance = self._cap
+            return
 
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.cam_width)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.cam_height)
-
-        # Disable auto exposure and set manual exposure time.
-        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, self.config.camera_auto_exposure)
-        cap.set(cv2.CAP_PROP_EXPOSURE, self.config.camera_exposure)
-        # Adjust brightness and gain (driver-dependent ranges).
-        cap.set(cv2.CAP_PROP_BRIGHTNESS, self.config.camera_brightness)
-        cap.set(cv2.CAP_PROP_GAIN, self.config.camera_gain)
-        time.sleep(1)
-        # Read back actual values — drivers may silently ignore or clamp.
-        actual_auto = cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)
-        actual_exp = cap.get(cv2.CAP_PROP_EXPOSURE)
-        actual_fps_cfg = cap.get(cv2.CAP_PROP_FPS)
-        actual_brightness = cap.get(cv2.CAP_PROP_BRIGHTNESS)
-        actual_gain = cap.get(cv2.CAP_PROP_GAIN)
-        logger.info(
-            "camera exposure: requested auto=%s exp=%s brightness=%s gain=%s | "
-            "actual auto=%s exp=%s brightness=%s gain=%s fps=%s",
-            self.config.camera_auto_exposure,
-            self.config.camera_exposure,
-            self.config.camera_brightness,
-            self.config.camera_gain,
-            actual_auto,
-            actual_exp,
-            actual_brightness,
-            actual_gain,
-            actual_fps_cfg,
-        )
-
-        self._cap = cap
+        self._camera_instance = create_camera(self.config)
+        self._cap = self._camera_instance
 
     # ── misc ───────────────────────────────────────────────────────────────
     def _compute_fps(self, now: float) -> float:
@@ -820,33 +803,75 @@ class GestureController:
                 logger.exception("status_server.update failed")
 
     def _print_banner(self) -> None:
-        print("=" * 60)
-        print("SmartDesk Gesture Controller")
-        print(f"  mode on activate: {self.config.initial_mode}")
-        print(f"  system mouse:     {'ENABLED' if self.config.enable_system_mouse else 'DRY-RUN'}")
-        print(f"  debug window:     {'on' if self.config.show_debug_window else 'off'}")
-        print(f"  status server:    {'ws://%s:%s' % (self.config.status_server_host, self.config.status_server_port) if self.status_server else 'off'}")
-        print(f"  pause hotkey:     {self.config.hotkey_toggle_pause}")
-        print(f"  exit hotkey:      {self.config.hotkey_emergency_exit}")
+        """Print startup banner to the log file instead of the terminal."""
         gr_status = "on" if self.config.use_gesture_recognizer else "off (rule fallback)"
-        print(f"  gesture recognizer: {gr_status}")
+        logger.info("=" * 60)
+        logger.info("SmartDesk Gesture Controller")
+        logger.info("  camera driver:  %s", self.config.camera_driver)
+        if self.config.camera_driver == "industrial":
+            logger.info("  camera index:   %s", self.config.industrial_camera_index)
+        else:
+            logger.info("  camera index:   %s", self.config.camera_index)
+        logger.info("  mode on activate: %s", self.config.initial_mode)
+        logger.info("  system mouse:     %s", "ENABLED" if self.config.enable_system_mouse else "DRY-RUN")
+        logger.info("  debug window:     %s", "on" if self.config.show_debug_window else "off")
+        logger.info(
+            "  status server:    %s",
+            "ws://%s:%s" % (self.config.status_server_host, self.config.status_server_port)
+            if self.status_server else "off",
+        )
+        logger.info("  pause hotkey:     %s", self.config.hotkey_toggle_pause)
+        logger.info("  exit hotkey:      %s", self.config.hotkey_emergency_exit)
+        logger.info("  gesture recognizer: %s", gr_status)
         if self.config.show_debug_window:
-            print(f"  debug keys:       '{self.config.exit_key}'/Esc = quit, p/Space = pause/resume")
-        print("Gestures:")
-        print("  presentation: open palm swipe left/right = prev/next, fist = standby")
-        print("  mouse:        pointing up = move, pinch = click/drag,")
-        print("                victory hold = scroll mode, thumb down = right click,")
-        print("                fist = exit mode")
-        print("  solidworks:   open palm = rotate, victory = pan, pinch = zoom,")
-        print("                thumb up = fit, iloveyou = isometric, fist = exit")
-        print("=" * 60)
+            logger.info(
+                "  debug keys:       '%s'/Esc = quit, p/Space = pause/resume",
+                self.config.exit_key,
+            )
+        logger.info("Gestures:")
+        logger.info("  presentation: open palm swipe left/right = prev/next, fist = standby")
+        logger.info("  mouse:        pointing up = move, pinch = click/drag,")
+        logger.info("                victory hold = scroll mode, thumb down = right click,")
+        logger.info("                fist = exit mode")
+        logger.info("  solidworks:   open palm = rotate, victory = pan, pinch = zoom,")
+        logger.info("                thumb up = fit, iloveyou = isometric, fist = exit")
+        logger.info("=" * 60)
 
 
 def main(argv: Optional[list] = None) -> int:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    """Entry point: configure logging to file and console, then start controller.
+
+    INFO-level logs are written to ``logs/gesture_controller_YYYYMMDD_HHMMSS.log``.
+    The console only shows WARNING and above, so normal startup/hand tracking
+    status does not clutter the terminal window.
+    """
+    import os
+    from datetime import datetime
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logs_dir = os.path.join(project_root, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = os.path.join(logs_dir, f"gesture_controller_{timestamp}.log")
+
+    log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    formatter = logging.Formatter(log_format)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    # Remove any default handlers so we can install our own.
+    root_logger.handlers.clear()
+
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
     config = config_from_args(argv)
     controller = GestureController(config=config)
     return controller.start()
