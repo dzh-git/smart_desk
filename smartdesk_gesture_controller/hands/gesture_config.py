@@ -50,7 +50,7 @@ class GestureConfig:
     """
 
     # ── Camera ──────────────────────────────────────────────────────────────
-    camera_driver: str = "industrial"  # "industrial" or "opencv"
+    camera_driver: str = "opencv"  # "industrial" or "opencv"
     camera_index: int = 0
     camera_width: int = 640
     camera_height: int = 480
@@ -231,6 +231,14 @@ class GestureConfig:
     status_server_port: int = 8765
     status_broadcast_interval: float = 0.2  # seconds between broadcasts
 
+    # ── Native desktop overlay ──────────────────────────────────────────────
+    overlay_enabled: bool = True
+    overlay_click_through: bool = True        # WS_EX_TRANSPARENT: mouse clicks pass through
+    overlay_topmost_interval: float = 1.0     # seconds between topmost re-asserts
+    overlay_update_interval: float = 0.05     # seconds between UI refreshes (20 fps)
+    overlay_width: int = 300                  # card width in pixels
+    overlay_card_alpha: float = 0.72          # card background opacity (0-1)
+
     # Derived (filled lazily; not set by argparse)
     screen_size: Tuple[int, int] = field(default=(0, 0))
 
@@ -357,6 +365,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="disable the ws://127.0.0.1:8765 status broadcast server",
     )
     parser.add_argument(
+        "--no-overlay",
+        action="store_true",
+        help="disable the native desktop overlay window (falls back to browser card)",
+    )
+    parser.add_argument(
         "--no-pause-on-start",
         action="store_true",
         help="start already active instead of paused in standby",
@@ -385,6 +398,7 @@ def config_from_args(argv: list[str] | None = None) -> GestureConfig:
     config.dry_run = args.no_mouse
     config.show_debug_window = not args.no_debug
     config.status_server_enabled = not args.no_server
+    config.overlay_enabled = not args.no_overlay
     # Only override the dataclass defaults when the user explicitly requests
     # no-pause via CLI flags. Without these flags, keep the dataclass default
     # (pause_on_start=False) so double-clicking the .bat does not force pause.

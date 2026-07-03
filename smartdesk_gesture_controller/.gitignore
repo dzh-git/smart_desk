@@ -31,4 +31,12 @@ Desktop.ini
 
 # Logs
 *.log
+logs/
 test_write.txt
+
+# Test artifacts
+.pytest_cache/
+.pytest_tmp/
+
+# Working directory (temporary plans, scratch files)
+working/

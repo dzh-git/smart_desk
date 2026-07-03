@@ -61,13 +61,14 @@ SolidWorks 可用或至少有可替代窗口用于鼠标中键测试
 ```text
 mediapipe
 opencv-python
-pyautogui
 pywin32
 keyboard>=0.13.5
 pynput (可选兼容)
 websockets
 pytest
 ```
+
+> 注意：项目已从 pyautogui 迁移到 `sendinput_utils.py`（Windows SendInput 直接封装），不再依赖 pyautogui。
 
 ### 3.3 安全要求
 

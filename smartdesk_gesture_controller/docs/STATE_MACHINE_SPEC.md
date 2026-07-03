@@ -22,13 +22,13 @@
 
 ### 2.1 状态机只输出动作意图，不直接执行动作
 
-`gesture_state.py` 不应直接调用 PyAutoGUI。
+`gesture_state.py` 不应直接调用 SendInput。
 
 第一阶段采用混合输入：已迁移功能不再由状态机直接消费帧级手势，未迁移功能继续使用兼容路径。
 
 ```text
-ControlEvent[]（模式切换、PPT 翻页、SolidWorks 旋转/平移/缩放）
-HandInput（PPT 画笔、Closed_Fist、暂停恢复等未迁移功能的兼容路径）
+ControlEvent[]（模式切换、PPT 翻页、SolidWorks 旋转/平移/缩放、PPT 画笔绘制、Victory 画笔切换、Closed_Fist 退出）
+HandInput（presentation_pen 中的 Pointing_Up fallback move、暂停恢复等未迁移功能的兼容路径）
 当前 mode
 当前时间 now
 cooldown 状态
@@ -296,7 +296,7 @@ Standby: ILoveYou Swipe Right = PPT, Swipe Left = SolidWorks, Fist = Exit
 | `page_swipe_right` | attempt 已提交且不在冷却 | `press("right")`               | `presentation`     |
 | `page_swipe_left`  | attempt 已提交且不在冷却 | `press("left")`                | `presentation`     |
 | `Victory`       | 保持 0.5 秒             | `hotkey("ctrl", "p")`          | `presentation_pen` |
-| `mode_swipe_right` | attempt 已提交且不在冷却 | `press("esc")` + `release_all` | `standby`         |
+| `mode_swipe_right` | attempt 已提交且不在冷却 | `release_all` | `standby`         |
 | `mode_swipe_left`  | attempt 已提交且不在冷却 | `release_all`                    | `solidworks`      |
 | `Closed_Fist`   | 保持 0.8 秒             | `press("esc")` + `release_all` | `standby`          |
 | `raw_gesture=None` 且 `hand_present=True` | 短暂分类失败 | 无动作 | `presentation` |
@@ -351,15 +351,15 @@ hotkey("ctrl", "p")
 
 ### 7.3 允许动作
 
-| 手势            | 条件                                 | 输出动作                                                | 新状态                |
+| 手势 / 事件 | 条件                                 | 输出动作                                                | 新状态                |
 | ------------- | ---------------------------------- | --------------------------------------------------- | ------------------ |
-| `Pointing_Up` | 移动                                 | `move_to` 或 `move_rel`                              | `presentation_pen` |
-| `PINCH` 开始    | pinch_distance < threshold         | `mouse_down("left")`                                | `presentation_pen` |
-| `PINCH` 保持    | 移动                                 | `move_to` 或 `move_rel`                              | `presentation_pen` |
-| `PINCH` 释放    | pinch_distance > release_threshold | `mouse_up("left")`                                  | `presentation_pen` |
-| `Victory`     | 保持 0.5 秒                           | `mouse_up("left")` + `hotkey("ctrl", "a")`          | `presentation`     |
-| `Closed_Fist` | 保持 0.8 秒                           | `mouse_up("left")` + `press("esc")` + `release_all` | `standby`          |
-| `None`        | 每次连续丢失首次超过 hand_lost_timeout | 按需 `mouse_up("left")` + `release_all`              | `presentation_pen` |
+| `Pointing_Up` / 任意手势 | 移动（非 pen_draw session 活动时） | `move_to`（使用 21 点质心 `centroid_xy` 作为锚点） | `presentation_pen` |
+| `pen_draw_begin` | pinch_distance_norm < pinch_threshold | `mouse_down("left")` + 移动到锚点                | `presentation_pen` |
+| `pen_draw_update` | pen_draw session 活动 | `move_to`（质心位置）                              | `presentation_pen` |
+| `pen_draw_end` | pinch_distance_norm > pinch_release_threshold | `mouse_up("left")`                                  | `presentation_pen` |
+| `Victory` HOLD | 保持 0.5 秒                           | `mouse_up("left")` + `hotkey("ctrl", "a")`          | `presentation`     |
+| `Closed_Fist` HOLD | 保持 0.8 秒                           | `mouse_up("left")` + `press("esc")` + `release_all` | `standby`          |
+| `hand_lost_timeout` | 每次连续丢失首次超过 hand_lost_timeout | 按需 `mouse_up("left")` + `release_all`              | `presentation_pen` |
 
 **画笔切换说明**：
 
@@ -374,9 +374,13 @@ Victory 在 presentation_pen 中表示退出画笔。
 
 ```text
 is_left_mouse_down
+is_pinching
 last_pointer_position
-last_pinch_state
+active_continuous_action  # "pen_draw" when drawing
+_pen_toggle_rearmed       # Phase 9: Victory HOLD 重新布防标志
 ```
+
+画笔绘制使用 21 点质心 `centroid_xy` 作为光标锚点（而非单指尖），使指针跟随手的整体位置。手短暂丢失后重连时，如果新质心与旧 session 最后位置距离 > 0.1，会结束旧笔画并立即新建 session，避免画出跨越线。
 
 ### 7.5 退出条件
 
@@ -468,7 +472,6 @@ mouse_scroll（已废弃）
 旋转
 平移
 缩放
-缩放全部拟合
 退出
 ```
 
@@ -490,9 +493,9 @@ presentation 模式下 ILoveYou 左滑，进入 solidworks
 | `pan_update`   | pan session 活动 | `move_rel(dx, dy)`                           | `solidworks` |
 | `pan_end`     | session 正常结束 | `mouse_up("middle")` + `key_up("shift")`     | `solidworks` |
 | `zoom_update`     | pinch_distance 变化超过死区 | `scroll(amount)`                            | `solidworks` |
-| `mode_swipe_right` | attempt 已提交且不在冷却 | `release_all`                                    | `presentation` |
-| `mode_swipe_left`  | attempt 已提交且不在冷却 | `release_all`                                    | `standby`     |
-| `Closed_Fist`    | 保持 0.8 秒               | `release_all`                                | `standby`    |
+| `mode_swipe_right` | attempt 已提交且不在冷却 | 结束 SW 连续动作（无 `release_all`）                  | `presentation` |
+| `mode_swipe_left`  | attempt 已提交且不在冷却 | 结束 SW 连续动作 + `release_all`                    | `standby`     |
+| `Closed_Fist`    | 保持 0.8 秒               | 结束 SW 连续动作 + `press("esc")` + `release_all`    | `standby`    |
 | `hand_lost_timeout` | 每次连续真正手丢失首次超过 hand_loss_timeout | 按需释放中键/Shift + `release_all`           | `solidworks` |
 
 ### 10.4 连续动作状态
@@ -608,14 +611,14 @@ Paused: Ctrl+Alt+G = Resume to Standby, Ctrl+Alt+Q = Quit
 | `standby`          | `mode_swipe_right` | `presentation`     | 无系统动作                                             |
 | `standby`          | `mode_swipe_left`  | `solidworks`       | 无系统动作                                             |
 | `presentation`     | `Victory` HOLD     | `presentation_pen` | `hotkey("ctrl", "p")`                               |
-| `presentation`     | `mode_swipe_right` | `standby`          | `press("esc")` + `release_all`                      |
+| `presentation`     | `mode_swipe_right` | `standby`          | `release_all`                                       |
 | `presentation`     | `mode_swipe_left`  | `solidworks`       | `release_all`                                       |
 | `presentation`     | `Closed_Fist` HOLD | `standby`          | `press("esc")` + `release_all`                      |
 | `presentation_pen` | `Victory` HOLD     | `presentation`     | `mouse_up("left")` + `hotkey("ctrl", "a")`          |
 | `presentation_pen` | `Closed_Fist` HOLD | `standby`          | `mouse_up("left")` + `press("esc")` + `release_all` |
-| `solidworks`       | `mode_swipe_right` | `presentation`     | `release_all`                                       |
-| `solidworks`       | `mode_swipe_left`  | `standby`          | `release_all`                                       |
-| `solidworks`       | `Closed_Fist` HOLD | `standby`          | `release_all`                                       |
+| `solidworks`       | `mode_swipe_right` | `presentation`     | 结束 SW 连续动作（无 `release_all`）                    |
+| `solidworks`       | `mode_swipe_left`  | `standby`          | 结束 SW 连续动作 + `release_all`                       |
+| `solidworks`       | `Closed_Fist` HOLD | `standby`          | 结束 SW 连续动作 + `press("esc")` + `release_all`      |
 | 任意状态               | `Ctrl+Alt+G`       | `paused`           | `release_all`                                       |
 | `paused`           | `Ctrl+Alt+G`       | `standby`          | 无新增系统动作；进入 paused 时已经释放                         |
 | 任意状态               | `Ctrl+Alt+Q`       | 程序退出               | `release_all`                                       |
@@ -725,7 +728,7 @@ solidworks：保持 solidworks，但释放中键和 Shift
 
 ### 14.3 单次触发与重新布防
 
-当前实现通过 `_hand_loss_released` 锁存避免在每个无手帧重复执行 PyAutoGUI 释放：
+当前实现通过 `_hand_loss_released` 锁存避免在每个无手帧重复执行 SendInput 释放：
 
 ```text
 首次超过超时：输出完整释放序列，并将 _hand_loss_released 置为 True
@@ -778,12 +781,15 @@ now >= cooldown_until
 模式切换：ILoveYou 稳定进入 attempt → palm_xy 轨迹 → mode_swipe_left/right
 PPT 翻页：Open_Palm 稳定进入 attempt → palm_xy 轨迹 → page_swipe_left/right
 SolidWorks 旋转/平移：Open_Palm/Victory 稳定进入 session → rotate/pan events
-SolidWorks 缩放：pinch_distance 滞回和 deadzone → zoom_update
+SolidWorks 缩放：pinch_distance_norm 滞回和 deadzone → zoom_update
+PPT 画笔绘制：pinch_distance_norm < pinch_threshold → pen_draw session
+画笔切换：Victory HOLD → pen_mode_toggle
+模式退出：Closed_Fist HOLD → fist_hold_committed
 ```
 
 状态机只检查 cooldown、当前 mode 和互斥条件，并将事件映射为动作意图。
 
-未迁移功能仍可暂时使用旧 HOLD / PINCH / Pointing_Up 逻辑。
+未迁移功能（presentation_pen 中 Pointing_Up fallback move）仍使用旧 HOLD / Pointing_Up 逻辑。
 
 ### 15.3 attempt 与 session 约束
 
@@ -839,12 +845,15 @@ class StepResult:
     intents: List[ActionIntent] = field(default_factory=list)
     status_text: str = ""
     debug_info: Dict[str, Any] = field(default_factory=dict)
+    reset_tracker: bool = False
     
     # 遗留别名
     @property
     def note(self) -> str:
         return self.status_text
 ```
+
+`reset_tracker` 告诉控制器在本次 `step()` 之后重置 `GestureIntentTracker`。状态机在模式切换时设置该标志，以防止稳定手势在下一帧立即触发反向切换（例如 Victory HOLD 在 presentation ↔ presentation_pen 之间反复切换）。
 
 `debug_info` 可包含以下调试信息：
 
@@ -911,6 +920,12 @@ class GestureState:
     # Phase 3: SWIPE 轨迹跟踪
     _swipe_history: List[Tuple[float, float, float]]
     _swipe_armed: bool
+
+    # Phase 9: pen mode toggle re-arm
+    _pen_toggle_rearmed: bool
+
+    # Phase 9: tracker reset request
+    _needs_tracker_reset: bool
 
     # 鼠标移动平滑（遗留，控制器兼容）
     ploc_x: float

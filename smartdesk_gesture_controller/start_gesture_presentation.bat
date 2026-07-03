@@ -44,6 +44,14 @@ echo             Victory hold = pen, Closed_Fist = exit
 echo ==========================================
 echo.
 
+"%VENV_PYTHON%" -c "import PySide6" >nul 2>&1
+if errorlevel 1 (
+    echo   [INFO] PySide6 is not installed; native overlay disabled.
+    echo   Browser status card at http://127.0.0.1:8765/ remains available.
+    echo   Install with: pip install PySide6
+    echo.
+)
+
 cd /d "%SD_ROOT%"
 "%VENV_PYTHON%" -m hands.gesture_controller --mode presentation
 set "CONTROLLER_EXIT=%ERRORLEVEL%"

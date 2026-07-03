@@ -91,6 +91,7 @@ class GestureController:
         recognizer: Optional[HandRecognizer] = None,
         actions: Optional[ActionLayer] = None,
         status_server: Optional[GestureStatusServer] = None,
+        overlay: Optional[Any] = None,
         cap: Optional[Any] = None,
     ) -> None:
         self.config = config or default_config()
@@ -110,6 +111,7 @@ class GestureController:
         self.state = GestureState(self.config)
         self.tracker = GestureIntentTracker(self.config)
         self.status_server = status_server  # built in start() if enabled
+        self.overlay = overlay              # built in start() if enabled
 
         # External resources we own (and must release in _shutdown).
         self._cap: Optional[Any] = cap
@@ -172,11 +174,33 @@ class GestureController:
             if not self.status_server.start():
                 # Server is optional — keep running without it.
                 self.status_server = None
-        self.status_server_update(
+
+        if self.config.overlay_enabled and self.overlay is None:
+            from .gesture_overlay import GestureOverlay
+            try:
+                self.overlay = GestureOverlay(
+                    click_through=self.config.overlay_click_through,
+                    topmost_interval=self.config.overlay_topmost_interval,
+                    update_interval=self.config.overlay_update_interval,
+                    card_alpha=self.config.overlay_card_alpha,
+                    width=self.config.overlay_width,
+                    screen_size=self.config.screen_size,
+                )
+                if not self.overlay.start():
+                    self.overlay = None
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("overlay start failed; continuing without it")
+                self.overlay = None
+
+        self.status_update(
             camera_ok=True,
             control_enabled=self.config.enable_system_mouse,
             mode=self.state.mode,
             paused=self.state.paused,
+            hand_present=False,
+            hand_lost_duration=0.0,
+            cooldown_until=0.0,
+            intent_phase="idle",
         )
 
         self._install_hotkeys()
@@ -294,12 +318,24 @@ class GestureController:
             cv2.imshow(self._DEBUG_WINDOW_NAME, display_img)
             self._pin_debug_window_once(self._DEBUG_WINDOW_NAME)
 
-        self.status_server_update(
+        # Convert the monotonic cooldown deadline to wall-clock time so the
+        # status card can compare it against Date.now() / 1000.
+        cooldown_until = result.debug_info.get("cooldown_until", 0.0)
+        if cooldown_until > now:
+            cooldown_until = time.time() + (cooldown_until - now)
+        else:
+            cooldown_until = 0.0
+
+        self.status_update(
             mode=result.mode,
             gesture=hand_input.gesture.value,
             action=result.note,
             paused=self.state.paused,
             fps=self._compute_fps(now),
+            hand_present=gesture_frame.hand_present,
+            hand_lost_duration=result.debug_info.get("hand_lost_duration", 0.0),
+            cooldown_until=cooldown_until,
+            intent_phase=tracker_result.intent_state,
         )
 
     # ── intent dispatch ────────────────────────────────────────────────────
@@ -368,13 +404,24 @@ class GestureController:
         # Hotkey cleanup (keyboard library or pynput fallback).
         self._uninstall_hotkeys()
 
+        # Push terminal state to all status consumers.
+        self.status_update(
+            camera_ok=False, action="controller exited", paused=True
+        )
+
         if self.status_server is not None:
             try:
-                self.status_server.update(action="controller exited", paused=True)
                 self.status_server.stop()
             except Exception:  # pragma: no cover
                 logger.exception("status server stop failed")
             self.status_server = None
+
+        if self.overlay is not None:
+            try:
+                self.overlay.stop()
+            except Exception:  # pragma: no cover
+                logger.exception("overlay stop failed")
+            self.overlay = None
 
     # ── hotkeys ────────────────────────────────────────────────────────────
     # ── hotkeys ────────────────────────────────────────────────────────────
@@ -528,7 +575,7 @@ class GestureController:
         logger.info("hotkey: control %s", action)
         if paused:
             self._safe_release()
-        self.status_server_update(paused=paused, action=action)
+        self.status_update(paused=paused, action=action)
 
     def _on_emergency_exit(self) -> None:
         logger.info("hotkey: emergency exit requested")
@@ -802,6 +849,19 @@ class GestureController:
             except Exception:  # pragma: no cover - defensive
                 logger.exception("status_server.update failed")
 
+    def overlay_update(self, **fields) -> None:
+        """Push a partial status update to the native overlay (if active)."""
+        if self.overlay is not None:
+            try:
+                self.overlay.update(**fields)
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("overlay.update failed")
+
+    def status_update(self, **fields) -> None:
+        """Unified status push: update both the WebSocket server and the overlay."""
+        self.status_server_update(**fields)
+        self.overlay_update(**fields)
+
     def _print_banner(self) -> None:
         """Print startup banner to the log file instead of the terminal."""
         gr_status = "on" if self.config.use_gesture_recognizer else "off (rule fallback)"
@@ -815,11 +875,20 @@ class GestureController:
         logger.info("  mode on activate: %s", self.config.initial_mode)
         logger.info("  system mouse:     %s", "ENABLED" if self.config.enable_system_mouse else "DRY-RUN")
         logger.info("  debug window:     %s", "on" if self.config.show_debug_window else "off")
-        logger.info(
-            "  status server:    %s",
-            "ws://%s:%s" % (self.config.status_server_host, self.config.status_server_port)
-            if self.status_server else "off",
-        )
+        if self.status_server:
+            logger.info(
+                "  status server:    ws://%s:%s  |  http://%s:%s",
+                self.config.status_server_host,
+                self.config.status_server_port,
+                self.config.status_server_host,
+                self.config.status_server_port,
+            )
+        else:
+            logger.info("  status server:    off")
+        if self.overlay:
+            logger.info("  overlay:           on (native topmost)")
+        else:
+            logger.info("  overlay:           off")
         logger.info("  pause hotkey:     %s", self.config.hotkey_toggle_pause)
         logger.info("  exit hotkey:      %s", self.config.hotkey_emergency_exit)
         logger.info("  gesture recognizer: %s", gr_status)

@@ -6,9 +6,9 @@
 
 本文档用于定义 SmartDesk Gesture Controller 中状态机与动作层之间的接口。
 
-状态机 `gesture_state.py` 不直接调用 PyAutoGUI，而是输出声明式动作意图 `ActionIntent`（定义在 `gesture_state.py` 中）。
+状态机 `gesture_state.py` 不直接调用 SendInput，而是输出声明式动作意图 `ActionIntent`（定义在 `gesture_state.py` 中）。
 
-动作层 `gesture_actions.py` 负责接收 `ActionIntent` 并执行实际鼠标、键盘操作。
+动作层 `gesture_actions.py` 负责接收 `ActionIntent` 并执行实际鼠标、键盘操作（底层通过 `sendinput_utils.py` 调用 Windows `SendInput` API，非 Windows 平台使用 `FakeDriver`）。
 
 控制流程驱动重构后，`GestureIntentTracker` 输出稳定的 `ControlEvent`，`GestureState` 再把 `ControlEvent` 映射为 `ActionIntent`。`ActionIntent` 类型集合保持稳定，不因新增 Tracker 而扩展。
 
@@ -29,12 +29,11 @@
 禁止在 `gesture_state.py` 中直接调用：
 
 ```python
-pyautogui.press(...)
-pyautogui.hotkey(...)
-pyautogui.mouseDown(...)
-pyautogui.mouseUp(...)
-pyautogui.moveTo(...)
-pyautogui.scroll(...)
+sendinput_utils.moveTo(...)
+sendinput_utils.hotkey(...)
+sendinput_utils.mouseDown(...)
+sendinput_utils.mouseUp(...)
+sendinput_utils.scroll(...)
 ```
 
 状态机只能输出：
@@ -45,7 +44,7 @@ ActionIntent(...)
 
 实际执行由 `gesture_actions.py` 完成。
 
-同样禁止 `hands/gesture_intent_tracker.py` 直接调用 PyAutoGUI 或构造系统驱动调用；Tracker 只能输出 `ControlEvent`。
+同样禁止 `hands/gesture_intent_tracker.py` 直接调用 SendInput 或构造系统驱动调用；Tracker 只能输出 `ControlEvent`。
 
 ---
 
@@ -62,7 +61,7 @@ ActionIntent(type="mouse_down", button="middle")
 ActionIntent(type="release_all")
 ```
 
-不要在 `ActionIntent` 中写具体 PyAutoGUI 代码。
+不要在 `ActionIntent` 中写具体 SendInput 代码。
 
 ---
 
@@ -253,7 +252,7 @@ ActionIntent(type="press", key="f")
 动作层执行：
 
 ```python
-pyautogui.press(intent.key)
+sendinput_utils.press(intent.key)
 ```
 
 约束：
@@ -281,7 +280,7 @@ ActionIntent(type="hotkey", keys=["ctrl", "7"])
 动作层执行：
 
 ```python
-pyautogui.hotkey(*intent.keys)
+sendinput_utils.hotkey(*intent.keys)
 ```
 
 约束：
@@ -306,7 +305,7 @@ ActionIntent(type="key_down", key="shift")
 动作层执行：
 
 ```python
-pyautogui.keyDown(intent.key)
+sendinput_utils.keyDown(intent.key)
 ```
 
 适用场景：
@@ -337,7 +336,7 @@ ActionIntent(type="key_up", key="shift")
 动作层执行：
 
 ```python
-pyautogui.keyUp(intent.key)
+sendinput_utils.keyUp(intent.key)
 ```
 
 约束：
@@ -364,7 +363,7 @@ ActionIntent(type="move_to", x=960, y=540)
 动作层执行：
 
 ```python
-pyautogui.moveTo(intent.x, intent.y)
+sendinput_utils.moveTo(intent.x, intent.y)
 ```
 
 适用场景：
@@ -396,7 +395,7 @@ ActionIntent(type="move_rel", dx=20, dy=-10)
 动作层执行：
 
 ```python
-pyautogui.moveRel(intent.dx, intent.dy)
+sendinput_utils.moveRel(intent.dx, intent.dy)
 ```
 
 适用场景：
@@ -430,7 +429,7 @@ ActionIntent(type="mouse_down", button="middle")
 动作层执行：
 
 ```python
-pyautogui.mouseDown(button=intent.button)
+sendinput_utils.mouseDown(button=intent.button)
 ```
 
 适用场景：
@@ -465,7 +464,7 @@ ActionIntent(type="mouse_up", button="middle")
 动作层执行：
 
 ```python
-pyautogui.mouseUp(button=intent.button)
+sendinput_utils.mouseUp(button=intent.button)
 ```
 
 约束：
@@ -491,7 +490,7 @@ ActionIntent(type="click", button="right")
 动作层执行：
 
 ```python
-pyautogui.click(button=intent.button)
+sendinput_utils.click(button=intent.button)
 ```
 
 约束：
@@ -517,7 +516,7 @@ ActionIntent(type="scroll", amount=-5)
 动作层执行：
 
 ```python
-pyautogui.scroll(intent.amount)
+sendinput_utils.scroll(intent.amount)
 ```
 
 适用场景：
@@ -551,13 +550,13 @@ ActionIntent(type="release_all")
 动作层必须执行：
 
 ```python
-pyautogui.mouseUp(button="left")
-pyautogui.mouseUp(button="middle")
-pyautogui.mouseUp(button="right")
+sendinput_utils.mouseUp(button="left")
+sendinput_utils.mouseUp(button="middle")
+sendinput_utils.mouseUp(button="right")
 
-pyautogui.keyUp("shift")
-pyautogui.keyUp("ctrl")
-pyautogui.keyUp("alt")
+sendinput_utils.keyUp("shift")
+sendinput_utils.keyUp("ctrl")
+sendinput_utils.keyUp("alt")
 ```
 
 后续如果增加更多持续按键，也必须加入 `release_all`。
@@ -602,7 +601,7 @@ MediaPipe 推理异常
 paused 中见手：只重新布防，不输出硬件动作
 ```
 
-该规则避免 PyAutoGUI 的六个无条件释放调用在每一帧重复执行并阻塞视频循环。
+该规则避免 SendInput 的六个无条件释放调用在每一帧重复执行并阻塞视频循环。
 
 ---
 
@@ -739,7 +738,7 @@ mouse_up("left")
 
 ## 11. FakeDriver 规范
 
-测试时使用 `FakeDriver` 代替 PyAutoGUI。
+测试时使用 `FakeDriver` 代替 `sendinput_utils`。
 
 ### 11.1 FakeDriver 需要记录的动作
 
@@ -788,7 +787,7 @@ Dry-run 模式下：
 摄像头正常读取
 MediaPipe 正常识别
 状态机正常输出 ActionIntent
-动作层不调用真实 PyAutoGUI
+动作层不调用真实 sendinput_utils
 调试窗口显示将要执行的动作
 日志记录动作序列
 ```

@@ -1,0 +1,143 @@
+:root {
+  --tech-green: #2dd4a8;
+  --tech-amber: #f59e0b;
+  --tech-rose: #f43f5e;
+  --tech-cyan: #22d3ee;
+  --tech-muted: rgba(148, 163, 184, 0.7);
+  --bg-card: rgba(8, 13, 22, 0.72);
+  --border-card: rgba(120, 160, 200, 0.18);
+  --shadow-card: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --glow-cyan: 0 0 28px rgba(34, 211, 238, 0.35), 0 0 8px rgba(34, 211, 238, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: transparent;
+}
+
+.gesture-status-card {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  width: 300px;
+  min-height: 132px;
+  z-index: 50;
+  background: var(--bg-card);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  padding: 18px;
+  color: rgba(255, 255, 255, 0.86);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.gesture-status-card.glow {
+  box-shadow: var(--shadow-card), var(--glow-cyan);
+  border-color: rgba(34, 211, 238, 0.45);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.radar-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  opacity: 0.9;
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.title-zh {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.title-en {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.54);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.row-label {
+  color: rgba(255, 255, 255, 0.58);
+  font-weight: 500;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: rgba(255, 255, 255, 0.08);
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.badge-green {
+  color: var(--tech-green);
+  background: rgba(45, 212, 168, 0.12);
+}
+
+.badge-amber {
+  color: var(--tech-amber);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.badge-rose {
+  color: var(--tech-rose);
+  background: rgba(244, 63, 94, 0.12);
+}
+
+.badge-cyan {
+  color: var(--tech-cyan);
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.badge-muted {
+  color: var(--tech-muted);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+@media (max-width: 640px) {
+  .gesture-status-card {
+    left: 16px;
+    right: 16px;
+    top: 16px;
+    width: auto;
+  }
+}

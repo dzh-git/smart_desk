@@ -107,6 +107,7 @@ from typing import Tuple
 @dataclass
 class GestureConfig:
     # ── Camera ──────────────────────────────────────────────────────────────
+    camera_driver: str = "industrial"  # "industrial" or "opencv"
     camera_index: int = 0
     camera_width: int = 640
     camera_height: int = 480
@@ -116,6 +117,23 @@ class GestureConfig:
     camera_brightness: int = 0
     camera_gain: int = 10
     map_margin: int = 50  # legacy alias for controller compat
+
+    # ── Industrial camera (MV SDK) ──────────────────────────────────────────
+    industrial_sdk_module: str = "MvCameraControl_class"
+    industrial_camera_index: int = 0
+    industrial_width: int = 640
+    industrial_height: int = 480
+    industrial_pixel_format: str = ""
+    industrial_fps: float = 30.0
+    industrial_get_timeout_ms: int = 2000
+    industrial_fallback_to_opencv: bool = True
+    industrial_image_node_num: int = 10
+    industrial_exposure_time: float = 80000.0
+    industrial_exposure_auto: bool = False
+    industrial_gain: float = -1.0
+    industrial_gain_auto: bool = False
+    industrial_balance_white_auto: bool = False
+    industrial_set_resolution: bool = False
 
     # ── Recognizer confidence ───────────────────────────────────────────────
     min_hand_detection_confidence: float = 0.7
@@ -155,12 +173,12 @@ class GestureConfig:
     swipe_threshold_x: float = 0.15
     swipe_threshold_y_limit: float = 0.12
     swipe_time_window: float = 0.8
-    iloveyou_swipe_threshold_x: float = 0.22
+    iloveyou_swipe_threshold_x: float = 0.18
 
     # ── Pinch ───────────────────────────────────────────────────────────────
     pinch_click_distance: float = 35.0  # legacy, camera-px
     pinch_threshold: float = 0.045
-    pinch_release_threshold: float = 0.065
+    pinch_release_threshold: float = 0.2
     pinch_zoom_deadzone: float = 0.01
 
     # ── Mouse movement (deprecated: mouse mode disabled) ───────────────────
@@ -191,14 +209,14 @@ class GestureConfig:
     gesture_enter_frames: int = 4
     gesture_enter_window_frames: int = 5
     gesture_keep_grace_frames: int = 6
-    gesture_enter_confidence: float = 0.70
+    gesture_enter_confidence: float = 0.65
     gesture_keep_confidence: float = 0.45
     intent_lost_timeout: float = 0.25
     mode_arm_duration: float = 0.20
     mode_swipe_timeout: float = 3.0
     page_swipe_timeout: float = 2.0
     landmark_smoothing: float = 0.45
-    motion_deadzone: float = 0.015
+    motion_deadzone: float = 0.0001
     max_motion_step: float = 0.08
     max_motion_velocity: float = 1.5
     min_motion_duration: float = 0.12
@@ -476,14 +494,14 @@ Closed_Fist 保持多久退出当前模式。
 | `gesture_enter_frames` | 4 | 帧 | 进入候选所需匹配帧数 |
 | `gesture_enter_window_frames` | 5 | 帧 | 进入候选统计窗口 |
 | `gesture_keep_grace_frames` | 6 | 帧 | attempt/session 中允许的短暂分类异常帧数 |
-| `gesture_enter_confidence` | 0.70 | 0–1 | 官方分类进入候选的最低置信度 |
+| `gesture_enter_confidence` | 0.65 | 0–1 | 官方分类进入候选的最低置信度 |
 | `gesture_keep_confidence` | 0.45 | 0–1 | 已进入流程后的保持参考置信度 |
 | `intent_lost_timeout` | 0.25 | 秒 | 分类保持失败的最长容忍时间 |
 | `mode_arm_duration` | 0.20 | 秒 | ILoveYou 进入模式切换 armed 前的最短稳定时间 |
 | `mode_swipe_timeout` | 3.0 | 秒 | 模式切换 attempt 的最长追踪时间 |
 | `page_swipe_timeout` | 2.0 | 秒 | 翻页 attempt 的最长追踪时间 |
 | `landmark_smoothing` | 0.45 | 0–1 | landmarks 低通滤波中当前观测值权重 |
-| `motion_deadzone` | 0.015 | 归一化坐标 | 运动死区 |
+| `motion_deadzone` | 0.0001 | 归一化坐标 | 运动死区 |
 | `max_motion_step` | 0.08 | 归一化坐标/帧 | 单帧位移限幅 |
 | `max_motion_velocity` | 1.5 | 归一化坐标/秒 | 速度限制 |
 | `min_motion_duration` | 0.12 | 秒 | 动态动作最短持续时间 |
@@ -581,7 +599,7 @@ PINCH 点击后，至少等待多久才允许下一次点击。
 ### 8.1 swipe_threshold_x
 
 ```text
-默认值：0.18
+默认值：0.15
 单位：归一化坐标
 ```
 
@@ -642,7 +660,7 @@ Open_Palm 在 x 方向移动超过该距离，才认为是左右挥手。
 ### 8.x.1 iloveyou_swipe_threshold_x
 
 ```text
-默认值：0.22
+默认值：0.18
 单位：归一化坐标
 ```
 
@@ -691,7 +709,7 @@ ILoveYou 手势在 x 方向移动超过该距离，才认为是模式切换滑�
 含义：
 
 ```text
-第一阶段新增 `mode_swipe_timeout = 0.80`，用于 ILoveYou 模式切换 attempt 的最长追踪时间。
+第一阶段新增 `mode_swipe_timeout = 3.0`，用于 ILoveYou 模式切换 attempt 的最长追踪时间。
 旧兼容逻辑可继续读取 `swipe_time_window`，但新 Tracker 不应把模式切换和翻页强行复用同一个时间窗口。
 ```
 
@@ -732,7 +750,7 @@ ILoveYou 手势在 x 方向移动超过该距离，才认为是模式切换滑�
 ### 9.2 pinch_release_threshold
 
 ```text
-默认值：0.065
+默认值：0.2
 单位：归一化距离
 ```
 
@@ -1187,8 +1205,8 @@ config/local_config.json
   "camera_width": 640,
   "camera_height": 480,
   "pinch_threshold": 0.045,
-  "pinch_release_threshold": 0.065,
-  "swipe_threshold_x": 0.18,
+  "pinch_release_threshold": 0.2,
+  "swipe_threshold_x": 0.15,
   "page_turn_cooldown": 0.8,
   "mouse_smoothing": 0.35,
   "solidworks_drag_sensitivity": 1.2,

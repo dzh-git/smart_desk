@@ -45,6 +45,13 @@ if errorlevel 1 (
     echo   [INFO] pywin32 is not installed; the debug window will not stay on top.
 )
 
+"%VENV_PYTHON%" -c "import PySide6" >nul 2>&1
+if errorlevel 1 (
+    echo   [INFO] PySide6 is not installed; native overlay disabled.
+    echo   Browser status card at http://127.0.0.1:8765/ remains available.
+    echo   Install with: pip install PySide6
+)
+
 cd /d "%SD_ROOT%"
 "%VENV_PYTHON%" -m hands.gesture_controller --camera-driver opencv %*
 set "CONTROLLER_EXIT=%ERRORLEVEL%"

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gesture Controller</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <article class="gesture-status-card" id="card">
+    <header class="card-header">
+      <img class="radar-icon" src="./radar.svg" alt="Radar" width="24" height="24">
+      <div class="title">
+        <span class="title-zh">手势控制</span>
+        <span class="title-en">Gesture Controller</span>
+      </div>
+    </header>
+    <section class="status-rows">
+      <div class="status-row">
+        <span class="row-label">Camera</span>
+        <span class="badge" id="camera-badge">Offline</span>
+      </div>
+      <div class="status-row">
+        <span class="row-label">Hand</span>
+        <span class="badge" id="hand-badge">Unavailable</span>
+      </div>
+      <div class="status-row">
+        <span class="row-label">Status</span>
+        <span class="badge" id="status-badge">Camera Offline</span>
+      </div>
+    </section>
+  </article>
+
+  <script src="./app.js"></script>
+</body>
+</html>

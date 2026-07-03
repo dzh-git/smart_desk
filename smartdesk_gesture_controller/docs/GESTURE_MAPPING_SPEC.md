@@ -257,9 +257,10 @@ thumb_tip = landmark[4]
 index_tip = landmark[8]
 
 pinch_distance = distance(thumb_tip, index_tip)
+pinch_distance_norm = pinch_distance / hand_size  # 尺度无关
 
-当 pinch_distance < pinch_threshold 时，认为进入 PINCH。
-当 pinch_distance > pinch_release_threshold 时，认为释放 PINCH。
+当 pinch_distance_norm < pinch_threshold 时，认为进入 PINCH。
+当 pinch_distance_norm > pinch_release_threshold 时，认为释放 PINCH。
 ```
 
 要求：
@@ -267,13 +268,14 @@ pinch_distance = distance(thumb_tip, index_tip)
 ```text
 pinch_release_threshold 必须大于 pinch_threshold
 必须使用滞回机制，避免捏合边界抖动
+pinch_distance_norm 是尺度无关的归一化值（0–1），不受手离摄像头远近影响
 ```
 
 推荐默认值：
 
 ```text
 pinch_threshold = 0.045
-pinch_release_threshold = 0.065
+pinch_release_threshold = 0.2
 ```
 
 具体数值允许在 `gesture_config.py` 或未来的 `config.json` 中调整。
@@ -375,9 +377,14 @@ pan_end
 zoom_update
 cancel
 hand_lost_timeout
+pen_mode_toggle
+pen_draw_begin
+pen_draw_update
+pen_draw_end
+fist_hold_committed
 ```
 
-模式切换、翻页和缩放使用短期 `attempt_id`。旋转和平移使用 `session_id`。同一个 attempt 在 committed 后，直到 released / cancelled / timeout 前不得再次 committed。
+模式切换、翻页和缩放使用短期 `attempt_id`。旋转和平移使用 `session_id`。画笔绘制（`pen_draw`）使用 `session_id`（持有左键）。画笔切换和握拳退出使用短期 `attempt_id`（HOLD-to-commit 模式）。同一个 attempt 在 committed 后，直到 released / cancelled / timeout 前不得再次 committed。
 
 ---
 
@@ -439,7 +446,7 @@ ILoveYou 滑动方向规则（Phase 9 最终版）：
     左滑 → standby
 
 进入 presentation 时不发送 F5，PPT 幻灯片放映由用户手动启动。
-standby → presentation / solidworks 只更新内部模式，不输出系统动作；从活动模式离开时执行安全释放。presentation 右滑回 standby 还会发送 `Esc`。
+standby → presentation / solidworks 只更新内部模式，不输出系统动作；从活动模式离开时执行安全释放（`release_all`）。Closed_Fist HOLD 退出活动模式时会额外发送 `Esc`；ILoveYou 滑动切换只发送 `release_all`，不发送 `Esc`。
 ```
 
 **滑动检测要求**：
@@ -451,7 +458,7 @@ standby → presentation / solidworks 只更新内部模式，不输出系统动
 4. 同一 gesture_attempt_id committed 后，直到 released/cancelled/timeout 前不得再次 committed。
 5. mode_switch_cooldown 由 GestureState 管理。
 6. 推荐参数：
-   - iloveyou_swipe_threshold_x = 0.22
+   - iloveyou_swipe_threshold_x = 0.18
    - swipe_threshold_y_limit = 0.12（ILoveYou 复用）
    - mode_swipe_timeout = 3.0s
    - mode_switch_cooldown = 1.0s
@@ -478,7 +485,7 @@ PowerPoint 已打开，或已经进入幻灯片放映模式。
 | 下一页    | `Open_Palm` 向右挥        | `press("right")` 或 `press("pagedown")`       | 高   |
 | 上一页    | `Open_Palm` 向左挥        | `press("left")` 或 `press("pageup")`          | 高   |
 | 进入画笔模式 | `Victory` 保持 0.5 秒     | `hotkey("ctrl", "p")`，进入 `presentation_pen`  | 中   |
-| 模式切换   | `ILoveYou` 右滑/左滑     | 右滑：`Esc` + 释放并回 standby；左滑：释放并进 solidworks | 中   |
+| 模式切换   | `ILoveYou` 右滑/左滑     | 右滑：`release_all` 并回 standby；左滑：`release_all` 并进 solidworks | 中   |
 | 退出演示   | `Closed_Fist` 保持 0.8 秒 | `press("esc")` + `release_all` + 回 `standby` | 高   |
 | 手丢失超时  | `None` 首次超过超时时间    | `release_all`，保持 `presentation`；连续无手不重复 | 高 |
 
@@ -602,8 +609,8 @@ solidworks
 | 旋转模型             | `Open_Palm` + 移动       | 按住中键拖动                      | 高   |
 | 平移模型             | `Victory` + 移动         | `Shift` + 中键拖动              | 高   |
 | 缩放模型             | `PINCH` 距离变化           | 鼠标滚轮                        | 高   |
-| 模式切换             | `ILoveYou` 右滑/左滑     | 结束连续动作并 `release_all` 后切换模式 | 中 |
-| 退出 SolidWorks 模式 | `Closed_Fist` 保持 0.8 秒 | `release_all` + 回 `standby` | 高   |
+| 模式切换             | `ILoveYou` 右滑/左滑     | 右滑：结束连续动作并切到 presentation（无 release_all）；左滑：结束连续动作 + `release_all` 后切到 standby | 中 |
+| 退出 SolidWorks 模式 | `Closed_Fist` 保持 0.8 秒 | 结束连续动作 + `press("esc")` + `release_all` + 回 `standby` | 高   |
 | 手丢失超时            | `None` 首次超过超时时间    | 按需释放中键/Shift + `release_all`，保持 `solidworks`；连续无手不重复 | 高 |
 
 ### 14.1 旋转模型规则
@@ -651,14 +658,14 @@ pan session 正常结束：
 ### 14.3 缩放模型规则
 
 ```text
-pinch_distance 距离增大且超过 deadzone：
+pinch_distance_norm 距离增大且超过 deadzone：
     scroll(+amount)
 
-pinch_distance 距离减小且超过 deadzone：
+pinch_distance_norm 距离减小且超过 deadzone：
     scroll(-amount)
 ```
 
-如果 pinch_distance 变化在死区内，不触发滚轮。SolidWorks 缩放不得依赖 `PINCH` 静态分类名称。
+如果 `pinch_distance_norm` 变化在死区内，不触发滚轮。SolidWorks 缩放使用 `pinch_distance_norm`（拇指尖与食指尖距离除以 `hand_size`，尺度无关），不依赖 `PINCH` 静态分类名称，也不使用原始像素距离。
 
 ---
 
@@ -734,10 +741,10 @@ isometric_view_hold       # 不再使用 ILoveYou 等轴测
 **新增参数说明**：
 
 ```text
-iloveyou_swipe_threshold_x = 0.22  # ILoveYou 专用 x 方向阈值
+iloveyou_swipe_threshold_x = 0.18  # ILoveYou 专用 x 方向阈值
 swipe_threshold_y_limit = 0.12     # Open_Palm / ILoveYou 共用 y 限制
-mode_swipe_timeout = 0.8s          # 模式切换 attempt 最长追踪时间
-page_swipe_timeout = 0.8s          # 翻页 attempt 最长追踪时间
+mode_swipe_timeout = 3.0s          # 模式切换 attempt 最长追踪时间
+page_swipe_timeout = 2.0s          # 翻页 attempt 最长追踪时间
 mode_switch_cooldown = 1.0s        # 模式切换冷却时间
 pen_mode_hold = 0.5s               # Victory 进入/退出画笔的保持时间
 exit_mode_hold = 0.8s              # Closed_Fist 退出活动模式保持时间
@@ -749,7 +756,7 @@ exit_mode_hold = 0.8s              # Closed_Fist 退出活动模式保持时间
 
 当前阶段在已有 GestureRecognizer / landmarks 识别基础上，新增 `GestureIntentTracker` 控制流程层。
 
-第一阶段只迁移模式切换、PPT 翻页、SolidWorks 旋转 / 平移 / 缩放。PPT 画笔、Victory 画笔切换、Closed_Fist 退出和暂停恢复继续走兼容路径。
+已迁移到 Tracker 事件路径的功能包括：模式切换、PPT 翻页、SolidWorks 旋转/平移/缩放、PPT 画笔绘制（PINCH）、Victory 画笔切换（HOLD toggle）、Closed_Fist 退出（HOLD commit）。暂停恢复仍由控制器兼容路径处理。
 
 **第一版简化实现范围**：
 
@@ -849,7 +856,7 @@ gesture_recognizer.task
 2. 识别层输出 `GestureFrame` 所需字段：hand_present、raw_gesture、gesture_confidence、gesture_source、palm_xy、index_tip_xy、pinch_distance、timestamp。
 3. `GestureState` 新增 ControlEvent 处理路径，同时保留未迁移功能的 HandInput 兼容路径。
 4. 模式切换、PPT 翻页、SolidWorks 旋转/平移/缩放只消费 Tracker 输出事件。
-5. PPT 画笔、Victory 画笔切换、Closed_Fist 退出、暂停恢复不在第一阶段迁移。
+5. PPT 画笔绘制（PINCH）、Victory 画笔切换（HOLD toggle）、Closed_Fist 退出（HOLD commit）已迁移到 Tracker 事件路径（`EVT_PEN_DRAW_*`、`EVT_PEN_MODE_TOGGLE`、`EVT_FIST_HOLD_COMMITTED`）。暂停恢复不在 Tracker 迁移范围。
 6. 动作层 `gesture_actions.py` 不应新增动作类型。
 7. 已有测试必须继续通过。
 8. 新增测试应重点覆盖：

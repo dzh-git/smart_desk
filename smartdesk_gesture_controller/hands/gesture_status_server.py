@@ -1,8 +1,14 @@
-﻿"""Local status broadcast server for the gesture controller.
+"""Local status broadcast server for the gesture controller.
 
 Runs an async ``websockets`` server on ``127.0.0.1:8765`` inside a daemon
 thread. The controller pushes state updates via :meth:`update`; the server
 periodically broadcasts a JSON snapshot to every connected client.
+
+Starting with this phase, the same port also serves a static Device Status Card
+at ``http://127.0.0.1:8765/`` so operators can open a browser and see the
+current camera/hand/control status without relying on the OpenCV debug window.
+Static assets (CSS, JS, SVG) are served from the same port so the page works
+out of the box.
 
 Design rules:
     - **Never crash the controller.** Any failure (port in use, missing
@@ -17,13 +23,26 @@ Design rules:
 from __future__ import annotations
 
 import asyncio
+import http
 import json
 import logging
+import os
 import threading
 import time
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("hands.status_server")
+
+# websockets 13+ moved process_request to the new http11 Response API.
+try:  # pragma: no cover - version dependent
+    from websockets.http11 import Response as _WSResponse
+    from websockets.datastructures import Headers as _WSHeaders
+
+    _WSResponse_AVAILABLE = True
+except ImportError:  # pragma: no cover - websockets 12.x
+    _WSResponse = None  # type: ignore
+    _WSHeaders = None  # type: ignore
+    _WSResponse_AVAILABLE = False
 
 
 class GestureStatusServer:
@@ -38,10 +57,13 @@ class GestureStatusServer:
         host: str = "127.0.0.1",
         port: int = 8765,
         broadcast_interval: float = 0.2,
+        html_path: Optional[str] = None,
     ) -> None:
         self._host = host
         self._port = port
         self._broadcast_interval = broadcast_interval
+        self._html_path = html_path or self._default_html_path()
+        self._static_files = self._load_static_files()
 
         self._state: Dict[str, Any] = {
             "mode": "standby",
@@ -53,6 +75,11 @@ class GestureStatusServer:
             "fps": 0.0,
             "connected_clients": 0,
             "timestamp": 0.0,
+            # Status card fields
+            "hand_present": False,
+            "hand_lost_duration": 0.0,
+            "cooldown_until": 0.0,
+            "intent_phase": "idle",
         }
         self._lock = threading.Lock()
 
@@ -109,6 +136,43 @@ class GestureStatusServer:
             self._thread.join(timeout=2.0)
 
     # ── internals ──────────────────────────────────────────────────────────
+    def _default_html_path(self) -> str:
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(module_dir, "frontend", "index.html")
+
+    def _load_static_files(self) -> Dict[str, Tuple[bytes, str, http.HTTPStatus]]:
+        """Load the status card page and its static assets into memory.
+
+        The returned dictionary maps URL paths to ``(body, content_type, status)``.
+        Missing assets produce a 404; a missing index.html specifically produces
+        503 because the page is the primary product of this server.
+        """
+        frontend_dir = os.path.dirname(self._html_path)
+        files: List[Tuple[str, str, str]] = [
+            ("/", self._html_path, "text/html; charset=utf-8"),
+            ("/styles.css", os.path.join(frontend_dir, "styles.css"), "text/css; charset=utf-8"),
+            ("/app.js", os.path.join(frontend_dir, "app.js"), "application/javascript; charset=utf-8"),
+            ("/radar.svg", os.path.join(frontend_dir, "radar.svg"), "image/svg+xml"),
+        ]
+        assets: Dict[str, Tuple[bytes, str, http.HTTPStatus]] = {}
+        for path, filepath, content_type in files:
+            try:
+                with open(filepath, "rb") as f:
+                    content = f.read()
+                status = http.HTTPStatus.OK
+            except Exception as exc:  # pragma: no cover - file may be missing
+                logger.warning("static asset not found at %s: %r", filepath, exc)
+                if path == "/":
+                    content = b"Status card HTML not found."
+                    content_type = "text/html; charset=utf-8"
+                    status = http.HTTPStatus.SERVICE_UNAVAILABLE
+                else:
+                    content = f"Asset {path} not found.".encode("utf-8")
+                    content_type = "text/plain; charset=utf-8"
+                    status = http.HTTPStatus.NOT_FOUND
+            assets[path] = (content, content_type, status)
+        return assets
+
     def _run_loop(self) -> None:
         try:
             asyncio.run(self._async_main())
@@ -132,6 +196,7 @@ class GestureStatusServer:
                 self._client_handler,
                 self._host,
                 self._port,
+                process_request=self._process_request,
             )
         except OSError as exc:
             # Port in use / permission denied — most common failure.
@@ -144,7 +209,10 @@ class GestureStatusServer:
             return
 
         self._running = True
-        logger.info("status server listening on ws://%s:%s", self._host, self._port)
+        logger.info(
+            "status server listening on ws://%s:%s and http://%s:%s",
+            self._host, self._port, self._host, self._port,
+        )
 
         broadcaster = asyncio.ensure_future(self._broadcast_loop())
         try:
@@ -161,6 +229,88 @@ class GestureStatusServer:
             except Exception:  # pragma: no cover
                 pass
             self._running = False
+
+    async def _process_request(self, *args: Any) -> Any:
+        """HTTP request handler shared with the WebSocket server.
+
+        ``websockets`` 12.x calls ``process_request(path, request_headers)`` and
+        expects a ``(status, headers, body)`` tuple or ``None``.
+        ``websockets`` 13+ calls ``process_request(connection, request)`` and
+        expects a ``websockets.http11.Response`` object or ``None``.
+
+        To avoid import-time version detection errors, we choose the return type
+        based on the actual calling convention used by the server.
+        """
+        # Unpack the version-specific arguments and remember which style is used.
+        if len(args) == 2 and hasattr(args[1], "path"):
+            # websockets 13+: (connection, request)
+            request = args[1]
+            path = request.path
+            headers = request.headers
+            new_style = True
+        elif len(args) >= 2:
+            # websockets 12.x: (path, request_headers)
+            path = args[0]
+            headers = args[1]
+            new_style = False
+        elif len(args) >= 1:
+            # websockets 12.x fallback
+            path = args[0]
+            headers = []
+            new_style = False
+        else:  # pragma: no cover - unexpected
+            return None
+
+        # Let WebSocket upgrade handshakes go through to the WebSocket handler.
+        if self._is_websocket_upgrade(headers):
+            return None
+
+        if path in self._static_files:
+            body, content_type, status = self._static_files[path]
+            return self._build_response(status, body, content_type, new_style)
+
+        # Unknown non-upgrade path.
+        return self._build_response(
+            http.HTTPStatus.NOT_FOUND,
+            b"Not Found",
+            "text/plain; charset=utf-8",
+            new_style,
+        )
+
+    def _build_response(
+        self,
+        status: http.HTTPStatus,
+        body: bytes,
+        content_type: str,
+        new_style: bool,
+    ) -> Any:
+        """Return either a ``websockets.http11.Response`` or a tuple.
+
+        The format is chosen based on the calling convention detected in
+        :meth:`_process_request`, not on an import-time version check, so we
+        work on both legacy and new websockets implementations.
+        """
+        headers: List[Tuple[str, str]] = [
+            ("Content-Type", content_type),
+            ("Content-Length", str(len(body))),
+        ]
+        if new_style and _WSResponse_AVAILABLE and _WSResponse is not None and _WSHeaders is not None:
+            return _WSResponse(status.value, status.phrase, _WSHeaders(headers), body)
+        return (status, headers, body)
+
+    @staticmethod
+    def _is_websocket_upgrade(headers: Any) -> bool:
+        """Return True if the request is a WebSocket upgrade handshake."""
+        # websockets 13+ Headers object supports get() with case-insensitive keys.
+        if hasattr(headers, "get"):
+            upgrade = headers.get("Upgrade", "")
+            return isinstance(upgrade, str) and upgrade.lower() == "websocket"
+        # websockets 12.x passes a list of (name, value) tuples.
+        if isinstance(headers, list):
+            for name, value in headers:
+                if name.lower() == "upgrade" and value.lower() == "websocket":
+                    return True
+        return False
 
     async def _client_handler(self, ws: Any) -> None:
         """Per-connection handler. Registers the client and keeps it alive."""
