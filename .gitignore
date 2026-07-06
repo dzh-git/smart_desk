@@ -1,41 +1,68 @@
-# Python
+# ---------- Python ----------
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *.so
-*.egg-info/
-dist/
+
+.pytest_cache/
+.pytest_tmp/
+
+.coverage
+coverage.xml
+htmlcov/
+
+.mypy_cache/
+.ruff_cache/
+
+# ---------- Python Build ----------
 build/
+dist/
 *.egg
-.env
+*.egg-info/
+
+# ---------- Virtual Env ----------
+.venv/
+venv/
+env/
+
+# ---------- Database ----------
 *.db
 
-# Node / Vite
-node_modules/
-smart-desk/frontend/dist/
+# ---------- Environment ----------
+.env
+.env.*
 
-# IDE
+# ---------- Node ----------
+node_modules/
+**/dist/
+.vite/
+
+# ---------- Runtime ----------
+.smartdesk-runtime/
+logs/
+log/
+*.log
+*.tmp
+
+# ---------- AI Model Cache ----------
+.hf_cache/
+.cache/
+modelscope_cache/
+
+# ---------- Playwright ----------
+.playwright-mcp/
+playwright-report/
+test-results/
+
+# ---------- IDE ----------
 .vscode/
 .idea/
+.vs/
+*.code-workspace
 
-# OS
+# ---------- OS ----------
 .DS_Store
 Thumbs.db
 
-# Playwright / test artifacts
-.playwright-mcp/
-
-# Model caches (large binary files)
-*.pt
-*.bin
-~/.cache/modelscope/
-
-# Test samples
-smart-desk/语音测试样本/
-
-# Temp
-*.tmp
-*.log
-
-# Smart-desk model files (too large for LFS-free hosting)
-smart-desk/models/
-smart-desk/models/**
+.workbuddy/
