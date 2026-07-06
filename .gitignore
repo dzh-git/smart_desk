@@ -66,3 +66,4 @@ test-results/
 Thumbs.db
 
 .workbuddy/
+**/.claude/memory/
