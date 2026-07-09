@@ -226,10 +226,28 @@ Application behavior:
 ### 4.3 CORS and security
 
 - Origins are an explicit allowlist; wildcard origin is forbidden.
-- The intended local Admin origin is `http://127.0.0.1:5173`.
+- The allowed origins are exactly `http://127.0.0.1:5173` and
+  `http://localhost:5173` (see `host_services/display_agent/config.py`
+  `AgentConfig.allowed_origins`).
 - `OPTIONS /status` and `OPTIONS /activate` support browser preflight.
 - The Agent must not bind to `0.0.0.0` or a LAN address.
 - The request cannot influence executable path, URL, or shell arguments.
+
+### 4.4 `GET /health`
+
+A lightweight liveness probe (not part of the frontend/backend data flow):
+
+```http
+GET http://127.0.0.1:8766/health
+```
+
+Successful response:
+
+```json
+{"status": "ok", "agent": "display_agent"}
+```
+
+It performs no Win32/FFmpeg work and is used only for process liveness.
 
 ## 5. Phase 3: SmartDesk Read-only Status API
 

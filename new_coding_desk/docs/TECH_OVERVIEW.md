@@ -74,6 +74,20 @@ frontend/e2e/              Playwright 测试
 | 翻译 | 可选 OPUS-MT zh-en，默认关闭 |
 | 自动断句 | 后端 RMS endpoint detection |
 
+### 主机侧服务（Host Services）
+
+本地 Windows 主机侧的屏幕串流与应用切换组件，独立于 FastAPI 后端与 React 前端：
+
+| 能力 | 组件 |
+|---|---|
+| 屏幕采集与编码 | FFmpeg（Windows `ddagrab` 桌面采集 + H.264 编码，外部二进制，不入库） |
+| 流媒体分发 | MediaMTX 1.19.0（RTSP 发布 + WebRTC 分发，外部二进制） |
+| Windows 显示控制 Agent | FastAPI + pywin32 + psutil，loopback `127.0.0.1:8766` |
+| 监督进程 | supervisor 启动并守护 MediaMTX 与 FFmpeg |
+
+FFmpeg 与 MediaMTX 为外部部署二进制，不提交到 Git；相关代码位于
+`host_services/screen_stream` 与 `host_services/display_agent`。
+
 ## 3. 构建与运行
 
 ### 安装依赖

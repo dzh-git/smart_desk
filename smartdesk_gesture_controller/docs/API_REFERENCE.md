@@ -50,7 +50,7 @@ Windows SendInput 封装，替代 pyautogui，仅 Windows 可用（非 Windows �
 
 ### 配置字段（GestureConfig）
 
-`camera_driver` (`"industrial"` / `"opencv"`), `camera_index`, `camera_width`, `camera_height`, `camera_fps`, `camera_auto_exposure`, `camera_exposure`, `camera_brightness`, `camera_gain`
+`camera_driver` (`"opencv"` / `"industrial"`), `camera_index`, `camera_width`, `camera_height`, `camera_fps`, `camera_auto_exposure`, `camera_exposure`, `camera_brightness`, `camera_gain`
 
 工业相机额外字段：`industrial_sdk_module`, `industrial_camera_index`, `industrial_width`, `industrial_height`, `industrial_fps`, `industrial_exposure_time`, `industrial_exposure_auto`, `industrial_gain`, `industrial_gain_auto`, `industrial_balance_white_auto`, `industrial_fallback_to_opencv`
 
@@ -80,7 +80,7 @@ Windows SendInput 封装，替代 pyautogui，仅 Windows 可用（非 Windows �
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `initial_mode` | str | `"standby"` | 启动模式（CLI `--mode` 可覆盖） |
-| `camera_driver` | str | `"industrial"` | 摄像头驱动 |
+| `camera_driver` | str | `"opencv"` | 摄像头驱动（`"opencv"` 普通摄像头 / `"industrial"` 工业相机） |
 | `camera_index` | int | `0` | 摄像头索引 |
 | `use_gesture_recognizer` | bool | `True` | 是否启用 MediaPipe GestureRecognizer |
 | `min_gesture_confidence` | float | `0.65` | 手势识别最低置信度 |
@@ -129,7 +129,13 @@ MediaPipe 手部关键点识别与手势判定。Phase 8 接入了 GestureRecogn
 | `classify_gesture` | `(landmarks: LandmarkList) -> Gesture` | 旧 landmarks 规则分类（兜底） |
 | `pinch_distance` | `(landmarks: LandmarkList) -> Optional[float]` | 拇指尖(4)与食指尖(8)距离 |
 | `centroid_21` | `(landmarks: LandmarkList) -> Optional[Tuple[float, float]]` | 21 点质心（presentation_pen 锚点） |
-| `check_model_files` | `(project_root: Optional[str] = None, use_gesture_recognizer: bool = True) -> list` | 返回缺失的模型文件路径列表（空列表表示全部存在） |
+| `finger_bent` | `(landmarks: LandmarkList, tip_idx: int, root_idx: int) -> bool` | 判断某手指是否弯曲（指尖 y > 根关节 y） |
+| `finger_bent_status` | `(landmarks: LandmarkList) -> List[bool]` | 返回 [食指, 中指, 无名指, 小指] 弯曲标志 |
+| `is_hand_open` | `(landmarks: LandmarkList) -> bool` | 五指张开（Open_Palm）判定 |
+| `is_fist` | `(landmarks: LandmarkList) -> bool` | 四指弯曲（Fist）判定 |
+| `palm_center` | `(landmarks: LandmarkList) -> Optional[Tuple[int, int]]` | 手腕(0)与中指根部(9)中点像素坐标 |
+| `landmarks_to_hand_input` | `(landmarks: LandmarkList) -> HandInput` | 由 landmarks 构造 HandInput（规则路径，测试/兼容用） |
+| `gesture_recognizer_model_exists` | `(model_filename: str = "gesture_recognizer.task") -> bool` | 检查 `gesture_recognizer.task` 是否存在于项目根目录 |
 
 ---
 
@@ -170,7 +176,7 @@ MediaPipe 手部关键点识别与手势判定。Phase 8 接入了 GestureRecogn
 
 | 枚举 | 说明 |
 |------|------|
-| `Gesture` | 手势枚举（含 legacy 名称和 spec-canonical 名称） |
+| `Gesture` | 手势枚举，成员：`NONE, FIST, OPEN_PALM, SINGLE_FINGER, TWO_FINGER, PINCH, UNKNOWN, CLOSED_FIST, POINTING_UP, THUMB_UP, THUMB_DOWN, VICTORY, ILOVEYOU`（legacy 名映射到 spec-canonical 名） |
 
 ### 数据类
 
@@ -220,7 +226,7 @@ ActionIntent.noop()               # 空操作
 
 ### 模式常量（在 `gesture_config.py` 中定义）
 
-`MODE_STANDBY = "standby"`, `MODE_PRESENTATION = "presentation"`, `MODE_PRESENTATION_PEN = "presentation_pen"`, `MODE_MOUSE = "mouse"`, `MODE_MOUSE_SCROLL = "mouse_scroll"`, `MODE_SOLIDWORKS = "solidworks"`, `MODE_PAUSED = "paused"`
+`MODE_STANDBY = "standby"`, `MODE_PRESENTATION = "presentation"`, `MODE_PRESENTATION_PEN = "presentation_pen"`, `MODE_MOUSE = "mouse"`（Phase 9 已禁用，进入即回 standby）, `MODE_MOUSE_SCROLL = "mouse_scroll"`（同上）, `MODE_SOLIDWORKS = "solidworks"`, `MODE_PAUSED = "paused"`
 
 ---
 
@@ -256,7 +262,7 @@ ActionIntent.noop()               # 空操作
 
 | 类 | 说明 |
 |----|------|
-| `FakeDriver` | 不执行真实操作的空实现，记录调用历史（`calls` 和 `events`）供断言 |
+| `FakeDriver` | 不执行真实操作的空实现；记录调用历史 `calls`（列表）与 `events`（元组列表）供断言。另有 `names()`、`reset()`、`has_event(*prefix)` 辅助方法 |
 
 ---
 
@@ -268,10 +274,12 @@ ActionIntent.noop()               # 空操作
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
-| `GestureController.__init__` | `(config: Optional[GestureConfig] = None, *, recognizer=None, actions=None, status_server=None, cap=None) -> None` | 初始化控制器；可注入各组件（测试用） |
+| `GestureController.__init__` | `(config: Optional[GestureConfig] = None, *, recognizer=None, actions=None, status_server=None, overlay=None, cap=None) -> None` | 初始化控制器；可注入各组件（测试用） |
 | `GestureController.start` | `() -> int` | 启动主循环（阻塞）；返回退出码（0=正常, 2=摄像头失败, 3=模型缺失） |
 | `GestureController.stop` | `() -> None` | 请求停止主循环（线程安全） |
 | `GestureController.status_server_update` | `(**fields) -> None` | 更新状态服务器（安全调用） |
+| `GestureController.status_update` | `(**fields) -> None` | 统一推送状态（WS 服务 + 原生 overlay） |
+| `GestureController.overlay_update` | `(**fields) -> None` | 仅更新原生 overlay（安全调用） |
 
 ### 全局热键（默认）
 
@@ -286,7 +294,7 @@ ActionIntent.noop()               # 空操作
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `check_model_files` | `(project_root: Optional[str] = None, use_gesture_recognizer: bool = True) -> list` | 检查模型文件是否存在，返回缺失路径列表 |
+| `check_model_files` | `(project_root: Optional[str] = None, use_gesture_recognizer: bool = True) -> list` | 检查模型文件是否存在，返回缺失路径列表（定义在 `gesture_controller.py`，非 `gesture_recognition.py`） |
 | `main` | `(argv: Optional[list] = None) -> int` | CLI 入口（配置日志 + 启动控制器） |
 
 ---
@@ -330,7 +338,7 @@ WebSocket 状态广播服务（调试/监控用）。运行在 `127.0.0.1:8765`�
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
-| `GestureStatusServer.__init__` | `(host: str = "127.0.0.1", port: int = 8765, broadcast_interval: float = 0.2) -> None` | 初始化 WebSocket 服务 |
+| `GestureStatusServer.__init__` | `(host: str = "127.0.0.1", port: int = 8765, broadcast_interval: float = 0.2, html_path: Optional[str] = None) -> None` | 初始化 WebSocket 服务；`html_path` 为调试页面 HTML 路径 |
 | `GestureStatusServer.start` | `() -> bool` | 启动服务（后台线程，非阻塞）；返回是否成功 |
 | `GestureStatusServer.stop` | `() -> None` | 停止服务 |
 | `GestureStatusServer.update` | `(**fields: Any) -> None` | 合并部分状态更新（线程安全） |
@@ -348,11 +356,39 @@ WebSocket 状态广播服务（调试/监控用）。运行在 `127.0.0.1:8765`�
   "paused": true,
   "fps": 0.0,
   "connected_clients": 0,
-  "timestamp": 0.0
+  "timestamp": 0.0,
+  "hand_present": false,
+  "hand_lost_duration": 0.0,
+  "cooldown_until": 0.0,
+  "intent_phase": "idle"
 }
 ```
 
 客户端连接后立即收到一次快照，之后每 `broadcast_interval` 秒收到一次更新。
+
+---
+
+## gesture_overlay.py
+
+原生置顶半透明状态浮层（PySide6/Qt，仅 Windows）。运行在独立后台线程，与 `GestureStatusServer` 同构（`start` / `stop` / `update`），显示设备状态、手势、FPS 等。
+
+### 主类
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `GestureOverlay.__init__` | `(*, click_through: bool = True, topmost_interval: float = 1.0, update_interval: float = 0.05, card_alpha: float = 0.72, width: int = 300, screen_size: Tuple[int, int] = (0, 0)) -> None` | 初始化浮层（参数均为关键字参数） |
+| `GestureOverlay.start` | `() -> bool` | 启动 GUI 线程；失败返回 `False` |
+| `GestureOverlay.stop` | `() -> None` | 停止浮层（可多次调用） |
+| `GestureOverlay.update` | `(**fields: Any) -> None` | 线程安全地合并部分状态（controller 线程调用） |
+
+### 模块级纯函数（派生浮层显示文本与颜色）
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `derive_camera` | `(snapshot: Dict[str, Any]) -> Tuple[str, str]` | 由状态快照派生摄像头状态文本与颜色 |
+| `derive_hand` | `(snapshot: Dict[str, Any]) -> Tuple[str, str]` | 由状态快照派生手部状态文本与颜色 |
+| `derive_status` | `(snapshot, hand, now, forced_glow) -> Tuple[str, str, Optional[str]]` | 派生综合状态文本、颜色与高亮颜色 |
+| `check_page_turn` | `(snapshot: Dict[str, Any]) -> Optional[str]` | 检测翻页动作，返回 `"next"` / `"previous"` / `None` |
 
 ---
 

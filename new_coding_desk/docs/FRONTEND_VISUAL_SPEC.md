@@ -373,18 +373,20 @@
 
 ### 11.2 双标签模式 (DualLabel)
 
-未来可在 `shared.tsx` 中增加 `DualLabel` 组件（**本轮不实现**）：
+`DualLabel` 组件已在 `shared.tsx` 中实现（见 21.1），其 props 与样式约定如下：
 
 ```jsx
 interface DualLabelProps {
-  zh: string;    // 中文主标签
+  cn: string;    // 中文主标签
   en?: string;   // 英文副标签（可选）
   className?: string;
+  cnClassName?: string;
+  enClassName?: string;
 }
 ```
 
-- 中文：`text-sm font-medium text-techText`。
-- 英文：`text-xs text-techMuted`，在中文下方 `-mt-0.5`。
+- 中文：`font-semibold text-techText`。
+- 英文：`text-xs font-mono uppercase tracking-wider text-techMuted`，在中文下方。
 - 英文不存在时仅显示中文。
 
 ### 11.3 Logo / 品牌标识
@@ -549,7 +551,7 @@ interface DualLabelProps {
 - 会议标题、投票问题和投票结果应为最清晰元素。
 - 使用大数字、高对比度和稳定布局。
 - 在现有逻辑保留的情况下保留已结束会议的投票结果。
-- 本轮不实现主持人控制大屏功能。
+- 主持人控制大屏功能已在 `/admin` Overview 的 `HostDisplayControl` 中实现（只读视频流查看端为 `/screen` 的 `ScreenView`）。
 
 ### 15.4 字幕区域
 
@@ -746,18 +748,27 @@ className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
 | 导出 | 类型 | 说明 |
 |------|------|------|
 | `isDemoControlsEnabled()` | function | 环境变量检测 |
-| `ConnectionBadge` | component | 连接状态徽章（Wifi/Loader2/WifiOff） |
-| `MeetingStatusBadge` | component | 会议状态徽章（active/pending/finished） |
+| `ConnectionBadge` | component | 连接状态徽章（Wifi/Loader2/WifiOff）— 仍为浅色主题，未被页面组件直接导入 |
+| `MeetingStatusBadge` | component | 会议状态徽章（active/pending/finished）— 仍为浅色主题，未被页面组件直接导入 |
 | `useClock` | hook | 每秒更新的时钟 |
 | `formatTime` | function | 时间格式化 (HH:MM AM/PM) |
 | `formatDuration` | function | 持续时间格式化 (Xh Ym) |
 | `timeAgo` | function | 相对时间 (Xs ago / Xm ago) |
+| `parseBackendDate` | function | 后端 naive UTC 时间解析 |
+| `formatTranscriptTime` | function | 字幕时间格式化 |
 | `EmptyState` | component | 空状态占位（图标+标题+描述） |
 | `LoadingState` | component | 骨架屏加载（可配置行数） |
 | `DisconnectedOverlay` | component | 断连覆盖层（含重试按钮） |
 | `SectionCard` | component | 通用区块卡片（标题栏+内容区） |
+| `DualLabel` | component | 中英双标签（cn 主 + en 副标签） |
+| `StatusBadge` | component | 状态徽章（online/speaking/waiting/offline/success/warning/danger/neutral） |
+| `ActionButton` | component | 统一按钮（variant/size/touch/loading） |
+| `PanelCard` | component | 通用面板卡片（带 variant 边框） |
+| `MetricTile` | component | 指标磁贴 |
+| `SectionHeader` | component | 区块标题行 |
+| `TechEmptyState` | component | tech 风格空状态（cn/en + 可选操作） |
 
-> ✅ 以上组件已于 2026-06-13 视觉一致性收尾轮迁移到 tech 深色主题（`bg-techCard`、`border-techBorder`、`text-techMuted`/`text-techText`）。
+> ✅ `EmptyState`、`LoadingState`、`DisconnectedOverlay`、`SectionCard` 已于 2026-06-13 视觉一致性收尾轮迁移到 tech 深色主题（`bg-techCard`、`border-techBorder`、`text-techMuted`/`text-techText`）。`ConnectionBadge` 与 `MeetingStatusBadge` 仍为浅色主题（emerald/amber/red/slate），未被任何页面组件直接导入，详见 24.5。
 
 ### 21.2 未来组织方案（本轮不移动）
 
@@ -767,7 +778,7 @@ className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
 |----------|----------|
 | `shared/badge.tsx` | `ConnectionBadge`, `MeetingStatusBadge`, 其他状态徽章 |
 | `shared/feedback.tsx` | `EmptyState`, `LoadingState`, `DisconnectedOverlay`, 错误边界 |
-| `shared/layout.tsx` | `SectionCard`, 未来 `DualLabel`, 其他布局组件 |
+| `shared/layout.tsx` | `SectionCard`、`DualLabel`、其他布局组件（如拆分） |
 | `shared/utils.ts` | `formatTime`, `formatDuration`, `timeAgo`, `isDemoControlsEnabled` |
 | `shared/display.tsx` | 大屏专用组件 |
 
@@ -784,12 +795,12 @@ className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
 
 以下功能已在规范中提及，但**本轮绝对不实现**：
 
-1. **`DualLabel` 组件** — 双标签组件规范已定，但本轮不新增。
+1. **`DualLabel` 组件** — 已在 `shared.tsx` 中实现（`cn`+`en` 双标签），不再属于待新增项。
 2. **shared.tsx 拆分** — 分文件组织规范已定，但本轮不移动组件。
 3. **shared.tsx 组件深色主题迁移** — 现有组件改用 tech 色系，本轮不改。
 4. **会议列表页** — 完整的会议列表管理页面。
 5. **完整议题系统** — 议题 CRUD、排序、状态流转。
-6. **主持人控制大屏** — 主持人专有操作面板。
+6. **主持人控制大屏** — 已在 `/admin` Overview 工作区的 `HostDisplayControl` 组件中实现（经 127.0.0.1:8766 loopback Agent 激活 PowerPoint/SolidWorks/SmartDesk）；只读视频流查看端为 `/screen`（`ScreenView`）。
 7. **权限系统** — 用户角色与权限控制。
 8. **大屏字幕、当前议题、发言人展示** — Display 视图的完整功能。
 9. **Next.js 迁移** — 当前使用 React + Vite，不迁移。

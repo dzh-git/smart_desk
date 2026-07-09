@@ -99,20 +99,45 @@ Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 | `SMARTDESK_AGENT_URL=...` | 后端只读状态聚合使用的 Display Agent 地址，默认 `http://127.0.0.1:8766`。 |
 | `SMARTDESK_STREAM_PATH=screen` | MediaMTX 屏幕流路径。 |
 
-## Main Folders
+## 项目结构（文件与目录说明）
 
-| Path | Purpose |
+仓库根目录下的每一份文件/目录作用如下：
+
+### 配置与脚本
+
+| 路径 | 作用 |
 |---|---|
-| `backend/` | FastAPI app、routers、services、repositories、models、WebSocket handlers。 |
-| `backend/speech_module/` | 当前语音实现：FunASR、标点、caption formatting。 |
-| `frontend/` | React + Vite + TypeScript 前端。 |
-| `host_services/display_agent/` | 中央主机本地 Windows 窗口发现与切换 Agent。 |
-| `host_services/screen_stream/` | FFmpeg/MediaMTX 配置、显示器探测和进程 Supervisor。 |
-| `docs/` | 当前 API、状态机、运行手册、架构和 ADR 文档。 |
-| `tests/` | 后端测试和语音测试。 |
-| `models/` | 本地模型权重和缓存，不纳入 git。 |
-| `.hf_cache/` | HuggingFace 缓存，不纳入 git。 |
-| `真实语音数据集/` | 真实中文语音样本数据集，不纳入 git。 |
+| `README.md` | 项目说明文档（即本文件）。 |
+| `AGENTS.md` | 面向编码代理的项目约束、编码与协作规范。 |
+| `requirements.txt` | 后端 Python 依赖清单，安装命令：`pip install -r requirements.txt`。 |
+| `pytest.ini` | pytest 测试配置（测试发现路径与运行选项）。 |
+| `start.bat` | 一键启动脚本：同时拉起 FastAPI 后端与 Vite 前端。 |
+| `kill.bat` | 停止脚本：结束由 `start.bat` 启动的本地进程。 |
+
+### 源码目录
+
+| 路径 | 作用 |
+|---|---|
+| `backend/` | FastAPI 后端：路由、服务层、repository、ORM 模型、WebSocket 处理。 |
+| `backend/speech_module/` | 语音实现：FunASR 识别、标点恢复、字幕格式化。 |
+| `frontend/` | React + Vite + TypeScript 前端（含 `src/`、`package.json` 等）。 |
+| `host_services/display_agent/` | 中央主机本地 Windows 窗口发现与切换 Agent（运行在 8766）。 |
+| `host_services/screen_stream/` | FFmpeg/MediaMTX 配置、显示器探测与进程 Supervisor。 |
+| `docs/` | 文档集合：API 契约、状态机、运行手册、架构与 ADR。 |
+| `tests/` | 后端与语音自动化测试。 |
+| `真实语音数据集/` | 真实中文语音样本（m4a + 转录 txt），用于评测，不纳入 git。 |
+| `models/` | 本地模型权重与缓存（FunASR、OPUS-MT 等），不纳入 git。 |
+| `tools/` | 第三方二进制：`tools/ffmpeg/`（FFmpeg）、`tools/mediamtx/`（MediaMTX），供 Screen Stream 使用。 |
+| `node_modules/` | 前端 npm 依赖（由 `npm install` 生成，不纳入 git）。 |
+
+### 运行产物（本地生成，不纳入 git）
+
+| 路径 | 作用 |
+|---|---|
+| `smart_desk.db` | SQLite 运行数据库，由后端首次启动自动创建。 |
+| `frontend.stderr.log` | 前端进程 stderr 日志，运行期输出。 |
+| `working/` | 本地工作产物：计划、语音评测报告与 trace 等运行输出。 |
+| `.hf_cache/` | HuggingFace 模型缓存目录，不纳入 git。 |
 
 ## Documentation Map
 

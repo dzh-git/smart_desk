@@ -6,7 +6,10 @@ pywin32>=306
 keyboard>=0.13.5
 pynput>=1.7.6
 websockets>=12.0
-PySide6>=6.5.0
+# Pinned to the VS2019-built line. PySide6 >=6.8 (Qt 6.8) is built with VS2022
+# and fails to load on CPython built with VS2019 (e.g. Anaconda Python 3.12)
+# with "ImportError: DLL load failed ... The specified procedure could not be found".
+PySide6>=6.5.0,<6.8
 
 # Test dependencies
 pytest>=8.0.0

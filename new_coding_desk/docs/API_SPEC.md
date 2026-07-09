@@ -19,10 +19,17 @@ in `WEBSOCKET_PROTOCOL.md`.
 ```
 
 - Errors use `success=false`, `data=null`, and a stable `error_code`.
-- Exception: `GET /api/host-display/status` currently returns its stable
+- Exception (1): `GET /api/host-display/status` currently returns its stable
   status object directly, without the common response envelope. The local
   Display Agent also returns raw Agent objects. See
   `HOST_DISPLAY_CONTRACT.md` before changing either response shape.
+- Exception (2): the **votes** and **service-calls** modules raise FastAPI
+  `HTTPException` on errors, so their error body is the raw
+  `{"detail": "<ERROR_CODE>"}` form **instead of** the common envelope. Their
+  success responses still use the common envelope above.
+- Create endpoints return HTTP **201** on success: `POST /api/meetings`,
+  `POST /api/votes`, `POST /api/service-calls`, and `POST /api/translations`
+  (when `final=true`). All other successful writes return 200.
 - The frontend must initialize by calling the concrete resources below. There
   is no aggregate dashboard endpoint dependency in the current app.
 
@@ -69,6 +76,19 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `GET` | `/api/meetings/{meeting_id}/attendees` | List attendees. |
 | `POST` | `/api/meetings/{meeting_id}/attendees` | Add an attendee. |
 | `DELETE` | `/api/meetings/{meeting_id}/attendees/{attendee_id}` | Delete an attendee. |
+
+Create request bodies (JSON):
+
+```json
+POST /api/meetings
+{ "title": "Q3 Review", "description": null }   // title 1..200 (required); 201
+
+POST /api/meetings/{meeting_id}/agendas
+{ "title": "Opening", "sort_order": 0 }          // title 1..500 (required); sort_order int >= 0, default 0
+
+POST /api/meetings/{meeting_id}/attendees
+{ "name": "Alice", "title": "" }                 // name 1..100 (required); title default ""
+```
 
 Meeting backend statuses are `pending`, `active`, and `finished`. The frontend
 maps a finished meeting being reviewed to local `meetingStatus=meeting_ended`.
@@ -204,7 +224,16 @@ Frontend clients must still be able to refresh the source of truth through
 
 - `seat_id`：必填，integer，范围 1..10。
 
-`GET /api/seats/speaker` 和 `DELETE /api/seats/speaker` 不需要请求体。
+`GET /api/seats/speaker` 返回 `{"seat_id": int|null}`（无当前演讲者时为
+`null`），不需要请求体。`DELETE /api/seats/speaker` 也不需要请求体。
+
+`POST /api/seats/{seat_id}/checkin` request body:
+
+```json
+{"attendee_id": 3}
+```
+
+- `attendee_id`：必填，integer，`> 0`。
 
 Check-in requires:
 
@@ -247,6 +276,39 @@ Vote lifecycle uses the current minimal backend statuses:
 `draft` and `archived` are deferred. Only one `open` vote is supported. Repeated
 votes from the same attendee update the existing vote record.
 
+Create / submit request bodies (JSON):
+
+```json
+POST /api/votes
+{ "meeting_id": 1, "title": "Lunch?", "options": ["A","B"], "is_anonymous": false }
+// title <= 500, required; options >= 2 strings, required; is_anonymous default false; 201
+// errors: 400 EMPTY_TITLE, 409 conflict
+
+POST /api/votes/{vote_id}/submit
+{ "attendee_id": 3, "option": "A" }
+// errors: 404 vote not found, 400 (closed / invalid option)
+```
+
+Response shapes:
+
+```json
+Vote object:  { "id": 1, "meeting_id": 1, "title": "Lunch?", "options": ["A","B"], "status": "open", "is_anonymous": false, "total_votes": 0, "created_at": "2026-06-13T10:00:00", "closed_at": null }
+
+GET /api/votes/{vote_id}/statistics:
+{
+  "vote_id": 1,
+  "title": "Lunch?",
+  "is_anonymous": false,
+  "status": "open",
+  "total_votes": 2,
+  "results": [
+    { "option": "A", "count": 1, "attendee_ids": [3] },
+    { "option": "B", "count": 1, "attendee_ids": null }
+  ]
+}
+// results follow the original option order defined on the vote; attendee_ids is null when the vote is anonymous
+```
+
 ## Service Call APIs
 
 | Method | Path | Notes |
@@ -278,30 +340,74 @@ Constraints:
 | `service_type` | Yes | string | `coffee` / `tea` / `water` / `other` |
 | `custom_text` | No | string or null | Accepted by the request schema but not persisted by the current implementation. Callers must not expect this value in responses or history. |
 
+`POST /api/service-calls` returns **201**.
+
+Service call status lifecycle:
+
+- `pending`: initial state when a call is created.
+- `resolved`: set by `POST /api/service-calls/{call_id}/resolve`.
+- `cancelled`: set by `POST /api/service-calls/{call_id}/cancel`.
+
+Error `409` when creating a call while the seat already has a pending call.
+Errors `404` (call not found) / `400` (invalid state) on resolve/cancel.
+
+Service call object shape (in `data`):
+
+```json
+{ "id": 1, "meeting_id": 1, "seat_id": 4, "service_type": "coffee", "status": "pending", "created_at": "2026-06-13T10:00:00" }
+```
+
 ## Translation APIs
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/api/translations?meeting_id=N&seat_id=N` | Query persisted final translation records. |
-| `POST` | `/api/translations` | Compatibility final audio upload path. Not used for realtime interim. |
+| `GET` | `/api/translations?meeting_id=N&seat_id=N` | Query persisted final translation records. Returns a history object (not a raw list); `seat_id` is an optional filter. |
+| `POST` | `/api/translations` | Upload speech audio as **multipart/form-data**. Handles both interim (`final=false`) and final (`final=true`) results. |
 
-Realtime speech final records are persisted to `translation_records` and are
-queryable through `GET /api/translations`.
+`POST /api/translations` is **multipart/form-data**, not JSON. Fields:
 
-`translation_records` include:
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| `audio` | Yes | file | Audio blob. |
+| `meeting_id` | Yes | integer | Target meeting. |
+| `seat_id` | Yes | integer | Originating seat. |
+| `session_key` | No | string | Default `""`. |
+| `final` | No | boolean | Default `false`. |
 
-- `id`
-- `meeting_id`
-- `seat_id`
-- `utterance_id`
-- `source_lang`
-- `target_lang`
-- `source_text`
-- `translated_text`
-- `source_type`
-- `created_at`
+Behavior by `final`:
 
-Interim speech text is never persisted and never translated.
+- `final=false` (interim): server transcribes and returns the recognized text
+  immediately. **Not persisted.** `data` is `{ "text": "..." }` (HTTP 200).
+- `final=true`: server transcribes, persists a `translation_records` row, and
+  returns it. `data` is a `TranslationRecordResponse` (**HTTP 201**). On failure
+  returns 500.
+
+`GET /api/translations` returns a history object:
+
+```json
+{
+  "meeting_id": 1,
+  "entries": [
+    {
+      "id": 1,
+      "meeting_id": 1,
+      "seat_id": 4,
+      "utterance_id": null,
+      "source_lang": "zh",
+      "target_lang": "en",
+      "source_text": "...",
+      "translated_text": "...",
+      "source_type": null,
+      "created_at": "2026-06-13T10:00:00"
+    }
+  ]
+}
+```
+
+`TranslationRecordResponse` fields: `id`, `meeting_id`, `seat_id`,
+`utterance_id` (nullable), `source_lang`, `target_lang`, `source_text`,
+`translated_text`, `source_type` (nullable), `created_at`. Interim results are
+never persisted.
 
 When `ENABLE_TRANSLATION_MODEL=true`, final Chinese source text is translated by
 the local OPUS-MT zh-en model. When the model is disabled, `translated_text`
@@ -320,6 +426,13 @@ Speech audio upload uses WebSocket:
 /ws/speech/{meeting_id}?seat=N
 ```
 
+The backend also exposes a general broadcast WebSocket for the same meeting
+(used to push seat/agenda/vote/service-call/check-in events to clients):
+
+```text
+/ws/{meeting_id}?seat=N
+```
+
 See `WEBSOCKET_PROTOCOL.md` for the binary audio and event contract.
 
 ## Host Display and Screen Stream APIs
@@ -334,9 +447,11 @@ GET /api/host-display/status
 ```
 
 This endpoint returns a raw stable status object containing `agent_state`,
-`stream_state`, `active_app`, `viewer_count`, the three application states,
-and the stream profile. Upstream Agent or MediaMTX failures degrade to
-offline/unknown/null values and must not cause a backend 500.
+`stream_state`, `active_app`, `viewer_count`, the three application states
+(under `apps`, each `{running, window_found}`), and the stream profile (under
+`profile`, `{width, height, fps}`; all nullable). Upstream Agent or MediaMTX
+failures degrade to offline/unknown/null values and must not cause a backend
+500.
 
 Frontend integration note: this raw response is incompatible with the common
 `apiGet()` envelope parser. Since Phase 5, `fetchHostDisplayStatus()` uses
@@ -352,14 +467,34 @@ POST /api/host-display/activate  # forbidden / not implemented
 ### Central-host local Display Agent
 
 These endpoints are not served by the SmartDesk backend and are reachable only
-on the browser machine's loopback interface:
+on the browser machine's loopback interface (CORS is a fixed origin whitelist —
+default `http://127.0.0.1:5173`, `http://localhost:5173` — not `*`):
 
 ```http
 GET  http://127.0.0.1:8766/status
 POST http://127.0.0.1:8766/activate
+GET  http://127.0.0.1:8766/health
 ```
 
-The activate request accepts exactly one field and one of three values:
+`GET /status` returns:
+
+```json
+{
+  "agent_state": "online",
+  "win32_available": true,
+  "com_available": true,
+  "apps": {
+    "powerpoint": { "running": true,  "window_found": true },
+    "solidworks": { "running": false, "window_found": false },
+    "smartdesk":  { "running": true,  "window_found": true }
+  },
+  "active_app": "powerpoint"
+}
+```
+
+`GET /health` returns `{"status":"ok","agent":"display_agent"}`.
+
+The `POST /activate` request accepts exactly one field and one of three values:
 
 ```json
 {"app":"powerpoint"}
@@ -368,6 +503,17 @@ The activate request accepts exactly one field and one of three values:
 ```text
 powerpoint | solidworks | smartdesk
 ```
+
+`POST /activate` returns `ActivateResponse`:
+
+```json
+{ "ok": true, "app": "powerpoint", "action": "activate", "detail": "" }
+```
+
+If the target app has no running window or cannot be brought to the foreground,
+the Agent returns **HTTP 409** with the same `ActivateResponse` shape (e.g.
+`{"ok": false, "app": "...", "action": "...", "detail": "..."}`). The request
+schema uses `extra="forbid"`, so any unknown field is rejected.
 
 Phase 5 Admin controls must probe the Agent and post directly to it. This works
 only when `/admin` is opened on the central host. Remote control is deferred

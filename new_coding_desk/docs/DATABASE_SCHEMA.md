@@ -133,7 +133,8 @@ when users keep a local database.
 
 | Repository | Owns |
 |---|---|
-| `MeetingRepository` | `meetings`, agendas, attendees |
+| `MeetingRepository` | `meetings`, `agendas` |
+| `AttendeeRepository` | `attendees` |
 | `SeatRepository` | `seat_states`, `speaker_seat` |
 | `VoteRepository` | `votes`, `vote_records` |
 | `ServiceCallRepository` | `service_calls` |

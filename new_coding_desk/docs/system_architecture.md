@@ -44,6 +44,7 @@ Current routers:
 - `translations.py`
 - `speech.py`
 - `dev.py` for demo-only seat controls
+- `host_display.py` for read-only display status aggregation (Display Agent + MediaMTX)
 
 ### Service Layer
 
@@ -117,6 +118,26 @@ The transcript UI displays:
 The frontend must not synthesize business state from events when HTTP refresh is
 safer. For speech interim captions, it may update the live caption directly by
 `utterance_id` and `revision`.
+
+## Host Services (Screen Stream & Display Agent)
+
+These are Windows host-side helpers, separate from the FastAPI backend and the
+React frontend. They are described normatively in `docs/HOST_DISPLAY_CONTRACT.md`.
+
+- `host_services/display_agent/`: a user-session FastAPI process bound to
+  loopback `127.0.0.1:8766`. It performs local Win32/COM application switching
+  (PowerPoint/SolidWorks/SmartDesk) via `pywin32` + `psutil`. It exposes
+  `GET /status`, `POST /activate`, and `GET /health`. The backend never calls
+  Win32 and never reaches this agent except over loopback `GET /status`.
+- `host_services/screen_stream/`: a supervisor that starts MediaMTX and FFmpeg
+  (`ddagrab` Desktop Duplication capture + H.264 encoding). FFmpeg publishes
+  RTSP on `127.0.0.1:8554`; MediaMTX distributes via WebRTC on `:8889` (HTTP)
+  and `:8189` (ICE UDP), with Control API on `:9997` and metrics on `:9998`.
+  FFmpeg and MediaMTX are external deployment binaries, not committed to Git.
+
+The Display Agent and screen-stream supervisor run in the interactive user
+session (not Session 0) and are launched by `start.bat` only when
+`ENABLE_SCREEN_STREAM=true`.
 
 ## Demo Data and Startup
 
