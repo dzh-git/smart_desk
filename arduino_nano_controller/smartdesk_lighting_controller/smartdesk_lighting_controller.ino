@@ -23,6 +23,8 @@
  */
 
 #include <FastLED.h>
+#include <Wire.h>
+#include <VL53L0X.h>
 
 // ---------------------------------------------------------------------------
 // Hardware pins
@@ -39,6 +41,11 @@ const uint8_t MAX_LED_BRIGHTNESS = 80;   // power-safe hard ceiling
 #define LED_COLOR_ORDER GRB
 
 CRGB leds[NUM_LEDS];
+
+VL53L0X tof;                  // laser range finder (I2C, A4=SDA / A5=SCL)
+const uint8_t TOF_SAMPLES = 8; // take mean of the last 8 readings
+int tofBuf[TOF_SAMPLES];       // ring buffer, prefilled in setup()
+uint8_t tofIdx = 0;
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -137,6 +144,13 @@ void setup()
     FastLED.addLeds<WS2812B, LED_DATA_PIN, LED_COLOR_ORDER>(leds, NUM_LEDS);
     FastLED.setBrightness(gBrightness);
     FastLED.clear(true);
+
+    Wire.begin();
+    tof.init();
+    tof.setTimeout(500);
+    tof.startContinuous();
+    delay(100);   // let the first ranging complete
+    for (uint8_t i = 0; i < TOF_SAMPLES; i++) tofBuf[i] = 9999;  // prefill 'far'
 
     Serial.begin(115200);
     while (!Serial)
@@ -287,20 +301,32 @@ LightMode modeFromString(const String &m)
 // ---------------------------------------------------------------------------
 void updatePIR()
 {
+    // VL53L0X runs in continuous mode; a single read returns the latest
+    // measurement. To average 5-10 samples without blocking, push one reading
+    // per ~33 ms frame into a ring buffer and use the mean of the last N.
+    const int raw = tof.readRangeContinuousMillimeters();
+    const bool tofOk = !tof.timeoutOccurred();
+    if (tofOk)
+    {
+        tofBuf[tofIdx] = raw;
+        tofIdx = (tofIdx + 1) % TOF_SAMPLES;
+    }
+    long sum = 0;
+    for (uint8_t i = 0; i < TOF_SAMPLES; i++) sum += tofBuf[i];
+    const int distMm = (int)(sum / TOF_SAMPLES);
+
     previousSensorState = sensorState;
     sensorState = digitalRead(SENSOR_PIN);
 
-    const bool risingEdge = (sensorState == HIGH && previousSensorState == LOW);
-    const bool fallingEdge = (sensorState == LOW && previousSensorState == HIGH);
-
-    if (risingEdge)
-    {
-        Serial.println("EVENT PIR 1");
-    }
-    if (fallingEdge)
-    {
-        Serial.println("EVENT PIR 0");
-    }
+    // Occupancy = PIR motion AND close proximity (<100 mm). A passer-by
+    // (PIR high but far away) no longer triggers the welcome animation.
+    static bool seatedPrev = false;
+    const bool seatedNow = (sensorState == HIGH) && (distMm < 100) && tofOk;
+    const bool risingEdge  = seatedNow && !seatedPrev;
+    const bool fallingEdge = !seatedNow && seatedPrev;
+    if (risingEdge)  Serial.println("EVENT PIR 1");
+    if (fallingEdge) Serial.println("EVENT PIR 0");
+    seatedPrev = seatedNow;
 
     digitalWrite(STATUS_LED_PIN, sensorState == HIGH ? HIGH : LOW);
 }

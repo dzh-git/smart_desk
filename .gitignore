@@ -66,4 +66,8 @@ test-results/
 Thumbs.db
 
 .workbuddy/
+.claude/
+.stfolder/
+sync.ffs_db
 **/.claude/memory/
+**/.claude/settings.local.json

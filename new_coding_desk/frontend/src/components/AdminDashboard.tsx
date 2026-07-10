@@ -24,6 +24,7 @@ import { ServicePanel } from "./ServicePanel";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { MeetingResultPanel } from "./MeetingResultPanel";
 import { HostDisplayControl } from "./HostDisplayControl";
+import { HardwareStatus } from "./HardwareStatus";
 import {
   SectionCard,
   ActionButton,
@@ -954,6 +955,8 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
 
           {/* Right column */}
           <div className={`col-span-12 flex flex-col gap-6 ${isEndedMeeting || workspace !== "overview" ? '' : 'xl:col-span-4'}`}>
+            <HardwareStatus />
+
             {/* Attendees — visible in overview workspace or ended meetings */}
             {(isEndedMeeting || workspace === "overview") && (
               <SectionCard

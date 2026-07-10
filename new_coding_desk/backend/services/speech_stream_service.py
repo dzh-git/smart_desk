@@ -29,6 +29,11 @@ import numpy as np
 
 from backend.speech_module.caption_formatter import CaptionFormatter
 from backend.websocket.speech_trace import trace
+from backend.events import event_bus
+from backend.events.speech_events import (
+    SpeakerSpeakingEvent,
+    SpeakerSpeakingStopEvent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +289,14 @@ class SpeechStreamService:
         session.utterance_state = UTTERANCE_STATE_SPEAKING
         session.vad_silence_seconds = 0.0
 
+        # Lighting: a speaker is now talking -> AI_SPEAKING on this seat.
+        event_bus.publish(
+            SpeakerSpeakingEvent(
+                meeting_id=session.meeting_id,
+                payload={"seat_id": session.seat_id},
+            )
+        )
+
         # Reset SpeechModule per-utterance state
         if self._speech_module is not None and self._speech_module.ready:
             self._speech_module.set_session_context(
@@ -314,6 +327,13 @@ class SpeechStreamService:
         # Task 122: reset VAD state
         session.utterance_state = UTTERANCE_STATE_IDLE
         session.vad_silence_seconds = 0.0
+        # Lighting: speaker stopped -> revert this seat from AI_SPEAKING.
+        event_bus.publish(
+            SpeakerSpeakingStopEvent(
+                meeting_id=session.meeting_id,
+                payload={"seat_id": session.seat_id},
+            )
+        )
         if self._speech_module is not None and self._speech_module.ready:
             self._speech_module.reset_interim(session_key)
         return uid
@@ -594,6 +614,14 @@ class SpeechStreamService:
                 "(key=%s)", session_key,
             )
             return False
+
+        # Lighting: session gone -> revert this seat from AI_SPEAKING.
+        event_bus.publish(
+            SpeakerSpeakingStopEvent(
+                meeting_id=session.meeting_id,
+                payload={"seat_id": session.seat_id},
+            )
+        )
 
         del self._sessions[session_key]
         logger.debug("Session removed: %s (token=%s)", session_key, session_token)

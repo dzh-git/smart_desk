@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import type { ConnectionStatus } from "../types";
+import { wsBase } from "../app-config";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -63,9 +64,8 @@ export function useWebSocket(
 
     setStatus("connecting");
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsSeatId = seatId ?? 0;
-    const url = `${protocol}//${window.location.host}/ws/${meetingId}?seat=${wsSeatId}`;
+    const url = `${wsBase()}/ws/${meetingId}?seat=${wsSeatId}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;

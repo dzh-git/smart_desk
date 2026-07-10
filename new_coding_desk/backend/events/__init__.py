@@ -33,6 +33,10 @@ from backend.events.service_call_events import (
     ServiceCallResolvedEvent,
     ServiceCallCancelledEvent,
 )
+from backend.events.speech_events import (
+    SpeakerSpeakingEvent,
+    SpeakerSpeakingStopEvent,
+)
 from backend.events.translation_events import TranslationFinalEvent
 from backend.events.agenda_events import AgendaUpdatedEvent
 
@@ -60,6 +64,9 @@ __all__ = [
     "ServiceCallCreatedEvent",
     "ServiceCallResolvedEvent",
     "ServiceCallCancelledEvent",
+    # Speech-speaking events
+    "SpeakerSpeakingEvent",
+    "SpeakerSpeakingStopEvent",
     # Translation events
     "TranslationFinalEvent",
 ]

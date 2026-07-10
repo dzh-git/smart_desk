@@ -21,6 +21,7 @@
  */
 
 import { trace } from "./speechTrace";
+import { wsBase } from "../app-config";
 
 export type SpeechWsStatus =
   | "disconnected"
@@ -103,8 +104,7 @@ export class SpeechWsClient {
 
       this.setStatus("connecting");
 
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const url = `${protocol}//${window.location.host}/ws/speech/${meetingId}?seat=${seatId}`;
+      const url = `${wsBase()}/ws/speech/${meetingId}?seat=${seatId}`;
 
       const ws = new WebSocket(url);
       this.ws = ws;

@@ -9,6 +9,10 @@ sqlalchemy>=2.0.0
 pydantic>=2.5.0
 pydantic-settings>=2.0.0
 
+# == Hardware (Arduino Nano lighting controller serial bridge) ==
+pyserial>=3.5              # ArduinoManager: serial comms with lighting controller
+
+
 # == Speech / Audio (required for streaming ASR) ==
 numpy>=1.26.0
 torch>=2.0.0              # PyTorch — required by FunASR for model inference

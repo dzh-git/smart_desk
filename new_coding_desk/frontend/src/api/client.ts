@@ -1,10 +1,13 @@
 // ─── Unified HTTP API Client ──────────────────────────────────────────────
-// Uses relative /api/... paths — Vite dev proxy handles routing to the backend.
-// All methods unwrap ApiResponse<T> and throw typed errors on failure.
+// BASE_URL is relative by default (Vite dev proxy / same-origin backend). On a
+// seat terminal serving the frontend locally, app-config.js sets apiBase to the
+// central host so requests reach the backend. All methods unwrap ApiResponse<T>
+// and throw typed errors on failure.
 
 import type { ApiResponse } from "./types";
+import { apiBase } from "../app-config";
 
-const BASE_URL = "/api";
+const BASE_URL = apiBase() + "/api";
 
 // ── Error Types ──────────────────────────────────────────────────────────
 

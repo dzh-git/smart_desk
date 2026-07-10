@@ -1,0 +1,29 @@
+{
+  "deploy_mode": "central",
+  "lighting": {
+    "demo_seat_id": 1
+  },
+  "arduino": {
+    "enabled": true,
+    "baudrate": 115200,
+    "write_timeout_seconds": 1.0,
+    "heartbeat_interval_seconds": 5.0,
+    "reconnect_interval_seconds": 3.0,
+    "seats": {
+      "1": "COM8",
+      "2": "COM6",
+      "3": "COM7",
+      "4": "COM5",
+      "5": "COM9",
+      "6": "COM10",
+      "7": "COM11",
+      "8": "COM12",
+      "9": "COM13"
+    }
+  },
+  "seats_total": 9,
+  "gesture": {
+    "enabled": true,
+    "status_ws_url": "ws://127.0.0.1:8765"
+  }
+}

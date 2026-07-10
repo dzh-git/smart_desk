@@ -31,6 +31,18 @@ from backend.repositories.seat_repository import SeatRepository
 from backend.websocket import ws_service, WebSocketEventHandler
 from backend.websocket.speech_ws import handle_speech_ws
 from backend.seed_demo import seed_demo_data
+from backend.hardware import (
+    seat_managers,
+    build_gateway,
+    set_seat_gateway,
+    get_lighting_manager,
+    set_lighting_manager,
+    deploy_mode,
+    gesture_config,
+    demo_seat_id,
+)
+from backend.hardware.seat_hardware import start_all, stop_all
+from backend.hardware.lighting_manager import LightingManager
 from backend.api import (
     dashboard,
     dev,
@@ -41,7 +53,9 @@ from backend.api import (
     translations,
     speech,
     host_display,
+    hardware,
 )
+from backend.api import seat_ws
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +249,31 @@ async def lifespan(app: FastAPI):
     WebSocketEventHandler.capture_loop()
     WebSocketEventHandler.register_all(event_bus)
 
+    # ── Hardware integration ──
+    # Build the seat gateway: LocalSeatGateway (serial, central/dev mode) or
+    # SeatGateway (WebSocket, distributed mode). Non-fatal: any failure is
+    # logged and the backend keeps running (no hardware may crash the program).
+    import asyncio as _asyncio
+    try:
+        loop = _asyncio.get_running_loop()
+        gateway = build_gateway(loop)
+        set_seat_gateway(gateway)
+        if deploy_mode == "central":
+            start_all(seat_managers)
+        lighting_manager = LightingManager(gateway, demo_seat_id=demo_seat_id)
+        lighting_manager.register()
+        set_lighting_manager(lighting_manager)
+    except Exception:
+        logger.exception("Hardware init failed (non-fatal)")
+
     yield
+
+    # ── Shutdown: close serial ports gracefully (central mode only) ──
+    try:
+        if deploy_mode == "central":
+            stop_all(seat_managers)
+    except Exception:
+        logger.exception("Hardware shutdown error")
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -265,6 +303,11 @@ app.include_router(service_calls.router)
 app.include_router(translations.router)
 app.include_router(speech.router)
 app.include_router(host_display.router)
+app.include_router(hardware.router)
+
+# Distributed mode only: Seat Edge Agent WebSocket channel.
+if deploy_mode == "distributed":
+    app.include_router(seat_ws.router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
