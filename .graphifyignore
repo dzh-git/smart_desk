@@ -1,0 +1,19 @@
+# Historical and generated material
+docs/archive/
+graphify-out/
+
+# Local models, media and third-party binaries
+new_coding_desk/models/
+new_coding_desk/tools/
+new_coding_desk/真实语音数据集/
+new_coding_desk/working/
+
+# Runtime environments and outputs
+**/.venv/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.smartdesk-runtime/
+**/logs/
+**/*.db
+**/*.log

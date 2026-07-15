@@ -79,9 +79,9 @@ start.bat
 
 启用前需将 FFmpeg 和 MediaMTX 二进制文件分别放置到
 `tools/ffmpeg/bin/ffmpeg.exe` 和 `tools/mediamtx/mediamtx.exe`。
-这些二进制文件不提交到 Git 仓库，需人工下载放置。Screen Stream
-启动后，Display Agent 监听 `127.0.0.1:8766`，Screen Supervisor
-管理 FFmpeg + MediaMTX 生命周期，WebRTC 播放地址为
+这些二进制文件不提交到 Git 仓库，需人工下载放置。Display Agent 默认由
+`ENABLE_DISPLAY_AGENT=true` 独立启动并监听 `127.0.0.1:8766`；Screen
+Supervisor 仅在 `ENABLE_SCREEN_STREAM=true` 时管理 FFmpeg + MediaMTX，WebRTC 播放地址为
 `http://<中央主机IP>:8889/screen`。
 
 局域网访问：前端绑定 `0.0.0.0:5173`，同一 LAN 的终端可通过
@@ -256,7 +256,11 @@ npm run e2e:speech
 | 10 终端负载 | 10 个浏览器同时打开 `/screen` | 画面基本流畅 |
 | 端到端延迟 | 实测从画面变化到 WebRTC 显示 | 目标 <1s，验收上限 <=1.5s（当前未实机测量） |
 
-## 11. 已移除内容
+## 11. 手势切屏验收
 
-- 手势识别控制器不属于当前 SmartDesk 前后端项目，已从本仓库清理。
-- 历史 Task 计划文档不再作为运行手册维护。
+1. 保持 Display Agent 与手势识别模块运行，预先打开 PowerPoint 和 SolidWorks。
+2. 在会议大屏前做 `I Love You` 手势并右滑，确认会议屏切至 PowerPoint；再次右滑返回会议屏。
+3. 左滑验证会议屏与 SolidWorks 的往返，并验证 PowerPoint 左滑至 SolidWorks、SolidWorks 右滑至 PowerPoint。
+4. 关闭目标应用后重试，确认当前窗口和手势模式保持不变，状态服务报告明确失败原因。
+
+历史计划和阶段性说明统一归档到根目录 `docs/archive/`，不作为当前行为依据。

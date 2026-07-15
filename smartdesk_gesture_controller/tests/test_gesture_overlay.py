@@ -108,6 +108,32 @@ def test_status_camera_offline_when_not_paused():
     )
 
 
+def test_status_display_switch_failed():
+    snap = {
+        "paused": False,
+        "camera_ok": True,
+        "display_switch_state": "failed",
+    }
+    assert derive_status(snap, ("Detected", COLOR_GREEN), _NOW, None) == (
+        "Display Switch Failed",
+        COLOR_ROSE,
+        False,
+    )
+
+
+def test_status_display_switching():
+    snap = {
+        "paused": False,
+        "camera_ok": True,
+        "display_switch_state": "switching",
+    }
+    assert derive_status(snap, ("Detected", COLOR_GREEN), _NOW, None) == (
+        "Switching Display",
+        COLOR_CYAN,
+        True,
+    )
+
+
 def test_status_hand_lost():
     snap = {"paused": False, "camera_ok": True, "mode": "presentation"}
     assert derive_status(snap, ("Lost", COLOR_ROSE), _NOW, None) == (

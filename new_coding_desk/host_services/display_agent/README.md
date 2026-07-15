@@ -11,8 +11,12 @@ It is NOT a Windows Service — Session 0 isolation prevents Windows Services
 from reliably operating PowerPoint, SolidWorks, and browser windows.
 
 Recommended launch methods:
-1. Manually via `start_display_agent.bat`
-2. A "run at user logon" Scheduled Task that calls `start_display_agent.bat`
+1. SmartDesk root `start.bat` with the default `ENABLE_DISPLAY_AGENT=true`
+2. Manually via `start_display_agent.bat`
+3. A "run at user logon" Scheduled Task that calls `start_display_agent.bat`
+
+`ENABLE_SCREEN_STREAM` controls only FFmpeg and MediaMTX. The gesture
+controller uses this agent even when screen streaming is disabled.
 
 ## Endpoints
 
@@ -96,4 +100,5 @@ Stop:
 The admin frontend (`http://127.0.0.1:5173/admin`) probes
 `http://127.0.0.1:8766/status` and only enables the three switch buttons
 when the probe succeeds — which only happens when the browser is running
-on the central host itself.
+on the central host itself. The sibling gesture controller calls the same
+fixed `/activate` contract for `I Love You` left/right application switching.

@@ -71,3 +71,10 @@ Thumbs.db
 sync.ffs_db
 **/.claude/memory/
 **/.claude/settings.local.json
+
+# ---------- Graphify generated runtime ----------
+graphify-out/cache/
+graphify-out/graph.html
+graphify-out/cost.json
+graphify-out/.graphify_*
+!graphify-out/.graphify_labels.json

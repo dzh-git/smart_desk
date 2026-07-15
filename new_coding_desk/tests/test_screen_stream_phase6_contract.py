@@ -143,78 +143,38 @@ class TestStartBatContract:
             f"(has_conditional={has_conditional})."
         )
 
-    def test_not_true_does_not_start_agent_or_supervisor(self) -> None:
-        """When ENABLE_SCREEN_STREAM is not 'true', no agent/supervisor is launched.
-
-        The guard must check for the literal value 'true' AND the agent/
-        supervisor start commands must be on lines AFTER the guard line
-        but BEFORE the matching closing paren, i.e. inside the 'if' block.
-        """
+    def test_display_agent_and_stream_have_independent_guards(self) -> None:
+        """Display Agent and screen supervisor use independent feature flags."""
         text = _read_text(START_BAT)
         lines = text.splitlines()
 
-        # Find the guard line: if ... ENABLE_SCREEN_STREAM ... == ... true ... (
-        guard_idx = -1
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            lowered = stripped.lower()
-            batch_normalized = lowered.lstrip("@").lstrip()
-            if (
-                not stripped
-                or stripped.startswith("::")
-                or batch_normalized == "rem"
-                or batch_normalized.startswith("rem ")
-            ):
-                continue
-            # Exact pattern: if [/I] "%ENABLE_SCREEN_STREAM%"=="true" (
-            if (re.search(
-                    r'^if\s+(?:/I\s+)?["]?%ENABLE_SCREEN_STREAM%["]?\s*==\s*["]?true["]?\s*\($',
-                    stripped, re.IGNORECASE)):
-                guard_idx = i
-                break
+        def guarded_block(variable: str) -> str:
+            guard_idx = next(
+                (
+                    i
+                    for i, line in enumerate(lines)
+                    if re.search(
+                        rf'^if\s+(?:/I\s+)?"?%{variable}%"?\s*==\s*"?true"?\s*\($',
+                        line.strip(),
+                        re.IGNORECASE,
+                    )
+                ),
+                -1,
+            )
+            assert guard_idx >= 0, f"{variable}=true guard not found"
+            depth = 0
+            for i in range(guard_idx, len(lines)):
+                depth += lines[i].count("(") - lines[i].count(")")
+                if i > guard_idx and depth <= 0:
+                    return "\n".join(lines[guard_idx + 1:i])
+            raise AssertionError(f"unterminated {variable} guard")
 
-        assert guard_idx >= 0, (
-            "Agent and supervisor startup must be guarded by "
-            "'if \"%ENABLE_SCREEN_STREAM%\"==\"true\" ( ... )'. "
-            "No matching guard line found in start.bat."
-        )
-
-        # Find the matching closing paren.  Track nesting depth
-        # starting from the guard line itself (depth=1 for the '(' on it).
-        depth = 0
-        for i in range(guard_idx, len(lines)):
-            stripped = lines[i].strip()
-            # Skip the guard line itself
-            if i == guard_idx:
-                depth = stripped.count('(') - stripped.count(')')
-                continue
-            depth += stripped.count('(') - stripped.count(')')
-            if depth <= 0:
-                block_end = i
-                break
-        else:
-            block_end = len(lines) - 1
-
-        # Extract the block lines (between guard and closing paren)
-        block_lines = lines[guard_idx + 1:block_end]
-        block_text = '\n'.join(block_lines)
-
-        has_agent_start = _has_non_comment_line(
-            block_text,
-            r'^@?(?:start|python(?:\.exe)?|py)\b.*(?:display_agent|agent\.py)',
-        )
-        has_supervisor_start = _has_non_comment_line(
-            block_text,
-            r'^@?(?:start|python(?:\.exe)?|py)\b.*(?:screen[^\r\n]*supervisor|supervisor\.py)',
-        )
-
-        assert has_agent_start and has_supervisor_start, (
-            f"Both display_agent (found={has_agent_start}) and screen "
-            f"supervisor (found={has_supervisor_start}) must be started "
-            f"INSIDE the 'ENABLE_SCREEN_STREAM==\"true\"' guard block. "
-            f"Guard found at line {guard_idx + 1}, block ends at line "
-            f"{block_end + 1}. Block content:\n{block_text}"
-        )
+        agent_block = guarded_block("ENABLE_DISPLAY_AGENT")
+        stream_block = guarded_block("ENABLE_SCREEN_STREAM")
+        assert _has_non_comment_line(agent_block, r'^@?start\b.*agent\.py')
+        assert not _has_non_comment_line(agent_block, r'^@?start\b.*supervisor\.py')
+        assert _has_non_comment_line(stream_block, r'^@?start\b.*supervisor\.py')
+        assert not _has_non_comment_line(stream_block, r'^@?start\b.*agent\.py')
 
     def test_starts_as_current_user_normal_process(self) -> None:
         """Agent and supervisor run as current login user (not SYSTEM/service).

@@ -67,6 +67,9 @@ def test_default_snapshot_contains_new_fields(status_server):
     assert snap["cooldown_until"] == 0.0
     assert "intent_phase" in snap
     assert snap["intent_phase"] == "idle"
+    assert snap["display_agent_online"] is False
+    assert snap["display_target_app"] == "smartdesk"
+    assert snap["display_switch_state"] == "unknown"
 
 
 def test_update_merges_fields(status_server):

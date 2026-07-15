@@ -1,7 +1,7 @@
 """
 Hardware integration package.
 
-Deployment topology (see project_proposal/智能会议桌项目计划书.docx):
+Deployment topology (historical proposal: docs/archive/project-proposal/智能会议桌项目计划书.docx):
     Arduino Nano -> seat Windows terminal (local USB serial) -> central host
     (WebSocket + REST). The central host opens NO serial port in production.
 

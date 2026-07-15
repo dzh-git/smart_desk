@@ -20,6 +20,9 @@ from __future__ import annotations
 import os
 import tempfile
 
+import pytest
+
+from hands.display_agent_client import DisplayAgentResult
 from hands.gesture_actions import ActionLayer, FakeDriver
 from hands.gesture_config import default_config
 from hands.gesture_controller import GestureController
@@ -499,6 +502,76 @@ def test_controller_dispatches_via_action_layer_execute() -> None:
     # _dispatch_intents should call actions.execute()
     controller._dispatch_intents([ActionIntent.press("f5")])
     assert ("press", "f5") in driver.events
+
+
+class _FakeDisplayAgent:
+    def __init__(self, result: DisplayAgentResult) -> None:
+        self.result = result
+        self.apps = []
+
+    def status(self) -> DisplayAgentResult:
+        return self.result
+
+    def activate(self, app: str) -> DisplayAgentResult:
+        self.apps.append(app)
+        return self.result
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "target"),
+    [
+        ("standby", "presentation", "powerpoint"),
+        ("presentation", "standby", "smartdesk"),
+        ("standby", "solidworks", "solidworks"),
+        ("solidworks", "standby", "smartdesk"),
+        ("presentation", "solidworks", "solidworks"),
+        ("solidworks", "presentation", "powerpoint"),
+    ],
+)
+def test_display_agent_receives_all_mode_swipe_mappings(before, after, target):
+    client = _FakeDisplayAgent(
+        DisplayAgentResult(ok=True, online=True, app=target)
+    )
+    controller, _ = _controller_with_fake_driver()
+    controller.display_agent_client = client
+    controller.state.mode = after
+
+    assert controller._sync_display_mode_transition(before, after, 10.0) is True
+    assert client.apps == [target]
+    assert controller.state.mode == after
+    assert controller._display_status["display_active_app"] == target
+
+
+def test_display_switch_failure_restores_previous_mode():
+    client = _FakeDisplayAgent(
+        DisplayAgentResult(
+            ok=False,
+            online=True,
+            app="solidworks",
+            detail="SolidWorks window not found",
+            status_code=409,
+        )
+    )
+    controller, _ = _controller_with_fake_driver()
+    controller.display_agent_client = client
+    controller.state.mode = "solidworks"
+
+    assert controller._sync_display_mode_transition("standby", "solidworks", 10.0) is False
+    assert controller.state.mode == "standby"
+    assert controller._display_status["display_switch_state"] == "failed"
+    assert controller._display_status["display_switch_error"] == "SolidWorks window not found"
+
+
+def test_presentation_pen_does_not_reactivate_powerpoint():
+    client = _FakeDisplayAgent(DisplayAgentResult(ok=True, online=True))
+    controller, _ = _controller_with_fake_driver()
+    controller.display_agent_client = client
+    controller.state.mode = "presentation_pen"
+
+    assert controller._sync_display_mode_transition(
+        "presentation", "presentation_pen", 10.0
+    ) is True
+    assert client.apps == []
 
 
 def test_start_paused_config_preserved() -> None:

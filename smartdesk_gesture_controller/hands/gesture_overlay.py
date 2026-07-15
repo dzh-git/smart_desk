@@ -105,6 +105,10 @@ def derive_status(
     # 2 — Camera offline.
     if not snapshot.get("camera_ok"):
         return ("Camera Offline", COLOR_ROSE, False)
+    if snapshot.get("display_switch_state") == "failed":
+        return ("Display Switch Failed", COLOR_ROSE, False)
+    if snapshot.get("display_switch_state") == "switching":
+        return ("Switching Display", COLOR_CYAN, True)
     # 3 — Hand lost (blocking).
     if hand[0] == "Lost":
         return ("Hand Lost", COLOR_ROSE, False)
@@ -197,6 +201,12 @@ class GestureOverlay:
             "hand_lost_duration": 0.0,
             "cooldown_until": 0.0,
             "intent_phase": "idle",
+            "display_agent_online": False,
+            "display_active_app": None,
+            "display_target_app": "smartdesk",
+            "display_switch_state": "unknown",
+            "display_switch_error": "",
+            "display_switch_at": 0.0,
         }
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None

@@ -13,7 +13,7 @@ and returned by ``_real_driver()``.  The module is only usable on Windows; on
 other platforms the import raises so that headless CI immediately fails fast
 if someone tries to use system mouse there.
 
-Phase 1 additions (ACTION_INTENT_SPEC.md):
+Phase 1 additions (docs/GESTURE_AND_DISPLAY_SPEC.md):
     * ``execute(intents)`` — unified entry point accepting a single
       ``ActionIntent``, a list, ``None``, or an empty list.
     * ``release_all`` now unconditionally releases left/middle/right mouse
@@ -57,7 +57,7 @@ class FakeDriver:
 
     Two recording surfaces are maintained:
     * ``calls``  — list of ``_Call`` dataclass instances (backward compat).
-    * ``events`` — list of tuples in the ACTION_INTENT_SPEC §11.1 format, e.g.
+    * ``events`` — list of driver event tuples described by the current gesture specification, e.g.
       ``("press", "f5")``, ``("mouse_down", "left")``, ``("release_all",)``.
     """
 
@@ -231,7 +231,7 @@ class ActionLayer:
     def hotkey(self, *keys: str) -> None:
         self._apply("hotkey", *keys)
 
-    # ── release_all (strengthened per ACTION_INTENT_SPEC §7) ────────────────
+    # ── release_all (safe cross-application transition) ────────────────────
     def release_all(self) -> None:
         """Release every mouse button and modifier key that could be held.
 

@@ -5,7 +5,7 @@ FastAPI 后端、React/Vite 前端、SQLite 持久化、WebSocket 实时同步�
 本地 FunASR 语音识别、实时字幕、可选 OPUS-MT 翻译，以及可选的中央主机
 屏幕采集与 WebRTC 共享功能。
 
-手势识别控制器不再属于当前前后端项目；如需中央主机手势控制，请使用独立项目目录。
+中央主机手势控制由仓库同级目录 `../smartdesk_gesture_controller/` 提供。它不参与会议业务，但通过本机 Display Agent 切换会议屏、PowerPoint 和 SolidWorks。
 
 ## Quick Start
 
@@ -95,7 +95,8 @@ Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 | `ENABLE_TRANSLATION_MODEL=true` | 启用本地 OPUS-MT zh-en 最终翻译。 |
 | `TRANSLATION_MODEL_PATH=...` | 覆盖本地翻译模型路径。 |
 | `RUN_TRANSLATION_SMOKE=true` | 启用翻译模型 smoke test。 |
-| `ENABLE_SCREEN_STREAM=true` | 随 `start.bat` 启动 Display Agent、FFmpeg 和 MediaMTX；默认关闭。 |
+| `ENABLE_DISPLAY_AGENT=true` | 启动本机窗口切换 Agent；默认开启。 |
+| `ENABLE_SCREEN_STREAM=true` | 启动 FFmpeg 和 MediaMTX 屏幕串流；默认关闭。 |
 | `SMARTDESK_AGENT_URL=...` | 后端只读状态聚合使用的 Display Agent 地址，默认 `http://127.0.0.1:8766`。 |
 | `SMARTDESK_STREAM_PATH=screen` | MediaMTX 屏幕流路径。 |
 
@@ -214,4 +215,4 @@ python host_services/screen_stream/supervisor.py --check
 
 - Runtime databases、logs、caches 和 `working/` 都是本地运行产物。
 - 模型目录和真实语音数据集需保留，但不提交到 git。
-- 当前仓库不包含手势识别模块和手势依赖。
+- 手势识别模块位于同级 `../smartdesk_gesture_controller/`，与主程序共享 Display Agent，但不共享会议业务状态。

@@ -9,7 +9,7 @@ added on top.
 CLI overrides are resolved in ``config_from_args``; the package never reads
 ``sys.argv`` at import time so the modules stay import-safe for unit tests.
 
-Phase 1 (CONFIG_SPEC.md):
+The current contract is documented in ``docs/CONFIG_AND_STATUS_SPEC.md``:
     All spec-mandated parameters are now defined here with defaults.  Legacy
     field names (``cam_width``, ``wave_threshold``, ``smoothening`` …) are
     kept as properties that alias the new canonical names, so existing code
@@ -24,7 +24,7 @@ from typing import Tuple
 
 
 # Modes are an explicit union so the state machine can validate transitions.
-# Phase 2 adds presentation_pen, mouse_scroll and paused per STATE_MACHINE_SPEC.
+# Phase 2 adds presentation_pen, mouse_scroll and paused per the current gesture specification.
 MODE_STANDBY = "standby"
 MODE_PRESENTATION = "presentation"
 MODE_PRESENTATION_PEN = "presentation_pen"
@@ -110,7 +110,7 @@ class GestureConfig:
 
     # ── Timing / hold times (seconds) ───────────────────────────────────────
     hand_loss_timeout: float = 1.0      # release mouse + back to standby after this
-    # NOTE: CONFIG_SPEC.md spells this "hand_lost_timeout"; existing code and
+    # NOTE: the external status contract spells this "hand_lost_timeout"; existing code and
     # tests use "hand_loss_timeout".  We keep the code spelling for compat.
     start_presentation_hold: float = 1.5
     enter_mouse_hold: float = 1.0
@@ -173,7 +173,7 @@ class GestureConfig:
     solidworks_min_zoom_step: int = 1   # minimum scroll step per pinch delta (avoids amount=0)
     solidworks_deadzone: float = 0.01
 
-    # ── Control-flow tracker (Phase 1, CONFIG_SPEC §6.6) ───────────────────
+    # ── Control-flow tracker ───────────────────────────────────────────────
     # Candidate confirmation: official classifier must match at least
     # gesture_enter_frames out of the last gesture_enter_window_frames frames,
     # with per-frame confidence >= gesture_enter_confidence.
@@ -231,6 +231,11 @@ class GestureConfig:
     status_server_port: int = 8765
     status_broadcast_interval: float = 0.2  # seconds between broadcasts
 
+    # ── SmartDesk Display Agent ────────────────────────────────────────────
+    display_agent_enabled: bool = True
+    display_agent_url: str = "http://127.0.0.1:8766"
+    display_agent_timeout_seconds: float = 1.5
+
     # ── Native desktop overlay ──────────────────────────────────────────────
     overlay_enabled: bool = True
     overlay_click_through: bool = True        # WS_EX_TRANSPARENT: mouse clicks pass through
@@ -270,7 +275,7 @@ class GestureConfig:
 
     @property
     def hand_lost_timeout(self) -> float:
-        """Spec-canonical alias for ``hand_loss_timeout`` (CONFIG_SPEC spelling).
+        """Status-contract alias for ``hand_loss_timeout``.
 
         The state machine internally prefers ``hand_lost_timeout`` per the
         spec; existing code/tests that read ``hand_loss_timeout`` keep working

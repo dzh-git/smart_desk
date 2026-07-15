@@ -5,7 +5,7 @@ edge detection, wave thresholding, hand-loss timeout) lives here as methods on
 ``GestureState``. The controller feeds in the recognized gesture booleans plus
 a monotonic ``now`` and receives a list of :class:`ActionIntent` to execute.
 
-Phase 2 (STATE_MACHINE_SPEC.md):
+The current contract is documented in ``docs/GESTURE_AND_DISPLAY_SPEC.md``:
     * 7 modes: standby / presentation / presentation_pen / mouse /
       mouse_scroll / solidworks / paused.
     * Unified HOLD mechanism (gesture must stay stable for N seconds).
@@ -36,6 +36,7 @@ from .gesture_config import (
     MODE_PRESENTATION_PEN,
     MODE_SOLIDWORKS,
     MODE_STANDBY,
+    VALID_MODES,
 )
 from .gesture_intent_tracker import (
     ControlEvent,
@@ -70,7 +71,7 @@ class Gesture(str, Enum):
     Two naming families coexist:
     * **Legacy** (produced by the current ``gesture_recognition.py``):
       ``FIST``, ``OPEN_PALM``, ``SINGLE_FINGER``, ``TWO_FINGER``, ``PINCH``.
-    * **Spec-canonical** (GESTURE_MAPPING_SPEC §5, future GestureRecognizer):
+    * **Spec-canonical** (docs/GESTURE_AND_DISPLAY_SPEC.md):
       ``CLOSED_FIST``, ``POINTING_UP``, ``THUMB_UP``, ``THUMB_DOWN``,
       ``VICTORY``, ``ILOVEYOU``.
 
@@ -109,7 +110,7 @@ G_UNKNOWN = "unknown"
 
 # Map legacy Gesture enum values → canonical gesture name strings.
 # Phase 9: Thumb_Up / Thumb_Down are normalized to G_NONE (disabled, spec
-# GESTURE_MAPPING_SPEC §3.2 — false-positive risk too high for v1).
+# Current gesture specification — false-positive risk too high for v1).
 _LEGACY_TO_CANONICAL: Dict[str, str] = {
     Gesture.NONE.value: G_NONE,
     Gesture.FIST.value: G_CLOSED_FIST,
@@ -145,7 +146,7 @@ def _normalize_gesture(g: Union[Gesture, str, None]) -> str:
 # ActionIntent (phase 1 — unchanged)
 # ═══════════════════════════════════════════════════════════════════════════
 
-# ── ActionIntent type constants (aligned with ACTION_INTENT_SPEC.md §4) ─────
+# ── ActionIntent type constants ────────────────────────────────────────────
 INTENT_PRESS = "press"
 INTENT_HOTKEY = "hotkey"
 INTENT_MOUSE_DOWN = "mouse_down"
@@ -173,7 +174,7 @@ ALL_INTENT_TYPES = (
 class ActionIntent:
     """A declarative action the controller should perform this frame.
 
-    Structure follows ``docs/ACTION_INTENT_SPEC.md`` §3.  The ``type`` field
+    Structure follows the current gesture/display contract. The ``type`` field
     is the canonical action name; ``kind`` is kept as a read-only alias so
     existing controller code that reads ``intent.kind`` continues to work.
     """
@@ -325,7 +326,7 @@ class HandInput:
 class StepResult:
     """Returned by ``GestureState.step`` each frame.
 
-    Phase 2 adds ``status_text`` and ``debug_info`` per STATE_MACHINE_SPEC §17.
+    Phase 2 adds ``status_text`` and ``debug_info`` for the status contract.
     ``note`` is kept as a read-only alias for ``status_text`` so the
     unmodified controller keeps working.
 
@@ -366,7 +367,7 @@ class GestureState:
     """Tracks modes, stabilization timers and edge-triggered gestures.
 
     Phase 2 implements the unified HOLD + cooldown + None-handling skeleton
-    described in STATE_MACHINE_SPEC.md.  Legacy mouse-move / wave-detection
+    described in the current gesture specification. Legacy mouse-move / wave-detection
     helpers are retained so the controller and existing behaviour continue
     to work while new sub-modes are phased in.
     """
@@ -502,6 +503,15 @@ class GestureState:
         self._reset_continuous_state()
         self.mode = mode
         self.paused = False
+
+    def restore_mode(self, mode: str, now: float) -> None:
+        """Restore a mode after an external application switch fails."""
+        if mode not in VALID_MODES:
+            raise ValueError(f"unknown mode: {mode}")
+        self._enter_mode(mode, now)
+        self.previous_mode = mode
+        # The controller resets the tracker for the original transition.
+        self._needs_tracker_reset = False
 
     def activate_from_standby(self) -> bool:
         """Leave standby/pause into the configured active mode."""
@@ -725,7 +735,7 @@ class GestureState:
         intents: List[ActionIntent] = []
         if self.mode == MODE_STANDBY:
             self._enter_mode(MODE_PRESENTATION, now)
-            return []  # standby → presentation: no release_all needed.
+            return [ActionIntent.release_all()]
         elif self.mode == MODE_PRESENTATION:
             self._enter_mode(MODE_STANDBY, now)
             return [ActionIntent.release_all()]
@@ -734,6 +744,7 @@ class GestureState:
             if self.active_continuous_action:
                 intents.extend(self._end_solidworks_action())
             self._enter_mode(MODE_PRESENTATION, now)
+            intents.append(ActionIntent.release_all())
             return intents
         return []
 
@@ -747,7 +758,7 @@ class GestureState:
         intents: List[ActionIntent] = []
         if self.mode == MODE_STANDBY:
             self._enter_mode(MODE_SOLIDWORKS, now)
-            return []
+            return [ActionIntent.release_all()]
         elif self.mode == MODE_PRESENTATION:
             self._enter_mode(MODE_SOLIDWORKS, now)
             return [ActionIntent.release_all()]
@@ -2085,7 +2096,7 @@ class GestureState:
     def _maybe_move(self, palm_xy: tuple, now: float) -> Optional[ActionIntent]:
         """Throttled, smoothed move intent. Returns None when throttled out.
 
-        Phase 4 migration (spec §8.3, CONFIG_SPEC §10):
+        Phase 4 migration (current config/status specification):
         * Prefers ``mouse_smoothing`` (0–1, higher = smoother) over legacy
           ``smoothening`` (divisor, 1 = no smoothing).
         * Applies ``mouse_speed`` as a multiplier on the movement delta.
@@ -2119,7 +2130,7 @@ class GestureState:
         self.cloc_x = self.ploc_x + (tx - self.ploc_x) * alpha
         self.cloc_y = self.ploc_y + (ty - self.ploc_y) * alpha
 
-        # Apply mouse_speed to the movement delta (spec §8.3, CONFIG_SPEC §10.2).
+        # Apply mouse_speed to the movement delta.
         speed = self.config.mouse_speed
         ddx = (self.cloc_x - self.ploc_x) * speed
         ddy = (self.cloc_y - self.ploc_y) * speed

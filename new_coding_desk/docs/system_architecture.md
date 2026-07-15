@@ -136,8 +136,18 @@ React frontend. They are described normatively in `docs/HOST_DISPLAY_CONTRACT.md
   FFmpeg and MediaMTX are external deployment binaries, not committed to Git.
 
 The Display Agent and screen-stream supervisor run in the interactive user
-session (not Session 0) and are launched by `start.bat` only when
-`ENABLE_SCREEN_STREAM=true`.
+session (not Session 0). `start.bat` launches the Display Agent by default via
+`ENABLE_DISPLAY_AGENT=true`; `ENABLE_SCREEN_STREAM=true` independently enables
+the FFmpeg/MediaMTX supervisor.
+
+## Gesture Controller Integration
+
+The sibling `smartdesk_gesture_controller/` process owns camera recognition and
+gesture modes. For an I Love You mode swipe it calls the loopback Display Agent
+to activate `smartdesk`, `powerpoint`, or `solidworks`. A failed activation
+restores the previous gesture mode and is exposed through the gesture status
+WebSocket. The gesture process does not write the database or publish meeting
+business events.
 
 ## Demo Data and Startup
 

@@ -54,7 +54,8 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `SMARTDESK_MEDIAMTX_CONTROL_URL` | `http://127.0.0.1:9997` | Loopback MediaMTX Control API base URL. |
 | `SMARTDESK_MEDIAMTX_METRICS_URL` | `http://127.0.0.1:9998/metrics` | Loopback MediaMTX metrics endpoint. |
 | `SMARTDESK_STREAM_PATH` | `screen` | Screen stream path used by status aggregation. |
-| `ENABLE_SCREEN_STREAM` | `false` | Integrated startup switch for screen-stream services (Display Agent + Screen Supervisor). Set to `true` before running `start.bat` to enable. |
+| `ENABLE_DISPLAY_AGENT` | `true` | Start the loopback Display Agent independently of screen streaming. |
+| `ENABLE_SCREEN_STREAM` | `false` | Start the FFmpeg/MediaMTX screen-stream supervisor. |
 
 ## Meeting APIs
 

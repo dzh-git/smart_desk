@@ -26,12 +26,14 @@ import os
 import time
 from typing import Any, Optional
 
+from .display_agent_client import DisplayAgentClient, DisplayAgentResult
 from .gesture_actions import ActionLayer
 from .gesture_camera import create_camera
 from .gesture_config import (
     GestureConfig,
     MODE_PRESENTATION,
     MODE_PRESENTATION_PEN,
+    MODE_SOLIDWORKS,
     MODE_STANDBY,
     config_from_args,
     default_config,
@@ -40,7 +42,13 @@ from .gesture_config import (
 from .gesture_recognition import HandRecognizer
 from .gesture_state import ActionIntent, GestureState, StepResult
 from .gesture_status_server import GestureStatusServer
-from .gesture_intent_tracker import GestureFrame, GestureIntentTracker, TrackerResult
+from .gesture_intent_tracker import (
+    EVT_MODE_SWIPE_LEFT,
+    EVT_MODE_SWIPE_RIGHT,
+    GestureFrame,
+    GestureIntentTracker,
+    TrackerResult,
+)
 from .gesture_replay import GestureFrameRecorder
 
 logger = logging.getLogger("hands.controller")
@@ -90,6 +98,7 @@ class GestureController:
         *,
         recognizer: Optional[HandRecognizer] = None,
         actions: Optional[ActionLayer] = None,
+        display_agent_client: Optional[DisplayAgentClient] = None,
         status_server: Optional[GestureStatusServer] = None,
         overlay: Optional[Any] = None,
         cap: Optional[Any] = None,
@@ -108,6 +117,12 @@ class GestureController:
             gesture_recognizer_model_path=self.config.gesture_recognizer_model_path,
         )
         self.actions = actions or ActionLayer(enable_system_mouse=self.config.enable_system_mouse)
+        self.display_agent_client = display_agent_client
+        if self.display_agent_client is None and self.config.display_agent_enabled:
+            self.display_agent_client = DisplayAgentClient(
+                self.config.display_agent_url,
+                self.config.display_agent_timeout_seconds,
+            )
         self.state = GestureState(self.config)
         self.tracker = GestureIntentTracker(self.config)
         self.status_server = status_server  # built in start() if enabled
@@ -124,6 +139,16 @@ class GestureController:
         self._running = False
         self._prev_fps_time: float = 0.0
         self._debug_window_topmost_set = False
+        self._display_status = {
+            "display_agent_online": False,
+            "display_active_app": None,
+            "display_target_app": self._app_for_mode(self.state.mode),
+            "display_switch_state": (
+                "unknown" if self.config.display_agent_enabled else "disabled"
+            ),
+            "display_switch_error": "",
+            "display_switch_at": 0.0,
+        }
 
         # Gesture frame recorder (only active when config.record_gestures=True).
         self.recorder = GestureFrameRecorder(self.config)
@@ -192,6 +217,7 @@ class GestureController:
                 logger.exception("overlay start failed; continuing without it")
                 self.overlay = None
 
+        self._probe_display_agent()
         self.status_update(
             camera_ok=True,
             control_enabled=self.config.enable_system_mouse,
@@ -201,6 +227,7 @@ class GestureController:
             hand_lost_duration=0.0,
             cooldown_until=0.0,
             intent_phase="idle",
+            **self._display_status,
         )
 
         self._install_hotkeys()
@@ -290,6 +317,14 @@ class GestureController:
         )
         self._dispatch_intents(result.intents)
 
+        is_mode_swipe = any(
+            event.type in (EVT_MODE_SWIPE_LEFT, EVT_MODE_SWIPE_RIGHT)
+            for event in tracker_result.events
+        )
+        if is_mode_swipe and self.state.mode != mode_before:
+            if not self._sync_display_mode_transition(mode_before, self.state.mode, now):
+                result.mode = self.state.mode
+
         # Phase 9: reset tracker when the state machine requests it.  The
         # state machine sets this flag whenever a mode transition occurs
         # (e.g. Victory HOLD toggling presentation <-> presentation_pen).
@@ -327,7 +362,7 @@ class GestureController:
             cooldown_until = 0.0
 
         self.status_update(
-            mode=result.mode,
+            mode=self.state.mode,
             gesture=hand_input.gesture.value,
             action=result.note,
             paused=self.state.paused,
@@ -336,7 +371,71 @@ class GestureController:
             hand_lost_duration=result.debug_info.get("hand_lost_duration", 0.0),
             cooldown_until=cooldown_until,
             intent_phase=tracker_result.intent_state,
+            **self._display_status,
         )
+
+    # ── host application switching ───────────────────────────────────────
+    @staticmethod
+    def _app_for_mode(mode: str) -> Optional[str]:
+        if mode == MODE_STANDBY:
+            return "smartdesk"
+        if mode in (MODE_PRESENTATION, MODE_PRESENTATION_PEN):
+            return "powerpoint"
+        if mode == MODE_SOLIDWORKS:
+            return "solidworks"
+        return None
+
+    def _probe_display_agent(self) -> None:
+        client = self.display_agent_client
+        if client is None:
+            return
+        result = client.status()
+        self._display_status.update(
+            display_agent_online=result.online and result.ok,
+            display_active_app=result.active_app,
+            display_switch_state="ready" if result.ok else "unavailable",
+            display_switch_error="" if result.ok else result.detail,
+            display_switch_at=time.time(),
+        )
+        if not result.ok:
+            logger.warning("Display Agent probe failed: %s", result.detail)
+
+    def _sync_display_mode_transition(
+        self, mode_before: str, mode_after: str, now: float
+    ) -> bool:
+        """Activate the app for an ILoveYou mode swipe, rolling back on failure."""
+        source_app = self._app_for_mode(mode_before)
+        target_app = self._app_for_mode(mode_after)
+        if target_app is None or target_app == source_app:
+            return True
+        client = self.display_agent_client
+        if client is None:
+            return True
+
+        self._display_status.update(
+            display_target_app=target_app,
+            display_switch_state="switching",
+            display_switch_error="",
+            display_switch_at=time.time(),
+        )
+        result: DisplayAgentResult = client.activate(target_app)
+        self._display_status.update(
+            display_agent_online=result.online,
+            display_active_app=target_app if result.ok else self._display_status["display_active_app"],
+            display_switch_state="active" if result.ok else "failed",
+            display_switch_error="" if result.ok else result.detail,
+            display_switch_at=time.time(),
+        )
+        if result.ok:
+            logger.info("Display switched: %s -> %s", source_app, target_app)
+            return True
+
+        self.state.restore_mode(mode_before, now)
+        self._display_status["display_target_app"] = source_app
+        logger.warning(
+            "Display switch failed; restored mode %s: %s", mode_before, result.detail
+        )
+        return False
 
     # ── intent dispatch ────────────────────────────────────────────────────
     def _dispatch_intents(self, intents: list) -> None:

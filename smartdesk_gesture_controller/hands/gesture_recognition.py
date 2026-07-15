@@ -62,7 +62,7 @@ MIDDLE_MCP = 9
 # ═══════════════════════════════════════════════════════════════════════════
 # Phase 8 — Gesture name normalisation
 # ═══════════════════════════════════════════════════════════════════════════
-# The spec-canonical gesture names (GESTURE_MAPPING_SPEC §5.1).  The state
+# The canonical gesture names (docs/GESTURE_AND_DISPLAY_SPEC.md).  The state
 # machine only ever sees these names.
 CANONICAL_GESTURE_NAMES = frozenset({
     "None", "Closed_Fist", "Open_Palm", "Pointing_Up",
@@ -84,7 +84,7 @@ _OFFICIAL_TO_GESTURE: dict[str, Gesture] = {
 }
 
 # Map legacy rule-based Gesture enum members → canonical Gesture enum members.
-# This implements the GESTURE_MAPPING_SPEC §5.1 compatibility table.
+# This implements the compatibility table in docs/GESTURE_AND_DISPLAY_SPEC.md.
 _LEGACY_TO_CANONICAL_GESTURE: dict[Gesture, Gesture] = {
     Gesture.NONE: Gesture.NONE,
     Gesture.FIST: Gesture.CLOSED_FIST,

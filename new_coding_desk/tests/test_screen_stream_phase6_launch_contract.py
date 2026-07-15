@@ -254,14 +254,14 @@ class TestStartBatRuntimeContract:
 
         assert check_line >= 0, "supervisor.py --check not found in start.bat"
 
-        # Verify it's AFTER the "Screen Stream" section header
+        # Verify it's AFTER the host-display section header.
         header_line = -1
         for i, line in enumerate(lines):
-            if "Screen Stream" in line and "(optional)" in line:
+            if "Host display services" in line:
                 header_line = i
                 break
 
-        assert header_line >= 0, "Screen Stream section header not found"
+        assert header_line >= 0, "Host display services section header not found"
         assert check_line > header_line, (
             f"supervisor.py --check at line {check_line + 1} must be inside "
             f"the screen-stream section (after header at line {header_line + 1})"

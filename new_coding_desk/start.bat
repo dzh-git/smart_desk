@@ -24,6 +24,7 @@ set VITE_ENABLE_DEMO_CONTROLS=true
 set ENABLE_TRANSLATION_MODEL=true
 set "TRANSLATION_MODEL_PATH=%SD_ROOT%\models\opus-mt-zh-en"
 if not defined ENABLE_SCREEN_STREAM set "ENABLE_SCREEN_STREAM=false"
+if not defined ENABLE_DISPLAY_AGENT set "ENABLE_DISPLAY_AGENT=true"
 
 echo   Environment:
 echo     ENABLE_DEMO_SEED             = true
@@ -33,6 +34,7 @@ echo     VITE_ENABLE_DEMO_CONTROLS    = true
 echo     ENABLE_TRANSLATION_MODEL     = true
 echo     TRANSLATION_MODEL_PATH       = %TRANSLATION_MODEL_PATH%
 echo     ENABLE_SCREEN_STREAM         = %ENABLE_SCREEN_STREAM%
+echo     ENABLE_DISPLAY_AGENT         = %ENABLE_DISPLAY_AGENT%
 echo.
 
 :: -- Step 0: Prepare runtime dir and clean old instances -----------------
@@ -256,12 +258,21 @@ if !FRONTEND_OK! EQU 0 (
 )
 echo.
 
-:: -- Screen Stream (optional) --------------------------------------------
-echo [screen-stream] ...
+:: -- Host display services -----------------------------------------------
+echo [host-display] ...
 
 :: Clean stale PID files from previous run (prevents false success)
 if exist "%SD_ROOT%\.smartdesk-runtime\display_agent.pid" del "%SD_ROOT%\.smartdesk-runtime\display_agent.pid"
 if exist "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid" del "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid"
+
+:: Display Agent is independent from FFmpeg / MediaMTX screen streaming.
+if /I "%ENABLE_DISPLAY_AGENT%"=="true" (
+    echo   [display-agent] Starting on http://127.0.0.1:8766 ...
+    start "SmartDesk Display Agent" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'agent.py' -WorkingDirectory '%SD_ROOT%\host_services\display_agent' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\display_agent.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and !$exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\display_agent.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\display_agent.pid' -ErrorAction SilentlyContinue }"
+    %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+) else (
+    echo   [display-agent] Disabled: ENABLE_DISPLAY_AGENT is not true.
+)
 
 :: Binary availability flags (set before any block so %var% is set at parse time)
 set "SCREEN_STREAM_READY=1"
@@ -281,9 +292,6 @@ if /I "%ENABLE_SCREEN_STREAM%"=="true" if %SCREEN_STREAM_READY% EQU 1 (
 
 if /I "%ENABLE_SCREEN_STREAM%"=="true" (
     if %SCREEN_STREAM_READY% EQU 1 (
-        echo   [screen-stream] Starting Display Agent on http://127.0.0.1:8766 ...
-        start "SmartDesk Display Agent" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'agent.py' -WorkingDirectory '%SD_ROOT%\host_services\display_agent' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\display_agent.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and !$exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\display_agent.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\display_agent.pid' -ErrorAction SilentlyContinue }"
-        %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
         echo   [screen-stream] Starting Screen Supervisor ...
         start "SmartDesk Screen Supervisor" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'supervisor.py' -WorkingDirectory '%SD_ROOT%\host_services\screen_stream' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and !$exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid' -ErrorAction SilentlyContinue }"
         %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
@@ -304,20 +312,23 @@ if /I "%ENABLE_SCREEN_STREAM%"=="true" (
 )
 
 :: PID verification -- actually checks process is alive with Get-Process
-if /I "%ENABLE_SCREEN_STREAM%"=="true" if %SCREEN_STREAM_READY% EQU 1 (
+if /I "%ENABLE_DISPLAY_AGENT%"=="true" (
     if exist "%SD_ROOT%\.smartdesk-runtime\display_agent.pid" (
         for /f "usebackq delims=" %%p in ("%SD_ROOT%\.smartdesk-runtime\display_agent.pid") do (
             powershell -NoProfile -Command "if (Get-Process -Id %%p -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
             if errorlevel 1 (
                 del "%SD_ROOT%\.smartdesk-runtime\display_agent.pid"
-                echo   [screen-stream] [ERROR] Display Agent PID=%%p exited -- check .smartdesk-runtime\display_agent.stderr.log
+                echo   [display-agent] [ERROR] PID=%%p exited -- check .smartdesk-runtime\display_agent.stderr.log
             ) else (
-                echo   [screen-stream] Display Agent running PID=%%p
+                echo   [display-agent] Running PID=%%p
             )
         )
     ) else (
-        echo   [screen-stream] [ERROR] Display Agent not running -- check .smartdesk-runtime\display_agent.stderr.log
+        echo   [display-agent] [ERROR] Not running -- check .smartdesk-runtime\display_agent.stderr.log
     )
+)
+
+if /I "%ENABLE_SCREEN_STREAM%"=="true" if %SCREEN_STREAM_READY% EQU 1 (
     if exist "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid" (
         for /f "usebackq delims=" %%p in ("%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid") do (
             powershell -NoProfile -Command "if (Get-Process -Id %%p -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"

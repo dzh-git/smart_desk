@@ -326,7 +326,8 @@ class TestProcessPcmFrame:
         )
 
         t0 = 1000.0
-        time_values = [t0, t0 + 2.5]
+        # Each frame records ``last_pcm_at`` and then checks caption timeout.
+        time_values = [t0, t0, t0 + 2.5, t0 + 2.5]
         monkeypatch.setattr(time, 'monotonic', lambda: time_values.pop(0))
 
         # Reset CT-Transformer punctuation model to heuristic fallback so

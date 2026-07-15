@@ -73,6 +73,12 @@
     if (!snapshot.camera_ok) {
       return { text: 'Camera Offline', color: 'rose', glow: false };
     }
+    if (snapshot.display_switch_state === 'failed') {
+      return { text: 'Display Switch Failed', color: 'rose', glow: false };
+    }
+    if (snapshot.display_switch_state === 'switching') {
+      return { text: 'Switching Display', color: 'cyan', glow: true };
+    }
     if (hand.text === 'Lost') {
       return { text: 'Hand Lost', color: 'rose', glow: false };
     }

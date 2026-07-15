@@ -290,6 +290,7 @@ class TestStandbyILoveYouSwipe:
         # Phase 9: no F5 sent — PPT slideshow is user's responsibility.
         presses = [i for i in result.intents if i.type == "press"]
         assert len(presses) == 0
+        assert ActionIntent.release_all() in result.intents
 
     def test_iloveyou_left_swipe_enters_solidworks(self) -> None:
         """ILoveYou left swipe → solidworks."""
@@ -301,6 +302,7 @@ class TestStandbyILoveYouSwipe:
             events=[_evt(EVT_MODE_SWIPE_LEFT)],
         )
         assert st.mode == MODE_SOLIDWORKS
+        assert ActionIntent.release_all() in result.intents
 
     def test_iloveyou_small_move_no_mode_change(self) -> None:
         """Small ILoveYou movement doesn't trigger mode switch."""
@@ -966,6 +968,7 @@ class TestSolidWorksPhase9Changes:
         # No F5.
         presses = [i for i in result.intents if i.type == "press" and i.key == "f5"]
         assert len(presses) == 0
+        assert ActionIntent.release_all() in result.intents
 
     def test_iloveyou_left_swipe_returns_to_standby(self) -> None:
         """Phase 9: ILoveYou left swipe in solidworks → standby.

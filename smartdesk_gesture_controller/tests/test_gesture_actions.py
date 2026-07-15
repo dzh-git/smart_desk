@@ -4,7 +4,7 @@ Tests use FakeDriver so nothing touches the real OS. Real pyautogui is only
 tested indirectly when ``enable_system_mouse=True`` — but those tests are
 skipped on environments without a display.
 
-Phase 1 coverage (TEST_ACCEPTANCE_SPEC §4.3):
+Core action-driver coverage:
     1. press recorded
     2. hotkey recorded
     3. mouse_down / mouse_up recorded
@@ -65,7 +65,7 @@ class TestFakeDriver:
         assert d.size() == (1920, 1080)
 
     def test_events_format(self) -> None:
-        """FakeDriver.events must match ACTION_INTENT_SPEC §11.1 tuple format."""
+        """FakeDriver.events must match the public action-driver tuple format."""
         d = FakeDriver()
         d.press("f5")
         d.hotkey("ctrl", "p")

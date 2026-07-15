@@ -399,7 +399,8 @@ Phase 6 is implemented. Real-host acceptance is NOT_RUN.
 
 - Backend binds to `127.0.0.1:8000`.
 - Vite binds to `0.0.0.0:5173` so LAN terminals can open `/screen`.
-- Screen services start only when `ENABLE_SCREEN_STREAM=true`.
+- Display Agent starts by default when `ENABLE_DISPLAY_AGENT=true`.
+- FFmpeg and MediaMTX screen services start only when `ENABLE_SCREEN_STREAM=true`.
 - Display Agent and screen-stream supervisor run in the interactive user
   session, not Session 0.
 - Owned process IDs are written under `.smartdesk-runtime`.
