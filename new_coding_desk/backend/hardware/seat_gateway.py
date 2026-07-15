@@ -99,6 +99,9 @@ class SeatGateway:
         self._conns: dict[int, object] = {}            # seat_id -> WebSocket
         self._connected: dict[int, bool] = {sid: False for sid in seat_ids}
         self._reported_mode: dict[int, str] = {sid: "IDLE" for sid in seat_ids}
+        self._last_error: dict[int, Optional[str]] = {sid: None for sid in seat_ids}
+        self._last_ack_at: dict[int, Optional[float]] = {sid: None for sid in seat_ids}
+        self._command_pending: dict[int, bool] = {sid: False for sid in seat_ids}
         self.seat_ids: list[int] = sorted(seat_ids)
 
     # ── lifecycle (called by the /ws/seat endpoint) ─────────────────────────
@@ -113,13 +116,34 @@ class SeatGateway:
         self._connected[seat_id] = False
         logger.info("[Gateway:net] seat %d agent disconnected", seat_id)
 
-    def set_status(self, seat_id: int, connected: bool, mode: Optional[str] = None) -> None:
+    def set_status(
+        self,
+        seat_id: int,
+        connected: bool,
+        mode: Optional[str] = None,
+        *,
+        last_error: Optional[str] = None,
+        last_ack_at: Optional[float] = None,
+        command_pending: Optional[bool] = None,
+    ) -> None:
         self._connected[seat_id] = connected
         if mode:
             self._reported_mode[seat_id] = mode
+        self._last_error[seat_id] = last_error
+        if last_ack_at is not None:
+            self._last_ack_at[seat_id] = last_ack_at
+        if command_pending is not None:
+            self._command_pending[seat_id] = command_pending
 
     def reported_mode(self, seat_id: int) -> str:
         return self._reported_mode.get(seat_id, "IDLE")
+
+    def diagnostics(self, seat_id: int) -> dict:
+        return {
+            "last_error": self._last_error.get(seat_id),
+            "last_ack_at": self._last_ack_at.get(seat_id),
+            "command_pending": self._command_pending.get(seat_id, False),
+        }
 
     # ── SeatGatewayLike interface ───────────────────────────────────────────
 
@@ -134,6 +158,7 @@ class SeatGateway:
             # Thread-safe: works whether called from a service thread or the
             # loop thread itself. Fire-and-forget (we do not await the future).
             asyncio.run_coroutine_threadsafe(ws.send_json(msg), self._loop)  # type: ignore[attr-defined]
+            self._command_pending[seat_id] = True
             return True
         except Exception:
             logger.exception("[Gateway:net] send failed seat=%s cmd=%s", seat_id, command)

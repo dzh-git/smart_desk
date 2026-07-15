@@ -52,12 +52,12 @@ Seat binding must stay consistent with `seat_states.attendee_id`.
 
 | Column | Type | Notes |
 |---|---|---|
-| `seat_id` | integer | Primary key, 1 through 10. |
+| `seat_id` | integer | Primary key, 1 through 9; seat 1 is the host seat. |
 | `status` | string | `vacant`, `occupied_unchecked`, or `checked_in`. |
 | `attendee_id` | integer nullable | Bound attendee. |
 | `updated_at` | datetime | Last update. |
 
-The table always represents the current state of the 10 physical seats.
+The table always represents the current state of the 9 physical seats.
 
 ### `speaker_seat`
 

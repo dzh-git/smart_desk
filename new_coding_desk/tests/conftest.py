@@ -136,7 +136,7 @@ def db(engine):
 
 @pytest.fixture(scope="function")
 def seeded_db(db):
-    """DB session with seat_states (1..10) and speaker_seat seeded."""
+    """DB session with seat_states (1..9) and speaker_seat seeded."""
     from backend.repositories.seat_repository import SeatRepository
     SeatRepository.init_seats(db)
     return db

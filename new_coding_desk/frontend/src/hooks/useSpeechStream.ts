@@ -70,7 +70,11 @@ export function useSpeechStream(
   // Mutable refs for lifecycle management
   const micRef = useRef<MicrophoneCapture | null>(null);
   const wsRef = useRef<SpeechWsClient | null>(null);
+  const startingRef = useRef(false);
   const recordingRef = useRef(false);
+  const reconnectingRef = useRef(false);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const generationRef = useRef(0);
   const mountedRef = useRef(true);
   const utteranceIdRef = useRef<string | null>(null);
   // Task 126: stop delay timer ref — cleared on immediate cleanup/cancel/unmount
@@ -79,61 +83,88 @@ export function useSpeechStream(
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  // Keep utteranceIdRef in sync with utteranceId state
-  utteranceIdRef.current = utteranceId;
-
   // ---- Cleanup (internal) ----
 
   const cleanup = useCallback(() => {
+    startingRef.current = false;
     recordingRef.current = false;
+    reconnectingRef.current = false;
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     // Task 126: clear any pending stop delay timer
     if (stopTimerRef.current !== null) {
       clearTimeout(stopTimerRef.current);
       stopTimerRef.current = null;
     }
     trace("speech_cleanup_at", { utteranceId: utteranceIdRef.current ?? undefined });
-    wsRef.current?.close();
+    const ws = wsRef.current;
     wsRef.current = null;
-    micRef.current?.stop();
+    ws?.close();
+    const mic = micRef.current;
     micRef.current = null;
+    mic?.stop();
+    utteranceIdRef.current = null;
   }, []);
 
   // ---- Start ----
 
   const start = useCallback(async () => {
-    if (!meetingId || !isSpeaker || recordingRef.current) return;
+    if (
+      !meetingId || !isSpeaker || recordingRef.current || startingRef.current
+    ) return;
+
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    startingRef.current = true;
+    const isCurrent = () => (
+      mountedRef.current && generationRef.current === generation
+    );
 
     trace("start_clicked_at", { meetingId, seatId });
-
     setStatus("requesting_microphone");
     setError(null);
 
-    // 1. Create and start microphone capture
     const mic = new MicrophoneCapture();
+    let wsClient: SpeechWsClient | null = null;
     micRef.current = mic;
+
+    const disposeAttempt = () => {
+      if (wsRef.current === wsClient) wsRef.current = null;
+      wsClient?.close();
+      if (micRef.current === mic) micRef.current = null;
+      mic.stop();
+    };
 
     trace("microphone_start_requested_at", { meetingId, seatId });
 
     try {
       await mic.start(
-        // onFrame: forward PCM16 to speech WS
         (pcm16) => {
-          if (recordingRef.current && wsRef.current) {
-            trace("frontend_pcm_sent_at", { size: (pcm16 as ArrayBuffer).byteLength });
-            wsRef.current.sendAudio(pcm16);
+          if (isCurrent() && recordingRef.current) {
+            trace("frontend_pcm_sent_at", { size: pcm16.byteLength });
+            wsRef.current?.sendAudio(pcm16);
           }
         },
-        // onError: surface microphone errors
         (micError) => {
-          if (mountedRef.current) {
-            setError(micError);
-            setStatus("error");
-            recordingRef.current = false;
-          }
+          if (!isCurrent()) return;
+          generationRef.current += 1;
+          startingRef.current = false;
+          recordingRef.current = false;
+          disposeAttempt();
+          setError(micError);
+          setStatus("error");
         },
       );
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!isCurrent()) {
+        disposeAttempt();
+        return;
+      }
+      generationRef.current += 1;
+      startingRef.current = false;
+      disposeAttempt();
       const msg =
         err instanceof Error ? err.message : "Microphone access denied";
       setError(msg);
@@ -141,44 +172,100 @@ export function useSpeechStream(
       return;
     }
 
-    if (!mountedRef.current) {
-      mic.stop();
+    if (!isCurrent()) {
+      disposeAttempt();
       return;
     }
 
-    // 2. Connect speech WebSocket
-    setStatus("connecting_speech_ws");
+    const scheduleReconnect = () => {
+      if (
+        !isCurrent() || !recordingRef.current || reconnectingRef.current
+        || reconnectTimerRef.current !== null
+      ) return;
 
-    const wsClient = new SpeechWsClient();
-    wsRef.current = wsClient;
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        if (!isCurrent() || !recordingRef.current) return;
 
-    // Task 122: listen for utterance_started from backend auto-final.
-    // When the backend automatically finalizes and starts a new utterance,
-    // update our tracked utteranceId so the UI stays in sync.
-    wsClient.onUtteranceStarted((newUtteranceId: string) => {
-      if (mountedRef.current) {
+        reconnectingRef.current = true;
+        setStatus("connecting_speech_ws");
+        trace("speech_ws_reconnect_start_at", { meetingId, seatId });
+
+        const replacement = createWsClient();
+        replacement.connect(meetingId, seatId).then((result) => {
+          if (
+            !isCurrent() || !recordingRef.current
+            || wsRef.current !== replacement
+          ) {
+            replacement.close();
+            return;
+          }
+          utteranceIdRef.current = result.utteranceId;
+          setUtteranceId(result.utteranceId);
+          reconnectingRef.current = false;
+          setError(null);
+          setStatus("recording");
+          trace("speech_ws_reconnected_at", {
+            meetingId,
+            seatId,
+            utteranceId: result.utteranceId,
+          });
+        }).catch(() => {
+          if (!isCurrent() || !recordingRef.current) return;
+          reconnectingRef.current = false;
+          scheduleReconnect();
+        });
+      }, 500);
+    };
+
+    const createWsClient = () => {
+      const client = new SpeechWsClient();
+      wsClient = client;
+      wsRef.current = client;
+      client.onUtteranceStarted((newUtteranceId: string) => {
+        if (!isCurrent() || !recordingRef.current) return;
+        utteranceIdRef.current = newUtteranceId;
         setUtteranceId(newUtteranceId);
-      }
-    });
+      });
+      client.onStatusChange((nextStatus) => {
+        if (
+          nextStatus !== "disconnected" || !isCurrent()
+          || !recordingRef.current || wsRef.current !== client
+        ) return;
+        wsRef.current = null;
+        reconnectingRef.current = false;
+        scheduleReconnect();
+      });
+      return client;
+    };
+
+    setStatus("connecting_speech_ws");
+    wsClient = createWsClient();
 
     try {
       const result = await wsClient.connect(meetingId, seatId);
-      if (!mountedRef.current) {
-        wsClient.close();
-        mic.stop();
+      if (!isCurrent()) {
+        disposeAttempt();
         return;
       }
+      utteranceIdRef.current = result.utteranceId;
       setUtteranceId(result.utteranceId);
+      startingRef.current = false;
       recordingRef.current = true;
       setStatus("recording");
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!isCurrent()) {
+        disposeAttempt();
+        return;
+      }
+      generationRef.current += 1;
+      startingRef.current = false;
+      recordingRef.current = false;
+      disposeAttempt();
       const msg =
         err instanceof Error ? err.message : "Failed to connect speech service";
       setError(msg);
       setStatus("error");
-      mic.stop();
-      micRef.current = null;
     }
   }, [meetingId, seatId, isSpeaker]);
 
@@ -186,8 +273,10 @@ export function useSpeechStream(
 
   const stop = useCallback(() => {
     if (!recordingRef.current) return;
+    const generation = generationRef.current;
+    const uid = utteranceIdRef.current;
     recordingRef.current = false;
-    trace("stop_clicked_at", { utteranceId: utteranceIdRef.current ?? undefined });
+    trace("stop_clicked_at", { utteranceId: uid ?? undefined });
     setStatus("stopping");
 
     // Send end_hint — backend needs time to finalize and broadcast
@@ -199,13 +288,13 @@ export function useSpeechStream(
     if (stopTimerRef.current !== null) clearTimeout(stopTimerRef.current);
     stopTimerRef.current = window.setTimeout(() => {
       stopTimerRef.current = null;
-      if (mountedRef.current) {
+      if (mountedRef.current && generationRef.current === generation) {
         // Task 127A: local cleanup on stop timeout — immediately remove
         // live caption so it doesn't linger if translation_final never arrives
-        const uid = utteranceIdRef.current;
         if (uid && optionsRef.current?.onLocalTerminalUtterance) {
           optionsRef.current.onLocalTerminalUtterance(uid, "stop_timeout");
         }
+        generationRef.current += 1;
         cleanup();
         setStatus("idle");
         setUtteranceId(null);
@@ -216,8 +305,10 @@ export function useSpeechStream(
   // ---- Cancel ----
 
   const cancel = useCallback(() => {
-    recordingRef.current = false;
     const uid = utteranceIdRef.current;
+    generationRef.current += 1;
+    startingRef.current = false;
+    recordingRef.current = false;
     trace("cancel_clicked_at", { utteranceId: uid ?? undefined });
 
     // Task 127A: local cleanup before WS message — immediately remove
@@ -232,6 +323,7 @@ export function useSpeechStream(
 
     setStatus("idle");
     setError(null);
+    utteranceIdRef.current = null;
     setUtteranceId(null);
   }, [cleanup]);
 
@@ -241,13 +333,14 @@ export function useSpeechStream(
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      generationRef.current += 1;
       cleanup();
     };
   }, [cleanup]);
 
   // Stop recording if speaker seat is revoked mid-stream
   useEffect(() => {
-    if (!isSpeaker && recordingRef.current) {
+    if (!isSpeaker && (recordingRef.current || startingRef.current)) {
       cancel();
     }
   }, [isSpeaker, cancel]);

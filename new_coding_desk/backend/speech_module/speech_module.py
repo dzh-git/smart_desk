@@ -46,6 +46,7 @@ _INITIAL_STATUS = {
     "streaming_model": STATUS_UNKNOWN,
     "offline_model": STATUS_UNKNOWN,
     "punctuation_model": STATUS_UNKNOWN,
+    "vad_model": STATUS_UNKNOWN,
     "last_error": None,
 }
 
@@ -180,6 +181,17 @@ class SpeechModule:
             )
             self._status["ready"] = all_ok
 
+            # 4. FSMN-VAD is a quality layer. Failure is visible in status but
+            # does not make ASR unavailable because the adaptive gate remains.
+            self._status["vad_model"] = STATUS_LOADING
+            try:
+                from .fsmn_vad import get_default_vad
+                get_default_vad()
+                self._status["vad_model"] = STATUS_LOADED
+            except Exception as exc:
+                self._status["vad_model"] = STATUS_ERROR
+                _log_warning(f"FSMN-VAD load failed: {exc}")
+
         finally:
             self._status["preloading"] = False
             self._preload_lock.release()
@@ -207,6 +219,17 @@ class SpeechModule:
             return offline_rescore(audio)
         except Exception:
             return ""
+
+    def trim_to_speech(
+        self, audio: np.ndarray, sample_rate: int = 16000,
+    ) -> np.ndarray | None:
+        """Return FSMN-confirmed speech or None; fall back on model failure."""
+        try:
+            from .fsmn_vad import trim_to_speech
+            return trim_to_speech(audio, sample_rate)
+        except Exception as exc:
+            _log_warning(f"FSMN-VAD validation unavailable, using gated audio: {exc}")
+            return audio
 
     # ── Translation ──────────────────────────────────────────────────────────
 
@@ -282,9 +305,15 @@ class SpeechModule:
         if state is not None:
             state["processor"].reset_accumulated_text()
 
+    def reset_streaming_state(self, session_key: str = "default") -> None:
+        """Fully reset text, frame counters, and encoder/decoder CIF caches."""
+        state = self._sessions.get(session_key)
+        if state is not None:
+            state["processor"].reset()
+
     def start_utterance(self, session_key: str = "default") -> None:
-        """Mark start of a new utterance. Resets SentenceMerger only."""
-        self.reset_interim(session_key)
+        """Mark start of a new utterance with an isolated streaming cache."""
+        self.reset_streaming_state(session_key)
 
     def get_interim(self, session_key: str = "default") -> str:
         """Get current accumulated text without processing new audio."""

@@ -145,8 +145,25 @@ export interface SpeechModelStatus {
   streaming_model: ModelComponentStatus;
   offline_model: ModelComponentStatus;
   punctuation_model: ModelComponentStatus;
+  vad_model?: ModelComponentStatus;
+  translation_model?: ModelComponentStatus | "disabled";
+  translation_model_path?: string;
+  translation_last_error?: string | null;
   punctuation_fallback: boolean;
   last_error: string | null;
+  voice_gate?: {
+    minimum_onset_rms: number;
+    minimum_continue_rms: number;
+    sentence_pause_seconds: number;
+    clause_pause_seconds: number;
+    natural_pause_seconds: number;
+    hard_silence_seconds: number;
+    soft_utterance_seconds?: number;
+    max_utterance_seconds: number;
+  };
+  soft_utterance_seconds?: number;
+  hard_utterance_seconds?: number;
+  rollover_overlap_ms?: number;
 }
 
 // ── Host Display Status (Screen Stream) ───────────────────────────────────

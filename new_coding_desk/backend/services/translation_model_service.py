@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from typing import Any
 
@@ -102,6 +103,7 @@ class TranslationModelService:
         self._load_latency_ms: float = 0.0
         self._enabled: bool = is_translation_model_enabled()
         self._model_path: str = get_model_path()
+        self._inference_lock = threading.RLock()
 
     # ── Singleton ──────────────────────────────────────────────────────────────
 
@@ -153,6 +155,10 @@ class TranslationModelService:
     # ── Load ───────────────────────────────────────────────────────────────────
 
     def load(self) -> bool:
+        with self._inference_lock:
+            return self._load_locked()
+
+    def _load_locked(self) -> bool:
         """Load the model and tokenizer. Idempotent.
 
         Returns True on success, False on failure (sets self._load_error).
@@ -200,6 +206,10 @@ class TranslationModelService:
     # ── Translate ──────────────────────────────────────────────────────────────
 
     def translate(self, text: str) -> str:
+        with self._inference_lock:
+            return self._translate_locked(text)
+
+    def _translate_locked(self, text: str) -> str:
         """Translate Chinese text to English using the loaded model.
 
         Args:
@@ -222,7 +232,7 @@ class TranslationModelService:
         if not self._loaded:
             success = self.load()
             if not success:
-                return f"[translation failed: {self._load_error}]"
+                return NOT_AVAILABLE
 
         # Run inference
         try:
@@ -239,7 +249,8 @@ class TranslationModelService:
             return result.strip()
         except Exception as exc:
             logger.warning("TranslationModelService: inference failed: %s", exc)
-            return f"[translation failed: {exc}]"
+            self._load_error = f"Translation inference failed: {exc}"
+            return NOT_AVAILABLE
 
     # ── Unload ─────────────────────────────────────────────────────────────────
 

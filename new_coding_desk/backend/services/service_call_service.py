@@ -123,7 +123,7 @@ class ServiceCallService(BaseService):
         self.event_bus.publish(
             ServiceCallResolvedEvent(
                 meeting_id=call.meeting_id,
-                payload={"call_id": call_id},
+                payload={"call_id": call_id, "seat_id": call.seat_id},
             )
         )
 
@@ -146,7 +146,7 @@ class ServiceCallService(BaseService):
         self.event_bus.publish(
             ServiceCallCancelledEvent(
                 meeting_id=call.meeting_id,
-                payload={"call_id": call_id},
+                payload={"call_id": call_id, "seat_id": call.seat_id},
             )
         )
 

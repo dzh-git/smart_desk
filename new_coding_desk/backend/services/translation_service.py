@@ -42,13 +42,14 @@ NOT_AVAILABLE = "[translation not available]"
 
 
 def _get_speech():
-    """Return the module-level SpeechModule singleton, creating it if needed."""
+    """Return the shared streaming SpeechModule unless a test overrides it."""
     global _speech
-    if _speech is None:
-        from backend.speech_module import SpeechModule
-
-        _speech = SpeechModule(max_workers=2)
-    return _speech
+    if _speech is not None:
+        return _speech
+    # Reuse the already preloaded streaming instance.  Loading a second copy
+    # of Paraformer for final ASR wastes memory and delays the first sentence.
+    from backend.services.speech_stream_service import stream_service
+    return stream_service._get_speech_module()
 
 
 # ── Service ────────────────────────────────────────────────────────────────────
@@ -166,6 +167,17 @@ class TranslationService(BaseService):
         self._ensure_preloaded()
         speech = _get_speech()
 
+        # Validate/crop the gated buffer with FSMN-VAD before offline ASR.  A
+        # noise-only recording is discarded without creating a bogus record.
+        if hasattr(speech, "trim_to_speech"):
+            validated_audio = speech.trim_to_speech(audio, sr)
+            if validated_audio is None or len(validated_audio) == 0:
+                raise ValidationError(
+                    "No confirmed speech in audio",
+                    "ASR_EMPTY_RESULT",
+                )
+            audio = validated_audio
+
         trace("finalization_start_at",
               utterance_id=utterance_id,
               meeting_id=meeting_id, seat_id=seat_id)
@@ -207,7 +219,7 @@ class TranslationService(BaseService):
                 translated_text = model_svc.translate(source_text)
             except Exception as exc:
                 logger.warning("Translation failed (non-fatal): %s", exc)
-                translated_text = f"[translation failed: {exc}]"
+                translated_text = NOT_AVAILABLE
         else:
             # Fallback: use SpeechModule translate_text placeholder
             try:
@@ -264,6 +276,86 @@ class TranslationService(BaseService):
         return record
 
     # ── History ──────────────────────────────────────────────────────────────
+
+    def process_final_text(
+        self,
+        source_text: str,
+        meeting_id: int,
+        seat_id: int,
+        utterance_id: str | None = None,
+        source_type: str | None = "speech_ws",
+        *,
+        translate: bool = True,
+        apply_punctuation: bool = False,
+    ) -> TranslationRecord:
+        """Translate and persist already-recognized realtime text.
+
+        Automatic rollovers use this path so offline ASR cannot block the
+        speech WebSocket receive loop. Explicit ``end_hint`` continues to use
+        :meth:`process_final_array` for full offline correction.
+        """
+        if not source_text or not source_text.strip():
+            raise ValidationError(
+                "Realtime transcription returned empty text",
+                "ASR_EMPTY_RESULT",
+            )
+
+        source_text = (
+            add_punctuation(source_text) if apply_punctuation else source_text
+        ).strip()
+        source_lang = detect_language(source_text)
+        if source_lang == "zh":
+            target_lang = "en"
+        else:
+            source_lang = "en"
+            target_lang = "zh"
+
+        translation_started = time.monotonic()
+        translated_text = NOT_AVAILABLE
+        if translate and source_lang == "zh" and is_translation_model_enabled():
+            try:
+                translated_text = TranslationModelService.get_instance().translate(
+                    source_text,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Realtime-text translation failed (non-fatal): %s", exc,
+                )
+        translation_ms = round((time.monotonic() - translation_started) * 1000)
+
+        record = self.repo.create(
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            source_text=source_text,
+            translated_text=translated_text.strip(),
+            utterance_id=utterance_id,
+            source_type=source_type,
+        )
+
+        self.event_bus.publish(TranslationFinalEvent(
+            meeting_id=meeting_id,
+            payload={
+                "translation_id": record.id,
+                "utterance_id": utterance_id,
+                "seat_id": seat_id,
+                "source_lang": source_lang,
+                "target_lang": target_lang,
+                "source_text": source_text,
+                "translated_text": translated_text.strip(),
+                "source_type": source_type,
+            },
+        ))
+        trace(
+            "realtime_text_final_complete_at",
+            utterance_id=utterance_id,
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            translation_ms=translation_ms,
+            translation_id=record.id,
+        )
+        return record
 
     def get_history(
         self, meeting_id: int, seat_id: int | None = None

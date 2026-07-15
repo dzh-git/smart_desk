@@ -8,6 +8,10 @@ interface SeatStatus {
   connected: boolean;
   port: string | null;
   current_mode: string;
+  intended_mode: string;
+  command_pending: boolean;
+  last_ack_at: number | null;
+  last_error: string | null;
 }
 
 interface HardwareStatusData {
@@ -30,7 +34,9 @@ const MODE_LABELS: Record<string, string> = {
   AGENDA_ACTIVE: "议程",
   VOTE_OPEN: "投票中",
   SERVICE_CALL: "服务呼叫",
-  AI_SPEAKING: "AI发言",
+  AI_SPEAKING: "发言识别中",
+  VOTE_CLOSED: "投票结束",
+  UNKNOWN: "等待确认",
   BOOT: "启动",
   ERROR: "错误",
   OFF: "关闭",
@@ -119,6 +125,7 @@ export function HardwareStatus() {
               <span className="inline-flex items-center gap-1 text-techGreen">
                 <span className="w-2 h-2 rounded-full bg-techGreen animate-pulse" />
                 {modeLabel(s.current_mode)}
+                {s.command_pending && ` → ${modeLabel(s.intended_mode)}`}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-techRose">

@@ -231,14 +231,14 @@ class TestDemoSeedEnabled:
         resp = client.get("/api/seats")
         assert resp.status_code == 200
         seats = resp.json()["data"]
-        assert len(seats) == 10
+        assert len(seats) == 9
         states = {s["seat_id"]: s["status"] for s in seats}
         # Seats 1-4: checked_in
         assert all(states[i] == "checked_in" for i in range(1, 5))
         # Seats 5-6: occupied_unchecked
         assert all(states[i] == "occupied_unchecked" for i in range(5, 7))
-        # Seats 7-10: vacant
-        assert all(states[i] == "vacant" for i in range(7, 11))
+        # Seats 7-9: vacant
+        assert all(states[i] == "vacant" for i in range(7, 10))
 
     def test_speaker_seat_set(self):
         """Demo seed sets speaker seat to seat 1."""

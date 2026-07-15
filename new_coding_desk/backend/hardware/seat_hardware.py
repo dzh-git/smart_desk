@@ -44,6 +44,7 @@ def build_seat_managers(config: dict) -> dict[int, ArduinoManager]:
     """
     arduino_cfg = config.get("arduino", {}) or {}
     seats_map = arduino_cfg.get("seats") or {}
+    seats_total = int(config.get("seats_total", 9))
 
     base = {
         "enabled": bool(arduino_cfg.get("enabled", True)),
@@ -58,13 +59,40 @@ def build_seat_managers(config: dict) -> dict[int, ArduinoManager]:
     }
 
     managers: dict[int, ArduinoManager] = {}
+    assigned_ports: dict[str, int] = {}
     for seat_key, port in seats_map.items():
         try:
             seat_id = int(seat_key)
         except (TypeError, ValueError):
             logger.warning("Invalid seat key %r in arduino.seats; skipping", seat_key)
             continue
+        if not 1 <= seat_id <= seats_total:
+            logger.warning(
+                "Seat %d is outside configured range 1..%d; skipping",
+                seat_id, seats_total,
+            )
+            continue
+        normalized_port = str(port).upper() if port else None
+        if normalized_port and normalized_port in assigned_ports:
+            logger.error(
+                "Serial port %s is assigned to both seat %d and seat %d; disabling seat %d",
+                normalized_port, assigned_ports[normalized_port], seat_id, seat_id,
+            )
+            port = None
+        elif normalized_port:
+            assigned_ports[normalized_port] = seat_id
         managers[seat_id] = ArduinoManager(_seat_config(seat_id, port, base))
+
+    # Preserve the complete logical seat map even before every controller is
+    # installed. Missing/null ports become explicit disabled managers.
+    if seats_map:
+        for seat_id in range(1, seats_total + 1):
+            if seat_id not in managers:
+                managers[seat_id] = ArduinoManager(
+                    _seat_config(seat_id, None, base),
+                )
+            if not managers[seat_id].port:
+                logger.warning("No serial port configured for seat %d", seat_id)
 
     # Legacy fallback: single port, no seats map -> seat 1.
     if not managers and arduino_cfg.get("port"):
@@ -80,6 +108,18 @@ def build_seat_managers(config: dict) -> dict[int, ArduinoManager]:
             len(managers),
             {sid: m.port for sid, m in sorted(managers.items())},
         )
+        try:
+            from serial.tools import list_ports  # type: ignore
+
+            available = {p.device.upper() for p in list_ports.comports()}
+            for sid, manager in sorted(managers.items()):
+                if manager.enabled and manager.port and manager.port.upper() not in available:
+                    logger.warning(
+                        "Configured Arduino port is not currently present: seat=%d port=%s available=%s",
+                        sid, manager.port, sorted(available),
+                    )
+        except Exception:
+            logger.debug("Unable to enumerate serial ports during startup", exc_info=True)
     return managers
 
 

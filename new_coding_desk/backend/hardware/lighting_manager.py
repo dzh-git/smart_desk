@@ -1,37 +1,8 @@
-"""
-LightingManager — maps business events to per-seat lighting commands.
+"""Business-event to per-seat lighting state resolver.
 
-Transport-agnostic: it talks to a ``SeatGatewayLike`` gateway (either
-``LocalSeatGateway`` for dev single-machine serial, or ``SeatGateway`` for
-production distributed-over-WebSocket). The gateway decides HOW a command
-reaches the seat's Arduino; this manager only decides WHAT command and to
-WHICH seat.
-
-Routing:
-    * Global events (meeting / agenda / vote) are broadcast to ALL seats.
-    * Seat-scoped events (occupy / vacant / service call / speaker speaking)
-      are sent ONLY to the seat named in the event payload.
-
-Event → mode mapping (integration plan Phase 4, plus per-seat extensions):
-    meeting_started        -> MEETING_ACTIVE        (active seats)
-    meeting_ended          -> MEETING_ENDED, then auto IDLE after a delay (active)
-    agenda_updated         -> AGENDA_ACTIVE          (active seats)
-    vote_started           -> VOTE_OPEN, auto-revert after 10s (active seats)
-    vote_closed            -> VOTE_CLOSED, auto-revert to MEETING_ACTIVE after 10s
-    seat_occupied          -> WELCOME  (one-shot) on that seat  [FIX 1]
-    seat_vacant            -> IDLE on that seat
-    service_call_created   -> SERVICE_CALL on that seat, auto-revert after 10s
-                              [FIX 2]
-    speaker_speaking       -> AI_SPEAKING on that seat [FIX 4]
-    speaker_speaking_stop  -> revert that seat to its previous mode [FIX 4]
-
-When ``demo_seat_id`` is set (single-strip demo mode), only that seat
-receives lighting commands: global events light only it, and seat-scoped
-events for other seats are silently ignored.
-
-Per protocol.md §4.3, WELCOME is a one-shot animation the firmware plays and
-then auto-reverts to IDLE, so we schedule a backend-side revert to the seat's
-previous mode after the animation duration to keep state in sync.
+The manager keeps a durable base mode (idle / meeting / agenda) and independent
+temporary overlays.  Effective mode is derived from priority, so an expiring
+timer can no longer restore a stale mode over a newer event.
 """
 from __future__ import annotations
 
@@ -41,190 +12,177 @@ from typing import Optional
 
 from backend.events import event_bus
 from backend.events.base_event import BaseEvent
+from backend.hardware.lighting_modes import LightingMode
 
 logger = logging.getLogger(__name__)
 
-# meeting_ended -> MEETING_ENDED, then auto back to IDLE after this delay (s).
 MEETING_ENDED_IDLE_DELAY = 4.0
-
-# WELCOME one-shot animation duration (s) — matches firmware (~5s per 灯光变化表).
 WELCOME_DURATION = 5.0
-
-# Service call flashing lifetime (s) — user requirement: 10s then revert.
 SERVICE_CALL_DURATION = 10.0
-
-# Vote open / closed flashing lifetime (s) — flash then revert, same pattern
-# as SERVICE_CALL.
 VOTE_OPEN_DURATION = 10.0
 VOTE_CLOSED_DURATION = 10.0
 
+_OVERLAY_PRIORITY = ("error", "service", "vote", "speaking", "welcome")
+
 
 class LightingManager:
-    """Bridges EventBus business events to per-seat lighting commands."""
+    """Resolve business state to an intended lighting mode for every seat."""
 
     def __init__(self, gateway, demo_seat_id: Optional[int] = None) -> None:
         self.gateway = gateway
         self.seat_ids: list[int] = list(gateway.seat_ids)
-        # When set, only this seat responds to lighting commands (demo /
-        # single-strip mode). None = broadcast to all seats (production).
         self.demo_seat_id = demo_seat_id
-        # Per-seat current lighting mode (kept in sync for status reporting).
+        self.base_mode: dict[int, str] = {sid: "IDLE" for sid in self.seat_ids}
+        self.overlays: dict[int, dict[str, str]] = {
+            sid: {} for sid in self.seat_ids
+        }
+        # Public compatibility field: intended/effective mode.
         self.seat_mode: dict[int, str] = {sid: "IDLE" for sid in self.seat_ids}
-        # Per-seat revert timers (service call / meeting-ended / welcome).
-        self._revert_timers: dict[int, threading.Timer] = {}
-        # Per-seat mode that was active before AI_SPEAKING, for clean revert.
-        self._ai_prev: dict[int, str] = {}
-        # Seats that have already received WELCOME. Each seat gets WELCOME
-        # exactly once per meeting cycle; re-sitting after the first time
-        # does NOT replay the animation. Cleared on meeting_started.
+        self._timers: dict[tuple[int, str], threading.Timer] = {}
         self._welcomed_seats: set[int] = set()
         self._registered = False
 
-    # ── Wiring ──────────────────────────────────────────────────────────────
-
     def register(self) -> None:
-        """Subscribe to EventBus events. Idempotent (safe under --reload)."""
         if self._registered:
             return
-        # Global (broadcast to all seats)
         event_bus.subscribe("meeting_started", self._on_meeting_started)
         event_bus.subscribe("meeting_ended", self._on_meeting_ended)
         event_bus.subscribe("agenda_updated", self._on_agenda_updated)
         event_bus.subscribe("vote_started", self._on_vote_started)
         event_bus.subscribe("vote_closed", self._on_vote_closed)
-        # Seat-scoped
         event_bus.subscribe("seat_occupied", self._on_seat_occupied)
         event_bus.subscribe("seat_vacant", self._on_seat_vacant)
         event_bus.subscribe("service_call_created", self._on_service_call_created)
+        event_bus.subscribe("service_call_resolved", self._on_service_call_finished)
+        event_bus.subscribe("service_call_cancelled", self._on_service_call_finished)
         event_bus.subscribe("speaker_speaking", self._on_speaker_speaking)
         event_bus.subscribe("speaker_speaking_stop", self._on_speaker_speaking_stop)
-        # Firmware-side occupancy (central/dev mode only): each Nano reports
-        # EVENT PIR on its own serial line. Bind a per-seat callback so a PIR
-        # rising edge also plays WELCOME. In distributed mode occupancy arrives
-        # via the seat WebSocket uplink -> EventBus, so no callback is needed.
-        seat_managers = getattr(self.gateway, "seat_managers", None)
-        if seat_managers:
-            for sid, mgr in seat_managers.items():
-                if not self._is_active_seat(sid):
-                    continue
-                if getattr(mgr, "pir_callback", None) is None:
-                    mgr.pir_callback = lambda occ, _sid=sid: self._on_pir_for_seat(_sid, occ)
-        self._registered = True
-        logger.info("[Lighting] registered EventBus handlers (seats=%s)", self.seat_ids)
 
-    # ── Command helpers ─────────────────────────────────────────────────────
+        managers = getattr(self.gateway, "seat_managers", None)
+        if managers:
+            for sid, manager in managers.items():
+                if getattr(manager, "pir_callback", None) is None:
+                    manager.pir_callback = (
+                        lambda occupied, _sid=sid: self._on_pir_for_seat(_sid, occupied)
+                    )
+                manager.connection_callback = (
+                    lambda connected, _sid=sid: self._on_connection(_sid, connected)
+                )
+        self._registered = True
+        logger.info("[Lighting] registered handlers for seats=%s", self.seat_ids)
 
     def _active_seats(self) -> list[int]:
-        """Seats that should receive lighting commands.
-
-        In demo mode (``demo_seat_id`` set) only that seat is active; otherwise
-        all seats are active (production broadcast).
-        """
         if self.demo_seat_id is not None:
             return [self.demo_seat_id]
         return self.seat_ids
 
     def _is_active_seat(self, seat_id: int) -> bool:
-        """Whether a seat-scoped event should trigger lighting on this seat."""
         return self.demo_seat_id is None or seat_id == self.demo_seat_id
 
-    def set_mode(self, seat_id: int, mode: str) -> None:
-        """Send ``SET_MODE <mode>`` to one seat and record its mode."""
+    def set_mode(self, seat_id: int, mode: str, *, force: bool = False) -> bool:
+        mode = mode.upper()
+        if not LightingMode.is_valid(mode):
+            logger.error("[Lighting] invalid mode %r for seat %s", mode, seat_id)
+            return False
+        if not force and self.seat_mode.get(seat_id) == mode:
+            return True
         self.seat_mode[seat_id] = mode
-        ok = self.gateway.send(seat_id, "SET_MODE", mode)
-        if not ok:
-            logger.debug(
-                "[Lighting] SET_MODE %s -> seat %s not sent (offline/disabled)",
-                mode, seat_id,
+        sent = bool(self.gateway.send(seat_id, "SET_MODE", mode))
+        if not sent:
+            logger.warning(
+                "[Lighting] command pending/offline seat=%s intended=%s", seat_id, mode,
             )
+        return sent
 
-    def set_mode_all(self, mode: str) -> None:
-        """Broadcast a mode to every active seat."""
+    def set_mode_all(self, mode: str, *, force: bool = False) -> None:
         for seat_id in self._active_seats():
-            self.set_mode(seat_id, mode)
+            self.set_mode(seat_id, mode, force=force)
 
-    # ── EventBus handlers: global ───────────────────────────────────────────
+    def _effective_mode(self, seat_id: int) -> str:
+        seat_overlays = self.overlays.setdefault(seat_id, {})
+        for key in _OVERLAY_PRIORITY:
+            if key in seat_overlays:
+                return seat_overlays[key]
+        return self.base_mode.get(seat_id, "IDLE")
+
+    def _render(self, seat_id: int, *, force: bool = False) -> None:
+        if self._is_active_seat(seat_id):
+            self.set_mode(seat_id, self._effective_mode(seat_id), force=force)
+
+    def _set_base(self, seat_id: int, mode: str) -> None:
+        self.base_mode[seat_id] = mode
+        self._render(seat_id)
+
+    def _set_overlay(
+        self, seat_id: int, key: str, mode: str, duration: float | None = None,
+    ) -> None:
+        self._cancel_timer(seat_id, key)
+        self.overlays.setdefault(seat_id, {})[key] = mode
+        self._render(seat_id)
+        if duration is not None:
+            self._schedule(seat_id, key, duration, self._clear_overlay)
+
+    def _clear_overlay(self, seat_id: int, key: str) -> None:
+        self._timers.pop((seat_id, key), None)
+        self.overlays.setdefault(seat_id, {}).pop(key, None)
+        self._render(seat_id)
+
+    def _clear_seat_transients(self, seat_id: int) -> None:
+        for timer_key in [key for key in self._timers if key[0] == seat_id]:
+            timer = self._timers.pop(timer_key)
+            timer.cancel()
+        self.overlays.setdefault(seat_id, {}).clear()
 
     def _on_meeting_started(self, event: BaseEvent) -> None:
-        # Reset WELCOME tracking: each new meeting cycle allows one WELCOME
-        # per seat again.
         self._welcomed_seats.clear()
-        self.set_mode_all("MEETING_ACTIVE")
+        for seat_id in self._active_seats():
+            self._clear_seat_transients(seat_id)
+            self.base_mode[seat_id] = "MEETING_ACTIVE"
+            self._render(seat_id)
 
     def _on_meeting_ended(self, event: BaseEvent) -> None:
-        self.set_mode_all("MEETING_ENDED")
         for seat_id in self._active_seats():
-            self._schedule_revert(seat_id, MEETING_ENDED_IDLE_DELAY, "IDLE")
+            self._clear_seat_transients(seat_id)
+            self.base_mode[seat_id] = "MEETING_ENDED"
+            self._render(seat_id)
+            self._schedule(seat_id, "base_end", MEETING_ENDED_IDLE_DELAY, self._idle_after_end)
+
+    def _idle_after_end(self, seat_id: int, key: str) -> None:
+        self._timers.pop((seat_id, key), None)
+        self.base_mode[seat_id] = "IDLE"
+        self._render(seat_id)
 
     def _on_agenda_updated(self, event: BaseEvent) -> None:
-        self.set_mode_all("AGENDA_ACTIVE")
+        mode = (
+            "AGENDA_ACTIVE"
+            if event.payload.get("current_agenda_id") is not None
+            else "MEETING_ACTIVE"
+        )
+        for seat_id in self._active_seats():
+            self._set_base(seat_id, mode)
 
     def _on_vote_started(self, event: BaseEvent) -> None:
         for seat_id in self._active_seats():
-            prev = self.seat_mode.get(seat_id, "MEETING_ACTIVE")
-            self.set_mode(seat_id, "VOTE_OPEN")
-            self._schedule_revert(seat_id, VOTE_OPEN_DURATION, prev)
+            self._set_overlay(seat_id, "vote", "VOTE_OPEN", VOTE_OPEN_DURATION)
 
     def _on_vote_closed(self, event: BaseEvent) -> None:
         for seat_id in self._active_seats():
-            self.set_mode(seat_id, "VOTE_CLOSED")
-            self._schedule_revert(seat_id, VOTE_CLOSED_DURATION, "MEETING_ACTIVE")
-
-    # ── EventBus handlers: seat-scoped ──────────────────────────────────────
+            self._set_overlay(seat_id, "vote", "VOTE_CLOSED", VOTE_CLOSED_DURATION)
 
     def _on_seat_occupied(self, event: BaseEvent) -> None:
-        """FIX 1: play the WELCOME animation on the seat that just got occupied."""
         seat_id = self._seat_of(event)
-        if seat_id is None or not self._is_active_seat(seat_id):
-            return
-        self._play_welcome(seat_id)
+        if seat_id is not None:
+            self._play_welcome(seat_id)
 
     def _play_welcome(self, seat_id: int) -> None:
-        """Play the one-shot WELCOME animation on a seat (FIX 1).
-
-        Used by both the app-level ``seat_occupied`` event and the firmware's
-        ``EVENT PIR`` callback (central mode). The firmware auto-reverts WELCOME
-        to IDLE, so we also schedule a backend-side revert after the animation
-        duration to keep ``seat_mode`` accurate for the status panel (and avoid
-        the old bug where current_mode got stuck on WELCOME and suppressed
-        later triggers).
-
-        Each seat receives WELCOME at most once per meeting cycle. After the
-        first WELCOME, subsequent occupancy/PIR triggers for that seat are
-        silently skipped. The set is cleared on ``meeting_started``.
-
-        Per protocol §4.3, WELCOME is only played when the current mode is
-        ``IDLE``. In any other mode (MEETING_ACTIVE, SERVICE_CALL, VOTE_OPEN,
-        etc.) the trigger is silently ignored — this prevents WELCOME from
-        cancelling an active revert timer (e.g. the 10s SERVICE_CALL revert)
-        and leaving the seat stuck in a transient mode forever.
-        """
         if not self._is_active_seat(seat_id):
             return
-        # Only play WELCOME in IDLE mode (protocol §4.3). This also prevents
-        # _schedule_revert from cancelling an ongoing transient's revert timer.
-        if self.seat_mode.get(seat_id, "IDLE") != "IDLE":
-            logger.debug(
-                "[Lighting] WELCOME skipped for seat %d (current mode=%s, not IDLE)",
-                seat_id, self.seat_mode.get(seat_id),
-            )
-            return
-        if seat_id in self._welcomed_seats:
-            logger.debug(
-                "[Lighting] WELCOME skipped for seat %d (already welcomed this meeting)",
-                seat_id,
-            )
+        if self._effective_mode(seat_id) != "IDLE" or seat_id in self._welcomed_seats:
             return
         self._welcomed_seats.add(seat_id)
-
-        prev = self.seat_mode.get(seat_id, "IDLE")
-        self.set_mode(seat_id, "WELCOME")
-        self._schedule_revert(seat_id, WELCOME_DURATION, prev)
+        self._set_overlay(seat_id, "welcome", "WELCOME", WELCOME_DURATION)
 
     def _on_pir_for_seat(self, seat_id: int, occupied: bool) -> None:
-        """Firmware EVENT PIR callback (per seat, central mode). Only the rising
-        edge drives the WELCOME animation; the falling edge is occupancy-only
-        (protocol §4.3)."""
         if occupied:
             self._play_welcome(seat_id)
 
@@ -232,60 +190,62 @@ class LightingManager:
         seat_id = self._seat_of(event)
         if seat_id is None or not self._is_active_seat(seat_id):
             return
-        self._cancel_timer(seat_id)
-        self.set_mode(seat_id, "IDLE")
+        self._clear_seat_transients(seat_id)
+        self.base_mode[seat_id] = "IDLE"
+        self._render(seat_id)
 
     def _on_service_call_created(self, event: BaseEvent) -> None:
-        """FIX 2: flash SERVICE_CALL on the calling seat, revert after 10s."""
         seat_id = self._seat_of(event)
-        if seat_id is None or not self._is_active_seat(seat_id):
-            logger.warning("[Lighting] service_call_created without seat_id or inactive seat")
-            return
-        prev = self.seat_mode.get(seat_id, "IDLE")
-        self.set_mode(seat_id, "SERVICE_CALL")
-        self._schedule_revert(seat_id, SERVICE_CALL_DURATION, prev)
+        if seat_id is not None and self._is_active_seat(seat_id):
+            self._set_overlay(
+                seat_id, "service", "SERVICE_CALL", SERVICE_CALL_DURATION,
+            )
+
+    def _on_service_call_finished(self, event: BaseEvent) -> None:
+        seat_id = self._seat_of(event)
+        if seat_id is not None and self._is_active_seat(seat_id):
+            self._clear_overlay(seat_id, "service")
 
     def _on_speaker_speaking(self, event: BaseEvent) -> None:
-        """FIX 4: light AI_SPEAKING on the speaking seat."""
         seat_id = self._seat_of(event)
-        if seat_id is None or not self._is_active_seat(seat_id):
-            return
-        prev = self._ai_prev.get(seat_id, self.seat_mode.get(seat_id, "IDLE"))
-        self._ai_prev[seat_id] = prev
-        self.set_mode(seat_id, "AI_SPEAKING")
+        if seat_id is not None and self._is_active_seat(seat_id):
+            self._set_overlay(seat_id, "speaking", "AI_SPEAKING")
 
     def _on_speaker_speaking_stop(self, event: BaseEvent) -> None:
         seat_id = self._seat_of(event)
-        if seat_id is None or not self._is_active_seat(seat_id):
-            return
-        prev = self._ai_prev.pop(seat_id, "IDLE")
-        self.set_mode(seat_id, prev)
+        if seat_id is not None and self._is_active_seat(seat_id):
+            self._clear_overlay(seat_id, "speaking")
 
-    # ── Helpers ─────────────────────────────────────────────────────────────
+    def _on_connection(self, seat_id: int, connected: bool) -> None:
+        if connected and self._is_active_seat(seat_id):
+            # Arduino resets to IDLE when its serial port opens. Re-assert the
+            # intended state after every reconnect.
+            self._render(seat_id, force=True)
 
     @staticmethod
     def _seat_of(event: BaseEvent) -> Optional[int]:
-        seat_id = event.payload.get("seat_id")
-        return int(seat_id) if seat_id is not None else None
+        value = event.payload.get("seat_id")
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
 
-    def _cancel_timer(self, seat_id: int) -> None:
-        timer = self._revert_timers.pop(seat_id, None)
+    def _cancel_timer(self, seat_id: int, key: str) -> None:
+        timer = self._timers.pop((seat_id, key), None)
         if timer is not None:
             timer.cancel()
 
-    def _schedule_revert(self, seat_id: int, delay: float, mode: str) -> None:
-        """Schedule a seat to revert to ``mode`` after ``delay`` seconds.
+    def _schedule(self, seat_id: int, key: str, delay: float, callback) -> None:
+        self._cancel_timer(seat_id, key)
+        timer_key = (seat_id, key)
 
-        Cancels any existing revert timer for that seat first, so the most
-        recent event wins (e.g. a new service call extends/overrides a prior
-        one on the same seat).
-        """
-        self._cancel_timer(seat_id)
-        timer = threading.Timer(delay, self._revert, args=(seat_id, mode))
+        def fire() -> None:
+            # A cancelled timer can already be entering its callback.  Only
+            # the newest timer for this state key may mutate the resolver.
+            if self._timers.get(timer_key) is timer:
+                callback(seat_id, key)
+
+        timer = threading.Timer(delay, fire)
         timer.daemon = True
-        self._revert_timers[seat_id] = timer
+        self._timers[timer_key] = timer
         timer.start()
-
-    def _revert(self, seat_id: int, mode: str) -> None:
-        self._revert_timers.pop(seat_id, None)
-        self.set_mode(seat_id, mode)

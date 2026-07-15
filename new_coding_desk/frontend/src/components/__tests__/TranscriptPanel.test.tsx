@@ -104,13 +104,9 @@ describe("TranscriptPanel - sort order (Task 7)", () => {
     );
 
     const rows = screen.getAllByTestId("transcript-final");
-    expect(rows).toHaveLength(3);
-
-    // With same created_at, id ascending: 9, 10, 11
-    const ids = rows.map((r) => Number(r.getAttribute("data-translation-id")));
-    expect(ids[0]).toBe(9);
-    expect(ids[1]).toBe(10);
-    expect(ids[2]).toBe(11);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("第九条第十条第十一条");
+    expect(rows[0]).toHaveAttribute("data-translation-ids", "9,10,11");
   });
 
   it("interim display is not broken by sort logic", () => {
@@ -188,5 +184,140 @@ describe("TranscriptPanel - deduplication preserves sort", () => {
 
     const rows = screen.getAllByTestId("transcript-final");
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe("TranscriptPanel - bilingual paragraph grouping", () => {
+  it("does not merge across speakers or a gap greater than 30 seconds", () => {
+    const entries: TranslationRecord[] = [
+      { id: 1, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", source_text: "甲", translated_text: "A", created_at: "2026-01-01T10:00:00Z" },
+      { id: 2, meeting_id: 1, seat_id: 2, source_lang: "zh", target_lang: "en", source_text: "乙", translated_text: "B", created_at: "2026-01-01T10:00:10Z" },
+      { id: 3, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", source_text: "丙", translated_text: "C", created_at: "2026-01-01T10:00:31Z" },
+    ];
+
+    render(<TranscriptPanel entries={entries} seatNameMap={{ 1: "主持人", 2: "参会者" }} />);
+    expect(screen.getAllByTestId("transcript-final")).toHaveLength(3);
+  });
+
+  it("shows a clear unavailable message instead of placeholder translation", () => {
+    const entries: TranslationRecord[] = [
+      { id: 1, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en", source_text: "测试", translated_text: "[translation not available]", created_at: "2026-01-01T10:00:00Z" },
+    ];
+
+    render(<TranscriptPanel entries={entries} seatNameMap={{ 1: "主持人" }} />);
+    expect(screen.getByText("翻译模型不可用")).toBeInTheDocument();
+    expect(screen.queryByText("[translation not available]")).not.toBeInTheDocument();
+  });
+});
+
+describe("TranscriptPanel - stable live speech area", () => {
+  it("keeps a placeholder mounted during an active meeting without speech", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        interims={[]}
+        seatNameMap={{ 1: "主持人" }}
+        liveEnabled
+      />,
+    );
+
+    expect(screen.getByTestId("live-caption-placeholder")).toBeInTheDocument();
+    expect(screen.getByText(/Listening for speech/)).toBeInTheDocument();
+  });
+
+  it("keeps the live box mounted while the meeting connection recovers", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        interims={[]}
+        seatNameMap={{ 1: "主持人" }}
+        liveEnabled
+        liveReconnecting
+      />,
+    );
+
+    expect(screen.getByTestId("live-caption-placeholder")).toBeInTheDocument();
+    expect(screen.getByText(/Reconnecting live speech/)).toBeInTheDocument();
+  });
+
+  it("keeps an empty caption in the fixed live box", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        interims={[{
+          utteranceId: "utt_live",
+          seatId: 1,
+          revision: 1,
+          sourceLang: "zh",
+          targetLang: "en",
+          sourceText: "",
+          translatedText: "",
+          caption: { previousLine: "", currentLine: "", mode: "live" },
+        }]}
+        seatNameMap={{ 1: "主持人" }}
+        liveEnabled
+      />,
+    );
+
+    expect(screen.getByTestId("transcript-interim")).toBeInTheDocument();
+    expect(screen.getByTestId("transcript-interim")).toHaveClass("min-h-[7.25rem]");
+  });
+});
+
+describe("TranscriptPanel - background finalization", () => {
+  it("moves rolled text to pending history while keeping the live box mounted", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        interims={[]}
+        pendingFinals={[{
+          utteranceId: "utt_pending",
+          seatId: 1,
+          sourceLang: "zh",
+          targetLang: "en",
+          sourceText: "已完成的实时识别文本。",
+          boundaryReason: "max_duration",
+        }]}
+        seatNameMap={{ 1: "主持人" }}
+        liveEnabled
+      />,
+    );
+
+    expect(screen.getByTestId("live-caption-placeholder")).toBeInTheDocument();
+    expect(screen.getByTestId("transcript-pending-final")).toHaveTextContent(
+      "已完成的实时识别文本。",
+    );
+    expect(screen.getByText(/Translating/)).toBeInTheDocument();
+  });
+
+  it("hides a pending item once the matching final is available", () => {
+    const final: TranslationRecord = {
+      id: 99,
+      meeting_id: 1,
+      seat_id: 1,
+      utterance_id: "utt_same",
+      source_lang: "zh",
+      target_lang: "en",
+      source_text: "最终中文。",
+      translated_text: "Final English.",
+      created_at: "2026-01-01T10:00:00Z",
+    };
+    render(
+      <TranscriptPanel
+        entries={[final]}
+        pendingFinals={[{
+          utteranceId: "utt_same",
+          seatId: 1,
+          sourceLang: "zh",
+          targetLang: "en",
+          sourceText: "待处理中文。",
+          boundaryReason: "soft_sentence_limit",
+        }]}
+        seatNameMap={{ 1: "主持人" }}
+      />,
+    );
+
+    expect(screen.queryByTestId("transcript-pending-final")).not.toBeInTheDocument();
+    expect(screen.getByText("Final English.")).toBeInTheDocument();
   });
 });

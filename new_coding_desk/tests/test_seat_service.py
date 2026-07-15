@@ -322,16 +322,16 @@ class TestCheckIn:
 class TestListSeats:
     """list_seats: return all 10 seat states."""
 
-    def test_returns_10_seats(self, svc):
-        """Seed data provides exactly 10 seats."""
+    def test_returns_9_seats(self, svc):
+        """Seed data provides exactly nine seats."""
         seats = svc.list_seats()
-        assert len(seats) == 10
+        assert len(seats) == 9
 
     def test_seats_ordered_by_id(self, svc):
         """Seats returned in seat_id order."""
         seats = svc.list_seats()
         ids = [s.seat_id for s in seats]
-        assert ids == list(range(1, 11))
+        assert ids == list(range(1, 10))
 
     def test_all_initially_vacant(self, svc):
         """All seats start vacant after seed."""

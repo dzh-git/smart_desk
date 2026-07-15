@@ -94,6 +94,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     currentServiceCall,
     translations,
     interimMap,
+    pendingFinalMap,
     connection,
     noMeeting,
     refresh,
@@ -466,7 +467,10 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         <TranscriptPanel
           entries={translations}
           interims={Object.values(interimMap)}
+          pendingFinals={Object.values(pendingFinalMap)}
           seatNameMap={seatNameMap}
+          liveEnabled={meetingStatus === "meeting_active"}
+          liveReconnecting={connection !== "connected"}
         />
       </main>
 
@@ -1285,6 +1289,8 @@ function SpeechControl({
   const modelsReady = speechStatus?.ready ?? false;
   const modelsPreloading = speechStatus?.preloading ?? false;
   const punctuationFallback = speechStatus?.punctuation_fallback ?? true;
+  const translationReady = speechStatus?.translation_model === "loaded";
+  const translationError = speechStatus?.translation_last_error ?? null;
 
   const browserSupportsMic =
     typeof navigator !== "undefined" &&
@@ -1367,6 +1373,17 @@ function SpeechControl({
           <AlertCircle size={12} className="text-techAmber flex-shrink-0 mt-0.5" />
           <p className="text-[11px] text-techAmber">
             Punctuation model unavailable — basic fallback active
+          </p>
+        </div>
+      )}
+
+      {!translationReady && !modelsPreloading && status === "idle" && (
+        <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-1.5 flex items-start gap-2">
+          <AlertCircle size={12} className="text-techAmber flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-techAmber">
+            {translationError
+              ? `英文翻译模型不可用：${translationError}`
+              : "英文翻译模型尚未就绪"}
           </p>
         </div>
       )}

@@ -1,0 +1,42 @@
+{
+  "report_type": "speech-real-dataset-benchmark",
+  "task": "128B",
+  "generated_at": "2026-07-15T03:22:33.491247+00:00",
+  "dataset_dir": "/nonexistent/path/that/does/not/exist",
+  "streaming_preset": "balanced",
+  "streaming_preset_chunk_size": [
+    0,
+    10,
+    5
+  ],
+  "environment": {
+    "python": "3.8.18 (default, Sep 11 2023, 13:39:12) [MSC v.1916 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "torch_available": true,
+    "cuda_available": true,
+    "cuda_device_name": "NVIDIA GeForce GTX 1650",
+    "ffmpeg_available": true,
+    "ffmpeg_path": "C:\\Users\\27335\\miniconda3\\Library\\bin\\ffmpeg.EXE",
+    "ffmpeg_version": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers",
+    "ffmpeg_search_trace": [
+      "path: C:\\Users\\27335\\miniconda3\\Library\\bin\\ffmpeg.EXE"
+    ],
+    "cuda_device_count": 1,
+    "ffmpeg_discovery_method": "path"
+  },
+  "summary": {
+    "file_count": 0,
+    "success_count": 0,
+    "failed_count": 0,
+    "avg_first_interim_ms_deprecated_processing_only": null,
+    "avg_processing_first_interim_ms": null,
+    "avg_first_interim_audio_offset_ms": null,
+    "avg_estimated_realtime_first_interim_ms": null,
+    "avg_offline_asr_rtf": null,
+    "avg_streaming_asr_rtf": null,
+    "avg_cer": null
+  },
+  "files": [],
+  "assessment": null,
+  "error": "Dataset directory not found: /nonexistent/path/that/does/not/exist"
+}

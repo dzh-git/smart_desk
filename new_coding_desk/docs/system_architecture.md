@@ -99,7 +99,7 @@ FunASR FSMN-VAD is not the current final trigger. It is a deferred improvement.
 The frontend has three routes:
 
 - Admin dashboard at `/admin` (also the default redirect from `/`).
-- Seat tablet at `/seat/:seatId` for seats 1 through 10.
+- Seat tablet at `/seat/:seatId` for seats 1 through 9; seat 1 is the host seat.
 - Central display at `/display`.
 
 The admin dashboard is the only write-capable control surface for meeting

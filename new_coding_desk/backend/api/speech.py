@@ -32,6 +32,11 @@ def get_speech_status():
         "streaming_model": "unknown"|"loading"|"loaded"|"error",
         "offline_model": "unknown"|"loading"|"loaded"|"error",
         "punctuation_model": "unknown"|"loading"|"loaded"|"error",
+        "vad_model": "unknown"|"loading"|"loaded"|"error",
+        "translation_model": "unknown"|"loaded"|"error"|"disabled",
+        "translation_model_path": str,
+        "translation_last_error": str|null,
+        "voice_gate": {... adaptive threshold and pause defaults ...},
         "punctuation_fallback": bool,
         "last_error": str|null
     }

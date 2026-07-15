@@ -21,7 +21,8 @@ set ENABLE_DEMO_SEED=true
 set ENABLE_DEMO_SEED_WHEN_NO_ACTIVE=true
 set ENABLE_DEMO_SEAT_API=true
 set VITE_ENABLE_DEMO_CONTROLS=true
-set ENABLE_TRANSLATION_MODEL=false
+set ENABLE_TRANSLATION_MODEL=true
+set "TRANSLATION_MODEL_PATH=%SD_ROOT%\models\opus-mt-zh-en"
 if not defined ENABLE_SCREEN_STREAM set "ENABLE_SCREEN_STREAM=false"
 
 echo   Environment:
@@ -29,7 +30,8 @@ echo     ENABLE_DEMO_SEED             = true
 echo     ENABLE_DEMO_SEED_WHEN_NO_ACTIVE = true
 echo     ENABLE_DEMO_SEAT_API         = true
 echo     VITE_ENABLE_DEMO_CONTROLS    = true
-echo     ENABLE_TRANSLATION_MODEL     = false
+echo     ENABLE_TRANSLATION_MODEL     = true
+echo     TRANSLATION_MODEL_PATH       = %TRANSLATION_MODEL_PATH%
 echo     ENABLE_SCREEN_STREAM         = %ENABLE_SCREEN_STREAM%
 echo.
 
@@ -66,6 +68,16 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
+:: Arduino serial package (required because hardware is enabled in the integration config)
+python -c "import serial" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo   [ERROR] pyserial is missing; Arduino lighting cannot start.
+    echo   Run: python -m pip install "pyserial^>=3.5"
+    pause
+    exit /b 1
+)
+echo   pyserial: OK
+
 :: Speech packages (optional)
 python -c "import torch, funasr, scipy, soundfile" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
@@ -73,6 +85,16 @@ if %ERRORLEVEL% NEQ 0 (
     echo   Install: pip install -r "%SD_ROOT%\requirements.txt"
 ) else (
     echo   Speech packages: OK
+)
+
+:: Translation packages and local model (required for zh -> en output)
+python -c "import transformers, sentencepiece" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo   [WARN] Translation packages missing - English translation unavailable.
+) else if not exist "%TRANSLATION_MODEL_PATH%\model.safetensors" (
+    echo   [WARN] Translation model missing: %TRANSLATION_MODEL_PATH%
+) else (
+    echo   Translation model: OK
 )
 
 :: pydub (optional)

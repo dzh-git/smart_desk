@@ -78,7 +78,7 @@ Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 | Route | Purpose |
 |---|---|
 | `/admin` | 主持人控制台。 |
-| `/seat/:seatId` | 1 到 10 号座位端。 |
+| `/seat/:seatId` | 1 到 9 号座位端（seat 1 为主持人位）。 |
 | `/display` | 中央大屏。 |
 | `/screen` | 局域网终端使用的只读中央主机共享画面。 |
 | `/` | 自动跳转到 `/admin`。 |
@@ -140,6 +140,8 @@ Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 | `.hf_cache/` | HuggingFace 模型缓存目录，不纳入 git。 |
 
 ## Documentation Map
+
+跨模块文档的权威来源与维护规则见仓库根目录的 `../DOCUMENTATION_INDEX.md`。
 
 `docs/` 目录仅保留当前仍需要维护的文档。
 

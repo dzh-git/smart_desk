@@ -9,7 +9,7 @@ suitable for real-time subtitle-style display:
 
 Sentence splitting is driven by:
   1. Punctuation boundaries (。？！!? 优先，, 作为次选)
-  2. Length-based forced split at configurable maximum (default 31 chars)
+  2. Length-based forced split at configurable maximum (default 35 chars)
   3. Idle timeout (default 2 s of no text change)
 
 Usage:
@@ -55,10 +55,10 @@ class CaptionConfig:
     )
 
     #: Minimum characters before a punctuation boundary causes a line break.
-    min_line_length: int = 5
+    min_line_length: int = 20
 
     #: Maximum characters (including punctuation) before a forced line break.
-    max_line_length: int = 31
+    max_line_length: int = 35
 
     #: Seconds of no text change before the uncommitted line is auto-submitted.
     text_change_timeout_s: float = 2.0
@@ -79,6 +79,15 @@ class CaptionResult:
 
     #: Always ``"two_line"`` for this formatter.
     mode: str = "two_line"
+
+    #: True only when this update committed a punctuation boundary that was
+    #: already inside the text. A provisional punctuation mark at the current
+    #: text tail and a length-forced split both leave this False.
+    natural_boundary_committed: bool = False
+
+    #: Punctuation character for the most recent natural boundary committed
+    #: during this update; empty when no natural boundary was committed.
+    committed_boundary: str = ""
 
 
 # ── Formatter ────────────────────────────────────────────────────────────────
@@ -123,6 +132,8 @@ class CaptionFormatter:
         self._last_raw: str = ""
         self._last_punctuated: str = ""
         self._last_change_time: float = 0.0
+        self._natural_boundary_committed: bool = False
+        self._committed_boundary: str = ""
 
     # ── Public API ─────────────────────────────────────────────────────────
 
@@ -147,6 +158,8 @@ class CaptionFormatter:
             return CaptionResult()
 
         if raw_text == self._last_raw:
+            self._natural_boundary_committed = False
+            self._committed_boundary = ""
             return self._make_result()
 
         # ── Handle text shortening (ASR correction) ────────────────────
@@ -158,6 +171,8 @@ class CaptionFormatter:
         self._last_raw = raw_text
         self._last_change_time = now
         self._last_punctuated = self._punctuator(raw_text)
+        self._natural_boundary_committed = False
+        self._committed_boundary = ""
 
         # ── Commit any complete sentences ─────────────────────────────
         self._commit_sentences()
@@ -190,6 +205,8 @@ class CaptionFormatter:
         self._previous_line = uncommitted.strip()
         self._committed_raw_len += raw_chars
         self._last_change_time = now  # prevent repeated trigger
+        self._natural_boundary_committed = False
+        self._committed_boundary = ""
         return self._make_result()
 
     def reset(self) -> None:
@@ -199,6 +216,8 @@ class CaptionFormatter:
         self._last_raw = ""
         self._last_punctuated = ""
         self._last_change_time = 0.0
+        self._natural_boundary_committed = False
+        self._committed_boundary = ""
 
     # ── Internal helpers ───────────────────────────────────────────────
 
@@ -220,7 +239,7 @@ class CaptionFormatter:
             if not uncommitted:
                 break
 
-            split = _find_split(
+            split, natural_boundary = _find_split_details(
                 uncommitted,
                 max_len=self.config.max_line_length,
                 min_len=self.config.min_line_length,
@@ -242,6 +261,9 @@ class CaptionFormatter:
 
             self._previous_line = sentence
             self._committed_raw_len += raw_chars
+            self._natural_boundary_committed |= natural_boundary
+            if natural_boundary:
+                self._committed_boundary = sentence[-1]
 
     def _make_result(self) -> CaptionResult:
         return CaptionResult(
@@ -249,6 +271,8 @@ class CaptionFormatter:
             previous_line=self._previous_line,
             current_line=self._get_uncommitted(),
             mode="two_line",
+            natural_boundary_committed=self._natural_boundary_committed,
+            committed_boundary=self._committed_boundary,
         )
 
 
@@ -257,8 +281,8 @@ class CaptionFormatter:
 
 def _find_split(
     text: str,
-    max_len: int = 31,
-    min_len: int = 5,
+    max_len: int = 35,
+    min_len: int = 20,
     all_boundary: frozenset[str] = ALL_BOUNDARY,
     sentence_end: frozenset[str] = SENTENCE_END,
     comma_boundary: frozenset[str] = frozenset({"，", ",", "、", "；", ";"}),
@@ -283,13 +307,31 @@ def _find_split(
        prevents a heuristic fallback period added only because no other
        punctuation exists from immediately emptying ``current_line``.
 
-    2. **Forced split** (``len(text) > max_len``): within the first
-       ``max_len`` characters, the *last* punctuation boundary is preferred
-       (to get the most natural break); if none exists, split at
+    2. **Forced split** (``len(text) > max_len``): if no valid natural
+       boundary exists in the 20--35 character target window, split at
        ``max_len``.
     """
+    return _find_split_details(
+        text,
+        max_len=max_len,
+        min_len=min_len,
+        all_boundary=all_boundary,
+        sentence_end=sentence_end,
+        comma_boundary=comma_boundary,
+    )[0]
+
+
+def _find_split_details(
+    text: str,
+    max_len: int = 35,
+    min_len: int = 20,
+    all_boundary: frozenset[str] = ALL_BOUNDARY,
+    sentence_end: frozenset[str] = SENTENCE_END,
+    comma_boundary: frozenset[str] = frozenset({"，", ",", "、", "；", ";"}),
+) -> tuple[int, bool]:
+    """Return ``(split_index, is_natural_punctuation_boundary)``."""
     if not text:
-        return 0
+        return 0, False
 
     # ── 1. Earliest valid boundary (any type) ─────────────────────────────
     #     Boundary at the very end of text is *not* a split trigger —
@@ -298,7 +340,7 @@ def _find_split(
         if i >= max_len:
             break
         if ch in all_boundary and i + 1 >= min_len and i + 1 < len(text):
-            return i + 1
+            return i + 1, True
 
     # ── 2. Forced split (text longer than max_len) ────────────────────────
     #     Use the LAST boundary within max_len for the most natural break.
@@ -307,9 +349,11 @@ def _find_split(
         for i, ch in enumerate(text[:max_len]):
             if ch in all_boundary and i + 1 >= min_len:
                 last_boundary = i + 1
-        return last_boundary if last_boundary > 0 else max_len
+        if last_boundary > 0:
+            return last_boundary, True
+        return max_len, False
 
-    return 0
+    return 0, False
 
 
 def _punc_offset_for_raw(

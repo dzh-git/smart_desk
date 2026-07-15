@@ -52,11 +52,21 @@ class ArduinoManager:
         self._stop = threading.Event()
         self._connected = False
         self.last_pong = 0.0
-        self.current_mode = "IDLE"
+        # Last mode confirmed by an ``OK SET_MODE ...`` response.  Keep this
+        # separate from LightingManager's intended mode so the UI never claims
+        # that an offline controller changed successfully.
+        self.current_mode = "UNKNOWN"
+        self.last_command: Optional[str] = None
+        self.last_ack_at: Optional[float] = None
+        self.last_error: Optional[str] = None
+        self.command_pending = False
         self.pir_callback: Optional[Callable[[bool], None]] = None
+        self.connection_callback: Optional[Callable[[bool], None]] = None
+        self.mode_callback: Optional[Callable[[str], None]] = None
 
         if self.enabled and not _SERIAL_AVAILABLE:
             self.enabled = False
+            self.last_error = "pyserial not installed"
             logger.warning("Arduino enabled in config but pyserial is missing; disabling.")
 
     # ── Public API ──────────────────────────────────────────────────────────
@@ -85,6 +95,8 @@ class ArduinoManager:
         except Exception:  # pragma: no cover
             pass
         self._connected = False
+        self.command_pending = False
+        self._notify_connection(False)
 
     def send_command(self, command: str, arg: Optional[str] = None) -> bool:
         """Send a line to the Arduino. Fire-and-forget; returns True if written.
@@ -92,15 +104,21 @@ class ArduinoManager:
         Does not wait for a response. Safe to call from any thread. Returns
         False without raising when offline or disabled.
         """
-        if not self.enabled or not self.ser or not self._connected:
-            return False
         line = command if arg is None else f"{command} {arg}"
+        if not self.enabled or not self.ser or not self._connected:
+            self.last_error = f"not connected: {line}"
+            return False
         try:
             with self._lock:
                 self.ser.write((line + "\n").encode("utf-8"))
+            self.last_command = line
+            self.command_pending = True
+            self.last_error = None
             return True
         except Exception:
             logger.exception("[Arduino] send_command failed: %s", line)
+            self.last_error = f"send failed: {line}"
+            self.command_pending = False
             self._connected = False
             return False
 
@@ -115,11 +133,15 @@ class ArduinoManager:
                 logger.info("[Arduino] connected on %s", self.port)
                 # Sync firmware state on (re)connect.
                 self._send_raw("SET_MODE IDLE")
+                self._notify_connection(True)
                 self._read_loop()
             except Exception as exc:  # pragma: no cover - hardware dependent
                 logger.warning("[Arduino] connection lost: %s", exc)
+                self.last_error = str(exc)
             self._connected = False
-            self.current_mode = "IDLE"
+            self.current_mode = "UNKNOWN"
+            self.command_pending = False
+            self._notify_connection(False)
             if self._stop.is_set():
                 break
             time.sleep(self.reconnect_interval)
@@ -173,10 +195,30 @@ class ArduinoManager:
         if line == "PONG":
             self.last_pong = time.time()
         elif line.startswith("OK "):
-            # Echo confirmation (e.g. "OK SET_MODE IDLE"); nothing to act on.
-            pass
+            echoed = line[3:].strip()
+            self.last_ack_at = time.time()
+            self.last_error = None
+            if echoed == self.last_command:
+                self.command_pending = False
+            if echoed.startswith("SET_MODE "):
+                mode = echoed.split(None, 1)[1].strip().upper()
+                self.current_mode = mode
+                if self.mode_callback is not None:
+                    try:
+                        self.mode_callback(mode)
+                    except Exception:
+                        logger.exception("[Arduino] mode_callback failed")
+            elif echoed == "OFF":
+                self.current_mode = "OFF"
+                if self.mode_callback is not None:
+                    try:
+                        self.mode_callback("OFF")
+                    except Exception:
+                        logger.exception("[Arduino] mode_callback failed")
         elif line.startswith("ERR "):
             logger.warning("[Arduino] error response: %s", line)
+            self.command_pending = False
+            self.last_error = line
         elif line.startswith("EVENT "):
             self._handle_event(line)
         else:
@@ -194,3 +236,11 @@ class ArduinoManager:
                     self.pir_callback(occupied)
                 except Exception:
                     logger.exception("[Arduino] pir_callback failed")
+
+    def _notify_connection(self, connected: bool) -> None:
+        if self.connection_callback is None:
+            return
+        try:
+            self.connection_callback(connected)
+        except Exception:
+            logger.exception("[Arduino] connection_callback failed")

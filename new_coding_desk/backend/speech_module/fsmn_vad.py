@@ -76,6 +76,10 @@ class FSMNVAD:
                 },
             )
 
+    def preload(self) -> None:
+        """Load model weights without running inference."""
+        self._load_model()
+
     def detect_segments(self, audio: np.ndarray) -> list[dict]:
         """Run FSMN-VAD on full audio buffer, return detected speech segments.
 
@@ -139,3 +143,64 @@ def merge_short_segments(
             merged.append(dict(seg))
 
     return merged
+
+
+_DEFAULT_VAD: FSMNVAD | None = None
+_DEFAULT_VAD_ERROR: str | None = None
+_DEFAULT_VAD_LOCK = threading.Lock()
+
+
+def get_default_vad() -> FSMNVAD:
+    global _DEFAULT_VAD, _DEFAULT_VAD_ERROR
+    if _DEFAULT_VAD is not None:
+        return _DEFAULT_VAD
+    with _DEFAULT_VAD_LOCK:
+        if _DEFAULT_VAD is None:
+            try:
+                vad = FSMNVAD()
+                vad.preload()
+                _DEFAULT_VAD = vad
+                _DEFAULT_VAD_ERROR = None
+            except Exception as exc:
+                _DEFAULT_VAD_ERROR = str(exc)
+                raise
+    return _DEFAULT_VAD
+
+
+def get_vad_status() -> dict:
+    return {
+        "state": "loaded" if _DEFAULT_VAD is not None else (
+            "error" if _DEFAULT_VAD_ERROR else "unknown"
+        ),
+        "last_error": _DEFAULT_VAD_ERROR,
+    }
+
+
+def trim_to_speech(
+    audio: np.ndarray,
+    sample_rate: int = 16000,
+    *,
+    min_voice_ms: int = 300,
+    pad_ms: int = 150,
+) -> np.ndarray | None:
+    """Keep FSMN-confirmed voice regions, returning None for noise-only audio."""
+    if sample_rate != 16000:
+        raise ValueError("FSMN-VAD expects 16 kHz audio")
+    vad = get_default_vad()
+    segments = merge_short_segments(vad.detect_segments(audio))
+    if not segments:
+        return None
+    total_voice_ms = sum(max(0, s["end_ms"] - s["start_ms"]) for s in segments)
+    if total_voice_ms < min_voice_ms:
+        return None
+
+    chunks: list[np.ndarray] = []
+    total_ms = len(audio) * 1000 / sample_rate
+    for segment in segments:
+        start_ms = max(0, segment["start_ms"] - pad_ms)
+        end_ms = min(total_ms, segment["end_ms"] + pad_ms)
+        start = int(start_ms * sample_rate / 1000)
+        end = int(end_ms * sample_rate / 1000)
+        if end > start:
+            chunks.append(audio[start:end])
+    return np.concatenate(chunks).astype(np.float32) if chunks else None

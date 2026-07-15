@@ -90,6 +90,9 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
                     seat_id,
                     bool(msg.get("connected", True)),
                     msg.get("current_mode"),
+                    last_error=msg.get("last_error"),
+                    last_ack_at=msg.get("last_ack_at"),
+                    command_pending=msg.get("command_pending"),
                 )
             elif mtype == "sync":
                 lm2 = get_lighting_manager()

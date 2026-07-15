@@ -17,7 +17,7 @@ from backend.models.speaker_seat import SpeakerSeat
 
 logger = logging.getLogger(__name__)
 
-SEAT_COUNT = 10
+SEAT_COUNT = 9
 
 
 class SeatRepository:
@@ -34,18 +34,24 @@ class SeatRepository:
 
     @staticmethod
     def init_seats(db: Session) -> None:
-        """Seed initial seat_states (1..10, vacant) and speaker_seat (id=1, NULL).
+        """Ensure seat_states 1..9 and speaker_seat (id=1, NULL) exist.
 
-        Idempotent: skips if data already exists.
+        Idempotent and compatible with legacy databases that may contain seat 10.
         Called once at application startup.
         """
-        existing = db.query(SeatState).count()
-        if existing == 0:
+        existing_ids = {
+            row[0]
+            for row in db.query(SeatState.seat_id)
+            .filter(SeatState.seat_id.between(1, SEAT_COUNT))
+            .all()
+        }
+        missing_ids = set(range(1, SEAT_COUNT + 1)) - existing_ids
+        if missing_ids:
             now = datetime.now(timezone.utc)
-            for seat_id in range(1, SEAT_COUNT + 1):
+            for seat_id in sorted(missing_ids):
                 db.add(SeatState(seat_id=seat_id, status="vacant", updated_at=now))
             db.commit()
-            logger.info("SeatRepository: seeded %d seat_states", SEAT_COUNT)
+            logger.info("SeatRepository: seeded missing seat_states: %s", sorted(missing_ids))
 
         speaker = db.get(SpeakerSeat, 1)
         if speaker is None:
@@ -56,13 +62,16 @@ class SeatRepository:
     # ── SeatState ────────────────────────────────────────────────────────────
 
     def get_seat(self, seat_id: int) -> SeatState | None:
-        """Get a seat by its seat_id (1..10)."""
+        """Get a seat by its seat_id (1..9)."""
+        if not 1 <= seat_id <= SEAT_COUNT:
+            return None
         return self.db.get(SeatState, seat_id)
 
     def list_seats(self) -> list[SeatState]:
-        """List all 10 seats, ordered by seat_id."""
+        """List the nine configured seats, ordered by seat_id."""
         return (
             self.db.query(SeatState)
+            .filter(SeatState.seat_id.between(1, SEAT_COUNT))
             .order_by(SeatState.seat_id)
             .all()
         )

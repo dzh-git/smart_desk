@@ -40,6 +40,12 @@ class TranslationInterimCancelledEvent(BaseEvent):
 
 
 @dataclass
+class TranslationFinalizingEvent(BaseEvent):
+    """Moves a completed realtime segment into pending history immediately."""
+    event_name: str = "translation_finalizing"
+
+
+@dataclass
 class TranslationFinalEvent(BaseEvent):
     """Finalized translation record — persisted, then broadcast.
 

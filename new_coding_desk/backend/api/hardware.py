@@ -3,7 +3,8 @@ Hardware status API — expose per-seat hardware & gesture service status.
 
 GET /api/hardware/status
     Returns, for each seat, its reachability (enabled / connected / port /
-    current_mode), plus the gesture service state. Works in both deploy modes:
+    ACK-confirmed mode, intended mode and diagnostics), plus the gesture
+    service state. Works in both deploy modes:
       * central     — reads from the local ArduinoManagers (serial).
       * distributed — reads from the SeatGateway (agent-reported online state).
     Always responds 200 even when offline, so the management UI can render
@@ -70,15 +71,18 @@ async def hardware_status():
     if deploy_mode == "central":
         for seat_id in sorted(seat_managers.keys()):
             mgr = seat_managers[seat_id]
+            intended = lm.seat_mode.get(seat_id, "IDLE") if lm is not None else "IDLE"
             seats.append(
                 {
                     "seat_id": seat_id,
                     "enabled": mgr.enabled,
                     "connected": mgr.is_connected,
                     "port": mgr.port,
-                    "current_mode": (
-                        lm.seat_mode.get(seat_id, "IDLE") if lm is not None else "IDLE"
-                    ),
+                    "current_mode": mgr.current_mode,
+                    "intended_mode": intended,
+                    "command_pending": mgr.command_pending,
+                    "last_ack_at": mgr.last_ack_at,
+                    "last_error": mgr.last_error,
                 }
             )
     else:
@@ -87,15 +91,25 @@ async def hardware_status():
             connected = (
                 gateway.is_connected(seat_id) if isinstance(gateway, SeatGateway) else False
             )
+            diag = gateway.diagnostics(seat_id) if isinstance(gateway, SeatGateway) else {}
+            applied = (
+                gateway.reported_mode(seat_id)
+                if isinstance(gateway, SeatGateway)
+                else "UNKNOWN"
+            )
             seats.append(
                 {
                     "seat_id": seat_id,
                     "enabled": connected,
                     "connected": connected,
                     "port": None,
-                    "current_mode": (
+                    "current_mode": applied,
+                    "intended_mode": (
                         lm.seat_mode.get(seat_id, "IDLE") if lm is not None else "IDLE"
                     ),
+                    "command_pending": diag.get("command_pending", False),
+                    "last_ack_at": diag.get("last_ack_at"),
+                    "last_error": diag.get("last_error"),
                 }
             )
 

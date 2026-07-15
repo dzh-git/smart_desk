@@ -233,6 +233,9 @@ export class SpeechWsClient {
    */
   close(): void {
     trace("speech_ws_closed_at", {});
+    const rejectConnect = this.rejectConnect;
+    this.resolveConnect = null;
+    this.rejectConnect = null;
     if (this.ws) {
       // Prevent auto-reconnect if the library supports it
       this.ws.onclose = null;
@@ -240,8 +243,7 @@ export class SpeechWsClient {
       this.ws = null;
     }
     this.setStatus("disconnected");
-    this.resolveConnect = null;
-    this.rejectConnect = null;
+    rejectConnect?.(new Error("Speech WebSocket closed"));
   }
 
   // ---- Internal ----

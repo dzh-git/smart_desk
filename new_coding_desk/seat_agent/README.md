@@ -11,7 +11,7 @@
 
 ## 部署到一台座位终端
 
-1. **烧固件**：`arduino_nano_controller/smartdesk_lighting_controller/` 烧到 Nano，EEPROM 写入本座 `seat_id`。
+1. **烧固件**：将 `arduino_nano_controller/smartdesk_lighting_controller/` 烧录到 Nano。当前固件不保存 `seat_id`；座位身份由本终端的 Seat Edge Agent 配置指定。
 2. **装依赖**（本终端）：
    ```bash
    cd new_coding_desk
@@ -25,7 +25,7 @@
    ```json
    { "seat_id": 1, "serial_port": "COM5", "central_ws_url": "ws://192.168.1.10:8000" }
    ```
-   - `seat_id`：与本座固件 EEPROM、前端 URL 一致（1=主持人，2..9=参会）
+   - `seat_id`：与本座前端 URL 和中央主机配置一致（1=主持人，2..9=参会）。
    - `serial_port`：本机 Arduino 的 COM 口（设备管理器查看）
    - `central_ws_url`：中央主机地址
 4. **运行**（在 `new_coding_desk` 目录，保证 `backend` 可导入）：

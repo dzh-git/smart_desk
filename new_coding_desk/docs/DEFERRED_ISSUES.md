@@ -1,5 +1,9 @@
 # SmartDesk Deferred Issues
 
+## Seat Capacity Convergence
+
+The approved product baseline is 9 complete seats: seat 1 is the host seat and seats 2–9 are attendee seats. This documentation update does not modify application code, database initialization, test fixtures, or route validation. Before release, verify that all runtime validation and seeded data reject seat ids outside `1..9` and that hardware status still maps exactly to the nine configured seats.
+
 These issues are known and non-blocking for the v1 demo.
 
 ## ASR Accuracy

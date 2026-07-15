@@ -7,6 +7,8 @@ Per DATABASE_SCHEMA.md §11, §15:
 """
 from __future__ import annotations
 
+import re
+
 from backend.models.translation_record import TranslationRecord
 from backend.repositories.base import BaseRepository
 
@@ -38,3 +40,23 @@ class TranslationRepository(BaseRepository[TranslationRecord]):
         if seat_id is not None:
             q = q.filter(TranslationRecord.seat_id == seat_id)
         return q.order_by(TranslationRecord.created_at.desc()).all()
+
+    def max_utterance_sequence(self, meeting_id: int, seat_id: int) -> int:
+        """Return the largest persisted speech utterance sequence."""
+        prefix = f"utt_{meeting_id}_{seat_id}_"
+        values = (
+            self.db.query(TranslationRecord.utterance_id)
+            .filter(
+                TranslationRecord.meeting_id == meeting_id,
+                TranslationRecord.seat_id == seat_id,
+                TranslationRecord.utterance_id.like(f"{prefix}%"),
+            )
+            .all()
+        )
+        pattern = re.compile(rf"^{re.escape(prefix)}(\d{{6}})$")
+        sequences = [
+            int(match.group(1))
+            for (value,) in values
+            if value and (match := pattern.match(value))
+        ]
+        return max(sequences, default=0)

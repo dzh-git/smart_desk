@@ -55,7 +55,9 @@ class TestContinuousUtteranceLifecycle:
         assert session is not None
         assert session.current_utterance_id == uid
 
-        # Buffer some audio (required for finalize)
+        # These lifecycle tests bypass the adaptive gate, so explicitly mark
+        # the synthetic buffer as confirmed speech before finalization.
+        session.has_speech = True
         stream_service.append_audio(self.session_key, b"\x00" * 3200)
 
         if mode == "final":
@@ -219,6 +221,7 @@ class TestStartInterimFinalCancelSequence:
     def test_utterance_terminal_after_finalize(self) -> None:
         """After successful finalize + mark, utterance IS terminal."""
         stream_service.start_utterance(self.session_key, "utt_final_001")
+        stream_service.get_session(self.session_key).has_speech = True
         stream_service.append_audio(self.session_key, b"\x00" * 3200)
         result = stream_service.finalize_utterance(self.session_key)
         assert result is not None
@@ -246,6 +249,7 @@ class TestStartInterimFinalCancelSequence:
 
         # Second utterance: final
         stream_service.start_utterance(self.session_key, "utt_seq_b_001")
+        stream_service.get_session(self.session_key).has_speech = True
         stream_service.append_audio(self.session_key, b"\x01" * 3200)
         result = stream_service.finalize_utterance(self.session_key)
         assert result is not None

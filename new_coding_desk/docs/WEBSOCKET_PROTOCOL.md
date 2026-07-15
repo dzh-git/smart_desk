@@ -68,16 +68,25 @@ Primary path:
 1. Speaker Seat connects to `/ws/speech/{meeting_id}?seat=N`.
 2. Frontend sends `start`.
 3. Frontend streams PCM16 binary frames.
-4. Backend publishes `translation_interim` events for live caption display.
-5. Backend RMS endpoint detection decides the utterance boundary.
-6. Backend runs final ASR, persists the final record, and publishes
-   `translation_final`.
-7. The same speech WebSocket stays open and a new utterance can start.
+4. After 500 ms noise calibration and three onset frames, the backend
+   publishes `translation_interim` events for live caption display. Frames
+   below the adaptive voice gate are not sent to ASR.
+5. Punctuation-aware pause thresholds decide complete sentence/clause
+   boundaries. After 30 seconds the next real sentence/clause boundary rolls
+   the utterance; 45 seconds is the hard duration limit. A provisional period
+   appended at the current text tail does not trigger the soft boundary.
+6. On an automatic duration rollover, the backend publishes
+   `translation_finalizing`, fully resets the streaming cache, and starts the
+   next utterance immediately. The final 300 ms of PCM is replayed once to
+   seed acoustic context; replay text and audio are not persisted twice.
+7. Translation and persistence run in a bounded single-worker queue, then
+   publish `translation_final`. Explicit `end_hint` still runs final ASR.
 
 Fallback path:
 
 1. Frontend sends `end_hint`.
-2. Backend finalizes the current buffer immediately if possible.
+2. Backend finalizes confirmed voice immediately if possible. A pure-silence
+   buffer ends quietly without an error or persisted record.
 3. Backend publishes `translation_final`.
 
 Speaker Seat switch:
@@ -126,6 +135,38 @@ Published for live speech captions. It is not persisted and is not translated.
 ```
 
 Clients keep only the newest revision for each `utterance_id`.
+
+## `translation_finalizing`
+
+Published when an automatic segment enters pending history while translation
+and persistence continue in the background. Clients atomically hand the live
+caption to `next_utterance_id`, retaining the old lines until the next
+utterance has produced its own line, so the live box never becomes empty.
+
+```json
+{
+  "event": "translation_finalizing",
+  "meeting_id": 1,
+  "timestamp": 1748700000,
+  "payload": {
+    "utterance_id": "utt_1_1_000001",
+    "seat_id": 1,
+    "source_lang": "zh",
+    "target_lang": "en",
+    "source_text": "Completed realtime source text.",
+    "boundary_reason": "soft_sentence_limit",
+    "next_utterance_id": "utt_1_1_000002",
+    "rollover_overlap_ms": 300,
+    "caption": {
+      "previous_line": "Previous caption line.",
+      "current_line": "Completed realtime source text.",
+      "mode": "two_line"
+    }
+  }
+}
+```
+
+The last three fields are optional for compatibility with older clients.
 
 ## `translation_final`
 

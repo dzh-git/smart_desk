@@ -116,7 +116,7 @@ $env:ENABLE_TRANSLATION_MODEL = "true"
 | 路由 | 用途 |
 |---|---|
 | `/admin` | 主持人控制台。 |
-| `/seat/:seatId` | 1 到 10 号座位端。 |
+| `/seat/:seatId` | 1 到 9 号座位端（seat 1 为主持人位）。 |
 | `/display` | 中央大屏。 |
 | `/` | 自动跳转到 `/admin`。 |
 | `/?seat=N` | 兼容旧入口，自动跳转到 `/seat/N`。 |

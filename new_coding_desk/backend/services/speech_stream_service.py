@@ -22,6 +22,7 @@ import logging
 import threading
 import time
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 from typing import Any
 
@@ -39,11 +40,29 @@ logger = logging.getLogger(__name__)
 
 # ── VAD configuration (Task 122) ──────────────────────────────────────────────
 
-#: RMS threshold below which audio is considered silence (16kHz mono).
-VAD_SILENCE_THRESHOLD_RMS: float = 0.006
+# Adaptive low-latency voice gate defaults.  Values are float32 PCM RMS.
+VAD_SILENCE_THRESHOLD_RMS: float = 0.010  # compatibility alias / minimum onset
+VAD_CONTINUE_THRESHOLD_RMS: float = 0.007
+VAD_NOISE_START_RATIO: float = 2.0
+VAD_NOISE_CONTINUE_RATIO: float = 1.5
+VAD_CALIBRATION_FRAMES: int = 5          # 500 ms at 100 ms/frame
+VAD_PRE_ROLL_FRAMES: int = 3             # retain the first consonants
+VAD_START_CONFIRM_FRAMES: int = 2
 
-#: Seconds of consecutive silence before auto-final is triggered.
-VAD_SILENCE_DURATION_S: float = 1.2
+# Boundary policy: punctuation + pause first, silence fallback last.
+VAD_SENTENCE_PAUSE_S: float = 0.9
+VAD_CLAUSE_PAUSE_S: float = 1.3
+VAD_NATURAL_PAUSE_S: float = 2.0
+VAD_SILENCE_DURATION_S: float = 3.0      # compatibility alias / hard silence
+VAD_SOFT_UTTERANCE_S: float = 30.0
+VAD_MAX_UTTERANCE_S: float = 45.0
+ROLLOVER_OVERLAP_MS: int = 300
+ROLLOVER_OVERLAP_BYTES: int = int(16000 * 2 * ROLLOVER_OVERLAP_MS / 1000)
+CONTINUOUS_ROLLOVER_REASONS = frozenset({
+    "soft_sentence_limit",
+    "soft_clause_limit",
+    "max_duration",
+})
 
 # ── Utterance state machine constants (Task 122) ──────────────────────────────
 
@@ -80,6 +99,32 @@ class SpeechStreamSession:
         # Task 122: VAD state tracking
         self.utterance_state: str = UTTERANCE_STATE_IDLE
         self.vad_silence_seconds: float = 0.0
+        self.noise_floor_rms: float = 0.003
+        self.calibration_frames_remaining = VAD_CALIBRATION_FRAMES
+        self.voice_start_frames = 0
+        self.voice_active = False
+        self.has_speech = False
+        # Live capture diagnostics. These distinguish a connected-but-silent
+        # browser from PCM that is arriving below the adaptive voice gate.
+        self.pcm_frames_received: int = 0
+        self.pcm_bytes_received: int = 0
+        self.last_input_rms: float = 0.0
+        self.peak_input_rms: float = 0.0
+        self.last_pcm_at: float | None = None
+        self.processed_frames: int = 0
+        self.last_processing_ms: int = 0
+        self.peak_processing_ms: int = 0
+        self.speaking_event_active = False
+        self.utterance_audio_seconds = 0.0
+        self.last_source_text = ""
+        self.last_caption: dict[str, str] = {
+            "previous_line": "",
+            "current_line": "",
+            "mode": "two_line",
+        }
+        self._pre_roll: deque[bytes] = deque(maxlen=VAD_PRE_ROLL_FRAMES)
+        self._rollover_overlap_pcm: bytes = b""
+        self._rollover_started_at: float | None = None
         # Task 126: terminal utterance_id set — prevents duplicate final/cancel
         # for the same utterance_id. Each utterance_id can only be terminal once.
         self.terminal_utterance_ids: set[str] = set()
@@ -192,6 +237,86 @@ class SpeechStreamService:
         except Exception:
             base["punctuation_fallback"] = True
 
+        try:
+            from backend.services.translation_model_service import (
+                TranslationModelService,
+                is_translation_model_enabled,
+            )
+            translation = TranslationModelService.get_instance()
+            base["translation_model"] = (
+                "loaded" if translation.loaded else (
+                    "error" if translation.load_error else (
+                        "unknown" if is_translation_model_enabled() else "disabled"
+                    )
+                )
+            )
+            base["translation_model_path"] = translation.model_path
+            base["translation_last_error"] = translation.load_error
+        except Exception as exc:
+            base["translation_model"] = "error"
+            base["translation_last_error"] = str(exc)
+
+        base["voice_gate"] = {
+            "minimum_onset_rms": VAD_SILENCE_THRESHOLD_RMS,
+            "minimum_continue_rms": VAD_CONTINUE_THRESHOLD_RMS,
+            "noise_start_ratio": VAD_NOISE_START_RATIO,
+            "noise_continue_ratio": VAD_NOISE_CONTINUE_RATIO,
+            "sentence_pause_seconds": VAD_SENTENCE_PAUSE_S,
+            "clause_pause_seconds": VAD_CLAUSE_PAUSE_S,
+            "natural_pause_seconds": VAD_NATURAL_PAUSE_S,
+            "hard_silence_seconds": VAD_SILENCE_DURATION_S,
+            "soft_utterance_seconds": VAD_SOFT_UTTERANCE_S,
+            "max_utterance_seconds": VAD_MAX_UTTERANCE_S,
+        }
+
+        base["active_sessions"] = self.active_session_count
+        base["max_buffered_audio_seconds"] = self.max_buffered_audio_seconds()
+        now = time.monotonic()
+        base["sessions"] = [
+            {
+                "session_key": session.session_key,
+                "meeting_id": session.meeting_id,
+                "seat_id": session.seat_id,
+                "utterance_id": session.current_utterance_id,
+                "pcm_frames_received": session.pcm_frames_received,
+                "pcm_bytes_received": session.pcm_bytes_received,
+                "last_input_rms": round(session.last_input_rms, 6),
+                "peak_input_rms": round(session.peak_input_rms, 6),
+                "noise_floor_rms": round(session.noise_floor_rms, 6),
+                "onset_threshold_rms": round(max(
+                    VAD_SILENCE_THRESHOLD_RMS,
+                    session.noise_floor_rms * VAD_NOISE_START_RATIO,
+                ), 6),
+                "voice_active": session.voice_active,
+                "calibration_frames_remaining": session.calibration_frames_remaining,
+                "last_pcm_age_ms": (
+                    round((now - session.last_pcm_at) * 1000)
+                    if session.last_pcm_at is not None else None
+                ),
+                "processed_frames": session.processed_frames,
+                "last_processing_ms": session.last_processing_ms,
+                "peak_processing_ms": session.peak_processing_ms,
+            }
+            for session in self._sessions.values()
+        ]
+        base["soft_utterance_seconds"] = VAD_SOFT_UTTERANCE_S
+        base["hard_utterance_seconds"] = VAD_MAX_UTTERANCE_S
+        base["rollover_overlap_ms"] = ROLLOVER_OVERLAP_MS
+        try:
+            from backend.services.speech_finalization_service import finalization_queue
+            base["pending_finalizations"] = finalization_queue.pending_count
+        except Exception:
+            base["pending_finalizations"] = 0
+        try:
+            import os
+            import psutil
+            base["process_rss_mb"] = round(
+                psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024),
+                1,
+            )
+        except Exception:
+            base["process_rss_mb"] = None
+
         return base
 
     # ── VAD detection (Task 122) ─────────────────────────────────────────────
@@ -209,45 +334,138 @@ class SpeechStreamService:
         return float(np.sqrt(np.mean(audio.astype(np.float64) ** 2)))
 
     def _check_vad_end(self, session_key: str, audio: np.ndarray) -> bool:
-        """Update VAD silence counter and return True if utterance should end.
-
-        Called after each PCM frame processing. Updates the session's
-        accumulated silence counter based on RMS of the audio frame.
-
-        Returns True when consecutive silence exceeds VAD_SILENCE_DURATION_S,
-        indicating the utterance should be auto-finalized.
-
-        Args:
-            session_key: Active speech session key.
-            audio: float32 audio array from pcm16_to_float32().
-
-        Returns:
-            True if silence threshold exceeded (trigger auto-final).
-        """
+        """Compatibility helper: hard-silence decision for an active voice."""
         session = self._sessions.get(session_key)
         if session is None:
             return False
-
-        # Compute RMS of this frame
         rms = self._compute_rms(audio)
         frame_duration_s = float(len(audio)) / 16000.0  # 16kHz
-
-        if rms < VAD_SILENCE_THRESHOLD_RMS:
-            # Silence detected — accumulate
+        continue_threshold = max(
+            VAD_CONTINUE_THRESHOLD_RMS,
+            session.noise_floor_rms * VAD_NOISE_CONTINUE_RATIO,
+        )
+        if session.voice_active and rms < continue_threshold:
             session.vad_silence_seconds += frame_duration_s
-            if session.vad_silence_seconds >= VAD_SILENCE_DURATION_S:
-                logger.debug(
-                    "VAD auto-final triggered for session %s "
-                    "(silence=%.2fs rms=%.4f)",
-                    session_key, session.vad_silence_seconds, rms,
-                )
-                return True
         else:
-            # Speech detected — reset silence counter
-            if session.vad_silence_seconds > 0:
-                session.vad_silence_seconds = 0.0
+            session.vad_silence_seconds = 0.0
+        return session.has_speech and session.vad_silence_seconds >= VAD_SILENCE_DURATION_S
 
-        return False
+    def _gate_frame(
+        self, session: SpeechStreamSession, pcm_bytes: bytes, audio: np.ndarray,
+    ) -> tuple[list[bytes], bool]:
+        """Return frames admitted to ASR and whether voice began this frame."""
+        rms = self._compute_rms(audio)
+        frame_duration = float(len(audio)) / 16000.0
+        session._pre_roll.append(pcm_bytes)
+
+        if session.calibration_frames_remaining > 0 and not session.voice_active:
+            # A conservative EWMA learns the room floor without normalising it.
+            session.noise_floor_rms = (
+                0.8 * session.noise_floor_rms + 0.2 * min(rms, VAD_SILENCE_THRESHOLD_RMS)
+            )
+            session.calibration_frames_remaining -= 1
+            # Complete the full 500 ms room calibration before voice onset.
+            # The rolling pre-buffer still retains the final 300 ms so an
+            # attendee who begins slightly early does not lose consonants.
+            return [], False
+
+        onset_threshold = max(
+            VAD_SILENCE_THRESHOLD_RMS,
+            session.noise_floor_rms * VAD_NOISE_START_RATIO,
+        )
+        continue_threshold = max(
+            VAD_CONTINUE_THRESHOLD_RMS,
+            session.noise_floor_rms * VAD_NOISE_CONTINUE_RATIO,
+        )
+
+        if not session.voice_active:
+            if rms >= onset_threshold:
+                session.voice_start_frames += 1
+            else:
+                session.voice_start_frames = 0
+                # Do not let unconfirmed speech rapidly raise the learned
+                # floor and chase the onset threshold upward.  A quieter frame
+                # can lower the estimate promptly; louder frames influence it
+                # only very slowly.
+                alpha = 0.05 if rms <= session.noise_floor_rms else 0.005
+                session.noise_floor_rms = (
+                    (1.0 - alpha) * session.noise_floor_rms + alpha * rms
+                )
+            if session.voice_start_frames < VAD_START_CONFIRM_FRAMES:
+                return [], False
+
+            session.voice_active = True
+            session.has_speech = True
+            session.vad_silence_seconds = 0.0
+            session.voice_start_frames = 0
+            admitted = list(session._pre_roll)
+            session._pre_roll.clear()
+            return admitted, True
+
+        if rms >= continue_threshold:
+            session.vad_silence_seconds = 0.0
+        else:
+            session.vad_silence_seconds += frame_duration
+        return [pcm_bytes], False
+
+    @staticmethod
+    def _meaningful_length(text: str) -> int:
+        return len("".join(ch for ch in text.strip() if ch.isalnum()))
+
+    def _boundary_reason(
+        self,
+        session: SpeechStreamSession,
+        text: str,
+        *,
+        natural_boundary_committed: bool = False,
+        committed_boundary: str = "",
+    ) -> str | None:
+        if not session.has_speech:
+            return None
+        if session.utterance_audio_seconds >= VAD_MAX_UTTERANCE_S:
+            return "max_duration"
+
+        silence = session.vad_silence_seconds
+        stripped = text.rstrip()
+        meaningful = self._meaningful_length(stripped)
+        if stripped and meaningful >= 2:
+            if stripped[-1] in "。！？.!?" and silence >= VAD_SENTENCE_PAUSE_S:
+                return "sentence_pause"
+            if stripped[-1] in "，；：,;:" and silence >= VAD_CLAUSE_PAUSE_S:
+                return "clause_pause"
+            if (
+                session.utterance_audio_seconds >= VAD_SOFT_UTTERANCE_S
+                and natural_boundary_committed
+            ):
+                if committed_boundary in "。！？.!?":
+                    return "soft_sentence_limit"
+                if committed_boundary in "，；：,;:":
+                    return "soft_clause_limit"
+            if meaningful >= 4 and silence >= VAD_NATURAL_PAUSE_S:
+                return "natural_pause"
+        if silence >= VAD_SILENCE_DURATION_S:
+            return "hard_silence"
+        return None
+
+    @staticmethod
+    def _publish_speaking(session: SpeechStreamSession) -> None:
+        if session.speaking_event_active:
+            return
+        session.speaking_event_active = True
+        event_bus.publish(SpeakerSpeakingEvent(
+            meeting_id=session.meeting_id,
+            payload={"seat_id": session.seat_id},
+        ))
+
+    @staticmethod
+    def _publish_speaking_stop(session: SpeechStreamSession) -> None:
+        if not session.speaking_event_active:
+            return
+        session.speaking_event_active = False
+        event_bus.publish(SpeakerSpeakingStopEvent(
+            meeting_id=session.meeting_id,
+            payload={"seat_id": session.seat_id},
+        ))
 
     # ── PCM16 conversion ────────────────────────────────────────────────────
 
@@ -268,7 +486,11 @@ class SpeechStreamService:
     # ── Utterance lifecycle (Phase 3) ─────────────────────────────────────────
 
     def start_utterance(
-        self, session_key: str, utterance_id: str,
+        self,
+        session_key: str,
+        utterance_id: str,
+        *,
+        continuous_rollover: bool = False,
     ) -> None:
         """Begin a new utterance — reset revision, set utterance_id.
 
@@ -281,6 +503,12 @@ class SpeechStreamService:
                 "start_utterance called for unknown session %s", session_key,
             )
             return
+        previous_noise_floor = session.noise_floor_rms
+        previous_speaking_event = session.speaking_event_active
+        # A repeated manual start must not leave the previous temporary light
+        # active. Duration rollovers are one continuous speech action.
+        if not continuous_rollover:
+            self._publish_speaking_stop(session)
         session.current_utterance_id = utterance_id
         session.revision = 0
         session._utterance_buffer.clear()
@@ -288,14 +516,29 @@ class SpeechStreamService:
         # Task 122: reset VAD state
         session.utterance_state = UTTERANCE_STATE_SPEAKING
         session.vad_silence_seconds = 0.0
-
-        # Lighting: a speaker is now talking -> AI_SPEAKING on this seat.
-        event_bus.publish(
-            SpeakerSpeakingEvent(
-                meeting_id=session.meeting_id,
-                payload={"seat_id": session.seat_id},
-            )
+        session.noise_floor_rms = (
+            previous_noise_floor if continuous_rollover else 0.003
         )
+        session.calibration_frames_remaining = (
+            0 if continuous_rollover else VAD_CALIBRATION_FRAMES
+        )
+        session.voice_start_frames = 0
+        session.voice_active = continuous_rollover
+        session.has_speech = continuous_rollover
+        session.utterance_audio_seconds = 0.0
+        session.last_source_text = ""
+        session.last_caption = {
+            "previous_line": "",
+            "current_line": "",
+            "mode": "two_line",
+        }
+        session._pre_roll.clear()
+        if continuous_rollover:
+            session.speaking_event_active = previous_speaking_event
+            session._rollover_started_at = time.monotonic()
+        else:
+            session._rollover_overlap_pcm = b""
+            session._rollover_started_at = None
 
         # Reset SpeechModule per-utterance state
         if self._speech_module is not None and self._speech_module.ready:
@@ -327,15 +570,17 @@ class SpeechStreamService:
         # Task 122: reset VAD state
         session.utterance_state = UTTERANCE_STATE_IDLE
         session.vad_silence_seconds = 0.0
-        # Lighting: speaker stopped -> revert this seat from AI_SPEAKING.
-        event_bus.publish(
-            SpeakerSpeakingStopEvent(
-                meeting_id=session.meeting_id,
-                payload={"seat_id": session.seat_id},
-            )
-        )
+        session.voice_active = False
+        session.has_speech = False
+        session._pre_roll.clear()
+        session._rollover_overlap_pcm = b""
+        session._rollover_started_at = None
+        self._publish_speaking_stop(session)
         if self._speech_module is not None and self._speech_module.ready:
-            self._speech_module.reset_interim(session_key)
+            if hasattr(self._speech_module, "reset_streaming_state"):
+                self._speech_module.reset_streaming_state(session_key)
+            else:
+                self._speech_module.reset_interim(session_key)
         return uid
 
     def reset_caption_formatter(self, session_key: str) -> None:
@@ -344,8 +589,56 @@ class SpeechStreamService:
         if session is not None:
             session.caption_formatter.reset()
 
+    def snapshot_auto_finalization(
+        self,
+        session_key: str,
+        source_text: str,
+        boundary_reason: str,
+    ) -> dict[str, Any] | None:
+        """Terminate and clear an automatic segment without materializing audio."""
+        session = self._sessions.get(session_key)
+        if session is None or not session.current_utterance_id:
+            return None
+        utterance_id = session.current_utterance_id
+        if utterance_id in session.terminal_utterance_ids:
+            return None
+
+        text = (source_text or session.last_source_text).strip()
+        continuous_rollover = boundary_reason in CONTINUOUS_ROLLOVER_REASONS
+        overlap_pcm = b""
+        if continuous_rollover and session._utterance_buffer:
+            overlap_pcm = b"".join(session._utterance_buffer)[-ROLLOVER_OVERLAP_BYTES:]
+        snapshot = {
+            "utterance_id": utterance_id,
+            "meeting_id": session.meeting_id,
+            "seat_id": session.seat_id,
+            "source_text": text,
+            "boundary_reason": boundary_reason,
+            "audio_seconds": session.utterance_audio_seconds,
+            "has_speech": session.has_speech,
+            "caption": dict(session.last_caption),
+            "continuous_rollover": continuous_rollover,
+            "rollover_overlap_ms": round(len(overlap_pcm) / 32.0),
+            "rollover_overlap_frames": (len(overlap_pcm) + 3199) // 3200,
+        }
+
+        session.terminal_utterance_ids.add(utterance_id)
+        session._utterance_buffer.clear()
+        session.caption_formatter.reset()
+        session._rollover_overlap_pcm = overlap_pcm
+        session.voice_active = continuous_rollover
+        session.utterance_state = UTTERANCE_STATE_FINALIZING
+        if not continuous_rollover:
+            self._publish_speaking_stop(session)
+        return snapshot
+
     def prepare_next_utterance(
-        self, session_key: str, meeting_id: int, seat_id: int,
+        self,
+        session_key: str,
+        meeting_id: int,
+        seat_id: int,
+        *,
+        continuous_rollover: bool = False,
     ) -> str | None:
         """Prepare the next utterance after auto-finalization.
 
@@ -367,7 +660,15 @@ class SpeechStreamService:
             return None
 
         new_uid = self.generate_utterance_id(meeting_id, seat_id)
-        self.start_utterance(session_key, new_uid)
+        self.start_utterance(
+            session_key,
+            new_uid,
+            continuous_rollover=continuous_rollover,
+        )
+        # The room floor was already calibrated for this open WebSocket.
+        # Skipping a second 500 ms calibration avoids losing speech at an
+        # automatic rollover; the three-frame onset pre-roll is still kept.
+        session.calibration_frames_remaining = 0
         logger.debug(
             "Prepared next utterance: %s (session=%s)",
             new_uid, session_key,
@@ -418,39 +719,99 @@ class SpeechStreamService:
         if session is None:
             raise RuntimeError(f"Session {session_key} not found")
 
-        # 2. Buffer raw PCM16 for final ASR (Phase 4)
-        self.append_audio(session_key, pcm_bytes)
-
-        # 3. Convert PCM16 → float32 numpy for interim ASR
+        # 2. Convert PCM16 and pass it through the adaptive voice gate.  Until
+        # actual speech is confirmed, neither ASR nor persistence sees audio.
         audio = self.pcm16_to_float32(pcm_bytes)
+        input_rms = self._compute_rms(audio)
+        session.pcm_frames_received += 1
+        session.pcm_bytes_received += len(pcm_bytes)
+        session.last_input_rms = input_rms
+        session.peak_input_rms = max(session.peak_input_rms, input_rms)
+        session.last_pcm_at = time.monotonic()
+        admitted_frames, voice_started = self._gate_frame(session, pcm_bytes, audio)
+        if voice_started:
+            self._publish_speaking(session)
 
-        # 4. Get SpeechModule (lazy loads, raises if unavailable)
+        if not admitted_frames:
+            return {
+                "utterance_id": session.current_utterance_id,
+                "revision": session.revision,
+                "source_text": "",
+                "caption": {
+                    "previous_line": "",
+                    "current_line": "",
+                    "mode": "listening",
+                },
+                "vad_should_finalize": False,
+                "boundary_reason": None,
+            }
+
+        # 3. Get SpeechModule (lazy loads, raises if unavailable)
         sm = self._get_speech_module()
-
-        # 5. Run streaming ASR
         sm.set_session_context(
             session_key, session.meeting_id, session.seat_id,
         )
+        overlap_pcm = session._rollover_overlap_pcm
+        if overlap_pcm:
+            try:
+                sm.process_interim_array(
+                    self.pcm16_to_float32(overlap_pcm), session_key,
+                )
+                # Keep the encoder/CIF cache primed by the replay, but discard
+                # replay text so the 300 ms context cannot be persisted twice.
+                sm.reset_interim(session_key)
+            except Exception as exc:
+                logger.warning(
+                    "Speech rollover overlap replay failed: session=%s bytes=%d error=%s",
+                    session_key,
+                    len(overlap_pcm),
+                    exc,
+                )
+            finally:
+                session._rollover_overlap_pcm = b""
         trace("asr_streaming_start_at",
               utterance_id=session.current_utterance_id,
               meeting_id=session.meeting_id,
               seat_id=session.seat_id)
         _asr_t0 = time.perf_counter()
-        raw_text = sm.process_interim_array(audio, session_key)
+        raw_text = session.last_source_text
+        for admitted in admitted_frames:
+            self.append_audio(session_key, admitted)
+            admitted_audio = self.pcm16_to_float32(admitted)
+            session.utterance_audio_seconds += len(admitted_audio) / 16000.0
+            raw_text = sm.process_interim_array(admitted_audio, session_key)
         _asr_ms = round((time.perf_counter() - _asr_t0) * 1000)
 
-        # 6. Apply caption formatter (Phase 02)
+        # 4. Apply caption formatter and evaluate a content-aware boundary.
         _now = time.monotonic()
         caption_result = session.caption_formatter.update(raw_text, _now)
         caption_result = (
             session.caption_formatter.check_timeout(_now) or caption_result
         )
 
-        # 7. Bump revision
         session.revision += 1
+        source_text = caption_result.punctuated_text
+        session.last_source_text = source_text
+        session.last_caption = {
+            "previous_line": caption_result.previous_line,
+            "current_line": caption_result.current_line,
+            "mode": caption_result.mode,
+        }
+        boundary_reason = self._boundary_reason(
+            session,
+            source_text,
+            natural_boundary_committed=caption_result.natural_boundary_committed,
+            committed_boundary=caption_result.committed_boundary,
+        )
+        vad_should_finalize = boundary_reason is not None
 
-        # 8. Task 122: Check VAD for auto-final detection
-        vad_should_finalize = self._check_vad_end(session_key, audio)
+        if raw_text and session._rollover_started_at is not None:
+            logger.info(
+                "Speech rollover first interim: utterance=%s latency_ms=%d",
+                session.current_utterance_id,
+                round((time.monotonic() - session._rollover_started_at) * 1000),
+            )
+            session._rollover_started_at = None
 
         if raw_text:
             trace("asr_streaming_end_at",
@@ -464,13 +825,14 @@ class SpeechStreamService:
         return {
             "utterance_id": session.current_utterance_id,
             "revision": session.revision,
-            "source_text": caption_result.punctuated_text,
+            "source_text": source_text,
             "caption": {
                 "previous_line": caption_result.previous_line,
                 "current_line": caption_result.current_line,
                 "mode": caption_result.mode,
             },
             "vad_should_finalize": vad_should_finalize,
+            "boundary_reason": boundary_reason,
         }
 
     # ── Audio buffer (Phase 4) ───────────────────────────────────────────────
@@ -492,7 +854,7 @@ class SpeechStreamService:
         Returns None if the buffer is empty.
         """
         session = self._sessions.get(session_key)
-        if session is None or not session._utterance_buffer:
+        if session is None or not session._utterance_buffer or not session.has_speech:
             return None
         raw = b"".join(session._utterance_buffer)
         return self.pcm16_to_float32(raw)
@@ -544,6 +906,9 @@ class SpeechStreamService:
 
         # Clear buffer; keep utterance_id/revision for event correlation
         session._utterance_buffer.clear()
+        session.voice_active = False
+        session.utterance_state = UTTERANCE_STATE_FINALIZING
+        self._publish_speaking_stop(session)
         return result
 
     # ── Session management ─────────────────────────────────────────────────
@@ -564,7 +929,7 @@ class SpeechStreamService:
 
         Args:
             meeting_id: The active meeting ID.
-            seat_id: The Speaker Seat ID (1..10).
+            seat_id: The Speaker Seat ID (1..9).
 
         Returns:
             Tuple of (session_key, session_token).
@@ -615,13 +980,7 @@ class SpeechStreamService:
             )
             return False
 
-        # Lighting: session gone -> revert this seat from AI_SPEAKING.
-        event_bus.publish(
-            SpeakerSpeakingStopEvent(
-                meeting_id=session.meeting_id,
-                payload={"seat_id": session.seat_id},
-            )
-        )
+        self._publish_speaking_stop(session)
 
         del self._sessions[session_key]
         logger.debug("Session removed: %s (token=%s)", session_key, session_token)
@@ -636,7 +995,27 @@ class SpeechStreamService:
         """Number of currently active sessions."""
         return len(self._sessions)
 
+    def max_buffered_audio_seconds(self) -> float:
+        """Largest active per-utterance audio buffer duration."""
+        return round(max(
+            (session.utterance_audio_seconds for session in self._sessions.values()),
+            default=0.0,
+        ), 3)
+
     # ── Utterance ID generation ────────────────────────────────────────────
+
+    def seed_utterance_sequence(
+        self, meeting_id: int, seat_id: int, persisted_sequence: int,
+    ) -> None:
+        """Raise the in-memory counter to at least the persisted sequence."""
+        key = (meeting_id, seat_id)
+        current = self._utterance_sequences.get(key, 0)
+        if persisted_sequence > current:
+            self._utterance_sequences[key] = persisted_sequence
+            logger.info(
+                "Seeded utterance sequence: meeting=%d seat=%d seq=%d",
+                meeting_id, seat_id, persisted_sequence,
+            )
 
     def generate_utterance_id(self, meeting_id: int, seat_id: int) -> str:
         """Generate a monotonically increasing unique utterance ID.
@@ -750,6 +1129,15 @@ def _preload_speech_models_background() -> None:
         try:
             module = stream_service._speech_module
             module.preload()  # thread-safe, idempotent
+            try:
+                from backend.services.translation_model_service import (
+                    TranslationModelService,
+                    is_translation_model_enabled,
+                )
+                if is_translation_model_enabled():
+                    TranslationModelService.get_instance().load()
+            except Exception as exc:
+                logger.warning("Background translation preload failed: %s", exc)
             if module.ready:
                 logger.info("Background preload: all models ready")
             else:

@@ -30,7 +30,12 @@ import { buildSeatDisplays } from "../api/adapters";
 import { useWebSocket } from "./useWebSocket";
 import type { WSMessage } from "./useWebSocket";
 import { trace } from "../audio/speechTrace";
-import type { ConnectionStatus, SeatDisplay, InterimTranslation } from "../types";
+import type {
+  ConnectionStatus,
+  SeatDisplay,
+  InterimTranslation,
+  PendingTranslation,
+} from "../types";
 import type {
   Meeting,
   Attendee,
@@ -39,6 +44,19 @@ import type {
   ServiceCall,
   TranslationRecord,
 } from "../api/types";
+
+type LiveCaption = NonNullable<InterimTranslation["caption"]>;
+type CaptionCarry = { oldUtteranceId: string; caption?: LiveCaption };
+
+function parseLiveCaption(value: unknown): LiveCaption | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const caption = value as Record<string, unknown>;
+  return {
+    previousLine: String(caption.previous_line ?? ""),
+    currentLine: String(caption.current_line ?? ""),
+    mode: String(caption.mode ?? "two_line"),
+  };
+}
 
 // ── Public interface ────────────────────────────────────────────────────────
 
@@ -71,6 +89,8 @@ export interface AdminData {
   translations: TranslationRecord[];
   /** Interim translations keyed by utterance_id (not persisted). */
   interimMap: Record<string, InterimTranslation>;
+  /** Auto-finalized text waiting for background translation/persistence. */
+  pendingFinalMap: Record<string, PendingTranslation>;
   /** WebSocket connection status. */
   connection: ConnectionStatus;
   /** True when there is no active meeting (idle/waiting state). */
@@ -130,6 +150,7 @@ export function useAdminData(): AdminData {
   const [hasActiveVote, setHasActiveVote] = useState(false);
   const [voteStatsError, setVoteStatsError] = useState<string | null>(null);
   const [interimMap, setInterimMap] = useState<Record<string, InterimTranslation>>({});
+  const [pendingFinalMap, setPendingFinalMap] = useState<Record<string, PendingTranslation>>({});
 
   // ── Ended meeting state ──────────────────────────────────────────────────
   // We keep ended-meeting info in refs (stable across renders) so the stable
@@ -164,6 +185,10 @@ export function useAdminData(): AdminData {
   // a translation_final or translation_interim_cancelled for the same
   // utterance_id. Uses Map<utteranceId, timestamp>; keeps last 200 entries.
   const terminalUtteranceIdsRef = useRef<Map<string, number>>(new Map());
+  const finalizingUtteranceIdsRef = useRef<Set<string>>(new Set());
+  const finalizedUtteranceIdsRef = useRef<Set<string>>(new Set());
+  const captionCarryByNextIdRef = useRef<Map<string, CaptionCarry>>(new Map());
+  const captionCarryBySeatRef = useRef<Map<number, CaptionCarry>>(new Map());
   const MAX_TERMINAL_IDS = 200;
 
   const recordTerminalId = useCallback((uid: string) => {
@@ -176,17 +201,43 @@ export function useAdminData(): AdminData {
     }
   }, []);
 
+  const resetInterimEpoch = useCallback(() => {
+    terminalUtteranceIdsRef.current.clear();
+    finalizingUtteranceIdsRef.current.clear();
+    finalizedUtteranceIdsRef.current.clear();
+    captionCarryByNextIdRef.current.clear();
+    captionCarryBySeatRef.current.clear();
+    setInterimMap({});
+    setPendingFinalMap({});
+  }, []);
+
+  useEffect(() => {
+    resetInterimEpoch();
+  }, [connectMeetingId, resetInterimEpoch]);
+
   // ── Task 127A: local utterance termination (Cancel / Stop timeout) ────
   // Immediately removes the utterance from interimMap and marks it terminal
   // so late interims don't re-create live caption. Does NOT broadcast.
   const terminateUtterance = useCallback((utteranceId: string) => {
     if (!utteranceId) return;
     recordTerminalId(utteranceId);
+    captionCarryByNextIdRef.current.delete(utteranceId);
+    for (const [seat, carry] of captionCarryBySeatRef.current) {
+      if (carry.oldUtteranceId === utteranceId) {
+        captionCarryBySeatRef.current.delete(seat);
+      }
+    }
     setInterimMap((prev) => {
       if (!(utteranceId in prev)) return prev;
       const next = { ...prev };
       delete next[utteranceId];
       trace("interim_removed_at", { utteranceId, reason: "local_cleanup" });
+      return next;
+    });
+    setPendingFinalMap((prev) => {
+      if (!(utteranceId in prev)) return prev;
+      const next = { ...prev };
+      delete next[utteranceId];
       return next;
     });
   }, [recordTerminalId]);
@@ -315,6 +366,24 @@ export function useAdminData(): AdminData {
         serviceCalls,
         translations,
       });
+      const finalizedIds = new Set(
+        translations
+          .map((entry) => entry.utterance_id)
+          .filter((uid): uid is string => Boolean(uid)),
+      );
+      if (finalizedIds.size) {
+        setPendingFinalMap((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          for (const uid of finalizedIds) {
+            if (uid in next) {
+              delete next[uid];
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      }
 
       // Update WebSocket meeting target (null for ended meetings — no WS needed)
       setConnectMeetingId(isEnded ? null : effectiveMeetingId);
@@ -343,6 +412,12 @@ export function useAdminData(): AdminData {
 
   const handleWSEvent = useCallback(
     (event: string, message: WSMessage) => {
+      if (event === "reconnected") {
+        resetInterimEpoch();
+        doFetch(false);
+        return;
+      }
+
       // translation_interim: update interimMap only, no HTTP refresh
       if (event === "translation_interim") {
         const p = message.payload;
@@ -366,37 +441,110 @@ export function useAdminData(): AdminData {
           seatId: p.seat_id,
         });
 
+        const seat = p.seat_id as number;
+        const carry = captionCarryByNextIdRef.current.get(uid)
+          ?? captionCarryBySeatRef.current.get(seat);
+        const fallbackCarry = captionCarryBySeatRef.current.get(seat);
+
         setInterimMap((prev) => {
           const existing = prev[uid];
           // Only accept equal or higher revision (protect against stale frames)
           if (existing && existing.revision > revision) return prev;
 
           // Extract optional caption from payload
-          const rawCaption = p.caption;
-          let caption: InterimTranslation['caption'] | undefined;
-          if (rawCaption && typeof rawCaption === 'object') {
-            const cap = rawCaption as Record<string, unknown>;
+          let caption = parseLiveCaption(p.caption);
+          const hasOwnPreviousLine = Boolean(caption?.previousLine);
+          if (caption && carry?.caption && !hasOwnPreviousLine) {
             caption = {
-              previousLine: String(cap.previous_line ?? ''),
-              currentLine: String(cap.current_line ?? ''),
-              mode: String(cap.mode ?? 'two_line'),
+              ...caption,
+              previousLine:
+                carry.caption.currentLine || carry.caption.previousLine,
             };
           }
 
-          return {
-            ...prev,
-            [uid]: {
+          const next = { ...prev };
+          // A seat can own only one live speech session.  Preserve the old
+          // caption during reconnect, then atomically hand over to the first
+          // interim from the replacement utterance.
+          for (const [existingUid, interim] of Object.entries(next)) {
+            if (existingUid !== uid && interim.seatId === seat) {
+              delete next[existingUid];
+            }
+          }
+          if (fallbackCarry && fallbackCarry.oldUtteranceId !== uid) {
+            delete next[fallbackCarry.oldUtteranceId];
+          }
+          next[uid] = {
               utteranceId: uid,
-              seatId: p.seat_id as number,
+              seatId: seat,
               revision,
               sourceLang: p.source_lang as string,
               targetLang: p.target_lang as string,
               sourceText: p.source_text as string,
               translatedText: p.translated_text as string,
               caption,
-            },
-          };
+            };
+          return next;
         });
+        if (carry && parseLiveCaption(p.caption)?.previousLine) {
+          captionCarryByNextIdRef.current.delete(uid);
+          captionCarryBySeatRef.current.delete(seat);
+        }
+        return;
+      }
+
+      if (event === "translation_finalizing") {
+        const p = message.payload;
+        const uid = p.utterance_id as string;
+        if (!uid || finalizingUtteranceIdsRef.current.has(uid)) return;
+        finalizingUtteranceIdsRef.current.add(uid);
+        recordTerminalId(uid);
+        captionCarryByNextIdRef.current.delete(uid);
+        const seat = p.seat_id as number;
+        const nextUid = p.next_utterance_id as string | undefined;
+        const payloadCaption = parseLiveCaption(p.caption);
+        const payloadCarry = { oldUtteranceId: uid, caption: payloadCaption };
+        if (nextUid) {
+          captionCarryByNextIdRef.current.set(nextUid, payloadCarry);
+        } else {
+          captionCarryBySeatRef.current.set(seat, payloadCarry);
+        }
+        setInterimMap((prev) => {
+          const oldInterim = prev[uid];
+          const caption = payloadCaption ?? oldInterim?.caption;
+          const carry = { oldUtteranceId: uid, caption };
+          const next = { ...prev };
+          if (nextUid) {
+            delete next[uid];
+            captionCarryByNextIdRef.current.set(nextUid, carry);
+            next[nextUid] = {
+              utteranceId: nextUid,
+              seatId: seat,
+              revision: 0,
+              sourceLang: String(p.source_lang ?? "zh"),
+              targetLang: String(p.target_lang ?? "en"),
+              sourceText: String(p.source_text ?? oldInterim?.sourceText ?? ""),
+              translatedText: "",
+              caption,
+            };
+          } else {
+            captionCarryBySeatRef.current.set(seat, carry);
+          }
+          return next;
+        });
+        if (!finalizedUtteranceIdsRef.current.has(uid)) {
+          setPendingFinalMap((prev) => ({
+            ...prev,
+            [uid]: {
+              utteranceId: uid,
+              seatId: seat,
+              sourceLang: p.source_lang as string,
+              targetLang: p.target_lang as string,
+              sourceText: p.source_text as string,
+              boundaryReason: p.boundary_reason as string,
+            },
+          }));
+        }
         return;
       }
 
@@ -404,9 +552,13 @@ export function useAdminData(): AdminData {
       if (event === "translation_interim_cancelled") {
         const uid = message.payload.utterance_id as string;
         if (!uid) return;
-        // Task 126: mark as terminal and skip if already recorded
-        if (terminalUtteranceIdsRef.current.has(uid)) return;
-        recordTerminalId(uid);
+        captionCarryByNextIdRef.current.delete(uid);
+        for (const [seat, carry] of captionCarryBySeatRef.current) {
+          if (carry.oldUtteranceId === uid) {
+            captionCarryBySeatRef.current.delete(seat);
+          }
+        }
+        if (!terminalUtteranceIdsRef.current.has(uid)) recordTerminalId(uid);
         trace("frontend_cancel_received_at", { utteranceId: uid, reason: message.payload.reason });
         setInterimMap((prev) => {
           if (!(uid in prev)) return prev;
@@ -415,14 +567,22 @@ export function useAdminData(): AdminData {
           trace("interim_removed_at", { utteranceId: uid, reason: "cancelled" });
           return next;
         });
+        setPendingFinalMap((prev) => {
+          if (!(uid in prev)) return prev;
+          const next = { ...prev };
+          delete next[uid];
+          return next;
+        });
         return;
       }
 
       // translation_final: remove interim, then refresh translations via full re-fetch
       if (event === "translation_final") {
-        const uid = message.payload.utterance_id as string;
-        trace("frontend_final_received_at", { utteranceId: uid ?? undefined, translationId: message.payload.translation_id });
+        const p = message.payload;
+        const uid = p.utterance_id as string;
+        trace("frontend_final_received_at", { utteranceId: uid ?? undefined, translationId: p.translation_id });
         if (uid) {
+          finalizedUtteranceIdsRef.current.add(uid);
           // Task 126: mark as terminal (skip if already recorded)
           if (!terminalUtteranceIdsRef.current.has(uid)) {
             recordTerminalId(uid);
@@ -450,7 +610,7 @@ export function useAdminData(): AdminData {
       // All other events: full HTTP refresh (existing behaviour)
       doFetch(false);
     },
-    [doFetch, recordTerminalId],
+    [doFetch, recordTerminalId, resetInterimEpoch],
   );
 
   const connection = useWebSocket(connectMeetingId, handleWSEvent);
@@ -485,6 +645,7 @@ export function useAdminData(): AdminData {
     serviceCalls: data.serviceCalls,
     translations: data.translations,
     interimMap,
+    pendingFinalMap,
     connection,
     noMeeting: !loading && !data.meeting && !error && !isEndedMeeting,
     isEndedMeeting,

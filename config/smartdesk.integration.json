@@ -1,7 +1,7 @@
 {
   "deploy_mode": "central",
   "lighting": {
-    "demo_seat_id": 1
+    "demo_seat_id": null
   },
   "arduino": {
     "enabled": true,
@@ -10,11 +10,11 @@
     "heartbeat_interval_seconds": 5.0,
     "reconnect_interval_seconds": 3.0,
     "seats": {
-      "1": "COM8",
+      "1": "COM9",
       "2": "COM6",
       "3": "COM7",
       "4": "COM5",
-      "5": "COM9",
+      "5": null,
       "6": "COM10",
       "7": "COM11",
       "8": "COM12",

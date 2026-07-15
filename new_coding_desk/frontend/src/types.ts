@@ -39,3 +39,12 @@ export interface InterimTranslation {
     mode: string;
   };
 }
+
+export interface PendingTranslation {
+  utteranceId: string;
+  seatId: number;
+  sourceLang: string;
+  targetLang: string;
+  sourceText: string;
+  boundaryReason: string;
+}

@@ -26,6 +26,7 @@ from backend.services.speech_stream_service import (
     UTTERANCE_STATE_SPEAKING,
 )
 from backend.websocket.speech_ws import (
+    _cancel_replaced_session,
     _handle_text_message,
     ERROR_MODEL_NOT_LOADED,
 )
@@ -152,9 +153,21 @@ class TestProcessPcmFrame:
     def setup_method(self) -> None:
         """Create a fresh session before each test."""
         self.session_key, self.session_token = stream_service.create_session(1, 1)
+        self._original_start_utterance = stream_service.start_utterance
+
+        def _start_with_confirmed_voice(session_key: str, utterance_id: str) -> None:
+            self._original_start_utterance(session_key, utterance_id)
+            session = stream_service.get_session(session_key)
+            if session is not None:
+                session.calibration_frames_remaining = 0
+                session.voice_active = True
+                session.has_speech = True
+
+        stream_service.start_utterance = _start_with_confirmed_voice
 
     def teardown_method(self) -> None:
         """Clean up session."""
+        stream_service.start_utterance = self._original_start_utterance
         stream_service.remove_session(self.session_key, self.session_token)
 
     def test_unknown_session_raises(self) -> None:
@@ -324,6 +337,9 @@ class TestProcessPcmFrame:
         )
 
         stream_service.start_utterance(self.session_key, "utt_1_1_000030")
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        session.caption_formatter.config.min_line_length = 5
 
         # ── First frame: text first seen, _last_change_time = t0 ──
         r1 = stream_service.process_pcm_frame(
@@ -570,6 +586,38 @@ class TestUtteranceIdUniqueness:
         # Clean up S2
         stream_service.remove_session(key2, token2)
 
+    def test_persisted_sequence_seed_never_moves_counter_backwards(self) -> None:
+        """Database history raises the counter but cannot lower live state."""
+        stream_service.seed_utterance_sequence(41, 1, 25)
+        assert stream_service.generate_utterance_id(41, 1) == "utt_41_1_000026"
+
+        stream_service.seed_utterance_sequence(41, 1, 10)
+        assert stream_service.generate_utterance_id(41, 1) == "utt_41_1_000027"
+
+
+class TestDuplicateSessionCancellation:
+    def test_replacement_cancels_old_utterance_and_publishes_event(self) -> None:
+        key, token = stream_service.create_session(41, 1)
+        stream_service.start_utterance(key, "utt_41_1_000025")
+        events = []
+
+        def _handler(event) -> None:
+            events.append(event)
+
+        event_bus.subscribe("translation_interim_cancelled", _handler)
+        try:
+            assert _cancel_replaced_session(41, 1) == "utt_41_1_000025"
+            assert stream_service.get_session(key).current_utterance_id is None
+            assert len(events) == 1
+            assert events[0].payload == {
+                "utterance_id": "utt_41_1_000025",
+                "seat_id": 1,
+                "reason": "session_replaced",
+            }
+        finally:
+            event_bus.unsubscribe("translation_interim_cancelled", _handler)
+            stream_service.remove_session(key, token)
+
 
 class TestVadDetection:
     """VAD silence detection — RMS-based auto-final trigger.
@@ -602,10 +650,10 @@ class TestVadDetection:
 
     # ── VAD flag in process_pcm_frame ─────────────────────────────────
 
-    def test_process_pcm_frame_returns_vad_flag_on_silence(
+    def test_pure_silence_never_starts_or_finalizes_an_utterance(
         self, monkeypatch,
     ) -> None:
-        """Sustained silence frames trigger vad_should_finalize=True."""
+        """Pure silence is filtered before ASR and ends without an error."""
         mock_sm = _MockSpeechModule()
         # Direct assignment avoids lazy-loading real models
         stream_service._speech_module = mock_sm
@@ -613,26 +661,14 @@ class TestVadDetection:
 
         stream_service.start_utterance(self.session_key, "utt_1_1_000050")
 
-        # 100ms per frame; VAD_SILENCE_DURATION_S = 1.2s → need 12 frames
-        # Use multiplication to avoid 1.2 / 0.1 floating-point precision issue
-        threshold_frames = int(VAD_SILENCE_DURATION_S * 10)  # 12
-
-        # Just below threshold
-        for i in range(threshold_frames - 1):
+        for i in range(int(VAD_SILENCE_DURATION_S * 10) + 10):
             result = stream_service.process_pcm_frame(
                 self.session_key, self._make_silence(),
             )
             assert not result.get("vad_should_finalize"), (
-                f"Frame {i} should not trigger finalize yet"
+                f"Pure-silence frame {i} must not create an utterance"
             )
-
-        # One more frame should cross the threshold
-        result = stream_service.process_pcm_frame(
-            self.session_key, self._make_silence(),
-        )
-        assert result.get("vad_should_finalize"), (
-            "Silence threshold should trigger auto-final"
-        )
+            assert result["source_text"] == ""
 
     def test_process_pcm_frame_no_vad_flag_on_speech(
         self, monkeypatch,
@@ -770,8 +806,18 @@ class TestTerminalUtteranceTracking:
 
     def setup_method(self) -> None:
         self.session_key, self.session_token = stream_service.create_session(1, 1)
+        self._original_start_utterance = stream_service.start_utterance
+
+        def _start_with_confirmed_voice(session_key: str, utterance_id: str) -> None:
+            self._original_start_utterance(session_key, utterance_id)
+            session = stream_service.get_session(session_key)
+            if session is not None:
+                session.has_speech = True
+
+        stream_service.start_utterance = _start_with_confirmed_voice
 
     def teardown_method(self) -> None:
+        stream_service.start_utterance = self._original_start_utterance
         stream_service.remove_session(self.session_key, self.session_token)
 
     def test_cancel_marks_as_terminal(self) -> None:
@@ -907,6 +953,7 @@ class TestEndHintErrorPaths:
         key, token = stream_service.create_session(1, 1)
         try:
             stream_service.start_utterance(key, "utt_err_mnl_001")
+            stream_service.get_session(key).has_speech = True
             stream_service.append_audio(key, b"\x00" * 3200)
 
             _original = (
@@ -966,6 +1013,7 @@ class TestEndHintErrorPaths:
         key, token = stream_service.create_session(1, 1)
         try:
             stream_service.start_utterance(key, "utt_err_gen_001")
+            stream_service.get_session(key).has_speech = True
             stream_service.append_audio(key, b"\x00" * 3200)
 
             _original = (
@@ -1025,6 +1073,7 @@ class TestEndHintErrorPaths:
         key, token = stream_service.create_session(1, 1)
         try:
             stream_service.start_utterance(key, "utt_err_asr_001")
+            stream_service.get_session(key).has_speech = True
             stream_service.append_audio(key, b"\x00" * 3200)
 
             _original = (
@@ -1235,8 +1284,8 @@ class TestVadAutoFinalErrorPaths:
         ), "VAD ASR_EMPTY_RESULT should mark terminal"
 
     @pytest.mark.anyio
-    async def test_vad_auto_final_generic_error_publishes_cancelled(self) -> None:
-        """VAD auto-final generic error -> cancelled event + terminal."""
+    async def test_auto_final_empty_snapshot_is_cancelled_before_queue(self) -> None:
+        """An auto-final snapshot without confirmed speech is dropped quietly."""
         stream_service.start_utterance(self.session_key, "utt_vad_gen_001")
         stream_service.append_audio(self.session_key, b"\x00" * 3200)
 
@@ -1283,7 +1332,7 @@ class TestVadAutoFinalErrorPaths:
 
         assert len(events) == 1
         assert events[0].payload["utterance_id"] == "utt_vad_gen_001"
-        assert events[0].payload["reason"] == "finalization_failed"
+        assert events[0].payload["reason"] == "asr_empty_result"
         assert stream_service.is_utterance_terminal(
             self.session_key, "utt_vad_gen_001",
         )

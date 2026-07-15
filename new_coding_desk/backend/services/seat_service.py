@@ -301,7 +301,7 @@ class SeatService(BaseService):
         """Set the speaker seat. Overwrites any previous speaker.
 
         Rules:
-            - seat_id must reference a valid seat (1..10).
+            - seat_id must reference a valid seat (1..9).
             - If the old and new seat differ, performs a hard switch:
               old speech WS closed, pending interim cancelled, buffer cleared.
             - Publishes speaker_seat_set.

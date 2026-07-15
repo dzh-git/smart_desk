@@ -265,7 +265,11 @@ class TestPipelineTracePoints:
             )
 
             clear_trace()
-            stream_service.process_pcm_frame(key, b"\x00" * 3200)
+            for _ in range(5):
+                stream_service.process_pcm_frame(key, b"\x00" * 3200)
+            voice = (3000).to_bytes(2, "little", signed=True) * 1600
+            for _ in range(3):
+                stream_service.process_pcm_frame(key, voice)
 
             events = get_trace()
             trace_names = [e["event"] for e in events]

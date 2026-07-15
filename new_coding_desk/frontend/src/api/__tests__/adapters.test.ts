@@ -3,9 +3,9 @@ import { buildSeatDisplays } from "../adapters";
 import type { SeatState, Attendee, SpeakerSeat } from "../types";
 
 describe("buildSeatDisplays", () => {
-  it("always returns exactly 10 seats", () => {
+  it("always returns exactly 9 seats", () => {
     const result = buildSeatDisplays([], [], null);
-    expect(result).toHaveLength(10);
+    expect(result).toHaveLength(9);
   });
 
   it("treats missing seat states as vacant", () => {
@@ -77,14 +77,14 @@ describe("buildSeatDisplays", () => {
     expect(result[1].attendeeName).toBeNull();
   });
 
-  it("maps multiple seats with correct IDs 1-10", () => {
-    const states: SeatState[] = Array.from({ length: 10 }, (_, i) => ({
+  it("maps multiple seats with correct IDs 1-9", () => {
+    const states: SeatState[] = Array.from({ length: 9 }, (_, i) => ({
       seat_id: i + 1,
       status: "checked_in" as const,
       attendee_id: i + 1,
       updated_at: "2026-01-01T00:00:00Z",
     }));
-    const attendees: Attendee[] = Array.from({ length: 10 }, (_, i) => ({
+    const attendees: Attendee[] = Array.from({ length: 9 }, (_, i) => ({
       id: i + 1,
       meeting_id: 1,
       name: `Person ${i + 1}`,
@@ -94,8 +94,8 @@ describe("buildSeatDisplays", () => {
     }));
 
     const result = buildSeatDisplays(states, attendees, null);
-    expect(result).toHaveLength(10);
-    for (let i = 0; i < 10; i++) {
+    expect(result).toHaveLength(9);
+    for (let i = 0; i < 9; i++) {
       expect(result[i].seatId).toBe(i + 1);
       expect(result[i].attendeeName).toBe(`Person ${i + 1}`);
       expect(result[i].isCheckedIn).toBe(true);

@@ -54,6 +54,22 @@ class SeatAgent:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop = asyncio.Event()
 
+    def _status_payload(self) -> dict:
+        return {
+            "type": "status",
+            "seat_id": self.seat_id,
+            "connected": self.arduino.is_connected,
+            "current_mode": self.arduino.current_mode,
+            "command_pending": self.arduino.command_pending,
+            "last_ack_at": self.arduino.last_ack_at,
+            "last_error": self.arduino.last_error,
+        }
+
+    async def _status_loop(self) -> None:
+        while self.ws is not None and not self._stop.is_set():
+            await self._send(self._status_payload())
+            await asyncio.sleep(5.0)
+
     # ── Uplink (Arduino -> central) ─────────────────────────────────────────
 
     def _on_pir(self, occupied: bool) -> None:
@@ -98,24 +114,24 @@ class SeatAgent:
                 logger.info("connecting %s", url)
                 async with websockets.connect(url, ping_interval=20, ping_timeout=20) as ws:
                     self.ws = ws
-                    await self._send(
-                        {
-                            "type": "status",
-                            "seat_id": self.seat_id,
-                            "connected": self.arduino.is_connected,
-                            "current_mode": self.arduino.current_mode,
-                        }
-                    )
-                    async for raw in ws:
-                        try:
-                            msg = json.loads(raw)
-                        except json.JSONDecodeError:
-                            logger.warning("bad json from central: %r", raw)
-                            continue
-                        if msg.get("type") == "lighting":
-                            self.arduino.send_command(msg.get("cmd"), msg.get("arg"))
-                        else:
-                            logger.debug("ignored central msg: %r", msg)
+                    await self._send(self._status_payload())
+                    await self._send({"type": "sync", "seat_id": self.seat_id})
+                    status_task = asyncio.create_task(self._status_loop())
+                    try:
+                        async for raw in ws:
+                            try:
+                                msg = json.loads(raw)
+                            except json.JSONDecodeError:
+                                logger.warning("bad json from central: %r", raw)
+                                continue
+                            if msg.get("type") == "lighting":
+                                self.arduino.send_command(msg.get("cmd"), msg.get("arg"))
+                                await self._send(self._status_payload())
+                            else:
+                                logger.debug("ignored central msg: %r", msg)
+                    finally:
+                        status_task.cancel()
+                        await asyncio.gather(status_task, return_exceptions=True)
                 self.ws = None
             except asyncio.CancelledError:
                 break

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from typing import Generator
 
 import numpy as np
@@ -31,10 +32,12 @@ from fastapi.testclient import TestClient
 
 from backend.main import app
 from backend.database import Base
+from backend.models.translation_record import TranslationRecord
 from backend.services.speech_stream_service import (
     stream_service,
     VAD_SILENCE_DURATION_S,
 )
+from backend.services import speech_stream_service as speech_stream_service_mod
 from tests.conftest import TEST_ENGINE, TestSessionLocal
 from backend.services.translation_model_service import (
     is_translation_model_enabled,
@@ -133,12 +136,41 @@ def _set_speaker_seat(client: TestClient, seat_id: int) -> None:
     assert resp.json()["data"]["seat_id"] == seat_id
 
 
+def _wait_for_translation(
+    client: TestClient,
+    meeting_id: int,
+    utterance_id: str,
+    timeout: float = 10.0,
+) -> tuple[dict, list[dict]]:
+    """Poll while the speech socket remains open and ASR drains in order."""
+    deadline = time.monotonic() + timeout
+    last_data: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/translations?meeting_id={meeting_id}")
+        assert response.status_code == 200
+        last_data = response.json()
+        entries = last_data.get("data", {}).get("entries", [])
+        matches = [
+            entry for entry in entries
+            if entry.get("utterance_id") == utterance_id
+        ]
+        if matches:
+            return last_data, matches
+        time.sleep(0.05)
+    return last_data, []
+
+
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture(scope="function", autouse=True)
-def _reset_db() -> Generator[None, None, None]:
-    """Clean DB before each test."""
+def _reset_db(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Clean DB and isolate WS tests from adaptive-gate warm-up latency."""
+    # Voice-gate behaviour has dedicated unit coverage. These black-box tests
+    # exercise the WebSocket protocol with a short two-second fixture, so do
+    # not consume 500 ms of that fixture for calibration or three-frame onset.
+    monkeypatch.setattr(speech_stream_service_mod, "VAD_CALIBRATION_FRAMES", 0)
+    monkeypatch.setattr(speech_stream_service_mod, "VAD_START_CONFIRM_FRAMES", 1)
     _clean_tables()
     yield
     _clean_tables()
@@ -219,6 +251,50 @@ class TestSpeechWebSocketBlackBox:
                     f"Expected session_key 'speech_{mid}_1', "
                     f"got: '{session_key}'"
                 )
+
+    def test_start_resumes_sequence_from_persisted_history(self) -> None:
+        """A backend restart continues after the largest persisted sequence."""
+        with TestClient(app) as client:
+            mid = _create_meeting(client)
+            _set_speaker_seat(client, 1)
+
+            db = TestSessionLocal()
+            try:
+                db.add(TranslationRecord(
+                    meeting_id=mid,
+                    seat_id=1,
+                    source_lang="zh",
+                    target_lang="en",
+                    source_text="历史记录",
+                    translated_text="Historical record",
+                    utterance_id=f"utt_{mid}_1_000025",
+                    source_type="speech_ws",
+                ))
+                db.commit()
+            finally:
+                db.close()
+
+            sequence_key = (mid, 1)
+            previous_sequence = stream_service._utterance_sequences.pop(
+                sequence_key, None,
+            )
+            try:
+                with client.websocket_connect(
+                    f"/ws/speech/{mid}?seat=1"
+                ) as ws:
+                    ws.send_json({
+                        "type": "start",
+                        "sample_rate": 16000,
+                        "encoding": "pcm_s16le",
+                        "channels": 1,
+                    })
+                    started = ws.receive_json()
+                    assert started["utterance_id"] == f"utt_{mid}_1_000026"
+            finally:
+                if previous_sequence is None:
+                    stream_service._utterance_sequences.pop(sequence_key, None)
+                else:
+                    stream_service._utterance_sequences[sequence_key] = previous_sequence
 
     # ── Phase 3: PCM16 binary → interim broadcast ──────────────────────────
 
@@ -539,18 +615,8 @@ class TestSpeechWebSocketBlackBox:
                     ws.send_bytes(frame)
 
                 ws.send_json({"type": "end_hint"})
+                data, matches = _wait_for_translation(client, mid, uid)
 
-            # Query translation records via HTTP API
-            resp = client.get(f"/api/translations?meeting_id={mid}")
-            assert resp.status_code == 200, (
-                f"GET /api/translations?meeting_id={mid} failed: "
-                f"{resp.status_code} {resp.json()}"
-            )
-
-            data = resp.json()
-            data_field = data.get("data", {})
-            entries = data_field.get("entries", [])
-            matches = [e for e in entries if e.get("utterance_id") == uid]
             assert len(matches) >= 1, (
                 f"No translation record found for utterance_id {uid} "
                 f"in response: {data}"
@@ -1095,7 +1161,12 @@ class TestSpeechWebSocketBlackBox:
                         f"Reconnected uid {uid2} must differ from {uid1}"
                     )
 
-                    frames2 = _load_pcm16_frames(count=10)
+                    # Calibrate on room silence, then provide enough speech
+                    # for the three-frame voice confirmation.
+                    frames2 = (
+                        _make_silence_frames(5)
+                        + _load_pcm16_frames(count=20)
+                    )
                     for frame in frames2:
                         ws2.send_bytes(frame)
 
@@ -1106,6 +1177,7 @@ class TestSpeechWebSocketBlackBox:
 
                     # ws2 finalizes — must produce a DB record
                     ws2.send_json({"type": "end_hint"})
+                    _, matches_uid2 = _wait_for_translation(client, mid, uid2)
 
                 # ws2's with block exited (connection closed)
             # ws1's with block exited (already closed above)
@@ -1120,10 +1192,6 @@ class TestSpeechWebSocketBlackBox:
             matches_uid1 = [
                 e for e in entries if e.get("utterance_id") == uid1
             ]
-            matches_uid2 = [
-                e for e in entries if e.get("utterance_id") == uid2
-            ]
-
             assert len(matches_uid1) == 0, (
                 f"Old ws1 utterance {uid1} should NOT be persisted: "
                 f"{matches_uid1}"
@@ -1197,8 +1265,9 @@ class TestVadAutoFinal:
                     assert started["type"] == "started"
                     uid = started["utterance_id"]
 
-                    # Send speech frames (1 second of real speech)
-                    speech_frames = _load_pcm16_frames(count=10)
+                    # Send the full two-second fixture so streaming ASR has
+                    # enough confirmed voice to produce realtime text.
+                    speech_frames = _load_pcm16_frames(count=20)
                     for frame in speech_frames:
                         speech_ws.send_bytes(frame)
 
@@ -1267,24 +1336,21 @@ class TestVadAutoFinal:
                 uid = started["utterance_id"]
 
                 # Speech + silence to trigger auto-final
-                speech_frames = _load_pcm16_frames(count=10)
+                speech_frames = _load_pcm16_frames(count=20)
                 for frame in speech_frames:
                     speech_ws.send_bytes(frame)
 
                 silence_needed = int(VAD_SILENCE_DURATION_S / 0.1) + 2
                 for frame in _make_silence_frames(silence_needed):
                     speech_ws.send_bytes(frame)
+                _, matches = _wait_for_translation(client, mid, uid)
 
             # Speech WS context manager exit → session cleanup.
             # The record should have been persisted before cleanup.
 
-            resp = client.get(f"/api/translations?meeting_id={mid}")
-            assert resp.status_code == 200
-            entries = resp.json().get("data", {}).get("entries", [])
-            matches = [e for e in entries if e.get("utterance_id") == uid]
             assert len(matches) >= 1, (
                 f"No translation record found for utterance {uid} "
-                f"after auto-final: {entries}"
+                "after auto-final"
             )
 
             record = matches[0]
@@ -1321,12 +1387,13 @@ class TestVadAutoFinal:
                 uid = started["utterance_id"]
 
                 # Send speech but NOT enough silence to trigger auto-final
-                frames = _load_pcm16_frames(count=10)
+                frames = _load_pcm16_frames(count=20)
                 for frame in frames:
                     speech_ws.send_bytes(frame)
 
-                # Only a few silence frames (less than VAD threshold)
-                few_silence = int(VAD_SILENCE_DURATION_S / 0.1) - 6
+                # Stay below the shortest punctuation-aware pause threshold
+                # (0.9 s), not merely below the 3 s hard-silence fallback.
+                few_silence = 5
                 if few_silence > 0:
                     for frame in _make_silence_frames(few_silence):
                         speech_ws.send_bytes(frame)
@@ -1377,7 +1444,7 @@ class TestVadAutoFinal:
                     uid1 = started["utterance_id"]
 
                     # ── Utterance 1: speech + silence ──────────────
-                    for frame in _load_pcm16_frames(count=10):
+                    for frame in _load_pcm16_frames(count=20):
                         speech_ws.send_bytes(frame)
 
                     silence_needed = int(VAD_SILENCE_DURATION_S / 0.1) + 2
@@ -1399,7 +1466,7 @@ class TestVadAutoFinal:
 
                     # ── Utterance 2: speech + silence ──────────────
                     # The speech WS is still open; send a second burst.
-                    for frame in _load_pcm16_frames(count=10):
+                    for frame in _load_pcm16_frames(count=20):
                         speech_ws.send_bytes(frame)
 
                     for frame in _make_silence_frames(silence_needed):
@@ -1464,7 +1531,7 @@ class TestVadAutoFinal:
                     started = speech_ws.receive_json()
                     uid = started["utterance_id"]
 
-                    frames = _load_pcm16_frames(count=10)
+                    frames = _load_pcm16_frames(count=20)
                     for frame in frames:
                         speech_ws.send_bytes(frame)
 
@@ -1507,7 +1574,7 @@ class TestVadAutoFinal:
                 started = speech_ws.receive_json()
                 uid = started["utterance_id"]
 
-                frames = _load_pcm16_frames(count=10)
+                frames = _load_pcm16_frames(count=20)
                 for frame in frames:
                     speech_ws.send_bytes(frame)
 

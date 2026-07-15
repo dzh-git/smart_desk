@@ -66,7 +66,16 @@ export class MicrophoneCapture {
     // 1. Request microphone
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          // Browser AGC tends to amplify an empty room until it resembles
+          // speech. The backend adaptive gate handles real level variation.
+          autoGainControl: false,
+        },
+      });
     } catch (err) {
       throw new Error(
         `Microphone access denied: ${err instanceof Error ? err.message : String(err)}`,

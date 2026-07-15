@@ -5,7 +5,7 @@
 import type { SeatDisplay } from "./types";
 
 export const FIXTURE_SEAT_DISPLAYS: SeatDisplay[] = Array.from(
-  { length: 10 },
+  { length: 9 },
   (_, i) => ({
     seatId: i + 1,
     attendeeName: i < 6 ? `Person ${i + 1}` : null,

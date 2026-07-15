@@ -174,8 +174,8 @@ class TestDisabledBehavior:
 class TestEnabledModelUnavailable:
     """TranslationModelService when enabled but model loading fails."""
 
-    def test_load_failure_returns_error_message(self):
-        """translate() returns error message when model can't load."""
+    def test_load_failure_returns_unavailable_sentinel(self):
+        """translate() returns a stable sentinel when model can't load."""
         svc = _make_svc(enabled=True)
         # Point to a non-existent path so loading fails
         os.environ["TRANSLATION_MODEL_PATH"] = "/nonexistent/path/model"
@@ -184,9 +184,8 @@ class TestEnabledModelUnavailable:
         svc = TranslationModelService.get_instance()
 
         result = svc.translate("你好世界")
-        assert result.startswith("[translation failed:"), (
-            f"Expected error message, got '{result}'"
-        )
+        assert result == "[translation not available]"
+        assert svc.load_error is not None
 
     def test_load_error_recorded(self):
         """load_error is set after a failed load attempt."""
@@ -238,10 +237,10 @@ class TestSuccessfulTranslationMocked:
 
     @patch("transformers.AutoTokenizer")
     @patch("transformers.AutoModelForSeq2SeqLM")
-    def test_model_generate_failure_returns_error(
+    def test_model_generate_failure_returns_unavailable(
         self, MockModel, MockTokenizer,
     ):
-        """When model.generate raises, translate() returns error message."""
+        """When model.generate raises, source text remains usable."""
         os.environ["ENABLE_TRANSLATION_MODEL"] = "true"
         TranslationModelService.reset_instance()
 
@@ -255,9 +254,8 @@ class TestSuccessfulTranslationMocked:
         svc = TranslationModelService.get_instance()
         result = svc.translate("你好世界")
 
-        assert "translation failed" in result.lower(), (
-            f"Expected error message, got '{result}'"
-        )
+        assert result == "[translation not available]"
+        assert svc.load_error == "Translation inference failed: GPU OOM"
 
     @patch("transformers.AutoTokenizer")
     @patch("transformers.AutoModelForSeq2SeqLM")

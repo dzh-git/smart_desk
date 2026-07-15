@@ -34,4 +34,4 @@ class SpeakerSeatResponse(BaseModel):
 
 class SetSpeakerRequest(BaseModel):
     """POST /api/seats/speaker request body."""
-    seat_id: int = Field(..., ge=1, le=10)
+    seat_id: int = Field(..., ge=1, le=9)

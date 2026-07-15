@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/service-calls", tags=["service_calls"])
 
 
 class ServiceCallCreateRequest(BaseModel):
-    seat_id: int = Field(..., ge=1, le=10)
+    seat_id: int = Field(..., ge=1, le=9)
     service_type: str = Field(..., pattern="^(coffee|tea|water|other)$")
     custom_text: str | None = None
 

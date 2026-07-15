@@ -1,14 +1,14 @@
 // ─── Seat Display Adapter ─────────────────────────────────────────────────
 // Synthesizes SeatState + Attendee[] + SpeakerSeat into UI-ready ViewModels.
-// The adapter always produces exactly 10 seat entries.
+// The adapter always produces exactly 9 seat entries.
 
 import type { SeatState, Attendee, SpeakerSeat } from "./types";
 import type { SeatDisplay } from "../types";
 
-const SEAT_COUNT = 10;
+const SEAT_COUNT = 9;
 
 /**
- * Build 10 seat display rows from the raw API responses.
+ * Build 9 seat display rows from the raw API responses.
  *
  * Rules applied:
  * - Speaker seat is a separate highlight (isSpeaker), not mixed into status.

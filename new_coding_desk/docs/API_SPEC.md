@@ -210,7 +210,7 @@ Frontend clients must still be able to refresh the source of truth through
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/api/seats` | Return all 10 seat states. |
+| `GET` | `/api/seats` | Return all 9 seat states. |
 | `POST` | `/api/seats/{seat_id}/checkin` | Check an attendee into an occupied unchecked seat. |
 | `GET` | `/api/seats/speaker` | Return the current speaker seat. |
 | `POST` | `/api/seats/speaker` | Set speaker seat. See request body below. |
@@ -222,7 +222,7 @@ Frontend clients must still be able to refresh the source of truth through
 {"seat_id": 1}
 ```
 
-- `seat_id`：必填，integer，范围 1..10。
+- `seat_id`：必填，integer，范围 1..9；`1` 为主持人位。
 
 `GET /api/seats/speaker` 返回 `{"seat_id": int|null}`（无当前演讲者时为
 `null`），不需要请求体。`DELETE /api/seats/speaker` 也不需要请求体。
@@ -336,7 +336,7 @@ Constraints:
 
 | Field | Required | Type | Constraints |
 |---|---|---|---|
-| `seat_id` | Yes | integer | 1..10 |
+| `seat_id` | Yes | integer | 1..9 |
 | `service_type` | Yes | string | `coffee` / `tea` / `water` / `other` |
 | `custom_text` | No | string or null | Accepted by the request schema but not persisted by the current implementation. Callers must not expect this value in responses or history. |
 
@@ -434,6 +434,26 @@ The backend also exposes a general broadcast WebSocket for the same meeting
 ```
 
 See `WEBSOCKET_PROTOCOL.md` for the binary audio and event contract.
+
+`GET /api/speech/status` also reports `vad_model`, `translation_model`,
+`translation_model_path`, `translation_last_error`, and the active
+`voice_gate` defaults. Translation readiness is diagnostic and does not block
+Chinese speech recognition. Runtime diagnostics include `active_sessions`,
+`pending_finalizations`, `process_rss_mb`, `max_buffered_audio_seconds`,
+`soft_utterance_seconds` (30), `hard_utterance_seconds` (45), and
+`rollover_overlap_ms` (300).
+
+## Hardware Status API
+
+```http
+GET /api/hardware/status
+```
+
+Each item in `data.seats` includes `current_mode` (the last mode confirmed by
+the Arduino ACK), `intended_mode`, `command_pending`, `last_ack_at`, and
+`last_error`, in addition to seat, port, enabled, and connection fields. An
+offline seat remains in the response so the management UI can show pending
+commands and port diagnostics.
 
 ## Host Display and Screen Stream APIs
 

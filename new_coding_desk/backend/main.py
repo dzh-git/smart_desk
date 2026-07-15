@@ -220,7 +220,7 @@ async def lifespan(app: FastAPI):
     # Phase 1: idempotent column additions for agenda state machine
     ensure_agenda_columns(engine)
 
-    # Seed: initialize seat_states (1..10), speaker_seat (id=1), and demo data
+    # Seed: initialize seat_states (1..9), speaker_seat (id=1), and demo data
     db = SessionLocal()
     try:
         SeatRepository.init_seats(db)

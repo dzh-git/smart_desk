@@ -3191,6 +3191,48 @@ describe("SeatTablet - speech lifecycle fixes (Task 126)", () => {
   });
 
   // ── T126-4: Duplicate terminal event is idempotent ────────────────────────
+  it("accepts a reused utterance_id after meeting WebSocket reconnect", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+
+    const payload = {
+      utterance_id: "utt_1_1_000001",
+      seat_id: 1,
+      revision: 1,
+      source_lang: "zh",
+      target_lang: "en",
+      source_text: "first process",
+      translated_text: "",
+      is_final: false,
+      caption: { previous_line: "", current_line: "first process", mode: "two_line" },
+    };
+    await triggerWsEvent("translation_interim", 1, payload);
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+    await triggerWsEvent("translation_final", 1, {
+      utterance_id: payload.utterance_id,
+      translation_id: 901,
+      seat_id: 1,
+    });
+    await waitFor(() => expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument());
+
+    act(() => wsDisconnect());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 3200));
+    });
+
+    await triggerWsEvent("translation_interim", 1, {
+      ...payload,
+      source_text: "new backend process",
+      caption: { previous_line: "", current_line: "new backend process", mode: "two_line" },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toHaveAttribute(
+        "data-utterance-id", payload.utterance_id,
+      );
+    });
+  }, 10000);
+
   it("[T126-4] duplicate translation_final for same utterance_id is idempotent", async () => {
     mockSpeakerWithCaption();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
@@ -3467,6 +3509,58 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
       expect(el).toHaveAttribute("data-utterance-id", "utt_t129_new_001");
     });
   }, 15000);
+
+  it("rolls a finalizing caption to the next utterance without unmounting the live box", async () => {
+    mockSpeaker();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+
+    const send = (event: string, payload: Record<string, unknown>) => {
+      const ws = findMeetingWs();
+      ws?.onmessage?.({
+        data: JSON.stringify({ event, meeting_id: 1, timestamp: Date.now() / 1000, payload }),
+      });
+    };
+    act(() => send("translation_interim", {
+      utterance_id: "utt_roll_old", seat_id: 1, revision: 8,
+      source_lang: "zh", target_lang: "en", source_text: "旧段最后一行。",
+      translated_text: "", caption: {
+        previous_line: "旧段上一行，", current_line: "旧段最后一行。", mode: "two_line",
+      },
+    }));
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+    const originalNode = screen.getByTestId("live-caption");
+
+    act(() => send("translation_finalizing", {
+      utterance_id: "utt_roll_old", next_utterance_id: "utt_roll_next",
+      seat_id: 1, source_lang: "zh", target_lang: "en",
+      source_text: "旧段最后一行。", boundary_reason: "max_duration",
+      rollover_overlap_ms: 300, caption: {
+        previous_line: "旧段上一行，", current_line: "旧段最后一行。", mode: "two_line",
+      },
+    }));
+
+    await waitFor(() => {
+      const live = screen.getByTestId("live-caption");
+      expect(live).toBe(originalNode);
+      expect(live).toHaveAttribute("data-utterance-id", "utt_roll_next");
+      expect(screen.queryByTestId("live-caption-placeholder")).not.toBeInTheDocument();
+      expect(screen.getByTestId("transcript-pending-final")).toHaveTextContent("旧段最后一行。");
+    });
+
+    act(() => send("translation_interim", {
+      utterance_id: "utt_roll_next", seat_id: 1, revision: 1,
+      source_lang: "zh", target_lang: "en", source_text: "新段内容",
+      translated_text: "", caption: {
+        previous_line: "", current_line: "新段内容", mode: "two_line",
+      },
+    }));
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toBe(originalNode);
+      expect(screen.getByTestId("live-caption-previous")).toHaveTextContent("旧段最后一行。");
+      expect(screen.getByTestId("live-caption-current")).toHaveTextContent("新段内容");
+    });
+  });
 });
 
 describe("SeatTablet - current topic display (Phase 3)", () => {

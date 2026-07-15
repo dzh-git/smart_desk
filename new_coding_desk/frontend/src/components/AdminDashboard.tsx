@@ -83,6 +83,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
     serviceCalls,
     translations,
     interimMap,
+    pendingFinalMap,
     connection,
     noMeeting,
     isEndedMeeting,
@@ -706,7 +707,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             Preview seat:
           </span>
           <div className="flex flex-wrap gap-1.5">
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+            {Array.from({ length: 9 }, (_, i) => i + 1).map((n) => (
               <button
                 key={n}
                 onClick={() => setPreviewSeat(n)}
@@ -1136,7 +1137,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             )}
 
             {/* Lightweight empty state for service_records — no service calls and no transcript */}
-            {workspace === "service_records" && !isEndedMeeting && serviceCalls.length === 0 && translations.length === 0 && Object.keys(interimMap).length === 0 && (
+            {workspace === "service_records" && !isEndedMeeting && serviceCalls.length === 0 && translations.length === 0 && Object.keys(interimMap).length === 0 && Object.keys(pendingFinalMap).length === 0 && (
               <p className="text-xs text-techMuted/70 text-center py-3">
                 暂无服务请求与字幕记录。
               </p>
@@ -1155,7 +1156,10 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             <TranscriptPanel
               entries={translations}
               interims={Object.values(interimMap)}
+              pendingFinals={Object.values(pendingFinalMap)}
               seatNameMap={displaySeatNameMap}
+              liveEnabled={!isEndedMeeting && meetingStatus === "meeting_active"}
+              liveReconnecting={connection !== "connected"}
             />
           </div>
         )}

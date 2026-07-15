@@ -28,8 +28,11 @@ Phase 4 additions:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -38,16 +41,30 @@ from backend.database import SessionLocal
 from backend.events import event_bus
 from backend.events.translation_events import (
     TranslationFinalEvent,
+    TranslationFinalizingEvent,
     TranslationInterimCancelledEvent,
     TranslationInterimEvent,
 )
 from backend.repositories.seat_repository import SeatRepository
+from backend.repositories.translation_repository import TranslationRepository
 from backend.services.meeting_service import MeetingService
+from backend.services.speech_finalization_service import (
+    SpeechFinalizationJob,
+    finalization_queue,
+)
 from backend.services.speech_stream_service import stream_service
 from backend.websocket.speech_registry import speech_registry
 from backend.websocket.speech_trace import trace
 
 logger = logging.getLogger(__name__)
+
+# Streaming ASR is CPU-bound and must never run on FastAPI's event-loop
+# thread. There is only one active speaker, so one ordered worker preserves
+# model/session safety while keeping WebSocket receive and broadcasts alive.
+_streaming_asr_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="smartdesk-streaming-asr",
+)
 
 # ── Error payloads ──────────────────────────────────────────────────────────
 
@@ -90,7 +107,29 @@ ERROR_ASR_EMPTY_RESULT: dict[str, Any] = {
 # ── Constants ───────────────────────────────────────────────────────────────
 
 MIN_SEAT_ID = 1
-MAX_SEAT_ID = 10
+MAX_SEAT_ID = 9
+
+
+# ── Session replacement ─────────────────────────────────────────────────────
+
+def _cancel_replaced_session(meeting_id: int, seat_id: int) -> str | None:
+    """Cancel and broadcast the utterance owned by an older connection."""
+    session_key = f"speech_{meeting_id}_{seat_id}"
+    session = stream_service.get_session(session_key)
+    if session is None or session.current_utterance_id is None:
+        return None
+
+    cancelled_uid = stream_service.cancel_utterance(session_key)
+    if cancelled_uid:
+        event_bus.publish(TranslationInterimCancelledEvent(
+            meeting_id=meeting_id,
+            payload={
+                "utterance_id": cancelled_uid,
+                "seat_id": seat_id,
+                "reason": "session_replaced",
+            },
+        ))
+    return cancelled_uid
 
 
 # ── Handler ─────────────────────────────────────────────────────────────────
@@ -144,16 +183,25 @@ async def handle_speech_ws(
             await _send_error_and_close(ws, ERROR_NOT_SPEAKER_SEAT)
             return
 
-        # ── 4. Create session ──────────────────────────────────────────────
+        # ── 4. Restore sequence and replace any older session ─────────────
+        persisted_sequence = TranslationRepository(db).max_utterance_sequence(
+            meeting_id, seat_id,
+        )
+        stream_service.seed_utterance_sequence(
+            meeting_id, seat_id, persisted_sequence,
+        )
+        _cancel_replaced_session(meeting_id, seat_id)
+
+        # ── 5. Create session ──────────────────────────────────────────────
         # Returns (session_key, session_token) for identity-safe cleanup.
         session_key, session_token = stream_service.create_session(
             meeting_id, seat_id,
         )
 
-        # ── 5. Register in speech registry ─────────────────────────────────
+        # ── 6. Register in speech registry ─────────────────────────────────
         speech_registry.register(meeting_id, seat_id, ws)
 
-        # ── 6. Message loop ────────────────────────────────────────────────
+        # ── 7. Message loop ────────────────────────────────────────────────
         try:
             while True:
                 raw = await ws.receive()
@@ -454,7 +502,23 @@ async def _handle_binary_message(
           utterance_id=session.current_utterance_id,
           meeting_id=meeting_id, seat_id=seat_id)
     try:
-        result = stream_service.process_pcm_frame(session_key, data)
+        loop = asyncio.get_running_loop()
+        processing_started = time.perf_counter()
+        result = await loop.run_in_executor(
+            _streaming_asr_executor,
+            stream_service.process_pcm_frame,
+            session_key,
+            data,
+        )
+        processing_ms = round((time.perf_counter() - processing_started) * 1000)
+        current_session = stream_service.get_session(session_key)
+        if current_session is not None:
+            current_session.processed_frames += 1
+            current_session.last_processing_ms = processing_ms
+            current_session.peak_processing_ms = max(
+                current_session.peak_processing_ms,
+                processing_ms,
+            )
     except RuntimeError as exc:
         logger.warning(
             "Binary frame error (meeting=%d seat=%d): %s",
@@ -511,109 +575,23 @@ async def _handle_binary_message(
               meeting_id=meeting_id, seat_id=seat_id,
               revision=result["revision"])
 
-    # ── Task 122: VAD auto-final ──────────────────────────────────────────
-    # Check VAD even when source_text is empty (silence frames).
-    # If VAD silence threshold was exceeded, automatically finalize the
-    # current utterance, persist it, broadcast translation_final, and
-    # prepare the next utterance — all without requiring a frontend end_hint.
+    # ── Non-blocking automatic rollover ───────────────────────────────────
     if result.get("vad_should_finalize"):
-        logger.info(
-            "VAD auto-final: meeting=%d seat=%d utterance=%s",
-            meeting_id, seat_id, result["utterance_id"],
+        boundary_reason = str(result.get("boundary_reason") or "vad_boundary")
+        finalized = stream_service.snapshot_auto_finalization(
+            session_key,
+            source_text,
+            boundary_reason,
         )
-
-        finalized = stream_service.finalize_utterance(session_key)
-        if finalized is not None:
-            try:
-                from backend.database import SessionLocal  # noqa: F811
-                from backend.services.translation_service import TranslationService
-
-                db = SessionLocal()
-                try:
-                    tsvc = TranslationService(db, event_bus)
-                    record = tsvc.process_final_array(
-                        audio=finalized["audio"],
-                        sr=finalized["sr"],
-                        meeting_id=finalized["meeting_id"],
-                        seat_id=finalized["seat_id"],
-                        utterance_id=finalized["utterance_id"],
-                        source_type="speech_ws",
-                    )
-                    stream_service.reset_caption_formatter(session_key)
-                    # Task 126: mark utterance as terminal after successful final
-                    stream_service.mark_utterance_terminal(
-                        session_key, finalized["utterance_id"],
-                    )
-                    logger.info(
-                        "Speech auto-final: meeting=%d seat=%d utterance=%s "
-                        "record=%d",
-                        meeting_id, seat_id,
-                        finalized["utterance_id"], record.id,
-                    )
-                finally:
-                    db.close()
-            except Exception as exc:
-                exc_str = str(exc)
-                # Task 126: publish cancelled on VAD auto-final failure
-                _vad_uid = finalized.get("utterance_id") if finalized else None
-                if "ASR_EMPTY_RESULT" in exc_str or "empty text" in exc_str.lower():
-                    logger.debug(
-                        "VAD auto-final ASR empty (meeting=%d seat=%d): %s",
-                        meeting_id, seat_id, exc,
-                    )
-                    if _vad_uid and not stream_service.is_utterance_terminal(
-                        session_key, _vad_uid,
-                    ):
-                        stream_service.mark_utterance_terminal(
-                            session_key, _vad_uid,
-                        )
-                        event_bus.publish(TranslationInterimCancelledEvent(
-                            meeting_id=meeting_id,
-                            payload={
-                                "utterance_id": _vad_uid,
-                                "seat_id": seat_id,
-                                "reason": "asr_empty_result",
-                            },
-                        ))
-                else:
-                    logger.exception(
-                        "VAD auto-final error (meeting=%d seat=%d): %s",
-                        meeting_id, seat_id, exc,
-                    )
-                    if _vad_uid and not stream_service.is_utterance_terminal(
-                        session_key, _vad_uid,
-                    ):
-                        stream_service.mark_utterance_terminal(
-                            session_key, _vad_uid,
-                        )
-                        event_bus.publish(TranslationInterimCancelledEvent(
-                            meeting_id=meeting_id,
-                            payload={
-                                "utterance_id": _vad_uid,
-                                "seat_id": seat_id,
-                                "reason": "finalization_failed",
-                            },
-                        ))
-                # Even if auto-final fails, prepare next utterance so the
-                # speech WS can continue streaming.
-        else:
-            logger.debug(
-                "VAD auto-final with no buffered audio "
-                "(meeting=%d seat=%d)",
-                meeting_id, seat_id,
-            )
-
-        # Prepare next utterance regardless of finalization outcome,
-        # so the session can continue receiving audio.
         new_uid = stream_service.prepare_next_utterance(
-            session_key, meeting_id, seat_id,
+            session_key,
+            meeting_id,
+            seat_id,
+            continuous_rollover=bool(
+                finalized and finalized.get("continuous_rollover")
+            ),
         )
         if new_uid:
-            logger.info(
-                "Auto-final: new utterance %s on same WS "
-                "(meeting=%d seat=%d)",
-                new_uid, meeting_id, seat_id,
-            )
             try:
                 await ws.send_json({
                     "type": "utterance_started",
@@ -621,3 +599,55 @@ async def _handle_binary_message(
                 })
             except Exception:
                 pass
+
+        if finalized is None:
+            return
+
+        old_uid = str(finalized["utterance_id"])
+        final_text = str(finalized["source_text"]).strip()
+        if not finalized["has_speech"] or not final_text:
+            event_bus.publish(TranslationInterimCancelledEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "utterance_id": old_uid,
+                    "seat_id": seat_id,
+                    "reason": "asr_empty_result",
+                },
+            ))
+            return
+
+        event_bus.publish(TranslationFinalizingEvent(
+            meeting_id=meeting_id,
+            payload={
+                "utterance_id": old_uid,
+                "seat_id": seat_id,
+                "source_text": final_text,
+                "source_lang": "zh",
+                "target_lang": "en",
+                "boundary_reason": boundary_reason,
+                "next_utterance_id": new_uid,
+                "caption": finalized.get("caption"),
+                "rollover_overlap_ms": finalized.get("rollover_overlap_ms", 0),
+            },
+        ))
+        queued = finalization_queue.submit(SpeechFinalizationJob(
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            utterance_id=old_uid,
+            source_text=final_text,
+            boundary_reason=boundary_reason,
+            audio_seconds=float(finalized["audio_seconds"]),
+            next_utterance_id=new_uid,
+        ))
+        logger.info(
+            "Speech auto-final queued: utterance=%s reason=%s text_len=%d "
+            "audio_seconds=%.2f overlap_frames=%d queue_depth=%d next=%s queued=%s",
+            old_uid,
+            boundary_reason,
+            len(final_text),
+            finalized["audio_seconds"],
+            finalized.get("rollover_overlap_frames", 0),
+            finalization_queue.pending_count,
+            new_uid,
+            queued,
+        )

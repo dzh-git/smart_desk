@@ -1,0 +1,84 @@
+{
+  "report_type": "speech-real-dataset-benchmark",
+  "task": "128B",
+  "generated_at": "2026-07-15T03:22:33.244100+00:00",
+  "dataset_dir": "D:\\Ai_project\\smart_desktop\\new_coding_desk\\真实语音数据集",
+  "streaming_preset": "balanced",
+  "streaming_preset_chunk_size": [
+    0,
+    10,
+    5
+  ],
+  "environment": {
+    "python": "3.12.4",
+    "platform": "test",
+    "torch_available": false,
+    "cuda_available": false,
+    "ffmpeg_available": false,
+    "ffmpeg_path": null
+  },
+  "summary": {
+    "file_count": 3,
+    "success_count": 0,
+    "failed_count": 3,
+    "avg_first_interim_ms_deprecated_processing_only": null,
+    "avg_processing_first_interim_ms": null,
+    "avg_first_interim_audio_offset_ms": null,
+    "avg_estimated_realtime_first_interim_ms": null,
+    "avg_offline_asr_rtf": null,
+    "avg_streaming_asr_rtf": null,
+    "avg_cer": null
+  },
+  "files": [
+    {
+      "audio_file": "录音1.m4a",
+      "text_file": "录音1.txt",
+      "warning": null,
+      "audio_duration_ms": null,
+      "decode_ms": null,
+      "offline": {
+        "error": "ffmpeg not available — cannot decode audio"
+      },
+      "streaming": {
+        "error": "ffmpeg not available — cannot decode audio"
+      },
+      "errors": [
+        "ffmpeg not available"
+      ]
+    },
+    {
+      "audio_file": "录音2.m4a",
+      "text_file": "录音2.txt",
+      "warning": null,
+      "audio_duration_ms": null,
+      "decode_ms": null,
+      "offline": {
+        "error": "ffmpeg not available — cannot decode audio"
+      },
+      "streaming": {
+        "error": "ffmpeg not available — cannot decode audio"
+      },
+      "errors": [
+        "ffmpeg not available"
+      ]
+    },
+    {
+      "audio_file": "录音3.m4a",
+      "text_file": "录音3.txt",
+      "warning": null,
+      "audio_duration_ms": null,
+      "decode_ms": null,
+      "offline": {
+        "error": "ffmpeg not available — cannot decode audio"
+      },
+      "streaming": {
+        "error": "ffmpeg not available — cannot decode audio"
+      },
+      "errors": [
+        "ffmpeg not available"
+      ]
+    }
+  ],
+  "assessment": null,
+  "error": "ffmpeg is not available.\nSearch trace:\n  (no search performed)\nInstall ffmpeg (e.g., 'winget install Gyan.FFMpeg' on Windows, 'apt install ffmpeg' on Linux, 'brew install ffmpeg' on macOS).\nOr provide path via --ffmpeg-path or SMART_DESK_FFMPEG_PATH env var."
+}

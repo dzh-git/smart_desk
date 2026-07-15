@@ -197,7 +197,7 @@ describe("AdminDashboard - data loading", () => {
 });
 
 describe("AdminDashboard - seat display", () => {
-  it("always shows 10 seats regardless of backend data", async () => {
+  it("always shows 9 seats regardless of backend data", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/active") {
         return okResponse({ id: 1, title: "Test", status: "active", started_at: "2026-01-01T10:00:00Z" });
@@ -230,9 +230,10 @@ describe("AdminDashboard - seat display", () => {
       expect(screen.getByText(/Conference Room/i)).toBeInTheDocument();
     });
 
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 1; i <= 9; i++) {
       expect(screen.getByText(`SEAT ${i}`)).toBeInTheDocument();
     }
+    expect(screen.queryByText("SEAT 10")).not.toBeInTheDocument();
   });
 });
 
@@ -2298,6 +2299,52 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
   });
 
   // ── Admin T126-3: New utterance_id still works ────────────────────────────
+  it("accepts a reused utterance_id after admin WebSocket reconnect", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const payload = {
+      utterance_id: "utt_1_1_000001",
+      seat_id: 1,
+      revision: 1,
+      source_lang: "zh",
+      target_lang: "en",
+      source_text: "first process",
+      translated_text: "",
+      is_final: false,
+      caption: { previous_line: "", current_line: "first process", mode: "two_line" },
+    };
+    act(() => wsSend(0, "translation_interim", 1, payload));
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+    act(() => wsSend(0, "translation_final", 1, {
+      utterance_id: payload.utterance_id,
+      translation_id: 902,
+      seat_id: 1,
+    }));
+    await waitFor(() => expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument());
+
+    act(() => wsInstances[0].close());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 3200));
+    });
+    const reconnectedIndex = wsInstances.length - 1;
+    act(() => wsSend(reconnectedIndex, "translation_interim", 1, {
+      ...payload,
+      source_text: "new backend process",
+      caption: { previous_line: "", current_line: "new backend process", mode: "two_line" },
+    }));
+    await waitFor(() => {
+      expect(screen.getByTestId("live-caption")).toHaveAttribute(
+        "data-utterance-id", payload.utterance_id,
+      );
+    });
+  }, 10000);
+
   it("[T126-Admin-3] new utterance_id interim still shows live caption (terminal set does not block)", async () => {
     mockTranscriptScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
@@ -2325,6 +2372,40 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
       const el = screen.getByTestId("live-caption");
       expect(el).toBeInTheDocument();
       expect(el).toHaveAttribute("data-utterance-id", "utt_t126_admin_new_001");
+    });
+  });
+
+  it("keeps the admin live caption mounted across automatic finalization", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+    });
+
+    act(() => wsSend(0, "translation_interim", 1, {
+      utterance_id: "utt_admin_roll_old", seat_id: 1, revision: 5,
+      source_lang: "zh", target_lang: "en", source_text: "管理员旧段。",
+      translated_text: "", caption: {
+        previous_line: "管理员上一行，", current_line: "管理员旧段。", mode: "two_line",
+      },
+    }));
+    await waitFor(() => expect(screen.getByTestId("live-caption")).toBeInTheDocument());
+    const originalNode = screen.getByTestId("live-caption");
+
+    act(() => wsSend(0, "translation_finalizing", 1, {
+      utterance_id: "utt_admin_roll_old", next_utterance_id: "utt_admin_roll_next",
+      seat_id: 1, source_lang: "zh", target_lang: "en",
+      source_text: "管理员旧段。", boundary_reason: "soft_sentence_limit",
+      rollover_overlap_ms: 300, caption: {
+        previous_line: "管理员上一行，", current_line: "管理员旧段。", mode: "two_line",
+      },
+    }));
+    await waitFor(() => {
+      const live = screen.getByTestId("live-caption");
+      expect(live).toBe(originalNode);
+      expect(live).toHaveAttribute("data-utterance-id", "utt_admin_roll_next");
+      expect(screen.queryByTestId("live-caption-placeholder")).not.toBeInTheDocument();
     });
   });
 });

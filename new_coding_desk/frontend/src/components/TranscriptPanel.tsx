@@ -1,6 +1,8 @@
+import { memo, useMemo } from "react";
 import { MessageSquare, Loader2, Mic } from "lucide-react";
 import { PanelCard, TechEmptyState, SectionHeader, formatTranscriptTime } from "./shared";
 import type { TranslationRecord } from "../api/types";
+import type { PendingTranslation } from "../types";
 
 const avatarColors = [
   "bg-techCyan",
@@ -48,10 +50,16 @@ interface TranscriptPanelProps {
   entries: TranslationRecord[];
   /** Live interim subtitles keyed by utterance_id. */
   interims?: InterimDisplayEntry[];
+  /** Realtime text already rolled into history while translation is pending. */
+  pendingFinals?: PendingTranslation[];
   /** Mapping seat_id -> speaker name. */
   seatNameMap: Record<number, string>;
   /** True while translations are being fetched for the first time. */
   loading?: boolean;
+  /** Keep the live speech area mounted while an active meeting is running. */
+  liveEnabled?: boolean;
+  /** True while the meeting WebSocket is restoring its connection. */
+  liveReconnecting?: boolean;
 }
 
 // ── Deduplication helpers ──────────────────────────────────────────────────
@@ -125,6 +133,49 @@ function sortFinalsOldestFirst(
   });
 }
 
+const PARAGRAPH_GAP_MS = 30_000;
+
+function groupFinals(entries: TranslationRecord[]): TranslationRecord[][] {
+  const groups: TranslationRecord[][] = [];
+  for (const entry of entries) {
+    const group = groups.length ? groups[groups.length - 1] : undefined;
+    const previous = group?.length ? group[group.length - 1] : undefined;
+    if (group && previous) {
+      const previousTime = new Date(previous.created_at).getTime();
+      const entryTime = new Date(entry.created_at).getTime();
+      const gap = entryTime - previousTime;
+      const canMerge =
+        previous.seat_id === entry.seat_id &&
+        previous.source_lang === entry.source_lang &&
+        previous.target_lang === entry.target_lang &&
+        Number.isFinite(gap) &&
+        gap >= 0 &&
+        gap <= PARAGRAPH_GAP_MS;
+      if (canMerge) {
+        group.push(entry);
+        continue;
+      }
+    }
+    groups.push([entry]);
+  }
+  return groups;
+}
+
+function joinSentences(texts: string[], language: string): string {
+  const clean = texts.map((text) => text.trim()).filter(Boolean);
+  return language.toLowerCase() === "zh" ? clean.join("") : clean.join(" ");
+}
+
+function isUnavailableTranslation(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized.startsWith("[translation not available") ||
+    normalized.startsWith("[translation failed") ||
+    normalized.startsWith("[translation unavailable")
+  );
+}
+
 /** Deduplicate interims: per utteranceId keep the entry with highest revision;
  *  if same revision, keep the last one in the array.
  */
@@ -163,24 +214,46 @@ function deduplicateInterims(
 export function TranscriptPanel({
   entries,
   interims = [],
+  pendingFinals = [],
   seatNameMap,
   loading = false,
+  liveEnabled = false,
+  liveReconnecting = false,
 }: TranscriptPanelProps) {
   // Deduplicate finals deterministically, then sort oldest-first
-  const dedupedEntries = sortFinalsOldestFirst(deduplicateFinals(entries));
+  const dedupedEntries = useMemo(
+    () => sortFinalsOldestFirst(deduplicateFinals(entries)),
+    [entries],
+  );
+  const finalGroups = useMemo(
+    () => groupFinals(dedupedEntries),
+    [dedupedEntries],
+  );
 
   // Collect utterance_ids that have finals
-  const finalUtteranceIds = new Set<string>();
-  for (const e of dedupedEntries) {
-    if (e.utterance_id) finalUtteranceIds.add(e.utterance_id);
-  }
+  const finalUtteranceIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const entry of dedupedEntries) {
+      if (entry.utterance_id) ids.add(entry.utterance_id);
+    }
+    return ids;
+  }, [dedupedEntries]);
+  const filteredPendingFinals = useMemo(
+    () => pendingFinals.filter(
+      (entry) => !finalUtteranceIds.has(entry.utteranceId),
+    ),
+    [pendingFinals, finalUtteranceIds],
+  );
 
   // Deduplicate interims: per utteranceId keep highest revision, then filter
-  const filteredInterims = deduplicateInterims(interims, finalUtteranceIds);
+  const filteredInterims = useMemo(
+    () => deduplicateInterims(interims, finalUtteranceIds),
+    [interims, finalUtteranceIds],
+  );
 
-  // Separate interims with and without caption.
-  // If caption exists but both previousLine and currentLine are empty,
-  // fall back to rendering source_text as a text-only interim row.
+  // Caption entries with visible lines use the two-line live box. Empty
+  // captions and entries without caption use the fallback row, whose active
+  // meeting variant keeps the same fixed-height shell.
   const captionInterims = filteredInterims.filter(
     (i) => i.caption != null && (i.caption.currentLine || i.caption.previousLine),
   );
@@ -190,7 +263,8 @@ export function TranscriptPanel({
 
   const hasInterims = filteredInterims.length > 0;
   const hasEntries = dedupedEntries.length > 0;
-  const isEmpty = !loading && !hasEntries && !hasInterims;
+  const hasPendingFinals = filteredPendingFinals.length > 0;
+  const isEmpty = !loading && !hasEntries && !hasPendingFinals && !hasInterims && !liveEnabled;
 
   return (
     <PanelCard
@@ -225,8 +299,8 @@ export function TranscriptPanel({
         />
       ) : (
         <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1 md:max-h-72">
-          {/* Live section header when interims are present */}
-          {hasInterims && (
+          {/* Keep the live section mounted throughout an active meeting. */}
+          {(liveEnabled || hasInterims) && (
             <SectionHeader
               titleCn="实时识别"
               titleEn="Live Speech"
@@ -234,10 +308,14 @@ export function TranscriptPanel({
             />
           )}
 
+          {liveEnabled && captionInterims.length === 0 && textInterims.length === 0 && (
+            <LiveCaptionPlaceholder reconnecting={liveReconnecting} />
+          )}
+
           {/* Live caption blocks (interims with caption) */}
           {captionInterims.map((interim) => (
             <LiveCaptionBlock
-              key={interim.utteranceId}
+              key={`seat-${interim.seatId}`}
               interim={interim}
               speakerName={
                 seatNameMap[interim.seatId] ?? `Seat ${interim.seatId}`
@@ -245,7 +323,7 @@ export function TranscriptPanel({
             />
           ))}
 
-          {/* Interim rows for interims WITHOUT caption (fallback) */}
+          {/* Keep fallback interims in a fixed-height shell during a meeting. */}
           {textInterims.map((interim) => (
             <InterimRow
               key={interim.utteranceId}
@@ -253,11 +331,12 @@ export function TranscriptPanel({
               speakerName={
                 seatNameMap[interim.seatId] ?? `Seat ${interim.seatId}`
               }
+              stable={liveEnabled}
             />
           ))}
 
           {/* History section header when there are entries */}
-          {hasEntries && (
+          {(hasEntries || hasPendingFinals) && (
             <SectionHeader
               titleCn="历史记录"
               titleEn="History"
@@ -266,12 +345,22 @@ export function TranscriptPanel({
           )}
 
           {/* Final entries (persisted) */}
-          {dedupedEntries.map((entry) => (
-            <TranscriptRow
-              key={entry.id}
-              entry={entry}
+          {finalGroups.map((group) => (
+            <TranscriptGroupRow
+              key={group.map((entry) => entry.id).join("-")}
+              entries={group}
               speakerName={
-                seatNameMap[entry.seat_id] ?? `Seat ${entry.seat_id}`
+                seatNameMap[group[0].seat_id] ?? `Seat ${group[0].seat_id}`
+              }
+            />
+          ))}
+
+          {filteredPendingFinals.map((pending) => (
+            <PendingFinalRow
+              key={pending.utteranceId}
+              pending={pending}
+              speakerName={
+                seatNameMap[pending.seatId] ?? `Seat ${pending.seatId}`
               }
             />
           ))}
@@ -283,28 +372,74 @@ export function TranscriptPanel({
 
 // ── Final Transcript Row ───────────────────────────────────────────────────
 
-function TranscriptRow({
-  entry,
+function PendingFinalRow({
+  pending,
   speakerName,
 }: {
-  entry: TranslationRecord;
+  pending: PendingTranslation;
   speakerName: string;
 }) {
+  const color = avatarColors[(pending.seatId - 1) % avatarColors.length];
+  return (
+    <div
+      className="flex gap-3"
+      data-testid="transcript-pending-final"
+      data-utterance-id={pending.utteranceId}
+      data-seat-id={pending.seatId}
+    >
+      <div
+        className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-techBg text-xs font-bold ${color}`}
+      >
+        {initials(speakerName)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 mb-1">
+          <span className="text-xs font-semibold text-techText">{speakerName}</span>
+          <Loader2 size={10} className="animate-spin text-techAmber" />
+          <span className="text-[10px] text-techAmber">正在翻译… / Translating…</span>
+        </div>
+        <p className="text-sm text-techText leading-relaxed" data-testid="transcript-source">
+          {pending.sourceText}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const TranscriptGroupRow = memo(function TranscriptGroupRow({
+  entries,
+  speakerName,
+}: {
+  entries: TranslationRecord[];
+  speakerName: string;
+}) {
+  const entry = entries[0];
   const color = avatarColors[(entry.seat_id - 1) % avatarColors.length];
   const time = formatTranscriptTime(entry.created_at);
 
   const langLabel =
     entry.source_lang.toUpperCase() === "EN" ? "EN" : "ZH";
 
-  const utteranceId = entry.utterance_id ?? null;
+  const utteranceIds = entries
+    .map((item) => item.utterance_id)
+    .filter((value): value is string => Boolean(value));
+  const sourceText = joinSentences(
+    entries.map((item) => item.source_text),
+    entry.source_lang,
+  );
+  const validTranslations = entries
+    .map((item) => item.translated_text)
+    .filter((text) => !isUnavailableTranslation(text));
+  const translatedText = joinSentences(validTranslations, entry.target_lang);
 
   return (
     <div
       className="flex gap-3"
       data-testid="transcript-final"
-      data-utterance-id={utteranceId ?? ""}
+      data-utterance-id={utteranceIds.join(",")}
       data-seat-id={entry.seat_id}
       data-translation-id={entry.id}
+      data-translation-ids={entries.map((item) => item.id).join(",")}
       data-created-at={entry.created_at}
     >
       <div
@@ -326,15 +461,21 @@ function TranscriptRow({
           </span>
         </div>
         <p className="text-sm text-techText leading-relaxed" data-testid="transcript-source">
-          {entry.source_text}
+          {sourceText}
         </p>
-        <p className="text-xs text-techMuted mt-1 leading-relaxed border-l-2 border-techBorder pl-2" data-testid="transcript-target">
-          {entry.translated_text}
-        </p>
+        {translatedText ? (
+          <p className="text-xs text-techMuted mt-1 leading-relaxed border-l-2 border-techBorder pl-2" data-testid="transcript-target">
+            {translatedText}
+          </p>
+        ) : (
+          <p className="text-xs text-techAmber mt-1" data-testid="transcript-target-unavailable">
+            翻译模型不可用
+          </p>
+        )}
       </div>
     </div>
   );
-}
+});
 
 // ── Live Caption Block (two-line subtitle display) ────────────────────────────
 
@@ -355,7 +496,7 @@ function LiveCaptionBlock({
       data-utterance-id={interim.utteranceId}
       data-seat-id={interim.seatId}
       data-revision={interim.revision}
-      className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow"
+      className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow min-h-[7.25rem]"
     >
       <div className="flex items-baseline gap-2 mb-1.5">
         <span className="text-xs font-semibold text-techCyan">
@@ -382,14 +523,45 @@ function LiveCaptionBlock({
   );
 }
 
+function LiveCaptionPlaceholder({ reconnecting }: { reconnecting: boolean }) {
+  return (
+    <div
+      data-testid="live-caption-placeholder"
+      className="bg-techCardSoft border border-techCyan/30 rounded-lg p-3 min-h-[7.25rem]"
+    >
+      <span className="sr-only">暂无字幕</span>
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <span className="text-xs font-semibold text-techMuted">
+          {reconnecting
+            ? "实时识别连接恢复中…… / Reconnecting live speech…"
+            : "正在监听，等待有效语音…… / Listening for speech…"}
+        </span>
+        <span className="text-[0.6rem] font-mono uppercase tracking-wider text-techMuted/60 ml-auto">
+          实时 / Live
+        </span>
+      </div>
+      <div
+        data-testid="live-caption-previous"
+        className="min-h-[1.25rem] max-h-[1.25rem] overflow-hidden break-words text-sm text-techMuted leading-snug"
+      />
+      <div
+        data-testid="live-caption-current"
+        className="min-h-[1.5rem] max-h-[1.5rem] overflow-hidden break-words text-base text-techMuted/70 font-medium leading-snug"
+      />
+    </div>
+  );
+}
+
 // ── Interim Row (live subtitle, not persisted) ──────────────────────────────
 
 function InterimRow({
   interim,
   speakerName,
+  stable = false,
 }: {
   interim: InterimDisplayEntry;
   speakerName: string;
+  stable?: boolean;
 }) {
   const color = avatarColors[(interim.seatId - 1) % avatarColors.length];
 
@@ -398,7 +570,11 @@ function InterimRow({
 
   return (
     <div
-      className="flex gap-3 opacity-70"
+      className={
+        stable
+          ? "flex gap-3 bg-techCardSoft border border-techCyan/30 rounded-lg p-3 min-h-[7.25rem]"
+          : "flex gap-3 opacity-70"
+      }
       data-testid="transcript-interim"
       data-utterance-id={interim.utteranceId}
       data-seat-id={interim.seatId}
