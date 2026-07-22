@@ -32,12 +32,39 @@ export interface InterimTranslation {
   targetLang: string;
   sourceText: string;
   translatedText: string;
+  requestedLanguage?: "auto" | "zh" | "en";
+  detectedLanguage?: "unknown" | "zh" | "en";
+  recognitionEngine?: "unknown" | "paraformer_streaming" | "sherpa_onnx_streaming" | "sensevoice_rolling_fallback";
+  /** Exact two-line source window represented by translatedText. */
+  translationSourceText?: string;
+  /** Revision of the latest translated prefix; recognition may be newer. */
+  translationRevision?: number;
+  sentenceId?: string;
+  sentenceSequence?: number;
+  sentenceSourceText?: string;
+  sentenceState?: "forming" | "completed";
   /** Optional two-line caption from backend caption formatter. */
   caption?: {
     previousLine: string;
     currentLine: string;
     mode: string;
   };
+}
+
+export interface LiveLyricSentence {
+  utteranceId: string;
+  sentenceId: string;
+  sentenceSequence: number;
+  seatId: number;
+  revision: number;
+  sourceLang: string;
+  targetLang: string;
+  sourceText: string;
+  translatedText: string;
+  translationStatus: "forming" | "pending" | "ok" | "unavailable";
+  translationError?: string;
+  recognitionStatus?: "correcting" | "ok" | "degraded";
+  sourceLocked?: boolean;
 }
 
 export interface PendingTranslation {

@@ -21,7 +21,7 @@
  * No data is persisted, no API endpoint exposes it. Only for Task 125 audit.
  */
 
-const MAX_ENTRIES = 1000;
+const MAX_ENTRIES = 10000;
 
 /** True when VITE_ENABLE_SPEECH_TRACE is set to "true". */
 const _enabled: boolean =

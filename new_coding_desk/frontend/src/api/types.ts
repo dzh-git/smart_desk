@@ -118,6 +118,8 @@ export interface TranslationRecord {
   target_lang: string;
   source_text: string;
   translated_text: string;
+  translation_status?: "ok" | "unavailable";
+  translation_error?: string | null;
   created_at: string;
   source_type?: string | null;
 }
@@ -139,6 +141,13 @@ export interface CaptionPayload {
 
 export type ModelComponentStatus = "unknown" | "loading" | "loaded" | "error";
 
+export interface DetailedModelStatus {
+  status: ModelComponentStatus | "disabled";
+  path: string;
+  error: string | null;
+  load_latency_ms?: number;
+}
+
 export interface SpeechModelStatus {
   ready: boolean;
   preloading: boolean;
@@ -149,6 +158,14 @@ export interface SpeechModelStatus {
   translation_model?: ModelComponentStatus | "disabled";
   translation_model_path?: string;
   translation_last_error?: string | null;
+  translation_models?: {
+    zh_en: DetailedModelStatus;
+    en_zh: DetailedModelStatus;
+  };
+  bilingual_final_asr?: DetailedModelStatus;
+  english_streaming_asr?: DetailedModelStatus & {
+    engine?: "sherpa_onnx_streaming";
+  };
   punctuation_fallback: boolean;
   last_error: string | null;
   voice_gate?: {
@@ -164,6 +181,33 @@ export interface SpeechModelStatus {
   soft_utterance_seconds?: number;
   hard_utterance_seconds?: number;
   rollover_overlap_ms?: number;
+  live_asr?: {
+    language_modes: string[];
+    auto_probe_ms: number;
+    sensevoice_interval_ms: number;
+    sensevoice_window_ms: number;
+    english_streaming_engine?: "sherpa_onnx_streaming";
+    torch_threads: number;
+    torch_interop_threads: number;
+    omp_threads: number;
+    mkl_threads: number;
+    max_audio_backlog_ms: number;
+  };
+  sessions?: Array<{
+    session_key: string;
+    pcm_queue_frames: number;
+    audio_backlog_ms: number;
+    requested_language: string;
+    detected_language: string;
+    recognition_engine: string;
+    english_streaming?: {
+      engine: "sherpa_onnx_streaming";
+      frames_processed: number;
+      flushed: boolean;
+      last_error: string | null;
+      fallback_active: boolean;
+    };
+  }>;
 }
 
 // ── Host Display Status (Screen Stream) ───────────────────────────────────

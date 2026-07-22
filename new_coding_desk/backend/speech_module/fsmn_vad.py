@@ -9,12 +9,18 @@ Interface: detect_segments() — run on full audio, return speech regions.
 from __future__ import annotations
 import threading
 import numpy as np
+from pathlib import Path
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _find_local_fsmn_vad() -> str | None:
     """Find local HuggingFace cache for FSMN-VAD model."""
     import glob as _glob
-    candidates = _glob.glob("models/models--funasr--fsmn-vad/snapshots/*")
+    candidates = _glob.glob(
+        str(_PROJECT_ROOT / "models" / "models--funasr--fsmn-vad" / "snapshots" / "*")
+    )
     return candidates[0] if candidates else None
 
 

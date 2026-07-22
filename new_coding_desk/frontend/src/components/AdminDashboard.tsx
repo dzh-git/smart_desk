@@ -82,7 +82,9 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
     voteStatsError,
     serviceCalls,
     translations,
+    liveFinal,
     interimMap,
+    lyricMap,
     pendingFinalMap,
     connection,
     noMeeting,
@@ -1151,11 +1153,13 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         </div>
 
         {/* Transcript row — visible in service_records workspace or ended meetings */}
-        {(isEndedMeeting || workspace === "service_records") && (
+        {(isEndedMeeting || workspace === "service_records" || meetingStatus === "meeting_active") && (
           <div className="mt-6">
             <TranscriptPanel
               entries={translations}
+              liveFinal={liveFinal}
               interims={Object.values(interimMap)}
+              lyrics={Object.values(lyricMap).flat()}
               pendingFinals={Object.values(pendingFinalMap)}
               seatNameMap={displaySeatNameMap}
               liveEnabled={!isEndedMeeting && meetingStatus === "meeting_active"}

@@ -58,6 +58,13 @@ graphify query "手势如何切换中央大屏应用？"
 代码或当前规范变化后更新：
 
 ```powershell
+scripts\\graphify_update_single.bat
+```
+
+该脚本设置 `GRAPHIFY_NO_BACKUP=1`，只更新 `graphify-out/graph.json` 等根级当前快照，不在仓库中创建按日期命名的备份目录。若直接调用 Graphify，可临时使用：
+
+```powershell
+$env:GRAPHIFY_NO_BACKUP = "1"
 graphify update .
 ```
 

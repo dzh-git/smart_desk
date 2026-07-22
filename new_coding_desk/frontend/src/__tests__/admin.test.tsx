@@ -2134,7 +2134,7 @@ describe("Transcript - live caption display", () => {
 });
 
 describe("Transcript - language labels", () => {
-  it("TranscriptPanel does not render non-ASCII language labels", async () => {
+  it("TranscriptPanel renders the actual bilingual translation direction", async () => {
     const { TranscriptPanel } = await import("../components/TranscriptPanel");
 
     render(
@@ -2156,7 +2156,7 @@ describe("Transcript - language labels", () => {
     expect(badgeEls.length).toBeGreaterThanOrEqual(2);
     badgeEls.forEach((el) => {
       const text = el.textContent ?? "";
-      expect(text).toMatch(/^(EN|ZH)$/);
+      expect(text).toMatch(/^(EN → ZH|ZH → EN)$/);
     });
   });
 });
@@ -2375,6 +2375,32 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     });
   });
 
+  it("applies a trailing translation-only update to the newest source revision", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
+
+    await act(async () => {
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_admin_live_mt", seat_id: 1, revision: 6,
+        source_lang: "zh", target_lang: "en", source_text: "管理员端最新实时识别",
+        translation_source_text: "管理员端最新实时识别", translated_text: "", is_final: false,
+        caption: { previous_line: "", current_line: "管理员端最新实时识别", mode: "two_line" },
+      });
+      wsSend(0, "translation_interim", 1, {
+        utterance_id: "utt_admin_live_mt", seat_id: 1, revision: 4,
+        translation_revision: 4, translation_only: true,
+        source_lang: "zh", target_lang: "en", source_text: "管理员端最新实时识别",
+        translation_source_text: "管理员端最新实时识别",
+        translated_text: "Latest live admin translation.", is_final: false,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(screen.getByTestId("live-caption-current")).toHaveTextContent("管理员端最新实时识别");
+    expect(screen.getByTestId("live-caption-translation")).toHaveTextContent("Latest live admin translation.");
+  });
+
   it("keeps the admin live caption mounted across automatic finalization", async () => {
     mockTranscriptScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
@@ -2386,7 +2412,7 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     act(() => wsSend(0, "translation_interim", 1, {
       utterance_id: "utt_admin_roll_old", seat_id: 1, revision: 5,
       source_lang: "zh", target_lang: "en", source_text: "管理员旧段。",
-      translated_text: "", caption: {
+      translated_text: "Old admin segment.", translation_revision: 5, caption: {
         previous_line: "管理员上一行，", current_line: "管理员旧段。", mode: "two_line",
       },
     }));
@@ -2406,7 +2432,60 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
       expect(live).toBe(originalNode);
       expect(live).toHaveAttribute("data-utterance-id", "utt_admin_roll_next");
       expect(screen.queryByTestId("live-caption-placeholder")).not.toBeInTheDocument();
+      expect(screen.getByTestId("live-caption-translation")).toHaveTextContent("Old admin segment.");
     });
+
+    act(() => wsSend(0, "translation_final", 1, {
+      translation_id: 880, utterance_id: "utt_admin_roll_old", seat_id: 1,
+      source_lang: "zh", target_lang: "en", source_text: "管理员旧段。",
+      translated_text: "Final old admin segment.", translation_status: "ok",
+      source_type: "speech_ws",
+    }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
+      expect(screen.getByTestId("live-final-target")).toHaveTextContent("Final old admin segment.");
+    });
+  });
+});
+
+describe("AdminDashboard - sentence lyric events", () => {
+  it("pairs a completed sentence translation and keeps it after final", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse({ id: 1, title: "Lyric Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: 1 });
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url === "/api/meetings/1/attendees") return okResponse([{ id: 1, meeting_id: 1, name: "Alice", seat_id: 1, checked_in: true }]);
+      if (url.includes("/api/meetings/1/agendas")) return okResponse([]);
+      if (url.includes("/api/service-calls")) return okResponse([]);
+      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
+      return okResponse(null);
+    });
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Lyric Meeting")).toBeInTheDocument());
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+
+    const base = {
+      utterance_id: "utt_1_1_000001", sentence_id: "utt_1_1_000001:s000001",
+      sentence_sequence: 1, seat_id: 1, revision: 4,
+      source_lang: "zh", target_lang: "en", source_text: "逐句显示。",
+    };
+    act(() => wsSend(0, "translation_interim", 1, {
+      ...base, sentence_source_text: "逐句显示。", sentence_state: "completed",
+      translated_text: "", is_final: false,
+    }));
+    act(() => wsSend(0, "translation_sentence", 1, {
+      ...base, translated_text: "Sentence display.", translation_status: "ok",
+    }));
+    await waitFor(() => expect(screen.getByTestId("live-lyric-translation")).toHaveTextContent("Sentence display."));
+
+    act(() => wsSend(0, "translation_final", 1, {
+      translation_id: 9, ...base, translated_text: "Final sentence display.",
+    }));
+    await waitFor(() => expect(screen.getByTestId("live-lyric-translation")).toHaveTextContent("Sentence display."));
   });
 });
 

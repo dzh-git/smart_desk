@@ -185,6 +185,66 @@ def _trace_points() -> list[dict]:
             "description": "Offline ASR rescore + translation + persist complete",
             "side": "backend",
         },
+        {
+            "name": "sentence_completed_at",
+            "location": "speech_ws.py:_publish_completed_sentences()",
+            "description": "Semantic sentence committed and ready for translation",
+            "side": "backend",
+        },
+        {
+            "name": "sentence_translation_queued_at",
+            "location": "interim_translation_service.py:SentenceTranslationService.submit()",
+            "description": "Completed sentence entered the FIFO translation queue",
+            "side": "backend",
+        },
+        {
+            "name": "sentence_translation_dequeued_at",
+            "location": "interim_translation_service.py:SentenceTranslationService._run()",
+            "description": "Sentence translation worker started the job",
+            "side": "backend",
+        },
+        {
+            "name": "sentence_translation_inference_end_at",
+            "location": "interim_translation_service.py:SentenceTranslationService._run()",
+            "description": "OPUS-MT sentence inference completed",
+            "side": "backend",
+        },
+        {
+            "name": "sentence_translation_broadcast_at",
+            "location": "interim_translation_service.py:_publish_result()",
+            "description": "Sentence translation result published to EventBus",
+            "side": "backend",
+        },
+        {
+            "name": "frontend_sentence_translation_received_at",
+            "location": "useSeatData.ts/useAdminData.ts translation_sentence",
+            "description": "Frontend received a sentence translation state",
+            "side": "frontend",
+        },
+        {
+            "name": "frontend_sentence_translation_rendered_at",
+            "location": "TranscriptPanel.tsx:LiveLyricsBlock useEffect",
+            "description": "Sentence translation state committed to the lyric UI",
+            "side": "frontend",
+        },
+        {
+            "name": "finalization_queued_at",
+            "location": "speech_finalization_service.py:submit()",
+            "description": "Utterance entered the final ASR queue",
+            "side": "backend",
+        },
+        {
+            "name": "finalization_dequeued_at",
+            "location": "speech_finalization_service.py:_run()",
+            "description": "Final ASR worker started the utterance",
+            "side": "backend",
+        },
+        {
+            "name": "finalization_worker_completed_at",
+            "location": "speech_finalization_service.py:_run()",
+            "description": "Final ASR, translation, persistence and broadcast completed",
+            "side": "backend",
+        },
     ]
 
 
@@ -281,6 +341,62 @@ def _metric_definitions() -> list[dict]:
             "description": "Total first-token latency from user click to first displayed interim. Requires merged frontend+backend traces.",
             "likely_bottleneck": "The user-visible latency — what matters most",
             "requires_events": ["start_clicked_at", "frontend_interim_rendered_at"],
+        },
+        {
+            "name": "sentence_translation_queue_wait_ms",
+            "category": CAT_BACKEND,
+            "formula": "sentence_translation_dequeued_at - sentence_translation_queued_at",
+            "description": "Time a completed sentence waited in the FIFO translation queue",
+            "likely_bottleneck": "single translation worker backlog or OPUS inference lock contention",
+            "requires_events": ["sentence_translation_queued_at", "sentence_translation_dequeued_at"],
+        },
+        {
+            "name": "sentence_translation_inference_ms",
+            "category": CAT_BACKEND,
+            "formula": "sentence_translation_inference_end_at - sentence_translation_dequeued_at",
+            "description": "Time spent waiting for and running OPUS-MT for one sentence",
+            "likely_bottleneck": "OPUS-MT CPU inference, segmentation, retry, or shared inference lock",
+            "requires_events": ["sentence_translation_dequeued_at", "sentence_translation_inference_end_at"],
+        },
+        {
+            "name": "sentence_translation_delivery_ms",
+            "category": CAT_CROSS_BOUNDARY,
+            "formula": "frontend_sentence_translation_received_at - sentence_translation_broadcast_at",
+            "description": "EventBus and WebSocket delivery time for the translated sentence",
+            "likely_bottleneck": "backend broadcast, WebSocket serialization, network",
+            "requires_events": ["sentence_translation_broadcast_at", "frontend_sentence_translation_received_at"],
+        },
+        {
+            "name": "sentence_translation_render_ms",
+            "category": CAT_FRONTEND,
+            "formula": "frontend_sentence_translation_rendered_at - frontend_sentence_translation_received_at",
+            "description": "React commit time after receiving translated sentence",
+            "likely_bottleneck": "frontend state updates and rendering",
+            "requires_events": ["frontend_sentence_translation_received_at", "frontend_sentence_translation_rendered_at"],
+        },
+        {
+            "name": "sentence_completed_to_translation_received_ms",
+            "category": CAT_CROSS_BOUNDARY,
+            "formula": "frontend_sentence_translation_received_at - sentence_completed_at",
+            "description": "User-visible backend-to-frontend translation latency after sentence completion",
+            "likely_bottleneck": "sum of queue wait, OPUS inference, broadcast and frontend delivery",
+            "requires_events": ["sentence_completed_at", "frontend_sentence_translation_received_at"],
+        },
+        {
+            "name": "finalization_queue_wait_ms",
+            "category": CAT_BACKEND,
+            "formula": "finalization_dequeued_at - finalization_queued_at",
+            "description": "Time an utterance waited for the single final ASR worker",
+            "likely_bottleneck": "SenseVoice/final translation backlog from earlier utterances",
+            "requires_events": ["finalization_queued_at", "finalization_dequeued_at"],
+        },
+        {
+            "name": "finalization_processing_ms",
+            "category": CAT_BACKEND,
+            "formula": "finalization_worker_completed_at - finalization_dequeued_at",
+            "description": "SenseVoice final ASR, final translation, persistence and broadcast time",
+            "likely_bottleneck": "SenseVoice CPU inference or final OPUS-MT translation",
+            "requires_events": ["finalization_dequeued_at", "finalization_worker_completed_at"],
         },
     ]
 
@@ -421,12 +537,15 @@ def _load_backend_trace(backend_trace_path: str | None = None) -> dict:
         try:
             with open(path_obj, "r", encoding="utf-8") as f:
                 raw = json.load(f)
-            raw_events = raw.get("events", [])
+            # Accept both a direct speech_trace export and the ApiResponse
+            # envelope saved from GET /api/speech/diagnostics.
+            payload = raw.get("data", raw) if isinstance(raw, dict) else {}
+            raw_events = payload.get("events", [])
             result["available"] = bool(raw_events)
             result["events"] = raw_events
             result["event_count"] = len(raw_events)
             result["source"] = "file"
-            result["enabled"] = raw.get("trace_enabled", False)
+            result["enabled"] = payload.get("trace_enabled", False)
             result["note"] = (
                 f"Backend trace loaded from file: {len(raw_events)} events"
             )

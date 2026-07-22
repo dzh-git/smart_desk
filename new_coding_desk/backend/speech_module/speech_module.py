@@ -1,6 +1,7 @@
 """SpeechModule — production facade for speech recognition and translation.
 
-Wraps Paraformer Streaming (streaming STT), Paraformer-large (offline STT),
+Wraps Paraformer Streaming (streaming STT), SenseVoiceSmall (language detection
+and English final STT), Paraformer-large (Chinese final STT),
 FSMN-VAD (voice activity detection), CT-Transformer (punctuation restoration),
 and audio preprocessing.
 
@@ -21,6 +22,8 @@ Status tracking (Task 119):
         "preloading": False,
         "streaming_model": "loaded",
         "offline_model": "loaded",
+        "bilingual_final_asr": "loaded",
+        "chinese_final_asr": "loaded",
         "punctuation_model": "loaded",
         "last_error": None,
     }
@@ -44,7 +47,10 @@ _INITIAL_STATUS = {
     "ready": False,
     "preloading": False,
     "streaming_model": STATUS_UNKNOWN,
+    "english_streaming_asr": STATUS_UNKNOWN,
     "offline_model": STATUS_UNKNOWN,
+    "bilingual_final_asr": STATUS_UNKNOWN,
+    "chinese_final_asr": STATUS_UNKNOWN,
     "punctuation_model": STATUS_UNKNOWN,
     "vad_model": STATUS_UNKNOWN,
     "last_error": None,
@@ -95,7 +101,10 @@ class SpeechModule:
             ready             — bool, all models loaded
             preloading        — bool, preload in progress
             streaming_model   — "unknown" | "loading" | "loaded" | "error"
+            english_streaming_asr — sherpa-onnx English online ASR status
             offline_model     — "unknown" | "loading" | "loaded" | "error"
+            bilingual_final_asr — SenseVoice language/English final status
+            chinese_final_asr — Paraformer-large Chinese final status
             punctuation_model — "unknown" | "loading" | "loaded" | "error"
             last_error        — str | None
         """
@@ -108,8 +117,10 @@ class SpeechModule:
 
         Load order:
             1. Paraformer Streaming (for process_interim_*)
-            2. Paraformer-large (for transcribe / transcribe_array)
-            3. CT-Transformer punctuation (for add_punctuation)
+            2. sherpa-onnx Zipformer (for English online ASR; degradable)
+            3. SenseVoiceSmall (language detection and final ASR)
+            4. Paraformer-large (for Chinese final ASR)
+            5. CT-Transformer punctuation (for Chinese final punctuation)
 
         On failure, marks the failing model as STATUS_ERROR and keeps
         last_error populated.  Other models may still load.  The overall
@@ -144,18 +155,50 @@ class SpeechModule:
                 self._status["last_error"] = f"streaming: {exc}"
                 _log_warning(f"Streaming model load failed: {exc}")
 
-            # 2. Offline model (Paraformer-large)
+            # 2. English true streaming model. It is deliberately
+            # non-blocking: a missing local Zipformer falls back to the
+            # existing SenseVoice rolling path and must not take Chinese ASR
+            # offline.
+            self._status["english_streaming_asr"] = STATUS_LOADING
+            try:
+                from .english_streaming import warmup_english_streaming
+                warmup_english_streaming()
+                self._status["english_streaming_asr"] = STATUS_LOADED
+            except Exception as exc:
+                self._status["english_streaming_asr"] = STATUS_ERROR
+                _log_warning(f"English streaming model load failed; fallback enabled: {exc}")
+
+            # 3. Bilingual language detection + English final ASR
             self._status["offline_model"] = STATUS_LOADING
+            self._status["bilingual_final_asr"] = STATUS_LOADING
+            try:
+                from .bilingual_asr import warmup_bilingual_asr
+                warmup_bilingual_asr()
+                self._status["bilingual_final_asr"] = STATUS_LOADED
+            except Exception as exc:
+                self._status["bilingual_final_asr"] = STATUS_ERROR
+                self._status["last_error"] = f"offline: {exc}"
+                _log_warning(f"Bilingual final model load failed: {exc}")
+
+            # 4. Chinese-specialized final ASR
+            self._status["chinese_final_asr"] = STATUS_LOADING
             try:
                 from .stt_streaming import warmup_offline
                 warmup_offline()
-                self._status["offline_model"] = STATUS_LOADED
+                self._status["chinese_final_asr"] = STATUS_LOADED
             except Exception as exc:
-                self._status["offline_model"] = STATUS_ERROR
-                self._status["last_error"] = f"offline: {exc}"
-                _log_warning(f"Offline model load failed: {exc}")
+                self._status["chinese_final_asr"] = STATUS_ERROR
+                self._status["last_error"] = f"chinese_offline: {exc}"
+                _log_warning(f"Chinese final model load failed: {exc}")
 
-            # 3. Punctuation model (CT-Transformer)
+            self._status["offline_model"] = (
+                STATUS_LOADED
+                if self._status["bilingual_final_asr"] == STATUS_LOADED
+                and self._status["chinese_final_asr"] == STATUS_LOADED
+                else STATUS_ERROR
+            )
+
+            # 5. Punctuation model (CT-Transformer, Paraformer Chinese only)
             self._status["punctuation_model"] = STATUS_LOADING
             try:
                 from .punctuation import warmup_punc
@@ -173,15 +216,16 @@ class SpeechModule:
                 self._status["last_error"] = f"punctuation: {exc}"
                 _log_warning(f"Punctuation model load failed: {exc}")
 
-            # Overall readiness: streaming + offline required.
-            # Punctuation model is tracked separately and does NOT block ASR.
+            # A usable meeting speech pipeline requires streaming and final ASR.
+            # Translation failures remain non-blocking and are reported separately.
             all_ok = (
                 self._status["streaming_model"] == STATUS_LOADED
-                and self._status["offline_model"] == STATUS_LOADED
+                and self._status["bilingual_final_asr"] == STATUS_LOADED
+                and self._status["chinese_final_asr"] == STATUS_LOADED
             )
             self._status["ready"] = all_ok
 
-            # 4. FSMN-VAD is a quality layer. Failure is visible in status but
+            # 5. FSMN-VAD is a quality layer. Failure is visible in status but
             # does not make ASR unavailable because the adaptive gate remains.
             self._status["vad_model"] = STATUS_LOADING
             try:
@@ -210,15 +254,39 @@ class SpeechModule:
     def transcribe_array(
         self, audio: np.ndarray, sample_rate: int = 16000,
     ) -> str:
-        """Transcribe a float32 mono array. Returns "" on failure."""
+        """Transcribe a float32 mono array. Compatibility text-only wrapper."""
         try:
-            from .stt_streaming import offline_rescore
-            if sample_rate != 16000:
-                from .audio_utils import resample_if_needed
-                audio = resample_if_needed(audio, sample_rate, 16000)
-            return offline_rescore(audio)
+            return self.transcribe_array_with_language(audio, sample_rate).text
         except Exception:
             return ""
+
+    def transcribe_array_with_language(
+        self, audio: np.ndarray, sample_rate: int = 16000,
+    ) -> "SpeechRecognitionResult":
+        """Return automatic zh/en final text using the language-specific ASR."""
+        from .bilingual_asr import SpeechRecognitionResult, recognize_bilingual
+
+        if sample_rate != 16000:
+            from .audio_utils import resample_if_needed
+
+            audio = resample_if_needed(audio, sample_rate, 16000)
+        result = recognize_bilingual(audio)
+        if not isinstance(result, SpeechRecognitionResult):
+            raise RuntimeError("Bilingual ASR returned an invalid result")
+        if result.source_lang == "zh":
+            try:
+                from .stt_streaming import offline_rescore
+
+                chinese_text = offline_rescore(audio).strip()
+                if chinese_text:
+                    return SpeechRecognitionResult(
+                        text=chinese_text,
+                        source_lang="zh",
+                        recognition_model="paraformer_zh",
+                    )
+            except Exception as exc:
+                _log_warning(f"Chinese final rescore unavailable, using SenseVoice: {exc}")
+        return result
 
     def trim_to_speech(
         self, audio: np.ndarray, sample_rate: int = 16000,
@@ -299,6 +367,43 @@ class SpeechModule:
         # duplication when cumulative text grows beyond flush thresholds.
         return result["full_text"]
 
+    def process_english_interim_array(
+        self, audio: np.ndarray, session_key: str = "default",
+        sample_rate: int = 16000,
+    ) -> str:
+        """Feed one PCM chunk into the session's true English online stream."""
+        state = self._ensure_session(session_key)
+        if sample_rate != 16000:
+            from .audio_utils import resample_if_needed
+            audio = resample_if_needed(audio, sample_rate, 16000)
+        processor = state.get("english_processor")
+        if processor is None:
+            from .english_streaming import EnglishStreamingProcessor
+            processor = EnglishStreamingProcessor()
+            state["english_processor"] = processor
+        return processor.process_chunk(audio, 16000)
+
+    def finish_english_interim(self, session_key: str = "default") -> str:
+        """Flush a session's English online recognizer at an explicit end."""
+        state = self._sessions.get(session_key)
+        processor = state.get("english_processor") if state else None
+        return processor.finish() if processor is not None else ""
+
+    def rotate_english_interim(self, session_key: str = "default") -> str:
+        """Finish one English sentence and start a fresh online decoder.
+
+        This deliberately does not reset the surrounding WebSocket utterance
+        or VAD state.  The next PCM frame creates a new Zipformer stream, so
+        later cumulative hypotheses cannot revise an already committed lyric.
+        """
+        state = self._sessions.get(session_key)
+        processor = state.get("english_processor") if state else None
+        if processor is None:
+            return ""
+        text = processor.finish()
+        state["english_processor"] = None
+        return text
+
     def reset_interim(self, session_key: str = "default") -> None:
         """Reset accumulated text for a new utterance. Preserves CIF cache."""
         state = self._sessions.get(session_key)
@@ -310,6 +415,7 @@ class SpeechModule:
         state = self._sessions.get(session_key)
         if state is not None:
             state["processor"].reset()
+            state["english_processor"] = None
 
     def start_utterance(self, session_key: str = "default") -> None:
         """Mark start of a new utterance with an isolated streaming cache."""
@@ -376,6 +482,7 @@ class SpeechModule:
             from .stt_streaming import StreamingChunkProcessor
             self._sessions[session_key] = {
                 "processor": StreamingChunkProcessor(),
+                "english_processor": None,
                 "meeting_id": None,
                 "seat_id": None,
                 "next_segment_id": 1,

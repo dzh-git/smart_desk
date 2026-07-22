@@ -916,3 +916,25 @@ class TestLauncherFileByteHygiene:
         assert not non_ascii, f"non-ASCII bytes at {non_ascii[:10]}"
         assert data[:3] != b"\xef\xbb\xbf", "start.bat must not have a UTF-8 BOM"
         assert _is_crlf(START_BAT), "start.bat must use CRLF (no bare LF)"
+
+
+class TestPowerShellInsideDelayedExpansion:
+    """PowerShell commands must survive CMD delayed-expansion parsing."""
+
+    def test_no_bang_negation_in_powershell_commands(self) -> None:
+        text = _read_text(START_BAT)
+        assert "!$exited" not in text, (
+            "CMD delayed expansion consumes text between PowerShell '!$exited' "
+            "tokens. Use PowerShell '-not $exited' instead."
+        )
+
+    def test_host_process_launches_use_powershell_not_operator(self) -> None:
+        text = _read_text(START_BAT)
+        host_launches = [
+            line
+            for line in text.splitlines()
+            if "Start-Process" in line
+            and ("agent.py" in line or "supervisor.py" in line)
+        ]
+        assert len(host_launches) == 2
+        assert all("-and -not $exited" in line for line in host_launches)

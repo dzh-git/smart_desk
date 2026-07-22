@@ -92,8 +92,13 @@ Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 | `ENABLE_DEMO_SEED_WHEN_NO_ACTIVE=true` | 没有 active meeting 时创建 demo active meeting。 |
 | `ENABLE_DEMO_SEAT_API=true` | 启用开发用座位占用/离座 API。 |
 | `VITE_ENABLE_DEMO_CONTROLS=true` | 显示前端 demo 控件。 |
-| `ENABLE_TRANSLATION_MODEL=true` | 启用本地 OPUS-MT zh-en 最终翻译。 |
-| `TRANSLATION_MODEL_PATH=...` | 覆盖本地翻译模型路径。 |
+| `ENABLE_TRANSLATION_MODEL=true` | 启用本地 OPUS-MT 中英双向最终翻译。 |
+| `TRANSLATION_ZH_EN_MODEL_PATH=...` | 覆盖本地中译英模型路径。 |
+| `TRANSLATION_EN_ZH_MODEL_PATH=...` | 覆盖本地英译中模型路径。 |
+| `BILINGUAL_ASR_MODEL_PATH=...` | 覆盖本地 SenseVoiceSmall 终稿识别路径。 |
+| `ENGLISH_STREAMING_ASR_MODEL_PATH=...` | 覆盖本地 sherpa-onnx Zipformer 英语流式识别模型路径。 |
+| `CHINESE_ASR_MODEL_PATH=...` | 覆盖本地 Paraformer-large 中文终稿识别路径。 |
+| `TRANSLATION_MODEL_PATH=...` | 旧版中译英路径兼容项。 |
 | `RUN_TRANSLATION_SMOKE=true` | 启用翻译模型 smoke test。 |
 | `ENABLE_DISPLAY_AGENT=true` | 启动本机窗口切换 Agent；默认开启。 |
 | `ENABLE_SCREEN_STREAM=true` | 启动 FFmpeg 和 MediaMTX 屏幕串流；默认关闭。 |
@@ -204,12 +209,73 @@ python host_services/screen_stream/supervisor.py --check
 - Speech uplink：`/ws/speech/{meeting_id}?seat=N`
 - Meeting broadcast：`/ws/{meeting_id}?seat=N`
 - Audio：PCM16 little-endian、16 kHz、mono
-- Interim events：`translation_interim`，不持久化、不翻译
-- Final events：`translation_final`，持久化到 `translation_records`
+- Language mode：发言席可选自动/中文/English；自动模式用 1.2 秒 SenseVoice 探测，本句锁定语言
+- Interim events：中文由 Paraformer Streaming、英文由 sherpa-onnx Zipformer 真流式识别；仅在本地 Zipformer 缺失时降级到 SenseVoice 滚动识别。`translation_interim` 携带稳定 `sentence_id`、实际语言和识别引擎
+- Sentence translation：终止标点经 0.9 秒停顿或后续文本确认、无标点自然停顿 2 秒、手动停止时，以 `translation_sentence` 按句顺序翻译；英文句末先由本地 SenseVoice 一次性校正标点、大小写与空格，`source_locked` 后不再被后续流式结果改写；实时区保留本次会议的句组历史，在固定高度框内从底部向上滚动
+- Final events：SenseVoiceSmall 检测语言并识别英文；中文由 Paraformer-large 重识别，OPUS-MT 翻译到另一语言并持久化
+- Live lyrics：终稿不会清除已配对的逐句字幕；中英文均随字幕框宽度自然换行，英文不拆单词；固定高度字幕框保留完整句组内容并自动向下滚动
 - Cancel cleanup：`translation_interim_cancelled`
 - Auto-final：后端 RMS endpoint detection
 - Manual fallback：`end_hint`
-- Optional translation：`ENABLE_TRANSLATION_MODEL=true`
+- 准备模型：`python backend/scripts/prepare_bilingual_models.py`
+- 延迟验收：`python backend/scripts/benchmark_bilingual_translation.py`
+- 启用翻译：`ENABLE_TRANSLATION_MODEL=true`
+- CPU 预算：`SMART_DESK_TORCH_THREADS=4`、`SMART_DESK_TORCH_INTEROP_THREADS=1`（可覆盖）
+
+### Speech latency diagnostics
+
+`start.bat` enables bounded frontend/backend speech traces for local debugging.
+Before a controlled reproduction, clear the backend ring buffer:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/speech/diagnostics/clear
+```
+
+Speak continuously for 20–30 seconds with at least three complete sentences,
+including one short pause and one pause longer than two seconds. Then save the
+backend diagnostics:
+
+```powershell
+$report = Invoke-RestMethod http://127.0.0.1:8000/api/speech/diagnostics?limit=10000
+$report | ConvertTo-Json -Depth 12 | Set-Content .smartdesk-runtime/speech-backend-diagnostics.json -Encoding UTF8
+```
+
+In the speaker-seat browser DevTools console, run:
+
+```javascript
+window.__SMARTDESK_SPEECH_TRACE__.downloadTraceFile("speech-frontend-trace.json")
+```
+
+The backend file contains identifiers, timings, queue depths and memory only;
+it does not contain PCM audio. Attach both JSON files when reporting latency.
+
+### Reproducible speech dataset benchmark
+
+The FLEURS-based benchmark bypasses microphone/browser timing and never starts
+the FastAPI lifespan, Arduino, or Display Agent. Prepare the local CC-BY-4.0
+subset and its volume-controlled/five-minute sessions:
+
+```powershell
+python backend/scripts/prepare_open_speech_latency_dataset.py
+```
+
+Replay PCM in production-sized 100 ms frames with the same 50-frame bounded
+queue, live ASR routing and sentence translation used by the speech WebSocket:
+
+```powershell
+python backend/scripts/benchmark_streaming_speech_latency.py --suite smoke
+python backend/scripts/benchmark_streaming_speech_latency.py --suite long
+```
+
+Evaluate final language detection, Chinese CER, English WER and translation
+availability on the 30 original-volume utterances, then repeat after controlled
+active-RMS normalization:
+
+```powershell
+python backend/scripts/benchmark_bilingual_speech_accuracy.py
+python backend/scripts/benchmark_bilingual_speech_accuracy.py --normalize-audio `
+  --output working/speech_latency_dataset/bilingual_accuracy_normalized_report.json
+```
 
 ## Notes
 

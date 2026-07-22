@@ -100,6 +100,55 @@ class TestMergeTexts:
         assert len(result) <= len("我喝了好多水") + len("我喝了很多")
 
 
+class TestEnglishRollingMerge:
+    def test_merges_only_at_whole_word_overlap(self):
+        from backend.speech_module.text_utils import merge_english_transcripts
+
+        assert merge_english_transcripts(
+            "so the first word that we have is a road trip",
+            "a road trip is really an interesting journey",
+        ) == "so the first word that we have is a road trip is really an interesting journey"
+
+    def test_normalizes_spaces_around_model_punctuation(self):
+        from backend.speech_module.text_utils import normalize_english_display
+
+        assert normalize_english_display(
+            "All right ,that sounds complicated .Well done!Next."
+        ) == "All right, that sounds complicated. Well done! Next."
+
+    def test_unanchored_window_does_not_duplicate_the_previous_window(self):
+        from backend.speech_module.text_utils import merge_english_transcripts
+
+        previous = "the earlier rolling window contains a complete phrase"
+        current = "an entirely revised snapshot has different words"
+        result = merge_english_transcripts(previous, current)
+        assert not (previous in result and current in result)
+
+    def test_formats_zipformer_uppercase_words_without_inventing_internal_punctuation(self):
+        from backend.speech_module.text_utils import format_english_streaming_display
+
+        result = format_english_streaming_display(
+            "I'M BRITISH AND I CAME TO WASHINGTON ON THURSDAY",
+        )
+        assert result == "I'm British and I came to Washington on Thursday"
+        assert "." not in result
+
+    def test_adds_terminal_period_only_after_vad_confirms_sentence(self):
+        from backend.speech_module.text_utils import format_english_streaming_display
+
+        assert format_english_streaming_display(
+            "NEW CLUB WE HAVE FIFTY MEMBERS", sentence_complete=True,
+        ) == "New club we have fifty members."
+
+    def test_preserves_a_completed_boundary_when_the_stream_grows(self):
+        from backend.speech_module.text_utils import merge_english_display_with_history
+
+        assert merge_english_display_with_history(
+            "I know but it's always packed with people.",
+            "I KNOW BUT IT'S ALWAYS PACKED WITH PEOPLE WHICH SUPERMARKET DO YOU USUALLY GO TO",
+        ) == "I know but it's always packed with people. Which supermarket do you usually go to"
+
+
 # ── SentenceMerger (fixed) tests ──────────────────────────────────────────────
 
 

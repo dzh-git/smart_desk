@@ -8,7 +8,7 @@ Phase 2 stability optimization:
 Phase 3 accuracy optimization:
   - Chunk size presets for latency/accuracy tradeoff
   - Hotword contextual biasing
-  - 2pass offline rescoring (Paraformer-large corrects streaming output)
+  - Sentence-final bilingual rescoring (SenseVoiceSmall corrects streaming output)
 
 Replaces pseudo-streaming (repeated full-context decode) with genuine
 chunk-based incremental decoding.
@@ -18,9 +18,22 @@ from __future__ import annotations
 import time
 import numpy as np
 from typing import Optional
+import os
+import threading
 
 _streaming_model = None
 _offline_model = None
+_offline_model_path: str | None = None
+_offline_load_error: str | None = None
+_offline_lock = threading.RLock()
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+_DEFAULT_CHINESE_ASR_PATH = os.path.join(
+    _PROJECT_ROOT,
+    "models",
+    "iic",
+    "speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+)
 
 
 # ── Phase 3: Chunk Size Presets ────────────────────────────────────────────
@@ -57,14 +70,13 @@ def _find_local_model(pattern: str) -> str | None:
     ModelScope cache (models/iic/*).
     """
     import glob as _glob
-    import os as _os
     # HF format: models/models--funasr--<pattern>/snapshots/<hash>/
-    base_hf = "models/models--funasr--"
+    base_hf = os.path.join(_PROJECT_ROOT, "models", "models--funasr--")
     candidates = _glob.glob(f"{base_hf}{pattern}/snapshots/*")
     if candidates:
         return candidates[0]
     # ModelScope format: models/iic/<model_id>/
-    candidates = _glob.glob(f"models/iic/*{pattern}*")
+    candidates = _glob.glob(os.path.join(_PROJECT_ROOT, "models", "iic", f"*{pattern}*"))
     if candidates:
         return candidates[0]
     return None
@@ -72,12 +84,11 @@ def _find_local_model(pattern: str) -> str | None:
 
 def _resolve_model_path(model_dir: str | None, hf_pattern: str, ms_id: str) -> str:
     """Resolve model path: explicit dir > local cache (HF + MS) > ModelScope ID."""
-    import os as _os
-    if model_dir and _os.path.isdir(model_dir):
-        return model_dir
+    if model_dir and os.path.isdir(model_dir):
+        return os.path.abspath(model_dir)
     # Check ModelScope cache first (has .pt), then HF cache
-    ms_dir = f"models/{ms_id}"
-    if _os.path.isdir(ms_dir):
+    ms_dir = os.path.join(_PROJECT_ROOT, "models", *ms_id.split("/"))
+    if os.path.isdir(ms_dir):
         return ms_dir
     local = _find_local_model(hf_pattern)
     if local:
@@ -112,24 +123,36 @@ def warmup_streaming(model_dir: str | None = None, device: str = "cpu"):
 
 
 def warmup_offline(model_dir: str | None = None, device: str = "cpu"):
-    """Load Paraformer-large for 2pass offline rescoring (Phase 3)."""
-    global _offline_model
-    if _offline_model is not None:
-        return
+    """Load the project-local Chinese Paraformer-large final ASR model."""
+    global _offline_model, _offline_model_path, _offline_load_error
+    with _offline_lock:
+        if _offline_model is not None:
+            return
+        path = os.path.abspath(
+            model_dir
+            or os.environ.get("CHINESE_ASR_MODEL_PATH", "").strip()
+            or _DEFAULT_CHINESE_ASR_PATH
+        )
+        _offline_model_path = path
+        if not os.path.isfile(os.path.join(path, "model.pt")):
+            _offline_load_error = f"Paraformer-large model files are missing: {path}"
+            raise FileNotFoundError(_offline_load_error)
 
-    from funasr.auto.auto_model import AutoModel
+        try:
+            from funasr.auto.auto_model import AutoModel
 
-    path = _resolve_model_path(
-        model_dir,
-        "Paraformer-large",
-        "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-    )
-    _offline_model = AutoModel(
-        model=path, disable_update=True, device=device,
-        ncpu=4 if device == "cpu" else 2,
-    )
-    src = "local cache" if "/" not in str(path) or "models" in str(path) else "downloaded"
-    print(f"  Paraformer-large loaded ({src}, device={device}).")
+            _offline_model = AutoModel(
+                model=path,
+                disable_update=True,
+                device=device,
+                ncpu=4 if device == "cpu" else 2,
+            )
+            _offline_load_error = None
+            print(f"  Paraformer-large loaded (local, device={device}).")
+        except Exception as exc:
+            _offline_model = None
+            _offline_load_error = f"Paraformer-large load failed: {exc}"
+            raise RuntimeError(_offline_load_error) from exc
 
 
 
@@ -219,6 +242,7 @@ class StreamingChunkProcessor:
             chunk_size=self._chunk_size,
             encoder_chunk_look_back=self._encoder_lookback,
             decoder_chunk_look_back=self._decoder_lookback,
+            disable_pbar=True,
         )
         decode_ms = round((time.perf_counter() - t0) * 1000)
 
@@ -281,35 +305,47 @@ class StreamingChunkProcessor:
 # ── Offline Rescore (Phase 3: 2pass) ────────────────────────────────────────
 
 def offline_rescore(audio: np.ndarray) -> str:
-    """Offline full-context rescoring with Paraformer-large.
+    """Run Chinese-specialized full-context final recognition."""
+    with _offline_lock:
+        if _offline_model is None:
+            raise RuntimeError(
+                _offline_load_error
+                or "Chinese final ASR is not loaded. Call warmup_offline() first."
+            )
+        audio32 = np.asarray(audio, dtype=np.float32)
+        if audio32.ndim > 1:
+            audio32 = audio32.mean(axis=1)
+        kwargs = {
+            "input": audio32,
+            "batch_size_s": 60,
+            "disable_pbar": True,
+        }
+        hotwords = os.environ.get("CHINESE_ASR_HOTWORDS", "").strip()
+        if hotwords:
+            kwargs["hotword"] = hotwords
+        result = _offline_model.generate(**kwargs)
 
-    Used for 2pass: replaces streaming result when VAD detects end-of-sentence.
-    """
-    global _offline_model
-    if _offline_model is None:
-        raise RuntimeError("Offline model not loaded. Call warmup_offline() first.")
+    item = result[0] if isinstance(result, list) and result else result
+    if isinstance(item, dict):
+        return str(item.get("text") or "").strip()
+    if isinstance(item, str):
+        return item.strip()
+    return ""
 
-    audio32 = audio.astype(np.float32)
-    if audio32.ndim > 1:
-        audio32 = audio32.mean(axis=1)
 
-    result = _offline_model.generate(input=audio32, batch_size_s=60)
-
-    text = ""
-    if isinstance(result, list) and len(result) > 0:
-        item = result[0]
-        if isinstance(item, dict):
-            text = item.get("text", "")
-        elif isinstance(item, str):
-            text = item
-    elif isinstance(result, dict):
-        text = result.get("text", "")
-    elif isinstance(result, str):
-        text = result
-
-    import re
-    text = re.sub(r"<\|[^|]+\|>", "", text).strip()
-    return text
+def get_offline_asr_status() -> dict[str, object]:
+    """Return Chinese final ASR readiness without triggering model loading."""
+    path = _offline_model_path or os.path.abspath(
+        os.environ.get("CHINESE_ASR_MODEL_PATH", "").strip()
+        or _DEFAULT_CHINESE_ASR_PATH
+    )
+    return {
+        "status": "loaded" if _offline_model is not None else (
+            "error" if _offline_load_error else "unknown"
+        ),
+        "path": path,
+        "error": _offline_load_error,
+    }
 
 
 # ── VAD Silence Detector (lightweight) ──────────────────────────────────────

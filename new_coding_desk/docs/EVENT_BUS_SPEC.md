@@ -28,7 +28,7 @@ meeting IDs from the frontend.
 | `SeatService` | `seat_occupied`, `seat_vacant`, `checkin_prompt`, `check_in`, `speaker_seat_set`, `speaker_seat_clear`, `translation_interim_cancelled` on speaker switch |
 | `VoteService` | `vote_started`, `vote_updated`, `vote_closed` |
 | `ServiceCallService` | `service_call_created`, `service_call_resolved`, `service_call_cancelled` |
-| `SpeechStreamService` | `translation_interim`, `translation_interim_cancelled` |
+| `SpeechStreamService` | `translation_interim`, `translation_sentence`, `translation_interim_cancelled` |
 | `TranslationService` | `translation_final` |
 
 ## Broadcast Events
@@ -41,7 +41,7 @@ The WebSocket broadcaster forwards:
 - agenda events: `agenda_updated`
 - vote events: `vote_started`, `vote_updated`, `vote_closed`
 - service call events: `service_call_created`, `service_call_resolved`, `service_call_cancelled`
-- speech/translation events: `translation_interim`, `translation_interim_cancelled`, `translation_final`
+- speech/translation events: `translation_interim`, `translation_sentence`, `translation_interim_cancelled`, `translation_finalizing`, `translation_final`
 
 ## Agenda Event Rules
 
@@ -82,11 +82,27 @@ the current effective meeting id.
 
 `translation_interim`:
 
-- published by `SpeechStreamService`;
+- source revisions are published by `SpeechStreamService`;
 - ephemeral;
-- contains `utterance_id`, `seat_id`, `revision`, `source_text`, and optional `caption`;
+- contains `utterance_id`, `seat_id`, `revision`, language direction,
+  `source_text`, optional `caption`, and the current `sentence_id`,
+  `sentence_sequence`, `sentence_source_text`, `sentence_state`;
 - not persisted;
-- not translated.
+- visual line wrapping is independent from semantic sentence completion.
+
+`translation_sentence`:
+
+- ephemeral sentence-level lyric event published as `pending`, then as `ok` or
+  `unavailable` for the same `sentence_id`;
+- English sentence events additionally carry `recognition_status` and
+  `source_locked`; a `correcting` raw stream result may be replaced once by
+  local SenseVoice, and a locked source must remain immutable thereafter;
+- completed sentences use an ordered FIFO worker and are never replaced by a
+  newer sentence;
+- clients retain the meeting's source/translation pairs per seat; the fixed-height
+  lyric viewport keeps the newest pair at the bottom and scrolls older pairs upward;
+- terminal punctuation requires a short pause or following content; commas and
+  visual length wrapping do not complete a sentence.
 
 `translation_final`:
 
@@ -112,6 +128,8 @@ The frontend checks status with `GET /api/speech/status`.
 - For business events, re-fetch the relevant HTTP resources.
 - For `translation_interim`, update the live caption in place by
   `utterance_id` and `revision`.
+- For `translation_sentence`, update only the matching `sentence_id`; do not
+  clear lyric pairs on `translation_finalizing` or `translation_final`.
 - For `translation_final`, remove matching interim caption and display the
   persisted final record.
 - For `translation_interim_cancelled`, remove matching interim caption.

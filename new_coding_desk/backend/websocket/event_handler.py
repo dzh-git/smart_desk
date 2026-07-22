@@ -76,6 +76,7 @@ class WebSocketEventHandler:
         "service_call_resolved",
         "service_call_cancelled",
         "translation_interim",
+        "translation_sentence",
         "translation_interim_cancelled",
         "translation_finalizing",
         "translation_final",

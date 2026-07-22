@@ -28,7 +28,7 @@ from typing import Any
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-MAX_ENTRIES: int = 1000
+MAX_ENTRIES: int = 10000
 
 # Check at import time; set SMART_DESK_ENABLE_SPEECH_TRACE=true to enable.
 _enabled: bool = (

@@ -15,6 +15,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { MicrophoneCapture } from "../audio/microphone";
 import { SpeechWsClient } from "../audio/speechWsClient";
+import type { SpeechLanguageMode } from "../audio/speechWsClient";
 import type { SpeechStatus } from "../audio/types";
 
 import { trace } from "../audio/speechTrace";
@@ -47,6 +48,10 @@ export interface UseSpeechStreamReturn {
   error: string | null;
   /** Current utterance ID from the backend, or null if not started. */
   utteranceId: string | null;
+  /** Requested recognition language, persisted independently per seat. */
+  languageMode: SpeechLanguageMode;
+  /** Change language while idle; recording keeps the utterance route locked. */
+  setLanguageMode: (mode: SpeechLanguageMode) => void;
   /** Start recording: request mic → connect WS → stream audio. */
   start: () => Promise<void>;
   /** Stop recording: send end_hint → close WS → stop mic. */
@@ -66,6 +71,12 @@ export function useSpeechStream(
   const [status, setStatus] = useState<SpeechStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [utteranceId, setUtteranceId] = useState<string | null>(null);
+  const storageKey = `smartdesk.speechLanguageMode.${seatId}`;
+  const [languageMode, setLanguageModeState] = useState<SpeechLanguageMode>(() => {
+    if (typeof window === "undefined") return "auto";
+    const stored = window.localStorage.getItem(storageKey);
+    return stored === "zh" || stored === "en" ? stored : "auto";
+  });
 
   // Mutable refs for lifecycle management
   const micRef = useRef<MicrophoneCapture | null>(null);
@@ -77,11 +88,23 @@ export function useSpeechStream(
   const generationRef = useRef(0);
   const mountedRef = useRef(true);
   const utteranceIdRef = useRef<string | null>(null);
+  const languageModeRef = useRef<SpeechLanguageMode>(languageMode);
+  languageModeRef.current = languageMode;
   // Task 126: stop delay timer ref — cleared on immediate cleanup/cancel/unmount
   const stopTimerRef = useRef<number | null>(null);
   // Task 127A: stable ref for options (avoids useCallback dependency churn)
   const optionsRef = useRef(options);
   optionsRef.current = options;
+
+  const setLanguageMode = useCallback((mode: SpeechLanguageMode) => {
+    if (recordingRef.current || startingRef.current) return;
+    languageModeRef.current = mode;
+    setLanguageModeState(mode);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(storageKey, mode);
+    }
+    trace("speech_language_mode_changed_at", { seatId, languageMode: mode });
+  }, [seatId, storageKey]);
 
   // ---- Cleanup (internal) ----
 
@@ -122,7 +145,11 @@ export function useSpeechStream(
       mountedRef.current && generationRef.current === generation
     );
 
-    trace("start_clicked_at", { meetingId, seatId });
+    trace("start_clicked_at", {
+      meetingId,
+      seatId,
+      languageMode: languageModeRef.current,
+    });
     setStatus("requesting_microphone");
     setError(null);
 
@@ -192,7 +219,11 @@ export function useSpeechStream(
         trace("speech_ws_reconnect_start_at", { meetingId, seatId });
 
         const replacement = createWsClient();
-        replacement.connect(meetingId, seatId).then((result) => {
+        replacement.connect(
+          meetingId,
+          seatId,
+          languageModeRef.current,
+        ).then((result) => {
           if (
             !isCurrent() || !recordingRef.current
             || wsRef.current !== replacement
@@ -243,7 +274,11 @@ export function useSpeechStream(
     wsClient = createWsClient();
 
     try {
-      const result = await wsClient.connect(meetingId, seatId);
+      const result = await wsClient.connect(
+        meetingId,
+        seatId,
+        languageModeRef.current,
+      );
       if (!isCurrent()) {
         disposeAttempt();
         return;
@@ -345,5 +380,14 @@ export function useSpeechStream(
     }
   }, [isSpeaker, cancel]);
 
-  return { status, error, utteranceId, start, stop, cancel };
+  return {
+    status,
+    error,
+    utteranceId,
+    languageMode,
+    setLanguageMode,
+    start,
+    stop,
+    cancel,
+  };
 }

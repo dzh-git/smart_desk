@@ -44,10 +44,17 @@ from backend.events.translation_events import (
     TranslationFinalizingEvent,
     TranslationInterimCancelledEvent,
     TranslationInterimEvent,
+    TranslationSentenceEvent,
 )
 from backend.repositories.seat_repository import SeatRepository
 from backend.repositories.translation_repository import TranslationRepository
 from backend.services.meeting_service import MeetingService
+from backend.services.interim_translation_service import (
+    EnglishSentenceCorrectionJob,
+    SentenceTranslationJob,
+    english_sentence_correction_service,
+    sentence_translation_service,
+)
 from backend.services.speech_finalization_service import (
     SpeechFinalizationJob,
     finalization_queue,
@@ -55,6 +62,7 @@ from backend.services.speech_finalization_service import (
 from backend.services.speech_stream_service import stream_service
 from backend.websocket.speech_registry import speech_registry
 from backend.websocket.speech_trace import trace
+from backend.speech_module.text_utils import detect_language
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +112,12 @@ ERROR_ASR_EMPTY_RESULT: dict[str, Any] = {
     "message": "No speech recognized in the audio",
 }
 
+ERROR_INVALID_LANGUAGE_MODE: dict[str, Any] = {
+    "type": "error",
+    "code": "INVALID_LANGUAGE_MODE",
+    "message": "language_mode must be one of: auto, zh, en",
+}
+
 # ── Constants ───────────────────────────────────────────────────────────────
 
 MIN_SEAT_ID = 1
@@ -130,6 +144,122 @@ def _cancel_replaced_session(meeting_id: int, seat_id: int) -> str | None:
             },
         ))
     return cancelled_uid
+
+
+def _publish_completed_sentences(
+    *,
+    meeting_id: int,
+    seat_id: int,
+    utterance_id: str,
+    revision: int,
+    completed_sentences: list[dict[str, Any]],
+    source_lang: str = "unknown",
+) -> None:
+    """Broadcast and enqueue every newly committed semantic sentence."""
+    for sentence in completed_sentences:
+        source_text = str(sentence.get("source_text") or "").strip()
+        sentence_id = str(sentence.get("sentence_id") or "")
+        if not source_text or not sentence_id:
+            continue
+        sequence = int(sentence.get("sentence_sequence") or 0)
+        sentence_source_lang = (
+            source_lang
+            if source_lang in {"zh", "en"}
+            else detect_language(source_text)
+        )
+        target_lang = "en" if sentence_source_lang == "zh" else "zh"
+        requires_english_correction = bool(
+            sentence_source_lang == "en"
+            and sentence.get("requires_english_correction")
+        )
+        if requires_english_correction:
+            # The visible raw Zipformer sentence is deliberately published
+            # once.  SenseVoice may replace it once with punctuation/casing;
+            # the frontend then locks its source text forever.
+            event_bus.publish(TranslationSentenceEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "utterance_id": utterance_id,
+                    "sentence_id": sentence_id,
+                    "sentence_sequence": sequence,
+                    "seat_id": seat_id,
+                    "revision": revision,
+                    "source_lang": "en",
+                    "target_lang": "zh",
+                    "source_text": source_text,
+                    "translated_text": "",
+                    "translation_status": "pending",
+                    "recognition_status": "correcting",
+                    "source_locked": False,
+                    "is_final": False,
+                },
+            ))
+            audio = sentence.get("audio")
+            if audio is not None:
+                english_sentence_correction_service.submit(
+                    EnglishSentenceCorrectionJob(
+                        meeting_id=meeting_id,
+                        seat_id=seat_id,
+                        utterance_id=utterance_id,
+                        sentence_id=sentence_id,
+                        sentence_sequence=sequence,
+                        revision=revision,
+                        source_text=source_text,
+                        audio=audio,
+                    ),
+                )
+            continue
+        job = SentenceTranslationJob(
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            utterance_id=utterance_id,
+            sentence_id=sentence_id,
+            sentence_sequence=sequence,
+            revision=revision,
+            source_lang=sentence_source_lang,
+            target_lang=target_lang,
+            source_text=source_text,
+            recognition_status=str(sentence.get("recognition_status") or "ok"),
+            source_locked=bool(sentence.get("source_locked", True)),
+        )
+        trace(
+            "sentence_completed_at",
+            utterance_id=utterance_id,
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            sentence_id=sentence_id,
+            sentence_sequence=sequence,
+            revision=revision,
+            source_text_len=len(source_text),
+        )
+        event_bus.publish(TranslationSentenceEvent(
+            meeting_id=meeting_id,
+            payload={
+                "utterance_id": utterance_id,
+                "sentence_id": sentence_id,
+                "sentence_sequence": sequence,
+                "seat_id": seat_id,
+                "revision": revision,
+                "source_lang": sentence_source_lang,
+                "target_lang": target_lang,
+                "source_text": source_text,
+                "translated_text": "",
+                "translation_status": "pending",
+                "recognition_status": job.recognition_status,
+                "source_locked": job.source_locked,
+                "is_final": False,
+            },
+        ))
+        trace(
+            "sentence_pending_broadcast_at",
+            utterance_id=utterance_id,
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            sentence_id=sentence_id,
+            sentence_sequence=sequence,
+            revision=revision,
+        )
+        sentence_translation_service.submit(job)
 
 
 # ── Handler ─────────────────────────────────────────────────────────────────
@@ -202,6 +332,50 @@ async def handle_speech_ws(
         speech_registry.register(meeting_id, seat_id, ws)
 
         # ── 7. Message loop ────────────────────────────────────────────────
+        # Receive PCM independently from CPU inference. The bounded queue
+        # provides backpressure rather than silently dropping speech.
+        pcm_queue: asyncio.Queue[tuple[bytes, int, float]] = asyncio.Queue(
+            maxsize=50,
+        )
+        receive_frame_index = 0
+
+        async def process_pcm_queue() -> None:
+            while True:
+                data, frame_index, queued_at = await pcm_queue.get()
+                try:
+                    queue_wait_ms = round(
+                        (time.perf_counter() - queued_at) * 1000
+                    )
+                    stream_service.update_pcm_queue(
+                        session_key,
+                        pcm_queue.qsize(),
+                    )
+                    trace(
+                        "backend_pcm_dequeued_at",
+                        session_key=session_key,
+                        meeting_id=meeting_id,
+                        seat_id=seat_id,
+                        frame_index=frame_index,
+                        queue_wait_ms=queue_wait_ms,
+                        pcm_queue_frames=pcm_queue.qsize(),
+                    )
+                    await _handle_binary_message(
+                        ws,
+                        data,
+                        meeting_id,
+                        seat_id,
+                        session_key,
+                        frame_index=frame_index,
+                        queue_wait_ms=queue_wait_ms,
+                    )
+                finally:
+                    pcm_queue.task_done()
+                    stream_service.update_pcm_queue(
+                        session_key,
+                        pcm_queue.qsize(),
+                    )
+
+        pcm_worker = asyncio.create_task(process_pcm_queue())
         try:
             while True:
                 raw = await ws.receive()
@@ -230,12 +404,59 @@ async def handle_speech_ws(
                     break
 
                 if "text" in raw:
+                    try:
+                        message_data = json.loads(raw["text"])
+                    except (TypeError, json.JSONDecodeError):
+                        message_data = {}
+                    message_type = message_data.get("type")
+                    if message_type == "end_hint":
+                        await pcm_queue.join()
+                    elif message_type == "cancel":
+                        while not pcm_queue.empty():
+                            try:
+                                pcm_queue.get_nowait()
+                                pcm_queue.task_done()
+                            except asyncio.QueueEmpty:
+                                break
+                        # A frame already inside native inference cannot be
+                        # interrupted safely. Wait for that one frame before
+                        # resetting model/session state; queued frames are gone.
+                        await pcm_queue.join()
+                        stream_service.update_pcm_queue(session_key, 0)
                     await _handle_text_message(
                         ws, raw["text"], meeting_id, seat_id, session_key,
                     )
                 elif "bytes" in raw:
-                    await _handle_binary_message(
-                        ws, raw["bytes"], meeting_id, seat_id, session_key,
+                    receive_frame_index += 1
+                    queued_at = time.perf_counter()
+                    current_session = stream_service.get_session(session_key)
+                    trace(
+                        "backend_pcm_received_at",
+                        session_key=session_key,
+                        utterance_id=(
+                            current_session.current_utterance_id
+                            if current_session else None
+                        ),
+                        meeting_id=meeting_id,
+                        seat_id=seat_id,
+                        size_bytes=len(raw["bytes"]),
+                        frame_index=receive_frame_index,
+                    )
+                    await pcm_queue.put(
+                        (raw["bytes"], receive_frame_index, queued_at),
+                    )
+                    stream_service.update_pcm_queue(
+                        session_key,
+                        pcm_queue.qsize(),
+                    )
+                    trace(
+                        "backend_pcm_queued_at",
+                        session_key=session_key,
+                        meeting_id=meeting_id,
+                        seat_id=seat_id,
+                        frame_index=receive_frame_index,
+                        pcm_queue_frames=pcm_queue.qsize(),
+                        audio_backlog_ms=pcm_queue.qsize() * 100,
                     )
 
         except WebSocketDisconnect:
@@ -249,6 +470,11 @@ async def handle_speech_ws(
                 meeting_id, seat_id,
             )
         finally:
+            pcm_worker.cancel()
+            try:
+                await pcm_worker
+            except asyncio.CancelledError:
+                pass
             stream_service.remove_session(session_key, session_token)
             speech_registry.unregister(meeting_id, seat_id, ws)
 
@@ -284,12 +510,20 @@ async def _handle_text_message(
     msg_type = data.get("type", "")
 
     if msg_type == "start":
+        language_mode = str(data.get("language_mode") or "auto").strip().lower()
+        if language_mode not in {"auto", "zh", "en"}:
+            await ws.send_json(ERROR_INVALID_LANGUAGE_MODE)
+            return
         utterance_id = stream_service.generate_utterance_id(
             meeting_id, seat_id,
         )
 
         # Phase 3: register utterance and reset SpeechModule for this session
-        stream_service.start_utterance(session_key, utterance_id)
+        stream_service.start_utterance(
+            session_key,
+            utterance_id,
+            language_mode=language_mode,
+        )
 
         trace("utterance_started_at", utterance_id=utterance_id,
               meeting_id=meeting_id, seat_id=seat_id)
@@ -298,6 +532,7 @@ async def _handle_text_message(
             "type": "started",
             "utterance_id": utterance_id,
             "session_key": session_key,
+            "language_mode": language_mode,
         })
 
         logger.info(
@@ -306,8 +541,13 @@ async def _handle_text_message(
         )
 
     elif msg_type == "end_hint":
-        # Phase 4: finalize buffered PCM16 → offline ASR rescore → persist → broadcast
-        finalized = stream_service.finalize_utterance(session_key)
+        # Queue the same bilingual sentence-final pipeline used by VAD rollover.
+        loop = asyncio.get_running_loop()
+        finalized = await loop.run_in_executor(
+            _streaming_asr_executor,
+            stream_service.finalize_utterance,
+            session_key,
+        )
         if finalized is None:
             logger.debug(
                 "end_hint with no buffered audio (meeting=%d seat=%d)",
@@ -323,109 +563,51 @@ async def _handle_text_message(
                   if "audio" in finalized else 0
               ))
 
-        try:
-            from backend.database import SessionLocal
-            from backend.services.translation_service import TranslationService
-
-            db = SessionLocal()
-            try:
-                tsvc = TranslationService(db, event_bus)
-                record = tsvc.process_final_array(
-                    audio=finalized["audio"],
-                    sr=finalized["sr"],
-                    meeting_id=finalized["meeting_id"],
-                    seat_id=finalized["seat_id"],
-                    utterance_id=finalized["utterance_id"],
-                    source_type="speech_ws",
-                )
-                # Phase 02: reset caption formatter after successful finalization
-                stream_service.reset_caption_formatter(session_key)
-                # Task 126: mark utterance as terminal after successful final
-                stream_service.mark_utterance_terminal(
-                    session_key, finalized["utterance_id"],
-                )
-                trace("final_event_created_at",
-                      utterance_id=finalized["utterance_id"],
-                      translation_id=record.id,
-                      meeting_id=meeting_id, seat_id=seat_id)
-                logger.info(
-                    "Speech final: meeting=%d seat=%d utterance=%s record=%d",
-                    meeting_id, seat_id, finalized["utterance_id"], record.id,
-                )
-            finally:
-                db.close()
-        except Exception as exc:
-            # Map known exceptions to WS error responses
-            exc_str = str(exc)
-            utterance_id = finalized.get("utterance_id") if finalized else None
-            if "ASR_EMPTY_RESULT" in exc_str or "empty text" in exc_str.lower():
-                try:
-                    await ws.send_json(ERROR_ASR_EMPTY_RESULT)
-                except Exception:
-                    pass
-                # Task 126: publish terminal cleanup for failed finalization
-                if utterance_id and not stream_service.is_utterance_terminal(
-                    session_key, utterance_id,
-                ):
-                    stream_service.mark_utterance_terminal(
-                        session_key, utterance_id,
-                    )
-                    event_bus.publish(TranslationInterimCancelledEvent(
-                        meeting_id=meeting_id,
-                        payload={
-                            "utterance_id": utterance_id,
-                            "seat_id": seat_id,
-                            "reason": "asr_empty_result",
-                        },
-                    ))
-            elif "model not loaded" in exc_str.lower() or "speech module" in exc_str.lower():
-                try:
-                    await ws.send_json(ERROR_MODEL_NOT_LOADED)
-                except Exception:
-                    pass
-                # Task 126: publish terminal cleanup for model_not_loaded error
-                if utterance_id and not stream_service.is_utterance_terminal(
-                    session_key, utterance_id,
-                ):
-                    stream_service.mark_utterance_terminal(
-                        session_key, utterance_id,
-                    )
-                    event_bus.publish(TranslationInterimCancelledEvent(
-                        meeting_id=meeting_id,
-                        payload={
-                            "utterance_id": utterance_id,
-                            "seat_id": seat_id,
-                            "reason": "model_not_loaded",
-                        },
-                    ))
-            else:
-                logger.exception(
-                    "Finalize error (meeting=%d seat=%d): %s",
-                    meeting_id, seat_id, exc,
-                )
-                try:
-                    await ws.send_json({
-                        "type": "error",
-                        "code": "TRANSLATION_FAILED",
-                        "message": str(exc),
-                    })
-                except Exception:
-                    pass
-                # Task 126: publish terminal cleanup for failed finalization
-                if utterance_id and not stream_service.is_utterance_terminal(
-                    session_key, utterance_id,
-                ):
-                    stream_service.mark_utterance_terminal(
-                        session_key, utterance_id,
-                    )
-                    event_bus.publish(TranslationInterimCancelledEvent(
-                        meeting_id=meeting_id,
-                        payload={
-                            "utterance_id": utterance_id,
-                            "seat_id": seat_id,
-                            "reason": "finalization_failed",
-                        },
-                    ))
+        utterance_id = str(finalized["utterance_id"])
+        fallback_text = str(finalized.get("source_text") or "").strip()
+        session = stream_service.get_session(session_key)
+        sentence_result = stream_service.complete_active_sentence(
+            session_key,
+            fallback_text,
+            "end_hint",
+        )
+        _publish_completed_sentences(
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            utterance_id=utterance_id,
+            revision=session.revision if session is not None else 0,
+            completed_sentences=list(
+                sentence_result.get("completed_sentences") or [],
+            ),
+            source_lang=str(finalized.get("detected_language") or "unknown"),
+        )
+        stream_service.reset_caption_formatter(session_key)
+        stream_service.mark_utterance_terminal(session_key, utterance_id)
+        event_bus.publish(TranslationFinalizingEvent(
+            meeting_id=meeting_id,
+            payload={
+                "utterance_id": utterance_id,
+                "seat_id": seat_id,
+                "source_text": fallback_text,
+                "source_lang": "unknown",
+                "target_lang": "unknown",
+                "boundary_reason": "end_hint",
+            },
+        ))
+        finalization_queue.submit(SpeechFinalizationJob(
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            utterance_id=utterance_id,
+            source_text=fallback_text,
+            boundary_reason="end_hint",
+            audio_seconds=float(finalized.get("audio_seconds") or 0.0),
+            audio=finalized["audio"],
+            sample_rate=int(finalized["sr"]),
+            recognized_text=str(finalized.get("recognized_text") or ""),
+            detected_language=str(finalized.get("detected_language") or "unknown"),
+            recognition_engine=str(finalized.get("recognition_engine") or "unknown"),
+            recognition_status=str(finalized.get("recognition_status") or "ok"),
+        ))
 
     elif msg_type == "cancel":
         # Phase 3: cancel current utterance and broadcast cancelled event
@@ -462,6 +644,9 @@ async def _handle_binary_message(
     meeting_id: int,
     seat_id: int,
     session_key: str,
+    *,
+    frame_index: int | None = None,
+    queue_wait_ms: int = 0,
 ) -> None:
     """Handle a PCM16 binary frame.
 
@@ -495,8 +680,12 @@ async def _handle_binary_message(
             pass
         return
 
-    trace("backend_pcm_received_at", session_key=session_key,
-          meeting_id=meeting_id, seat_id=seat_id, size_bytes=len(data))
+    if frame_index is None:
+        frame_index = session.pcm_frames_received + 1
+        trace("backend_pcm_received_at", session_key=session_key,
+              utterance_id=session.current_utterance_id,
+              meeting_id=meeting_id, seat_id=seat_id, size_bytes=len(data),
+              frame_index=frame_index)
 
     trace("backend_process_pcm_start_at",
           utterance_id=session.current_utterance_id,
@@ -519,6 +708,20 @@ async def _handle_binary_message(
                 current_session.peak_processing_ms,
                 processing_ms,
             )
+        trace(
+            "backend_process_pcm_end_at",
+            utterance_id=session.current_utterance_id,
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            frame_index=frame_index,
+            processing_ms=processing_ms,
+            queue_wait_ms=queue_wait_ms,
+            audio_backlog_ms=(
+                current_session.audio_backlog_ms
+                if current_session else 0
+            ),
+            slower_than_realtime=processing_ms > 100,
+        )
     except RuntimeError as exc:
         logger.warning(
             "Binary frame error (meeting=%d seat=%d): %s",
@@ -545,16 +748,28 @@ async def _handle_binary_message(
     # Publish interim event (skip empty ASR results)
     source_text: str = result.get("source_text", "")
     if source_text:
+        source_lang = str(result.get("source_lang") or "unknown")
+        if source_lang not in {"zh", "en"}:
+            source_lang = detect_language(source_text)
+        target_lang = "en" if source_lang == "zh" else "zh"
         # Phase 02: build payload with two-line caption
         payload: dict[str, Any] = {
             "utterance_id": result["utterance_id"],
             "seat_id": seat_id,
             "revision": result["revision"],
-            "source_lang": "zh",
-            "target_lang": "en",
+            "source_lang": source_lang,
+            "target_lang": target_lang,
             "source_text": source_text,
+            "translation_source_text": result.get("sentence_source_text", ""),
             "translated_text": "",
+            "sentence_id": result.get("sentence_id"),
+            "sentence_sequence": result.get("sentence_sequence", 0),
+            "sentence_source_text": result.get("sentence_source_text", ""),
+            "sentence_state": result.get("sentence_state", "forming"),
             "is_final": False,
+            "requested_language": result.get("requested_language", "auto"),
+            "detected_language": result.get("detected_language", source_lang),
+            "recognition_engine": result.get("recognition_engine", "unknown"),
         }
         if "caption" in result:
             payload["caption"] = result["caption"]
@@ -569,6 +784,14 @@ async def _handle_binary_message(
             meeting_id=meeting_id,
             payload=payload,
         ))
+        _publish_completed_sentences(
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            utterance_id=str(result["utterance_id"]),
+            revision=int(result["revision"]),
+            completed_sentences=list(result.get("completed_sentences") or []),
+            source_lang=source_lang,
+        )
 
         trace("interim_event_broadcast_at",
               utterance_id=result["utterance_id"],
@@ -605,7 +828,7 @@ async def _handle_binary_message(
 
         old_uid = str(finalized["utterance_id"])
         final_text = str(finalized["source_text"]).strip()
-        if not finalized["has_speech"] or not final_text:
+        if not finalized["has_speech"] or len(finalized.get("audio", [])) == 0:
             event_bus.publish(TranslationInterimCancelledEvent(
                 meeting_id=meeting_id,
                 payload={
@@ -622,8 +845,8 @@ async def _handle_binary_message(
                 "utterance_id": old_uid,
                 "seat_id": seat_id,
                 "source_text": final_text,
-                "source_lang": "zh",
-                "target_lang": "en",
+                "source_lang": "unknown",
+                "target_lang": "unknown",
                 "boundary_reason": boundary_reason,
                 "next_utterance_id": new_uid,
                 "caption": finalized.get("caption"),
@@ -638,6 +861,12 @@ async def _handle_binary_message(
             boundary_reason=boundary_reason,
             audio_seconds=float(finalized["audio_seconds"]),
             next_utterance_id=new_uid,
+            audio=finalized["audio"],
+            sample_rate=int(finalized["sr"]),
+            recognized_text=str(finalized.get("recognized_text") or ""),
+            detected_language=str(finalized.get("detected_language") or "unknown"),
+            recognition_engine=str(finalized.get("recognition_engine") or "unknown"),
+            recognition_status=str(finalized.get("recognition_status") or "ok"),
         ))
         logger.info(
             "Speech auto-final queued: utterance=%s reason=%s text_len=%d "

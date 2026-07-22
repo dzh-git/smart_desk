@@ -3,6 +3,184 @@ import { render, screen } from "@testing-library/react";
 import { TranscriptPanel } from "../TranscriptPanel";
 import type { TranslationRecord } from "../../api/types";
 
+describe("TranscriptPanel - realtime translation", () => {
+  it("shows translated text inside the two-line live caption", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        seatNameMap={{ 1: "张伟" }}
+        liveEnabled
+        interims={[{
+          utteranceId: "utt_live_translated",
+          seatId: 1,
+          revision: 4,
+          sourceLang: "zh",
+          targetLang: "en",
+          sourceText: "大家好",
+          translatedText: "Hello everyone.",
+          translationRevision: 3,
+          caption: {
+            previousLine: "",
+            currentLine: "大家好",
+            mode: "two_line",
+          },
+        }]}
+      />,
+    );
+
+    expect(screen.getByTestId("live-caption-translation")).toHaveTextContent("Hello everyone.");
+    expect(screen.getByTestId("live-caption-translation")).toHaveAttribute("data-window-lines", "2");
+  });
+});
+
+describe("TranscriptPanel - sentence-paired lyrics", () => {
+  const first = {
+    utteranceId: "utt_lyrics",
+    sentenceId: "utt_lyrics:s1",
+    sentenceSequence: 1,
+    seatId: 1,
+    revision: 2,
+    sourceLang: "zh",
+    targetLang: "en",
+    sourceText: "第一句。",
+    translatedText: "First sentence.",
+    translationStatus: "ok" as const,
+  };
+  const second = {
+    ...first,
+    sentenceId: "utt_lyrics:s2",
+    sentenceSequence: 2,
+    revision: 4,
+    sourceText: "第二句。",
+    translatedText: "",
+    translationStatus: "pending" as const,
+  };
+
+  it("renders two sentence pairs with each translation bound to its source", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        lyrics={[first, second]}
+        interims={[]}
+        seatNameMap={{ 1: "张伟" }}
+        liveEnabled
+      />,
+    );
+    const pairs = screen.getAllByTestId("live-lyric-pair");
+    expect(pairs).toHaveLength(2);
+    expect(pairs[0]).toHaveTextContent("第一句。");
+    expect(pairs[0]).toHaveTextContent("First sentence.");
+    expect(pairs[1]).toHaveTextContent("第二句。");
+    expect(pairs[1]).toHaveTextContent("正在翻译");
+  });
+
+  it("keeps all sentence pairs and bottom-aligns the newest pair", () => {
+    const third = {
+      ...second,
+      sentenceId: "utt_lyrics:s3",
+      sentenceSequence: 3,
+      sourceText: "第三句。",
+    };
+    render(
+      <TranscriptPanel
+        entries={[]}
+        lyrics={[first, second, third]}
+        interims={[]}
+        seatNameMap={{ 1: "张伟" }}
+        liveEnabled
+      />,
+    );
+    expect(screen.getAllByTestId("live-lyric-pair")).toHaveLength(3);
+    expect(screen.getByTestId("live-lyric-pairs")).toHaveClass("justify-end");
+  });
+
+  it("keeps lyrics visible when the persisted final arrives", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        liveFinal={{
+          id: 7, meeting_id: 1, seat_id: 1, utterance_id: "utt_lyrics",
+          source_lang: "zh", target_lang: "en", source_text: "终稿。",
+          translated_text: "Final.", created_at: "2026-01-01T00:00:00Z",
+        }}
+        lyrics={[first]}
+        interims={[]}
+        seatNameMap={{ 1: "张伟" }}
+        liveEnabled
+      />,
+    );
+    expect(screen.getByTestId("live-lyrics")).toBeInTheDocument();
+    expect(screen.getByTestId("live-lyric-translation")).toHaveTextContent("First sentence.");
+    expect(screen.queryByTestId("live-final-translation")).not.toBeInTheDocument();
+  });
+
+  it("shows an explicit unavailable message for the matching sentence", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        lyrics={[{ ...second, translationStatus: "unavailable" }]}
+        seatNameMap={{ 1: "张伟" }}
+        liveEnabled
+      />,
+    );
+    expect(screen.getByTestId("live-lyric-unavailable")).toHaveTextContent("译文不可用");
+  });
+
+  it("keeps complete source and translation text for width-aware browser wrapping", () => {
+    const source = "同时，在苗寨举办的全国春晚示范展示活动，通过五G网络上云推介当地的乡村村落，民风风情，以丰富旅游资源吸引超过千万人次观看。";
+    const translation = "At the same time, a national Spring Festival Gala demonstration was held in the Miao village to promote local villages and folk customs through the 5G network, attracting more than 10 million views with rich tourism resources.";
+    render(
+      <TranscriptPanel
+        entries={[]}
+        lyrics={[{ ...first, sourceText: source, translatedText: translation }]}
+        seatNameMap={{ 1: "张伟" }}
+        liveEnabled
+      />,
+    );
+    const sourceNode = screen.getByTestId("live-lyric-source");
+    const translationNode = screen.getByTestId("live-lyric-translation");
+    expect(sourceNode).toHaveTextContent(source);
+    expect(translationNode).toHaveTextContent(translation);
+    expect(sourceNode.querySelectorAll("span")).toHaveLength(0);
+    expect(translationNode.querySelectorAll("span")).toHaveLength(0);
+    expect(translationNode).toHaveStyle({
+      overflowWrap: "normal",
+      wordBreak: "normal",
+      hyphens: "none",
+    });
+    expect(screen.getByTestId("live-lyrics")).toHaveClass("h-[15rem]");
+    expect(screen.getByTestId("live-lyric-pairs")).toHaveClass("overflow-y-auto");
+  });
+
+  it("keeps the fixed-height lyric viewport pinned to the newest content", () => {
+    const { rerender } = render(
+      <TranscriptPanel
+        entries={[]}
+        lyrics={[first]}
+        seatNameMap={{ 1: "张伟" }}
+        liveEnabled
+      />,
+    );
+    const viewport = screen.getByTestId("live-lyric-pairs");
+    Object.defineProperty(viewport, "scrollHeight", {
+      configurable: true,
+      value: 480,
+    });
+    viewport.scrollTop = 0;
+
+    rerender(
+      <TranscriptPanel
+        entries={[]}
+        lyrics={[first, second]}
+        seatNameMap={{ 1: "张伟" }}
+        liveEnabled
+      />,
+    );
+
+    expect(viewport.scrollTop).toBe(480);
+  });
+});
+
 // ── Sort Order Tests ──────────────────────────────────────────────────────────
 
 describe("TranscriptPanel - sort order (Task 7)", () => {
@@ -208,9 +386,54 @@ describe("TranscriptPanel - bilingual paragraph grouping", () => {
     expect(screen.getByText("翻译模型不可用")).toBeInTheDocument();
     expect(screen.queryByText("[translation not available]")).not.toBeInTheDocument();
   });
+
+  it("shows the actual Chinese-to-English direction", () => {
+    render(<TranscriptPanel entries={[{
+      id: 21, meeting_id: 1, seat_id: 1, source_lang: "zh", target_lang: "en",
+      source_text: "你好。", translated_text: "Hello.", created_at: "2026-01-01T00:00:00Z",
+    }]} seatNameMap={{ 1: "主持人" }} />);
+    expect(screen.getByText("ZH → EN")).toBeInTheDocument();
+  });
+
+  it("shows the actual English-to-Chinese direction", () => {
+    render(<TranscriptPanel entries={[{
+      id: 22, meeting_id: 1, seat_id: 1, source_lang: "en", target_lang: "zh",
+      source_text: "Welcome.", translated_text: "欢迎。", created_at: "2026-01-01T00:00:00Z",
+    }]} seatNameMap={{ 1: "主持人" }} />);
+    expect(screen.getByText("EN → ZH")).toBeInTheDocument();
+  });
 });
 
 describe("TranscriptPanel - stable live speech area", () => {
+  it("keeps the latest sentence-final translation in the live subtitle box", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        liveFinal={{
+          id: 101,
+          meeting_id: 1,
+          seat_id: 1,
+          utterance_id: "utt_live_final",
+          source_lang: "zh",
+          target_lang: "en",
+          source_text: "清华大学的本科。",
+          translated_text: "Qinghua University undergraduate.",
+          created_at: "2026-01-01T10:00:00Z",
+        }}
+        interims={[]}
+        seatNameMap={{ 1: "主持人" }}
+        liveEnabled
+      />,
+    );
+
+    expect(screen.getByTestId("live-final-translation")).toBeInTheDocument();
+    expect(screen.getByTestId("live-final-source")).toHaveTextContent("清华大学的本科。");
+    expect(screen.getByTestId("live-final-target")).toHaveTextContent(
+      "Qinghua University undergraduate.",
+    );
+    expect(screen.queryByTestId("live-caption-placeholder")).not.toBeInTheDocument();
+  });
+
   it("keeps a placeholder mounted during an active meeting without speech", () => {
     render(
       <TranscriptPanel

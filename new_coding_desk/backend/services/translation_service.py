@@ -1,19 +1,8 @@
-"""
-TranslationService — ASR + translation pipeline.
-
-Per system_architecture §4.2, API_SPEC §10, EVENT_BUS_SPEC §10:
-    - Calls SpeechModule frozen API (process_interim, process_final).
-    - Persists final results to translation_records.
-    - Publishes translation_final event for WebSocket broadcast.
-
-Business rules:
-    T1: translation_interim → no event, no WebSocket, direct HTTP return.
-    T2: translation_final   → save DB + publish translation_final event.
-    T3: history query from translation_records table (not SpeechModule HistoryStore).
-"""
+"""Sentence-final bilingual ASR, translation, persistence and event pipeline."""
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 import numpy as np
@@ -26,256 +15,206 @@ from backend.models.translation_record import TranslationRecord
 from backend.repositories.translation_repository import TranslationRepository
 from backend.services.base import BaseService
 from backend.services.translation_model_service import (
+    NOT_AVAILABLE,
     TranslationModelService,
     is_translation_model_enabled,
 )
 from backend.speech_module.punctuation import add_punctuation
-from backend.speech_module.text_utils import detect_language
+from backend.speech_module.text_utils import detect_language, normalize_english_display
 from backend.websocket.speech_trace import trace
 
 logger = logging.getLogger(__name__)
+_speech = None
 
-# ── SpeechModule singleton ─────────────────────────────────────────────────────
-_speech = None  # lazy singleton
 
-NOT_AVAILABLE = "[translation not available]"
+def _normalize_punctuation(text: str, source_lang: str) -> str:
+    """Collapse duplicate/conflicting ASR punctuation without changing words."""
+    text = re.sub(r"[，,]{2,}", "，" if source_lang == "zh" else ",", text)
+    text = re.sub(r"[。．.]{2,}", "。" if source_lang == "zh" else ".", text)
+    text = re.sub(r"[？?]{2,}", "？" if source_lang == "zh" else "?", text)
+    text = re.sub(r"[！!]{2,}", "！" if source_lang == "zh" else "!", text)
+    text = re.sub(r"([。！？.!?])\s*[，,]", r"\1", text)
+    text = re.sub(r"[，,]\s*([。！？.!?])", r"\1", text)
+    return text.strip()
+
+
+def _is_narrowband_tone(audio: np.ndarray) -> bool:
+    """Reject calibration beeps that VAD can mistake for human speech."""
+    samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+    if len(samples) < 1600:
+        return False
+    samples = samples - float(samples.mean())
+    spectrum = np.abs(np.fft.rfft(samples))
+    total = float(spectrum.sum())
+    return total > 0 and float(spectrum.max()) / total > 0.45
 
 
 def _get_speech():
-    """Return the shared streaming SpeechModule unless a test overrides it."""
     global _speech
     if _speech is not None:
         return _speech
-    # Reuse the already preloaded streaming instance.  Loading a second copy
-    # of Paraformer for final ASR wastes memory and delays the first sentence.
     from backend.services.speech_stream_service import stream_service
+
     return stream_service._get_speech_module()
 
 
-# ── Service ────────────────────────────────────────────────────────────────────
-
-
 class TranslationService(BaseService):
-    """Translation pipeline: STT → translate → persist → event.
-
-    Uses SpeechModule singleton for ASR/translation.
-    Persists to translation_records via TranslationRepository.
-
-    Business rules T1-T3 enforced here.
-    Events published: translation_final.
-    """
+    """Turn one finalized sentence into a persisted bilingual transcript."""
 
     def __init__(self, db: Session, event_bus: EventBus) -> None:
         super().__init__(db, event_bus)
         self.repo = TranslationRepository(db)
 
-    # ── Preload ──────────────────────────────────────────────────────────────
-
-    def _ensure_preloaded(self) -> None:
-        """Ensure SpeechModule models are loaded. Idempotent."""
+    def _ensure_preloaded(self, *, require_final_asr: bool = True) -> None:
         speech = _get_speech()
-        if not speech.ready:
-            try:
-                speech.preload()
-            except Exception as exc:
-                raise ValidationError(
-                    f"Speech module preload failed: {exc}",
-                    "SPEECH_MODULE_ERROR",
-                ) from exc
-
-    # ── Interim ──────────────────────────────────────────────────────────────
+        status = speech.status
+        if status.get("streaming_model") != "loaded":
+            speech.preload()
+        if speech.status.get("streaming_model") != "loaded":
+            raise ValidationError(
+                f"Speech module preload failed: {speech.status.get('last_error')}",
+                "SPEECH_MODULE_ERROR",
+            )
+        if require_final_asr and speech.status.get("offline_model") != "loaded":
+            raise ValidationError(
+                f"Bilingual final ASR is unavailable: {speech.status.get('last_error')}",
+                "SPEECH_MODULE_ERROR",
+            )
 
     def process_interim(self, audio_path: str, session_key: str) -> str:
-        """T1: Process interim audio chunk, return accumulated text.
-
-        No DB write. No event publish. HTTP direct return.
-        """
-        self._ensure_preloaded()
-        speech = _get_speech()
+        self._ensure_preloaded(require_final_asr=False)
         try:
-            text = speech.process_interim_chunk(audio_path, session_key)
+            return _get_speech().process_interim_chunk(audio_path, session_key) or ""
         except Exception as exc:
             raise ValidationError(
-                f"Interim processing failed: {exc}",
-                "TRANSLATION_FAILED",
+                f"Interim processing failed: {exc}", "TRANSLATION_FAILED",
             ) from exc
-        return text or ""
-
-    # ── Final (file-based) ───────────────────────────────────────────────────
 
     def process_final(
-        self, audio_path: str, meeting_id: int, seat_id: int,
+        self,
+        audio_path: str,
+        meeting_id: int,
+        seat_id: int,
         utterance_id: str | None = None,
         source_type: str | None = "speech_ws",
     ) -> TranslationRecord:
-        """T2: Run full offline ASR → translate → persist → publish event.
-
-        File-based variant (for HTTP upload scenarios).
-        Delegates to process_final_array after loading the audio file.
-
-        Publishes: translation_final event with payload including utterance_id.
-        """
-        speech = _get_speech()
         try:
             from backend.speech_module.audio_utils import load_audio
+
             audio, sr = load_audio(audio_path)
         except Exception as exc:
             raise ValidationError(
-                f"Audio loading failed: {exc}",
-                "TRANSLATION_FAILED",
+                f"Audio loading failed: {exc}", "TRANSLATION_FAILED",
             ) from exc
-
         return self.process_final_array(
-            audio=audio, sr=sr,
-            meeting_id=meeting_id, seat_id=seat_id,
-            utterance_id=utterance_id, source_type=source_type,
-        )
-
-    # ── Final (array-based, Phase 4) ─────────────────────────────────────────
-
-    def process_final_array(
-        self, audio: np.ndarray, sr: int,
-        meeting_id: int, seat_id: int,
-        utterance_id: str | None = None,
-        source_type: str | None = "speech_ws",
-    ) -> TranslationRecord:
-        """T2: Offline ASR rescore → translate → persist → publish event.
-
-        Array-based variant for speech WS flow (concatenated PCM buffer).
-        Uses SpeechModule.transcribe_array() for full-context offline rescore.
-
-        Args:
-            audio: float32 numpy array, 16kHz mono preferred.
-            sr: Sample rate of the input audio (auto-resampled to 16kHz).
-            meeting_id: Active meeting ID.
-            seat_id: Speaker seat ID.
-            utterance_id: The utterance_id from the speech WS start message.
-            source_type: Origin of the record.
-
-        Returns:
-            The persisted TranslationRecord.
-
-        Raises:
-            ValidationError: On empty ASR result, model error, or persistence failure.
-
-        Published event payload (EVENT_BUS_SPEC §5):
-            translation_id, utterance_id, seat_id,
-            source_lang, target_lang,
-            source_text, translated_text,
-            source_type
-        """
-        self._ensure_preloaded()
-        speech = _get_speech()
-
-        # Validate/crop the gated buffer with FSMN-VAD before offline ASR.  A
-        # noise-only recording is discarded without creating a bogus record.
-        if hasattr(speech, "trim_to_speech"):
-            validated_audio = speech.trim_to_speech(audio, sr)
-            if validated_audio is None or len(validated_audio) == 0:
-                raise ValidationError(
-                    "No confirmed speech in audio",
-                    "ASR_EMPTY_RESULT",
-                )
-            audio = validated_audio
-
-        trace("finalization_start_at",
-              utterance_id=utterance_id,
-              meeting_id=meeting_id, seat_id=seat_id)
-
-        # 1. Full offline ASR rescore
-        _offline_t0 = time.monotonic()
-        try:
-            source_text = speech.transcribe_array(audio, sr)
-        except Exception as exc:
-            raise ValidationError(
-                f"Transcription failed: {exc}",
-                "TRANSLATION_FAILED",
-            ) from exc
-        _offline_ms = round((time.monotonic() - _offline_t0) * 1000)
-
-        if not source_text or not source_text.strip():
-            raise ValidationError(
-                "Transcription returned empty text",
-                "ASR_EMPTY_RESULT",
-            )
-
-        # Phase 02: apply punctuation to final source_text before persist
-        source_text = add_punctuation(source_text)
-
-        # 2. Detect source language
-        source_lang = detect_language(source_text)
-        if source_lang == "zh":
-            target_lang = "en"
-        else:
-            source_lang = "en"
-            target_lang = "zh"
-
-        # 3. Translate (real model if enabled, otherwise placeholder)
-        _trans_t0 = time.monotonic()
-        if source_lang == "zh" and is_translation_model_enabled():
-            # Use real OPUS-MT zh-en model
-            model_svc = TranslationModelService.get_instance()
-            try:
-                translated_text = model_svc.translate(source_text)
-            except Exception as exc:
-                logger.warning("Translation failed (non-fatal): %s", exc)
-                translated_text = NOT_AVAILABLE
-        else:
-            # Fallback: use SpeechModule translate_text placeholder
-            try:
-                zh_str, en_str = speech.translate_text(source_text)
-            except Exception as exc:
-                raise ValidationError(
-                    f"Translation failed: {exc}",
-                    "TRANSLATION_FAILED",
-                ) from exc
-
-            if source_lang == "zh":
-                translated_text = en_str  # placeholder
-            else:
-                translated_text = zh_str  # placeholder
-        _trans_ms = round((time.monotonic() - _trans_t0) * 1000)
-
-        # 4. Persist to translation_records (with new fields)
-        record = self.repo.create(
-            meeting_id=meeting_id,
-            seat_id=seat_id,
-            source_lang=source_lang,
-            target_lang=target_lang,
-            source_text=source_text.strip(),
-            translated_text=translated_text.strip(),
+            audio,
+            sr,
+            meeting_id,
+            seat_id,
             utterance_id=utterance_id,
             source_type=source_type,
         )
 
-        trace("offline_rescore_complete_at",
-              utterance_id=utterance_id,
-              meeting_id=meeting_id, seat_id=seat_id,
-              offline_asr_ms=_offline_ms,
-              translation_ms=_trans_ms,
-              translation_id=record.id)
+    def process_final_array(
+        self,
+        audio: np.ndarray,
+        sr: int,
+        meeting_id: int,
+        seat_id: int,
+        utterance_id: str | None = None,
+        source_type: str | None = "speech_ws",
+        *,
+        fallback_source_text: str = "",
+        translate: bool = True,
+    ) -> TranslationRecord:
+        """Run bilingual final ASR and translate the detected language."""
 
-        # 5. Publish event (DB committed inside repo.create())
-        payload: dict = {
-            "translation_id": record.id,
-            "utterance_id": utterance_id,
-            "seat_id": seat_id,
-            "source_lang": source_lang,
-            "target_lang": target_lang,
-            "source_text": source_text.strip(),
-            "translated_text": translated_text.strip(),
-            "source_type": source_type,
-        }
-        self.event_bus.publish(
-            TranslationFinalEvent(
-                meeting_id=meeting_id,
-                payload=payload,
-            )
+        self._ensure_preloaded(require_final_asr=not bool(fallback_source_text.strip()))
+        speech = _get_speech()
+        if hasattr(speech, "trim_to_speech"):
+            validated_audio = speech.trim_to_speech(audio, sr)
+            if validated_audio is None or len(validated_audio) == 0:
+                if fallback_source_text.strip():
+                    return self.process_final_text(
+                        fallback_source_text,
+                        meeting_id,
+                        seat_id,
+                        utterance_id=utterance_id,
+                        source_type=source_type,
+                        translate=translate,
+                        recognition_error="No confirmed speech in final ASR buffer",
+                    )
+                raise ValidationError("No confirmed speech in audio", "ASR_EMPTY_RESULT")
+            audio = validated_audio
+
+        if _is_narrowband_tone(audio):
+            if fallback_source_text.strip():
+                return self.process_final_text(
+                    fallback_source_text,
+                    meeting_id,
+                    seat_id,
+                    utterance_id=utterance_id,
+                    source_type=source_type,
+                    translate=translate,
+                    recognition_error="Narrowband non-speech tone rejected by final ASR",
+                )
+            raise ValidationError("No confirmed speech in audio", "ASR_EMPTY_RESULT")
+
+        trace(
+            "finalization_start_at",
+            utterance_id=utterance_id,
+            meeting_id=meeting_id,
+            seat_id=seat_id,
         )
+        started = time.monotonic()
+        recognition_status = "ok"
+        recognition_error: str | None = None
+        try:
+            if hasattr(speech, "transcribe_array_with_language"):
+                result = speech.transcribe_array_with_language(audio, sr)
+                source_text = result.text.strip()
+                source_lang = result.source_lang
+                recognition_model = getattr(result, "recognition_model", "sensevoice")
+            else:
+                source_text = speech.transcribe_array(audio, sr).strip()
+                source_lang = detect_language(source_text)
+                recognition_model = "paraformer_zh" if source_lang == "zh" else "sensevoice"
+        except Exception as exc:
+            source_text = ""
+            source_lang = "zh"
+            recognition_model = "fallback"
+            recognition_status = "degraded"
+            recognition_error = str(exc)
 
-        return record
+        if not source_text:
+            source_text = fallback_source_text.strip()
+            if not source_text:
+                raise ValidationError("Transcription returned empty text", "ASR_EMPTY_RESULT")
+            source_lang = detect_language(source_text)
+            recognition_status = "degraded"
+            recognition_error = recognition_error or "Bilingual final ASR returned empty text"
+            recognition_model = "fallback"
 
-    # ── History ──────────────────────────────────────────────────────────────
+        source_lang = "zh" if source_lang == "zh" else "en"
+        if source_lang == "zh" and recognition_model == "paraformer_zh":
+            source_text = add_punctuation(source_text).strip()
+        source_text = _normalize_punctuation(source_text, source_lang)
+        target_lang = "en" if source_lang == "zh" else "zh"
+        offline_ms = round((time.monotonic() - started) * 1000)
+
+        return self._translate_persist_publish(
+            source_text=source_text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            utterance_id=utterance_id,
+            source_type=source_type,
+            translate=translate,
+            recognition_status=recognition_status,
+            recognition_error=recognition_error,
+            offline_ms=offline_ms,
+        )
 
     def process_final_text(
         self,
@@ -287,41 +226,78 @@ class TranslationService(BaseService):
         *,
         translate: bool = True,
         apply_punctuation: bool = False,
+        source_lang: str | None = None,
+        recognition_status: str = "degraded",
+        recognition_error: str | None = "Bilingual final ASR was not used",
     ) -> TranslationRecord:
-        """Translate and persist already-recognized realtime text.
+        """Persist a streaming-text fallback while keeping failures explicit."""
 
-        Automatic rollovers use this path so offline ASR cannot block the
-        speech WebSocket receive loop. Explicit ``end_hint`` continues to use
-        :meth:`process_final_array` for full offline correction.
-        """
-        if not source_text or not source_text.strip():
+        source_text = (source_text or "").strip()
+        if not source_text:
             raise ValidationError(
-                "Realtime transcription returned empty text",
-                "ASR_EMPTY_RESULT",
+                "Realtime transcription returned empty text", "ASR_EMPTY_RESULT",
             )
+        source_lang = source_lang or detect_language(source_text)
+        source_lang = "zh" if source_lang == "zh" else "en"
+        if source_lang == "zh" and apply_punctuation:
+            source_text = add_punctuation(source_text).strip()
+        elif source_lang == "en":
+            source_text = normalize_english_display(source_text)
+        target_lang = "en" if source_lang == "zh" else "zh"
+        return self._translate_persist_publish(
+            source_text=source_text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            meeting_id=meeting_id,
+            seat_id=seat_id,
+            utterance_id=utterance_id,
+            source_type=source_type,
+            translate=translate,
+            recognition_status=recognition_status,
+            recognition_error=recognition_error,
+            offline_ms=0,
+        )
 
-        source_text = (
-            add_punctuation(source_text) if apply_punctuation else source_text
-        ).strip()
-        source_lang = detect_language(source_text)
-        if source_lang == "zh":
-            target_lang = "en"
-        else:
-            source_lang = "en"
-            target_lang = "zh"
-
+    def _translate_persist_publish(
+        self,
+        *,
+        source_text: str,
+        source_lang: str,
+        target_lang: str,
+        meeting_id: int,
+        seat_id: int,
+        utterance_id: str | None,
+        source_type: str | None,
+        translate: bool,
+        recognition_status: str,
+        recognition_error: str | None,
+        offline_ms: int,
+    ) -> TranslationRecord:
         translation_started = time.monotonic()
-        translated_text = NOT_AVAILABLE
-        if translate and source_lang == "zh" and is_translation_model_enabled():
+        translation_error: str | None = None
+        if translate:
+            model_service = TranslationModelService.get_instance()
             try:
-                translated_text = TranslationModelService.get_instance().translate(
-                    source_text,
+                translated_text = model_service.translate(
+                    source_text, source_lang, target_lang,
                 )
-            except Exception as exc:
-                logger.warning(
-                    "Realtime-text translation failed (non-fatal): %s", exc,
+            except TypeError:
+                # Compatibility for simple injected translators used by clients/tests.
+                translated_text = model_service.translate(source_text)
+            if translated_text == NOT_AVAILABLE:
+                direction_status = (
+                    model_service.get_status().get(f"{source_lang}_{target_lang}", {})
+                    if hasattr(model_service, "get_status") else {}
                 )
+                translation_error = str(
+                    direction_status.get("error")
+                    or "Required local translation model is unavailable"
+                )
+        else:
+            translated_text = NOT_AVAILABLE
+            translation_error = "Translation skipped because finalization queue is overloaded"
         translation_ms = round((time.monotonic() - translation_started) * 1000)
+        translation_status = "ok" if translated_text != NOT_AVAILABLE else "unavailable"
 
         record = self.repo.create(
             meeting_id=meeting_id,
@@ -329,47 +305,46 @@ class TranslationService(BaseService):
             source_lang=source_lang,
             target_lang=target_lang,
             source_text=source_text,
-            translated_text=translated_text.strip(),
+            translated_text=translated_text,
             utterance_id=utterance_id,
             source_type=source_type,
         )
+        payload: dict[str, object] = {
+            "translation_id": record.id,
+            "utterance_id": utterance_id,
+            "seat_id": seat_id,
+            "source_lang": source_lang,
+            "target_lang": target_lang,
+            "source_text": source_text,
+            "translated_text": translated_text,
+            "source_type": source_type,
+            "translation_status": translation_status,
+            "recognition_status": recognition_status,
+        }
+        if translation_error:
+            payload["translation_error"] = translation_error
+        if recognition_error:
+            payload["recognition_error"] = recognition_error
+        self.event_bus.publish(TranslationFinalEvent(meeting_id=meeting_id, payload=payload))
 
-        self.event_bus.publish(TranslationFinalEvent(
-            meeting_id=meeting_id,
-            payload={
-                "translation_id": record.id,
-                "utterance_id": utterance_id,
-                "seat_id": seat_id,
-                "source_lang": source_lang,
-                "target_lang": target_lang,
-                "source_text": source_text,
-                "translated_text": translated_text.strip(),
-                "source_type": source_type,
-            },
-        ))
         trace(
-            "realtime_text_final_complete_at",
+            "offline_rescore_complete_at",
             utterance_id=utterance_id,
             meeting_id=meeting_id,
             seat_id=seat_id,
+            offline_asr_ms=offline_ms,
             translation_ms=translation_ms,
             translation_id=record.id,
+            recognition_status=recognition_status,
+            translation_status=translation_status,
         )
         return record
 
     def get_history(
-        self, meeting_id: int, seat_id: int | None = None
+        self, meeting_id: int, seat_id: int | None = None,
     ) -> list[TranslationRecord]:
-        """T3: Query translation history from translation_records table."""
         return self.repo.list_by_meeting(meeting_id, seat_id=seat_id)
 
-    # ── Session reset ────────────────────────────────────────────────────────
-
     def reset_session(self, session_key: str) -> None:
-        """Reset interim state for a session (SentenceMerger buffer).
-
-        Preserves CIF cache for streaming ASR continuity.
-        """
         self._ensure_preloaded()
-        speech = _get_speech()
-        speech.reset_interim(session_key)
+        _get_speech().reset_interim(session_key)

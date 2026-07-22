@@ -13,6 +13,7 @@ interface MockWsInstance {
   resolveConnect: ((value: { utteranceId: string; sessionKey: string }) => void) | null;
   utteranceStarted: ((utteranceId: string) => void) | null;
   statusChanged: ((status: "disconnected" | "connecting" | "connected" | "started" | "error") => void) | null;
+  connectArgs: [number, number, string] | null;
 }
 
 const harness = vi.hoisted(() => ({
@@ -49,6 +50,7 @@ vi.mock("../../audio/speechWsClient", () => ({
     resolveConnect: MockWsInstance["resolveConnect"] = null;
     utteranceStarted: MockWsInstance["utteranceStarted"] = null;
     statusChanged: MockWsInstance["statusChanged"] = null;
+    connectArgs: MockWsInstance["connectArgs"] = null;
 
     constructor() {
       harness.sockets.push(this);
@@ -62,7 +64,8 @@ vi.mock("../../audio/speechWsClient", () => ({
       this.statusChanged = callback;
     }
 
-    connect(): Promise<{ utteranceId: string; sessionKey: string }> {
+    connect(meetingId: number, seatId: number, languageMode: string): Promise<{ utteranceId: string; sessionKey: string }> {
+      this.connectArgs = [meetingId, seatId, languageMode];
       return new Promise((resolve) => {
         this.resolveConnect = resolve;
       });
@@ -83,6 +86,30 @@ describe("useSpeechStream lifecycle", () => {
     harness.delayMicrophone = false;
     harness.microphones.length = 0;
     harness.sockets.length = 0;
+    window.localStorage.clear();
+  });
+
+  it("persists the selected language and locks it into start/reconnect", async () => {
+    const { result, unmount } = renderHook(() => useSpeechStream(41, 1, true));
+    act(() => result.current.setLanguageMode("en"));
+    expect(result.current.languageMode).toBe("en");
+    expect(window.localStorage.getItem("smartdesk.speechLanguageMode.1")).toBe("en");
+
+    let startPromise!: Promise<void>;
+    act(() => { startPromise = result.current.start(); });
+    await waitFor(() => expect(harness.sockets).toHaveLength(1));
+    const socket = harness.sockets[0] as MockWsInstance;
+    expect(socket.connectArgs).toEqual([41, 1, "en"]);
+    await act(async () => {
+      socket.resolveConnect?.({
+        utteranceId: "utt_41_1_000025",
+        sessionKey: "speech_41_1",
+      });
+      await startPromise;
+    });
+    act(() => result.current.setLanguageMode("zh"));
+    expect(result.current.languageMode).toBe("en");
+    unmount();
   });
 
   it("allows only one start while microphone permission is pending", async () => {

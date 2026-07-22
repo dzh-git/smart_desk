@@ -46,8 +46,12 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `ENABLE_DEMO_SEED` | `false` | Create demo data only when the database has no meetings. |
 | `ENABLE_DEMO_SEED_WHEN_NO_ACTIVE` | `false` | Create a demo active meeting if startup finds no active meeting. |
 | `ENABLE_DEMO_SEAT_API` | `false` | Enable development-only seat occupy/vacate endpoints. |
-| `ENABLE_TRANSLATION_MODEL` | unset | Enable real OPUS-MT translation for final records. |
-| `TRANSLATION_MODEL_PATH` | unset | Override the local translation model directory. |
+| `ENABLE_TRANSLATION_MODEL` | unset | Enable local OPUS-MT translation for final records. |
+| `TRANSLATION_ZH_EN_MODEL_PATH` | `models/opus-mt-zh-en` | Local Chinese-to-English model directory. |
+| `TRANSLATION_EN_ZH_MODEL_PATH` | `models/opus-mt-en-zh` | Local English-to-Chinese model directory. |
+| `BILINGUAL_ASR_MODEL_PATH` | `models/SenseVoiceSmall` | Local bilingual sentence-final ASR directory. |
+| `CHINESE_ASR_MODEL_PATH` | `models/iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch` | Local Chinese-specialized sentence-final ASR directory. |
+| `TRANSLATION_MODEL_PATH` | unset | Legacy Chinese-to-English path override. |
 | `RUN_TRANSLATION_SMOKE` | unset | Run translation model smoke tests. |
 | `VITE_ENABLE_DEMO_CONTROLS` | `false` | Show frontend demo controls. |
 | `SMARTDESK_AGENT_URL` | `http://127.0.0.1:8766` | Loopback Display Agent used by the read-only host-display status aggregator. |
@@ -398,6 +402,8 @@ Behavior by `final`:
       "target_lang": "en",
       "source_text": "...",
       "translated_text": "...",
+      "translation_status": "ok",
+      "translation_error": null,
       "source_type": null,
       "created_at": "2026-06-13T10:00:00"
     }
@@ -407,12 +413,15 @@ Behavior by `final`:
 
 `TranslationRecordResponse` fields: `id`, `meeting_id`, `seat_id`,
 `utterance_id` (nullable), `source_lang`, `target_lang`, `source_text`,
-`translated_text`, `source_type` (nullable), `created_at`. Interim results are
+`translated_text`, `translation_status`, `translation_error` (nullable),
+`source_type` (nullable), `created_at`. Interim results are
 never persisted.
 
-When `ENABLE_TRANSLATION_MODEL=true`, final Chinese source text is translated by
-the local OPUS-MT zh-en model. When the model is disabled, `translated_text`
-uses the backward-compatible value `[translation not available]`.
+When `ENABLE_TRANSLATION_MODEL=true`, SenseVoiceSmall detects Chinese or English
+from the final sentence audio. English final text comes from SenseVoiceSmall;
+Chinese final text is rescored by the local Paraformer-large model. The matching
+local OPUS-MT direction translates it. A missing model keeps the source record, sets `translation_status` to
+`unavailable`, and uses `[translation not available]` for compatibility.
 
 ## Speech APIs
 
@@ -420,6 +429,8 @@ uses the backward-compatible value `[translation not available]`.
 |---|---|---|
 | `GET` | `/api/speech/status` | Return speech model readiness and preload state. |
 | `POST` | `/api/speech/preload` | Start background speech model preload. |
+| `GET` | `/api/speech/diagnostics?limit=N&utterance_id=ID` | Return bounded latency trace events, queue timings and runtime indicators. |
+| `POST` | `/api/speech/diagnostics/clear` | Clear the in-memory latency trace before a controlled reproduction. |
 
 Speech audio upload uses WebSocket:
 
@@ -436,13 +447,28 @@ The backend also exposes a general broadcast WebSocket for the same meeting
 
 See `WEBSOCKET_PROTOCOL.md` for the binary audio and event contract.
 
+Live source revisions use `translation_interim` with semantic sentence fields.
+Completed sentences use ordered `translation_sentence` events (`pending`, then
+`ok` or `unavailable`) keyed by `sentence_id`; these events are ephemeral and
+are not written to translation history.
+
 `GET /api/speech/status` also reports `vad_model`, `translation_model`,
 `translation_model_path`, `translation_last_error`, and the active
-`voice_gate` defaults. Translation readiness is diagnostic and does not block
+`voice_gate` defaults. `live_asr` reports automatic probe/window intervals,
+PyTorch/OMP/MKL thread budgets and maximum audio backlog; each active session
+reports `pcm_queue_frames`, `audio_backlog_ms`, requested/detected language and
+recognition engine. Translation readiness is diagnostic and does not block
 Chinese speech recognition. Runtime diagnostics include `active_sessions`,
 `pending_finalizations`, `process_rss_mb`, `max_buffered_audio_seconds`,
 `soft_utterance_seconds` (30), `hard_utterance_seconds` (45), and
 `rollover_overlap_ms` (300).
+
+Speech diagnostics are enabled before process startup with
+`SMART_DESK_ENABLE_SPEECH_TRACE=true`; browser capture additionally requires
+`VITE_ENABLE_SPEECH_TRACE=true`. The local launcher enables both. Diagnostic
+events contain timestamps, identifiers, durations and queue depths, never PCM
+audio. Queue metrics distinguish streaming frames slower than the 100 ms input
+cadence, sentence-translation waiting/inference, and finalization waiting/work.
 
 ## Hardware Status API
 

@@ -22,6 +22,7 @@ from backend.speech_module.caption_formatter import (
     _find_split,
     _punc_offset_for_raw,
 )
+from backend.speech_module.punctuation import ALL_BOUNDARY
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -175,16 +176,19 @@ class TestDefaultTwentyToThirtyFiveLayout:
     def test_boundary_in_target_range_splits(self):
         assert _find_split("A" * 20 + "，" + "后续") == 21
 
+    def test_colon_is_a_display_boundary_in_target_range(self):
+        assert _find_split("A" * 20 + "：" + "后续") == 21
+
     def test_forced_split_happens_only_after_35_characters(self):
         assert _find_split("A" * 35) == 0
         assert _find_split("A" * 36) == 35
 
-    def test_result_distinguishes_natural_and_forced_boundaries(self):
+    def test_result_only_commits_terminal_boundary_with_later_text(self):
         natural = CaptionFormatter(
-            punctuator=lambda text: text[:20] + "，" + text[20:],
+            punctuator=lambda text: text[:20] + "。" + text[20:],
         ).update("A" * 24, time.monotonic())
         assert natural.natural_boundary_committed is True
-        assert natural.committed_boundary == "，"
+        assert natural.committed_boundary == "。"
 
         provisional = CaptionFormatter(
             punctuator=lambda text: text + "。",
@@ -195,7 +199,8 @@ class TestDefaultTwentyToThirtyFiveLayout:
             "A" * 36, time.monotonic(),
         )
         assert forced.natural_boundary_committed is False
-        assert len(forced.previous_line) == 35
+        assert forced.previous_line == ""
+        assert forced.current_line == "A" * 36
 
     def test_timeout_keeps_short_line_waiting(self):
         formatter = CaptionFormatter(punctuator=_no_punc)
@@ -229,7 +234,8 @@ class TestLiveInterimNotCommittedEarly:
     def test_cumulative_text_grows_in_current_line(self):
         """With fallback punctuation, current_line reflects the latest
         cumulative text across multiple frames."""
-        f = CaptionFormatter()
+        heuristic = lambda text: text if not text or text[-1] in ALL_BOUNDARY else text + "。"
+        f = CaptionFormatter(punctuator=heuristic)
         now = time.monotonic()
         texts = ["今天", "今天天气", "今天天气真好", "今天天气真好我们"]
         for i, t in enumerate(texts):
@@ -239,21 +245,18 @@ class TestLiveInterimNotCommittedEarly:
                 f"Frame {i}: expected '{t}' in current_line, got '{r.current_line}'"
             )
 
-    def test_timeout_still_commits_heuristic_text(self):
-        """After 2 s timeout the heuristic text IS committed (timeout
-        is the intended commit path for fallback-only punctuation)."""
+    def test_timeout_does_not_visually_commit_heuristic_text(self):
+        """Speech VAD, not a frozen caption, owns natural-pause commit."""
         f = CaptionFormatter(CaptionConfig(min_line_length=5))
         now = time.monotonic()
         f.update("今天天气真好", now)
-        r = f.check_timeout(now + 2.5)
-        assert r is not None
-        assert r.previous_line != ""
-        assert r.current_line == ""
+        assert f.check_timeout(now + 2.5) is None
 
     def test_already_punctuated_text_stays_in_current(self):
         """Text that already ends with 。stays in current_line when it
         is the last character."""
-        f = CaptionFormatter()
+        heuristic = lambda text: text if not text or text[-1] in ALL_BOUNDARY else text + "。"
+        f = CaptionFormatter(punctuator=heuristic)
         result = f.update("好的。", time.monotonic())
         assert result.previous_line == ""
         assert result.current_line == "好的。"
@@ -288,8 +291,8 @@ class TestPunctuationTriggersSplit:
         assert result.previous_line == "你吃饭了吗？"
         assert "明天" in result.current_line
 
-    def test_comma_triggers_split(self):
-        """，mid-text → split."""
+    def test_comma_does_not_trigger_semantic_split(self):
+        """A visual clause comma remains in the forming semantic sentence."""
         def comma_punc(text):
             if len(text) >= 6:
                 return text[:6] + "，" + text[6:] + "。"
@@ -297,9 +300,8 @@ class TestPunctuationTriggersSplit:
 
         f = CaptionFormatter(CaptionConfig(min_line_length=5), punctuator=comma_punc)
         result = f.update("今天天气真好我们", time.monotonic())
-        # "今天天气真好，我们。" — ，at pos 6, i+1=7 >= 5, 7 < 10 → split at 7
-        assert result.previous_line == "今天天气真好，"
-        assert "我们" in result.current_line
+        assert result.previous_line == ""
+        assert result.current_line == "今天天气真好，我们。"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -310,17 +312,13 @@ class TestPunctuationTriggersSplit:
 class TestCommaFirstSplit:
     """When both comma and period exist, the EARLIEST valid boundary wins."""
 
-    def test_comma_before_period_splits_at_comma(self):
-        """Comma appears earlier than period → split at comma."""
+    def test_comma_before_period_remains_one_caption_sentence(self):
         f = CaptionFormatter(CaptionConfig(min_line_length=5), punctuator=_embed_comma_punc)
         # "中华民族遭受了前所未有的劫难，一批又一批仁人志士。"
-        # ， after 14th char, 。 at the very end
-        # First boundary: ， at pos 14, i+1=15 >= 5, 15 < len → split at 15
         raw = "中华民族遭受了前所未有的劫难一批又一批仁人志士"
         result = f.update(raw, time.monotonic())
-        assert "，" in result.previous_line
-        assert result.previous_line == "中华民族遭受了前所未有的劫难，"
-        assert "一批" in result.current_line
+        assert result.previous_line == ""
+        assert result.current_line.endswith("一批又一批仁人志士。")
 
     def test_period_before_comma_splits_at_period(self):
         """Period appears earlier than comma → split at period."""
@@ -371,27 +369,24 @@ class TestMinLineLength:
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-class TestForcedSplitAt31:
-    """Text > 31 characters forces a split even without punctuation."""
+class TestNoForcedVisualSplit:
+    """Long text is retained; browser layout owns visual wrapping."""
 
-    def test_long_unpunctuated_forced_split(self):
-        """32 chars without punctuation → forced split at 31."""
+    def test_long_unpunctuated_text_is_not_committed(self):
         f = CaptionFormatter(CaptionConfig(min_line_length=5, max_line_length=31), punctuator=_no_punc)
         text = "A" * 32
         result = f.update(text, time.monotonic())
-        assert result.previous_line == "A" * 31
-        assert result.current_line == "A"
+        assert result.previous_line == ""
+        assert result.current_line == text
 
-    def test_forced_split_no_boundary_in_range(self):
-        """32-char text without punctuation in first 31 → forced split at 31."""
+    def test_long_text_with_no_terminal_boundary_is_not_committed(self):
         f = CaptionFormatter(CaptionConfig(min_line_length=5, max_line_length=31), punctuator=_no_punc)
         text = "B" * 32
         result = f.update(text, time.monotonic())
-        assert result.previous_line == "B" * 31
-        assert result.current_line == "B"
+        assert result.previous_line == ""
+        assert result.current_line == text
 
-    def test_forced_split_prefers_last_boundary(self):
-        """When forced (>31), the LAST boundary within max_len is preferred."""
+    def test_comma_in_long_text_does_not_commit(self):
         def comma_only_punc(text):
             if len(text) >= 16:
                 return text[:16] + "，" + text[16:]
@@ -400,24 +395,22 @@ class TestForcedSplitAt31:
         f = CaptionFormatter(CaptionConfig(min_line_length=5, max_line_length=31), punctuator=comma_only_punc)
         raw = "A" * 32
         result = f.update(raw, time.monotonic())
-        # "A"*16 + "，" + "A"*16 = 33 chars
-        # First boundary scan: ，at pos 16, i+1=17 >= 5, 17 < 33 → split at 17
-        assert result.previous_line == "AAAAAAAAAAAAAAAA，"
-        assert "，" in result.previous_line
+        assert result.previous_line == ""
+        assert result.current_line == "A" * 16 + "，" + "A" * 16
 
-    def test_forced_split_multiple_commits(self):
-        """Multiple frames with forced splits — no duplication."""
+    def test_multiple_long_updates_keep_complete_cumulative_text(self):
         f = CaptionFormatter(CaptionConfig(min_line_length=5, max_line_length=31), punctuator=_no_punc)
         now = time.monotonic()
 
         f.update("A" * 20, now)
         f.update("A" * 30, now + 0.1)
         r3 = f.update("A" * 32, now + 0.2)
-        assert r3.previous_line == "A" * 31
-        assert r3.current_line == "A"
+        assert r3.previous_line == ""
+        assert r3.current_line == "A" * 32
 
         r4 = f.update("A" * 40, now + 0.3)
-        assert r4.current_line == "A" * 9  # uncommitted = raw[31:40]
+        assert r4.previous_line == ""
+        assert r4.current_line == "A" * 40
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -434,17 +427,14 @@ class TestTimeoutSplit:
         f.update("今天天气真好我们", now)
         assert f.check_timeout(now + 1.0) is None
 
-    def test_timeout_triggers_split(self):
+    def test_timeout_does_not_trigger_visual_split(self):
         f = CaptionFormatter(CaptionConfig(min_line_length=5), punctuator=_no_punc)
         now = time.monotonic()
         result = f.update("今天天气真好我们", now)
         assert result.previous_line == ""
         assert result.current_line == "今天天气真好我们"
 
-        result2 = f.check_timeout(now + 2.5)
-        assert result2 is not None
-        assert result2.previous_line == "今天天气真好我们"
-        assert result2.current_line == ""
+        assert f.check_timeout(now + 2.5) is None
 
     def test_timeout_only_commits_when_min_length_met(self):
         """Short text (<5 chars) is NOT committed by timeout."""
@@ -460,15 +450,11 @@ class TestTimeoutSplit:
         f.check_timeout(now + 2.5)  # commits
         assert f.check_timeout(now + 3.0) is None  # nothing new
 
-    def test_timeout_also_works_with_heuristic(self):
-        """With heuristic fallback, timeout still commits."""
+    def test_timeout_is_noop_with_heuristic(self):
         f = CaptionFormatter(CaptionConfig(min_line_length=5))
         now = time.monotonic()
         f.update("今天天气真好", now)
-        r = f.check_timeout(now + 2.5)
-        assert r is not None
-        assert r.previous_line != ""
-        assert r.current_line == ""
+        assert f.check_timeout(now + 2.5) is None
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -551,21 +537,16 @@ class TestCumulativeNoDuplication:
 class TestTwoLineOnly:
     """Only one previous_line is retained (the latest committed sentence)."""
 
-    def test_previous_line_slides_to_latest(self):
-        """The previous_line is always the MOST RECENT committed sentence."""
+    def test_previous_line_tracks_latest_true_terminal_sentence(self):
+        """Only a terminal punctuation boundary moves a compatibility line."""
         f = CaptionFormatter(CaptionConfig(min_line_length=5), punctuator=_no_punc)
         now = time.monotonic()
 
-        f.update("AAAAA", now)
-        r1 = f.check_timeout(now + 2.5)
-        assert r1 is not None
-        assert r1.previous_line == "AAAAA"
-
-        f.update("AAAAABBBBB", now + 2.6)
-        r2 = f.check_timeout(now + 5.0)
-        assert r2 is not None
-        assert r2.previous_line == "BBBBB"  # slid to latest
-        assert r2.current_line == ""
+        r1 = f.update("AAAAA。BBBBB", now)
+        assert r1.previous_line == "AAAAA。"
+        r2 = f.update("AAAAA。BBBBB。CCCCC", now + 0.1)
+        assert r2.previous_line == "BBBBB。"
+        assert r2.current_line == "CCCCC"
 
     def test_two_line_mode_flag(self):
         f = CaptionFormatter()
@@ -618,7 +599,7 @@ class TestIntegrationScenarios:
     """Multi-frame sequences that simulate real ASR streaming."""
 
     def test_simple_incremental_flow(self):
-        """Default formatter: text grows in current_line, then timeout commits."""
+        """Default formatter keeps text until a true terminal boundary."""
         f = CaptionFormatter(CaptionConfig(min_line_length=5))
         now = time.monotonic()
 
@@ -630,16 +611,10 @@ class TestIntegrationScenarios:
         assert r2.previous_line == ""
         assert "今天天气真好" in r2.current_line
 
-        # Timeout commits
-        r3 = f.check_timeout(now + 2.5)
-        assert r3 is not None
-        assert r3.previous_line != ""
-        assert r3.current_line == ""
-
-        # New text after commit
-        r4 = f.update("今天天气真好我们去了", now + 2.6)
-        assert r4.previous_line != ""
-        assert "我们去了" in r4.current_line
+        assert f.check_timeout(now + 2.5) is None
+        r3 = f.update("今天天气真好。我们去了", now + 2.6)
+        assert r3.previous_line == "今天天气真好。"
+        assert "我们去了" in r3.current_line
 
     def test_asr_refinement_no_duplication(self):
         f = CaptionFormatter(punctuator=_no_punc)

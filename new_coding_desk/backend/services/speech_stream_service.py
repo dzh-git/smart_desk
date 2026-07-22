@@ -26,9 +26,17 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Any
 
+from backend.services.speech_inference_runtime import inference_runtime
+
 import numpy as np
 
 from backend.speech_module.caption_formatter import CaptionFormatter
+from backend.speech_module.punctuation import ALL_BOUNDARY
+from backend.speech_module.text_utils import (
+    format_english_streaming_display,
+    merge_english_transcripts,
+    normalize_english_display,
+)
 from backend.websocket.speech_trace import trace
 from backend.events import event_bus
 from backend.events.speech_events import (
@@ -41,13 +49,21 @@ logger = logging.getLogger(__name__)
 # ── VAD configuration (Task 122) ──────────────────────────────────────────────
 
 # Adaptive low-latency voice gate defaults.  Values are float32 PCM RMS.
-VAD_SILENCE_THRESHOLD_RMS: float = 0.010  # compatibility alias / minimum onset
-VAD_CONTINUE_THRESHOLD_RMS: float = 0.007
+# Deployed browser microphones can produce clean speech around 6 mRMS.  Keep
+# the absolute floor just above the measured steady-noise band (about 4 mRMS)
+# and let the adaptive noise ratios raise it in louder rooms.
+VAD_SILENCE_THRESHOLD_RMS: float = 0.005  # compatibility alias / minimum onset
+VAD_CONTINUE_THRESHOLD_RMS: float = 0.0045
 VAD_NOISE_START_RATIO: float = 2.0
 VAD_NOISE_CONTINUE_RATIO: float = 1.5
-VAD_CALIBRATION_FRAMES: int = 5          # 500 ms at 100 ms/frame
+VAD_CALIBRATION_FRAMES: int = 3          # 300 ms at 100 ms/frame
 VAD_PRE_ROLL_FRAMES: int = 3             # retain the first consonants
 VAD_START_CONFIRM_FRAMES: int = 2
+LIVE_ASR_LANGUAGE_MODES = frozenset({"auto", "zh", "en"})
+SENSEVOICE_AUTO_PROBE_SECONDS = 1.2
+SENSEVOICE_LIVE_INTERVAL_SECONDS = 1.0
+SENSEVOICE_LIVE_WINDOW_SECONDS = 8.0
+SENSEVOICE_LIVE_WINDOW_FRAMES = round(SENSEVOICE_LIVE_WINDOW_SECONDS * 10)
 
 # Boundary policy: punctuation + pause first, silence fallback last.
 VAD_SENTENCE_PAUSE_S: float = 0.9
@@ -60,8 +76,17 @@ ROLLOVER_OVERLAP_MS: int = 300
 ROLLOVER_OVERLAP_BYTES: int = int(16000 * 2 * ROLLOVER_OVERLAP_MS / 1000)
 CONTINUOUS_ROLLOVER_REASONS = frozenset({
     "soft_sentence_limit",
-    "soft_clause_limit",
     "max_duration",
+})
+SEMANTIC_SENTENCE_END = frozenset("。！？.!?")
+SENTENCE_COMMIT_REASONS = frozenset({
+    "english_sentence_pause",
+    "sentence_pause",
+    "natural_pause",
+    "hard_silence",
+    "soft_sentence_limit",
+    "max_duration",
+    "end_hint",
 })
 
 # ── Utterance state machine constants (Task 122) ──────────────────────────────
@@ -128,6 +153,34 @@ class SpeechStreamSession:
         # Task 126: terminal utterance_id set — prevents duplicate final/cancel
         # for the same utterance_id. Each utterance_id can only be terminal once.
         self.terminal_utterance_ids: set[str] = set()
+        # Semantic lyric sentence tracking is intentionally independent from
+        # CaptionFormatter's visual two-line wrapping.
+        self.sentence_sequence: int = 0
+        self.active_sentence_id: str | None = None
+        self.active_sentence_sequence: int = 0
+        self.sentence_committed_raw_len: int = 0
+        # English uses one online decoder per semantic sentence.  A completed
+        # sentence is never reconstructed from a later cumulative hypothesis.
+        self.english_sentence_start_frame: int = 0
+        # Task 130: bilingual live recognition routing.
+        self.requested_language: str = "auto"
+        self.detected_language: str = "unknown"
+        self.recognition_engine: str = "unknown"
+        self.last_sensevoice_inference_audio_seconds: float = 0.0
+        self.last_sensevoice_text: str = ""
+        self.sensevoice_window_start_frame: int = 0
+        self.sensevoice_task_running: bool = False
+        self.sensevoice_last_error: str | None = None
+        # True English streaming diagnostics. SenseVoice remains only for LID,
+        # final correction, and the explicit local-model-missing fallback.
+        self.english_streaming_frames: int = 0
+        self.english_streaming_last_error: str | None = None
+        self.english_streaming_flushed: bool = False
+        self.paraformer_replayed_frames: int = 0
+        # PCM ingress diagnostics are updated by the WebSocket queue.
+        self.pcm_queue_frames: int = 0
+        self.audio_backlog_ms: int = 0
+        self.peak_audio_backlog_ms: int = 0
 
 
 class SpeechStreamService:
@@ -153,6 +206,7 @@ class SpeechStreamService:
         # sequence counter for utterance_id. Lives outside session lifecycle
         # so that reconnect gets a new, non-conflicting ID (ADR 0003).
         self._utterance_sequences: dict[tuple[int, int], int] = {}
+        self._sentence_sequences: dict[tuple[int, int], int] = {}
         # Task 119: background preload concurrency control
         self._preload_started: bool = False
         self._preload_lock: threading.Lock = threading.Lock()
@@ -243,18 +297,48 @@ class SpeechStreamService:
                 is_translation_model_enabled,
             )
             translation = TranslationModelService.get_instance()
+            model_statuses = translation.get_status()
+            base["translation_models"] = model_statuses
+            direction_states = [item["status"] for item in model_statuses.values()]
             base["translation_model"] = (
-                "loaded" if translation.loaded else (
-                    "error" if translation.load_error else (
-                        "unknown" if is_translation_model_enabled() else "disabled"
-                    )
-                )
+                "disabled" if not is_translation_model_enabled()
+                else "loaded" if all(state == "loaded" for state in direction_states)
+                else "error" if any(state == "error" for state in direction_states)
+                else "unknown"
             )
             base["translation_model_path"] = translation.model_path
             base["translation_last_error"] = translation.load_error
         except Exception as exc:
             base["translation_model"] = "error"
             base["translation_last_error"] = str(exc)
+
+        try:
+            from backend.speech_module.bilingual_asr import get_bilingual_asr_status
+
+            base["bilingual_final_asr"] = get_bilingual_asr_status()
+        except Exception as exc:
+            base["bilingual_final_asr"] = {
+                "status": "error", "path": "", "error": str(exc),
+            }
+
+        try:
+            from backend.speech_module.english_streaming import get_english_streaming_status
+
+            base["english_streaming_asr"] = get_english_streaming_status()
+        except Exception as exc:
+            base["english_streaming_asr"] = {
+                "status": "error", "path": "", "error": str(exc),
+                "engine": "sherpa_onnx_streaming",
+            }
+
+        try:
+            from backend.speech_module.stt_streaming import get_offline_asr_status
+
+            base["chinese_final_asr"] = get_offline_asr_status()
+        except Exception as exc:
+            base["chinese_final_asr"] = {
+                "status": "error", "path": "", "error": str(exc),
+            }
 
         base["voice_gate"] = {
             "minimum_onset_rms": VAD_SILENCE_THRESHOLD_RMS,
@@ -296,12 +380,44 @@ class SpeechStreamService:
                 "processed_frames": session.processed_frames,
                 "last_processing_ms": session.last_processing_ms,
                 "peak_processing_ms": session.peak_processing_ms,
+                "pcm_queue_frames": session.pcm_queue_frames,
+                "audio_backlog_ms": session.audio_backlog_ms,
+                "peak_audio_backlog_ms": session.peak_audio_backlog_ms,
+                "requested_language": session.requested_language,
+                "detected_language": session.detected_language,
+                "recognition_engine": session.recognition_engine,
+                "sensevoice_rolling": {
+                    "running": session.sensevoice_task_running,
+                    "latest_pending": bool(
+                        session.recognition_engine == "sensevoice_rolling_fallback"
+                        and session.utterance_audio_seconds
+                            > session.last_sensevoice_inference_audio_seconds
+                    ),
+                    "last_error": session.sensevoice_last_error,
+                },
+                "english_streaming": {
+                    "engine": "sherpa_onnx_streaming",
+                    "frames_processed": session.english_streaming_frames,
+                    "flushed": session.english_streaming_flushed,
+                    "last_error": session.english_streaming_last_error,
+                    "fallback_active": (
+                        session.recognition_engine == "sensevoice_rolling_fallback"
+                    ),
+                },
             }
             for session in self._sessions.values()
         ]
         base["soft_utterance_seconds"] = VAD_SOFT_UTTERANCE_S
         base["hard_utterance_seconds"] = VAD_MAX_UTTERANCE_S
         base["rollover_overlap_ms"] = ROLLOVER_OVERLAP_MS
+        base["live_asr"] = {
+            "language_modes": sorted(LIVE_ASR_LANGUAGE_MODES),
+            "auto_probe_ms": round(SENSEVOICE_AUTO_PROBE_SECONDS * 1000),
+            "sensevoice_interval_ms": round(SENSEVOICE_LIVE_INTERVAL_SECONDS * 1000),
+            "sensevoice_window_ms": round(SENSEVOICE_LIVE_WINDOW_SECONDS * 1000),
+            "english_streaming_engine": "sherpa_onnx_streaming",
+            **inference_runtime.diagnostics(),
+        }
         try:
             from backend.services.speech_finalization_service import finalization_queue
             base["pending_finalizations"] = finalization_queue.pending_count
@@ -429,18 +545,23 @@ class SpeechStreamService:
         stripped = text.rstrip()
         meaningful = self._meaningful_length(stripped)
         if stripped and meaningful >= 2:
-            if stripped[-1] in "。！？.!?" and silence >= VAD_SENTENCE_PAUSE_S:
+            if (
+                session.detected_language == "en"
+                and stripped[-1] in ".!?"
+                and silence + 1e-6 >= VAD_SENTENCE_PAUSE_S
+            ):
+                # A short English pause closes only the semantic lyric sentence.
+                # The utterance and Zipformer stream remain alive so the next
+                # sentence keeps its acoustic context and onset words.
+                return "english_sentence_pause"
+            if stripped[-1] in "。！？.!?" and silence + 1e-6 >= VAD_SENTENCE_PAUSE_S:
                 return "sentence_pause"
-            if stripped[-1] in "，；：,;:" and silence >= VAD_CLAUSE_PAUSE_S:
-                return "clause_pause"
             if (
                 session.utterance_audio_seconds >= VAD_SOFT_UTTERANCE_S
                 and natural_boundary_committed
             ):
                 if committed_boundary in "。！？.!?":
                     return "soft_sentence_limit"
-                if committed_boundary in "，；：,;:":
-                    return "soft_clause_limit"
             if meaningful >= 4 and silence >= VAD_NATURAL_PAUSE_S:
                 return "natural_pause"
         if silence >= VAD_SILENCE_DURATION_S:
@@ -467,6 +588,325 @@ class SpeechStreamService:
             payload={"seat_id": session.seat_id},
         ))
 
+    @staticmethod
+    def _semantic_raw_count(text: str) -> int:
+        return sum(1 for ch in text if ch not in ALL_BOUNDARY)
+
+    @staticmethod
+    def _semantic_offset_for_raw(text: str, raw_len: int) -> int:
+        if raw_len <= 0:
+            return 0
+        count = 0
+        for index, ch in enumerate(text):
+            if ch not in ALL_BOUNDARY:
+                count += 1
+                if count == raw_len:
+                    cursor = index + 1
+                    while cursor < len(text) and text[cursor] in ALL_BOUNDARY:
+                        cursor += 1
+                    return cursor
+        return len(text)
+
+    def _ensure_sentence_identity(
+        self,
+        session: SpeechStreamSession,
+    ) -> tuple[str, int]:
+        if session.active_sentence_id is None:
+            key = (session.meeting_id, session.seat_id)
+            session.sentence_sequence = max(
+                session.sentence_sequence,
+                self._sentence_sequences.get(key, 0),
+            ) + 1
+            self._sentence_sequences[key] = session.sentence_sequence
+            session.active_sentence_sequence = session.sentence_sequence
+            utterance_id = session.current_utterance_id or "unknown"
+            session.active_sentence_id = (
+                f"{utterance_id}:s{session.sentence_sequence:06d}"
+            )
+        return session.active_sentence_id, session.active_sentence_sequence
+
+    def _track_semantic_sentences(
+        self,
+        session: SpeechStreamSession,
+        source_text: str,
+        boundary_reason: str | None,
+    ) -> dict[str, Any]:
+        """Return completed sentences plus the currently forming sentence.
+
+        Terminal punctuation inside cumulative ASR text is confirmed when
+        later content follows it.  Punctuation at the tail is only committed
+        by a semantic VAD/end boundary, preventing provisional punctuation
+        from producing flickering translations.
+        """
+        text = source_text.strip()
+        completed: list[dict[str, Any]] = []
+
+        while text:
+            offset = self._semantic_offset_for_raw(
+                text,
+                session.sentence_committed_raw_len,
+            )
+            suffix = text[offset:].lstrip()
+            if not suffix:
+                break
+            split_at = 0
+            for index, ch in enumerate(suffix):
+                if ch in SEMANTIC_SENTENCE_END and suffix[index + 1:].strip():
+                    split_at = index + 1
+                    break
+            if split_at == 0:
+                break
+            sentence = suffix[:split_at].strip()
+            sentence_id, sequence = self._ensure_sentence_identity(session)
+            completed.append({
+                "sentence_id": sentence_id,
+                "sentence_sequence": sequence,
+                "source_text": sentence,
+            })
+            session.sentence_committed_raw_len += self._semantic_raw_count(sentence)
+            session.active_sentence_id = None
+            session.active_sentence_sequence = 0
+
+        offset = self._semantic_offset_for_raw(
+            text,
+            session.sentence_committed_raw_len,
+        ) if text else 0
+        remaining = text[offset:].strip() if text else ""
+
+        if remaining and boundary_reason in SENTENCE_COMMIT_REASONS:
+            sentence_id, sequence = self._ensure_sentence_identity(session)
+            completed.append({
+                "sentence_id": sentence_id,
+                "sentence_sequence": sequence,
+                "source_text": remaining,
+            })
+            session.sentence_committed_raw_len += self._semantic_raw_count(remaining)
+            session.active_sentence_id = None
+            session.active_sentence_sequence = 0
+            remaining = ""
+
+        if remaining:
+            sentence_id, sequence = self._ensure_sentence_identity(session)
+            return {
+                "sentence_id": sentence_id,
+                "sentence_sequence": sequence,
+                "sentence_source_text": remaining,
+                "sentence_state": "forming",
+                "completed_sentences": completed,
+            }
+        if completed:
+            latest = completed[-1]
+            return {
+                "sentence_id": latest["sentence_id"],
+                "sentence_sequence": latest["sentence_sequence"],
+                "sentence_source_text": latest["source_text"],
+                "sentence_state": "completed",
+                "completed_sentences": completed,
+            }
+        return {
+            "sentence_id": None,
+            "sentence_sequence": 0,
+            "sentence_source_text": "",
+            "sentence_state": "forming",
+            "completed_sentences": [],
+        }
+
+    def _track_english_sentences(
+        self,
+        session: SpeechStreamSession,
+        source_text: str,
+        boundary_reason: str | None,
+    ) -> dict[str, Any]:
+        """Track the one active English decoder sentence.
+
+        Zipformer returns a revisable cumulative hypothesis.  Unlike the old
+        ordinal matcher, this state machine discards that decoder at a VAD
+        boundary, snapshots its exact audio and never emits the same sentence
+        from a later decoder.  The correction worker is the only allowed
+        one-time source replacement after completion.
+        """
+        text = normalize_english_display(source_text).strip()
+        if not text:
+            return {
+                "sentence_id": None,
+                "sentence_sequence": 0,
+                "sentence_source_text": "",
+                "sentence_state": "forming",
+                "completed_sentences": [],
+            }
+
+        sentence_id, sequence = self._ensure_sentence_identity(session)
+        if boundary_reason in SENTENCE_COMMIT_REASONS:
+            start = min(
+                max(0, session.english_sentence_start_frame),
+                len(session._utterance_buffer),
+            )
+            raw_audio = b"".join(session._utterance_buffer[start:])
+            session.english_sentence_start_frame = len(session._utterance_buffer)
+            completed = {
+                "sentence_id": sentence_id,
+                "sentence_sequence": sequence,
+                "source_text": text,
+                "requires_english_correction": bool(raw_audio),
+                "audio": self.pcm16_to_float32(raw_audio).copy()
+                if raw_audio else None,
+            }
+            session.active_sentence_id = None
+            session.active_sentence_sequence = 0
+            return {
+                "sentence_id": sentence_id,
+                "sentence_sequence": sequence,
+                "sentence_source_text": text,
+                "sentence_state": "completed",
+                "completed_sentences": [completed],
+            }
+
+        return {
+            "sentence_id": sentence_id,
+            "sentence_sequence": sequence,
+            "sentence_source_text": text,
+            "sentence_state": "forming",
+            "completed_sentences": [],
+        }
+
+    def complete_active_sentence(
+        self,
+        session_key: str,
+        source_text: str,
+        boundary_reason: str = "end_hint",
+    ) -> dict[str, Any]:
+        """Commit the remaining semantic sentence for a manual boundary."""
+        session = self._sessions.get(session_key)
+        if session is None:
+            return {"completed_sentences": []}
+        if session.detected_language == "en":
+            return self._track_english_sentences(
+                session,
+                source_text,
+                boundary_reason,
+            )
+        return self._track_semantic_sentences(
+            session,
+            source_text,
+            boundary_reason,
+        )
+
+    def update_pcm_queue(self, session_key: str, pending_frames: int) -> None:
+        """Publish the ingress queue depth to diagnostics and priority gates."""
+        session = self._sessions.get(session_key)
+        if session is None:
+            return
+        session.pcm_queue_frames = max(0, int(pending_frames))
+        session.audio_backlog_ms = session.pcm_queue_frames * 100
+        session.peak_audio_backlog_ms = max(
+            session.peak_audio_backlog_ms,
+            session.audio_backlog_ms,
+        )
+        inference_runtime.update_stream(
+            session_key,
+            voice_active=session.voice_active,
+            backlog_ms=session.audio_backlog_ms,
+        )
+
+    @staticmethod
+    def _route_fields(session: SpeechStreamSession) -> dict[str, str]:
+        return {
+            "requested_language": session.requested_language,
+            "detected_language": session.detected_language,
+            "recognition_engine": session.recognition_engine,
+            "source_lang": session.detected_language,
+        }
+
+    def _recognize_sensevoice_snapshot(
+        self,
+        session: SpeechStreamSession,
+        *,
+        language: str,
+        force: bool = False,
+        purpose: str = "rolling",
+    ) -> tuple[str, str, int]:
+        """Recognize the latest bounded utterance window with SenseVoice."""
+        if not session._utterance_buffer:
+            return session.last_sensevoice_text, session.detected_language, 0
+        elapsed = (
+            session.utterance_audio_seconds
+            - session.last_sensevoice_inference_audio_seconds
+        )
+        if not force and elapsed + 1e-6 < SENSEVOICE_LIVE_INTERVAL_SECONDS:
+            return session.last_sensevoice_text, session.detected_language, 0
+
+        from backend.speech_module.bilingual_asr import recognize_bilingual
+
+        buffer_len = len(session._utterance_buffer)
+        window_start = max(0, buffer_len - SENSEVOICE_LIVE_WINDOW_FRAMES)
+        pcm = b"".join(session._utterance_buffer[window_start:])
+        audio = self.pcm16_to_float32(pcm)
+        trace(
+            f"sensevoice_{purpose}_start_at",
+            utterance_id=session.current_utterance_id,
+            meeting_id=session.meeting_id,
+            seat_id=session.seat_id,
+            window_start_frame=window_start,
+            window_frames=buffer_len - window_start,
+        )
+        started = time.perf_counter()
+        session.sensevoice_task_running = True
+        try:
+            result = recognize_bilingual(
+                audio,
+                language=language,
+            )  # serialized by model lock
+            session.sensevoice_last_error = None
+        except Exception as exc:
+            session.sensevoice_last_error = str(exc)
+            if session.last_sensevoice_text:
+                trace(
+                    f"sensevoice_{purpose}_degraded_at",
+                    utterance_id=session.current_utterance_id,
+                    meeting_id=session.meeting_id,
+                    seat_id=session.seat_id,
+                    error=str(exc),
+                )
+                return (
+                    session.last_sensevoice_text,
+                    session.detected_language
+                    if session.detected_language in {"zh", "en"}
+                    else language,
+                    round((time.perf_counter() - started) * 1000),
+                )
+            raise
+        finally:
+            session.sensevoice_task_running = False
+        infer_ms = round((time.perf_counter() - started) * 1000)
+        text = result.text.strip()
+        detected = result.source_lang
+        if detected == "en":
+            text = normalize_english_display(text)
+
+        if (
+            purpose == "rolling"
+            and window_start > 0
+            and session.last_sensevoice_text
+            and window_start > session.sensevoice_window_start_frame
+        ):
+            text = merge_english_transcripts(session.last_sensevoice_text, text)
+
+        session.last_sensevoice_inference_audio_seconds = (
+            session.utterance_audio_seconds
+        )
+        session.last_sensevoice_text = text
+        session.sensevoice_window_start_frame = window_start
+        trace(
+            f"sensevoice_{purpose}_end_at",
+            utterance_id=session.current_utterance_id,
+            meeting_id=session.meeting_id,
+            seat_id=session.seat_id,
+            infer_ms=infer_ms,
+            detected_language=detected,
+            text_length=len(text),
+        )
+        return text, detected, infer_ms
+
     # ── PCM16 conversion ────────────────────────────────────────────────────
 
     @staticmethod
@@ -491,6 +931,7 @@ class SpeechStreamService:
         utterance_id: str,
         *,
         continuous_rollover: bool = False,
+        language_mode: str | None = None,
     ) -> None:
         """Begin a new utterance — reset revision, set utterance_id.
 
@@ -505,6 +946,10 @@ class SpeechStreamService:
             return
         previous_noise_floor = session.noise_floor_rms
         previous_speaking_event = session.speaking_event_active
+        if language_mode is not None:
+            if language_mode not in LIVE_ASR_LANGUAGE_MODES:
+                raise ValueError(f"Unsupported language_mode: {language_mode}")
+            session.requested_language = language_mode
         # A repeated manual start must not leave the previous temporary light
         # active. Duration rollovers are one continuous speech action.
         if not continuous_rollover:
@@ -532,6 +977,29 @@ class SpeechStreamService:
             "current_line": "",
             "mode": "two_line",
         }
+        session.active_sentence_id = None
+        session.active_sentence_sequence = 0
+        session.sentence_committed_raw_len = 0
+        session.english_sentence_start_frame = 0
+        session.detected_language = (
+            session.requested_language
+            if session.requested_language in {"zh", "en"}
+            else "unknown"
+        )
+        session.recognition_engine = (
+            "paraformer_streaming" if session.requested_language == "zh"
+            else "sherpa_onnx_streaming" if session.requested_language == "en"
+            else "unknown"
+        )
+        session.last_sensevoice_inference_audio_seconds = 0.0
+        session.last_sensevoice_text = ""
+        session.sensevoice_window_start_frame = 0
+        session.paraformer_replayed_frames = 0
+        session.sensevoice_task_running = False
+        session.sensevoice_last_error = None
+        session.english_streaming_frames = 0
+        session.english_streaming_last_error = None
+        session.english_streaming_flushed = False
         session._pre_roll.clear()
         if continuous_rollover:
             session.speaking_event_active = previous_speaking_event
@@ -567,6 +1035,10 @@ class SpeechStreamService:
         session.revision = 0
         session._utterance_buffer.clear()
         session.caption_formatter.reset()
+        session.active_sentence_id = None
+        session.active_sentence_sequence = 0
+        session.sentence_committed_raw_len = 0
+        session.english_sentence_start_frame = 0
         # Task 122: reset VAD state
         session.utterance_state = UTTERANCE_STATE_IDLE
         session.vad_silence_seconds = 0.0
@@ -575,6 +1047,13 @@ class SpeechStreamService:
         session._pre_roll.clear()
         session._rollover_overlap_pcm = b""
         session._rollover_started_at = None
+        session.pcm_queue_frames = 0
+        session.audio_backlog_ms = 0
+        inference_runtime.update_stream(
+            session_key,
+            voice_active=False,
+            backlog_ms=0,
+        )
         self._publish_speaking_stop(session)
         if self._speech_module is not None and self._speech_module.ready:
             if hasattr(self._speech_module, "reset_streaming_state"):
@@ -595,7 +1074,7 @@ class SpeechStreamService:
         source_text: str,
         boundary_reason: str,
     ) -> dict[str, Any] | None:
-        """Terminate and clear an automatic segment without materializing audio."""
+        """Terminate a segment and copy its PCM for background final ASR."""
         session = self._sessions.get(session_key)
         if session is None or not session.current_utterance_id:
             return None
@@ -603,11 +1082,38 @@ class SpeechStreamService:
         if utterance_id in session.terminal_utterance_ids:
             return None
 
-        text = (source_text or session.last_source_text).strip()
+        # A VAD-triggered finalization bypasses finalize_utterance(), so flush
+        # the online English decoder here as well. This prevents its final
+        # partial words from being lost on a hard silence or duration rollover.
+        if (
+            session.detected_language == "en"
+            and session.recognition_engine == "sherpa_onnx_streaming"
+            and self._speech_module is not None
+        ):
+            try:
+                flushed = self._speech_module.finish_english_interim(session_key)
+                session.english_streaming_flushed = True
+                if flushed:
+                    caption = session.caption_formatter.update(
+                        flushed, time.monotonic(), source_lang="en",
+                    )
+                    session.last_source_text = caption.punctuated_text
+                    session.last_caption = {
+                        "previous_line": caption.previous_line,
+                        "current_line": caption.current_line,
+                        "mode": caption.mode,
+                    }
+                    session.revision += 1
+            except Exception as exc:
+                session.english_streaming_last_error = str(exc)
+                logger.warning("English streaming VAD flush failed: %s", exc)
+
+        text = (session.last_source_text or source_text).strip()
         continuous_rollover = boundary_reason in CONTINUOUS_ROLLOVER_REASONS
         overlap_pcm = b""
         if continuous_rollover and session._utterance_buffer:
             overlap_pcm = b"".join(session._utterance_buffer)[-ROLLOVER_OVERLAP_BYTES:]
+        audio = self.pcm16_to_float32(b"".join(session._utterance_buffer)).copy()
         snapshot = {
             "utterance_id": utterance_id,
             "meeting_id": session.meeting_id,
@@ -615,11 +1121,24 @@ class SpeechStreamService:
             "source_text": text,
             "boundary_reason": boundary_reason,
             "audio_seconds": session.utterance_audio_seconds,
+            "audio": audio,
+            "sr": 16000,
             "has_speech": session.has_speech,
             "caption": dict(session.last_caption),
             "continuous_rollover": continuous_rollover,
             "rollover_overlap_ms": round(len(overlap_pcm) / 32.0),
             "rollover_overlap_frames": (len(overlap_pcm) + 3199) // 3200,
+            "requested_language": session.requested_language,
+            "detected_language": session.detected_language,
+            "recognition_engine": session.recognition_engine,
+            "recognized_text": (
+                session.last_sensevoice_text
+                if session.recognition_engine == "sensevoice_rolling_fallback"
+                else ""
+            ),
+            "recognition_status": (
+                "degraded" if session.sensevoice_last_error else "ok"
+            ),
         }
 
         session.terminal_utterance_ids.add(utterance_id)
@@ -628,6 +1147,11 @@ class SpeechStreamService:
         session._rollover_overlap_pcm = overlap_pcm
         session.voice_active = continuous_rollover
         session.utterance_state = UTTERANCE_STATE_FINALIZING
+        inference_runtime.update_stream(
+            session_key,
+            voice_active=continuous_rollover,
+            backlog_ms=session.audio_backlog_ms,
+        )
         if not continuous_rollover:
             self._publish_speaking_stop(session)
         return snapshot
@@ -664,6 +1188,7 @@ class SpeechStreamService:
             session_key,
             new_uid,
             continuous_rollover=continuous_rollover,
+            language_mode=session.requested_language,
         )
         # The room floor was already calibrated for this open WebSocket.
         # Skipping a second 500 ms calibration avoids losing speech at an
@@ -744,47 +1269,212 @@ class SpeechStreamService:
                 },
                 "vad_should_finalize": False,
                 "boundary_reason": None,
+                **self._route_fields(session),
             }
 
-        # 3. Get SpeechModule (lazy loads, raises if unavailable)
+        # 3. Buffer admitted speech first. Recognition is routed per utterance:
+        # Paraformer for Chinese and true online Zipformer for English.
         sm = self._get_speech_module()
         sm.set_session_context(
             session_key, session.meeting_id, session.seat_id,
         )
-        overlap_pcm = session._rollover_overlap_pcm
-        if overlap_pcm:
-            try:
-                sm.process_interim_array(
-                    self.pcm16_to_float32(overlap_pcm), session_key,
-                )
-                # Keep the encoder/CIF cache primed by the replay, but discard
-                # replay text so the 300 ms context cannot be persisted twice.
-                sm.reset_interim(session_key)
-            except Exception as exc:
-                logger.warning(
-                    "Speech rollover overlap replay failed: session=%s bytes=%d error=%s",
-                    session_key,
-                    len(overlap_pcm),
-                    exc,
-                )
-            finally:
-                session._rollover_overlap_pcm = b""
         trace("asr_streaming_start_at",
               utterance_id=session.current_utterance_id,
               meeting_id=session.meeting_id,
-              seat_id=session.seat_id)
+              seat_id=session.seat_id,
+              requested_language=session.requested_language,
+              recognition_engine=session.recognition_engine)
         _asr_t0 = time.perf_counter()
         raw_text = session.last_source_text
         for admitted in admitted_frames:
             self.append_audio(session_key, admitted)
             admitted_audio = self.pcm16_to_float32(admitted)
             session.utterance_audio_seconds += len(admitted_audio) / 16000.0
-            raw_text = sm.process_interim_array(admitted_audio, session_key)
+        inference_runtime.update_stream(
+            session_key,
+            voice_active=session.voice_active,
+            backlog_ms=session.audio_backlog_ms,
+        )
+
+        def process_paraformer(frames: list[bytes]) -> str:
+            text = session.last_source_text
+            overlap_pcm = session._rollover_overlap_pcm
+            if overlap_pcm:
+                try:
+                    sm.process_interim_array(
+                        self.pcm16_to_float32(overlap_pcm), session_key,
+                    )
+                    sm.reset_interim(session_key)
+                except Exception as exc:
+                    logger.warning(
+                        "Speech rollover overlap replay failed: session=%s error=%s",
+                        session_key,
+                        exc,
+                    )
+                finally:
+                    session._rollover_overlap_pcm = b""
+            for frame in frames:
+                text = sm.process_interim_array(
+                    self.pcm16_to_float32(frame), session_key,
+                )
+            return text
+
+        def process_english_stream(frames: list[bytes]) -> str:
+            """Process each admitted PCM frame exactly once with Zipformer.
+
+            When the local English model is missing or fails, preserve the old
+            bounded SenseVoice path as a visible degraded fallback instead of
+            making the speaker stream unusable.
+            """
+            # A fresh decoder is created after every committed English
+            # sentence. Never seed it from a previous sentence's display
+            # text, otherwise an empty/silent first result can resurrect the
+            # completed sentence in the new lyric row.
+            text = ""
+            if session.recognition_engine != "sensevoice_rolling_fallback":
+                try:
+                    for frame in frames:
+                        text = sm.process_english_interim_array(
+                            self.pcm16_to_float32(frame), session_key,
+                        )
+                        session.english_streaming_frames += 1
+                    session.recognition_engine = "sherpa_onnx_streaming"
+                    session.english_streaming_last_error = None
+                    return normalize_english_display(text)
+                except Exception as exc:
+                    session.english_streaming_last_error = str(exc)
+                    session.sensevoice_last_error = str(exc)
+                    session.recognition_engine = "sensevoice_rolling_fallback"
+                    logger.warning(
+                        "English streaming model unavailable; using SenseVoice fallback: %s",
+                        exc,
+                    )
+                    trace(
+                        "english_streaming_fallback_at",
+                        utterance_id=session.current_utterance_id,
+                        meeting_id=session.meeting_id,
+                        seat_id=session.seat_id,
+                        error=str(exc),
+                    )
+            if session.utterance_audio_seconds + 1e-6 >= SENSEVOICE_LIVE_INTERVAL_SECONDS:
+                text, _, _ = self._recognize_sensevoice_snapshot(
+                    session, language="en", purpose="rolling",
+                )
+            return normalize_english_display(text)
+
+        requested = session.requested_language
+        if requested == "zh":
+            session.detected_language = "zh"
+            session.recognition_engine = "paraformer_streaming"
+            raw_text = process_paraformer(admitted_frames)
+        elif requested == "en":
+            session.detected_language = "en"
+            raw_text = process_english_stream(admitted_frames)
+        elif session.detected_language == "unknown":
+            if session.utterance_audio_seconds >= SENSEVOICE_AUTO_PROBE_SECONDS:
+                probe_text, detected, _ = self._recognize_sensevoice_snapshot(
+                    session,
+                    language="auto",
+                    force=True,
+                    purpose="probe",
+                )
+                session.detected_language = detected
+                session.recognition_engine = (
+                    "sherpa_onnx_streaming"
+                    if detected == "en"
+                    else "paraformer_streaming"
+                )
+                trace(
+                    "live_asr_route_selected_at",
+                    utterance_id=session.current_utterance_id,
+                    meeting_id=session.meeting_id,
+                    seat_id=session.seat_id,
+                    requested_language="auto",
+                    detected_language=detected,
+                    recognition_engine=session.recognition_engine,
+                    probe_audio_ms=round(session.utterance_audio_seconds * 1000),
+                )
+                if detected == "en":
+                    # Replay all buffered audio into the fresh stream so the
+                    # 1.2 s automatic language probe never loses sentence
+                    # onset. The probe text is only a fallback if Zipformer is
+                    # not locally available.
+                    raw_text = process_english_stream(session._utterance_buffer)
+                    raw_text = raw_text or probe_text
+                else:
+                    replay_frames = session._utterance_buffer[
+                        session.paraformer_replayed_frames:
+                    ]
+                    paraformer_text = process_paraformer(replay_frames)
+                    session.paraformer_replayed_frames = len(
+                        session._utterance_buffer
+                    )
+                    raw_text = paraformer_text or probe_text
+        elif session.detected_language == "zh":
+            session.recognition_engine = "paraformer_streaming"
+            raw_text = process_paraformer(admitted_frames)
+            session.paraformer_replayed_frames = len(session._utterance_buffer)
+        else:
+            raw_text = process_english_stream(admitted_frames)
+        if (
+            session.detected_language == "en"
+            and session.recognition_engine == "sensevoice_rolling_fallback"
+            and session.vad_silence_seconds >= VAD_SENTENCE_PAUSE_S
+            and session.utterance_audio_seconds
+                > session.last_sensevoice_inference_audio_seconds + 0.05
+        ):
+            raw_text, _, _ = self._recognize_sensevoice_snapshot(
+                session,
+                language="en",
+                force=True,
+                purpose="rolling",
+            )
+        if session.detected_language == "en":
+            # Zipformer emits upper-case, punctuation-free tokens. A VAD pause
+            # is the only live signal strong enough to close a sentence; this
+            # yields a readable sentence and lets the normal sentence queue
+            # translate it, without fabricating commas while speech continues.
+            english_sentence_pause = bool(raw_text) and (
+                session.vad_silence_seconds + 1e-6 >= VAD_SENTENCE_PAUSE_S
+            )
+            if (
+                english_sentence_pause
+                and session.recognition_engine == "sherpa_onnx_streaming"
+            ):
+                # Finish this decoder before exposing the sentence, then let
+                # the next PCM frame create an isolated decoder for the next
+                # sentence.  The WebSocket utterance and VAD remain alive.
+                try:
+                    if hasattr(sm, "rotate_english_interim"):
+                        flushed = sm.rotate_english_interim(session_key)
+                    elif hasattr(sm, "finish_english_interim"):
+                        flushed = sm.finish_english_interim(session_key)
+                        if hasattr(sm, "reset_streaming_state"):
+                            sm.reset_streaming_state(session_key)
+                    else:
+                        # Lightweight test doubles and degraded adapters may
+                        # expose only the streaming input method. The sentence
+                        # still freezes; production SpeechModule always has a
+                        # dedicated rotation method.
+                        flushed = raw_text
+                    raw_text = flushed or raw_text
+                    session.english_streaming_flushed = True
+                except Exception as exc:
+                    session.english_streaming_last_error = str(exc)
+                    logger.warning("English sentence decoder rotation failed: %s", exc)
+            raw_text = format_english_streaming_display(
+                raw_text,
+                sentence_complete=english_sentence_pause,
+            )
         _asr_ms = round((time.perf_counter() - _asr_t0) * 1000)
 
         # 4. Apply caption formatter and evaluate a content-aware boundary.
         _now = time.monotonic()
-        caption_result = session.caption_formatter.update(raw_text, _now)
+        caption_result = session.caption_formatter.update(
+            raw_text,
+            _now,
+            source_lang=session.detected_language,
+        )
         caption_result = (
             session.caption_formatter.check_timeout(_now) or caption_result
         )
@@ -803,7 +1493,22 @@ class SpeechStreamService:
             natural_boundary_committed=caption_result.natural_boundary_committed,
             committed_boundary=caption_result.committed_boundary,
         )
-        vad_should_finalize = boundary_reason is not None
+        # English sentence pauses feed translation_sentence but must not reset
+        # the underlying online recognizer. Only a hard/manual/duration
+        # boundary creates a new utterance and clears its decoder cache.
+        vad_should_finalize = (
+            boundary_reason is not None
+            and boundary_reason != "english_sentence_pause"
+        )
+        sentence_state = (
+            self._track_english_sentences(session, source_text, boundary_reason)
+            if session.detected_language == "en"
+            else self._track_semantic_sentences(
+                session,
+                source_text,
+                boundary_reason,
+            )
+        )
 
         if raw_text and session._rollover_started_at is not None:
             logger.info(
@@ -820,7 +1525,9 @@ class SpeechStreamService:
                   seat_id=session.seat_id,
                   revision=session.revision,
                   asr_infer_ms=_asr_ms,
-                  vad_should_finalize=vad_should_finalize)
+                  vad_should_finalize=vad_should_finalize,
+                  detected_language=session.detected_language,
+                  recognition_engine=session.recognition_engine)
 
         return {
             "utterance_id": session.current_utterance_id,
@@ -833,6 +1540,8 @@ class SpeechStreamService:
             },
             "vad_should_finalize": vad_should_finalize,
             "boundary_reason": boundary_reason,
+            **self._route_fields(session),
+            **sentence_state,
         }
 
     # ── Audio buffer (Phase 4) ───────────────────────────────────────────────
@@ -892,22 +1601,94 @@ class SpeechStreamService:
             )
             return None
 
+        if (
+            session.detected_language == "en"
+            and session.recognition_engine == "sherpa_onnx_streaming"
+        ):
+            try:
+                flushed = self._speech_module.finish_english_interim(session_key)
+                session.english_streaming_flushed = True
+                if flushed:
+                    caption = session.caption_formatter.update(
+                        flushed, time.monotonic(), source_lang="en",
+                    )
+                    session.last_source_text = caption.punctuated_text
+                    session.last_caption = {
+                        "previous_line": caption.previous_line,
+                        "current_line": caption.current_line,
+                        "mode": caption.mode,
+                    }
+                    session.revision += 1
+            except Exception as exc:
+                session.english_streaming_last_error = str(exc)
+                logger.warning("English streaming flush failed; retaining interim text: %s", exc)
+
+        if (
+            session.detected_language == "en"
+            and session._utterance_buffer
+            and session.utterance_audio_seconds
+                > session.last_sensevoice_inference_audio_seconds + 0.05
+        ):
+            try:
+                corrected, _, _ = self._recognize_sensevoice_snapshot(
+                    session,
+                    language="en",
+                    force=True,
+                    purpose="final_correction",
+                )
+                if corrected:
+                    caption = session.caption_formatter.update(
+                        corrected,
+                        time.monotonic(),
+                        source_lang="en",
+                    )
+                    session.last_source_text = caption.punctuated_text
+                    session.last_caption = {
+                        "previous_line": caption.previous_line,
+                        "current_line": caption.current_line,
+                        "mode": caption.mode,
+                    }
+                    session.revision += 1
+            except Exception as exc:
+                logger.warning(
+                    "English end-hint correction failed; retaining rolling text: %s",
+                    exc,
+                )
+
         audio = self.get_buffered_audio(session_key)
         if audio is None:
             return None
 
         result = {
-            "audio": audio,
+            "audio": audio.copy(),
             "sr": 16000,
             "utterance_id": session.current_utterance_id,
             "meeting_id": session.meeting_id,
             "seat_id": session.seat_id,
+            "source_text": session.last_source_text,
+            "audio_seconds": session.utterance_audio_seconds,
+            "requested_language": session.requested_language,
+            "detected_language": session.detected_language,
+            "recognition_engine": session.recognition_engine,
+            "recognized_text": (
+                session.last_sensevoice_text
+                if session.recognition_engine == "sensevoice_rolling_fallback"
+                else ""
+            ),
+            "recognition_status": (
+                "degraded" if session.sensevoice_last_error else "ok"
+            ),
         }
 
         # Clear buffer; keep utterance_id/revision for event correlation
         session._utterance_buffer.clear()
         session.voice_active = False
         session.utterance_state = UTTERANCE_STATE_FINALIZING
+        inference_runtime.update_stream(
+            session_key,
+            voice_active=False,
+            backlog_ms=session.audio_backlog_ms,
+        )
         self._publish_speaking_stop(session)
         return result
 
@@ -983,6 +1764,7 @@ class SpeechStreamService:
         self._publish_speaking_stop(session)
 
         del self._sessions[session_key]
+        inference_runtime.remove_stream(session_key)
         logger.debug("Session removed: %s (token=%s)", session_key, session_token)
 
         if self._speech_module is not None and self._speech_module.ready:
@@ -1135,7 +1917,7 @@ def _preload_speech_models_background() -> None:
                     is_translation_model_enabled,
                 )
                 if is_translation_model_enabled():
-                    TranslationModelService.get_instance().load()
+                    TranslationModelService.get_instance().load_all()
             except Exception as exc:
                 logger.warning("Background translation preload failed: %s", exc)
             if module.ready:

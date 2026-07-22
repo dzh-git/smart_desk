@@ -93,7 +93,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     voteStatsError,
     currentServiceCall,
     translations,
+    liveFinal,
     interimMap,
+    lyricMap,
     pendingFinalMap,
     connection,
     noMeeting,
@@ -466,7 +468,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         {/* Bilingual Transcript */}
         <TranscriptPanel
           entries={translations}
+          liveFinal={liveFinal}
           interims={Object.values(interimMap)}
+          lyrics={Object.values(lyricMap).flat()}
           pendingFinals={Object.values(pendingFinalMap)}
           seatNameMap={seatNameMap}
           liveEnabled={meetingStatus === "meeting_active"}
@@ -1243,7 +1247,7 @@ interface SpeechControlProps {
   writesAllowed: boolean;
   meetingStatus: "no_meeting" | "meeting_active";
   /** Task 127A: local cleanup callback — immediately removes live caption. */
-  onLocalTerminalUtterance?: (utteranceId: string) => void;
+  onLocalTerminalUtterance?: (utteranceId: string, reason: string) => void;
 }
 
 function SpeechControl({
@@ -1255,7 +1259,15 @@ function SpeechControl({
   meetingStatus,
   onLocalTerminalUtterance,
 }: SpeechControlProps) {
-  const { status, error, start, stop, cancel } = useSpeechStream(
+  const {
+    status,
+    error,
+    languageMode,
+    setLanguageMode,
+    start,
+    stop,
+    cancel,
+  } = useSpeechStream(
     meetingId,
     seatId,
     isSpeaker,
@@ -1290,7 +1302,10 @@ function SpeechControl({
   const modelsPreloading = speechStatus?.preloading ?? false;
   const punctuationFallback = speechStatus?.punctuation_fallback ?? true;
   const translationReady = speechStatus?.translation_model === "loaded";
-  const translationError = speechStatus?.translation_last_error ?? null;
+  const unavailableDirections = Object.entries(speechStatus?.translation_models ?? {})
+    .filter(([, model]) => model.status !== "loaded")
+    .map(([direction, model]) => `${direction.replace("_", "→").toUpperCase()}${model.error ? `：${model.error}` : ""}`);
+  const translationError = unavailableDirections.join("；") || speechStatus?.translation_last_error || null;
 
   const browserSupportsMic =
     typeof navigator !== "undefined" &&
@@ -1382,11 +1397,41 @@ function SpeechControl({
           <AlertCircle size={12} className="text-techAmber flex-shrink-0 mt-0.5" />
           <p className="text-[11px] text-techAmber">
             {translationError
-              ? `英文翻译模型不可用：${translationError}`
-              : "英文翻译模型尚未就绪"}
+              ? `中英翻译模型不可用：${translationError}`
+              : "中英双向翻译模型尚未就绪"}
           </p>
         </div>
       )}
+
+      <fieldset className="mb-3" disabled={status !== "idle"}>
+        <legend className="mb-1.5 text-[11px] text-techMuted">
+          识别语言 / Recognition language
+        </legend>
+        <div
+          className="grid grid-cols-3 gap-1 rounded-lg border border-techCyan/20 bg-techCardSoft p-1"
+          data-testid="speech-language-selector"
+        >
+          {([
+            ["auto", "自动"],
+            ["zh", "中文"],
+            ["en", "English"],
+          ] as const).map(([mode, label]) => (
+            <button
+              type="button"
+              key={mode}
+              aria-pressed={languageMode === mode}
+              onClick={() => setLanguageMode(mode)}
+              className={`rounded px-2 py-1.5 text-xs transition-colors ${
+                languageMode === mode
+                  ? "bg-techCyan/20 text-techCyan"
+                  : "text-techMuted hover:text-techText"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
       {/* Error */}
       {status === "error" && error && (

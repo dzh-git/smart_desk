@@ -1,7 +1,7 @@
 {
   "report_type": "speech-real-dataset-benchmark",
   "task": "128B",
-  "generated_at": "2026-07-15T03:22:33.491247+00:00",
+  "generated_at": "2026-07-22T02:44:15.833049+00:00",
   "dataset_dir": "/nonexistent/path/that/does/not/exist",
   "streaming_preset": "balanced",
   "streaming_preset_chunk_size": [
@@ -10,18 +10,17 @@
     5
   ],
   "environment": {
-    "python": "3.8.18 (default, Sep 11 2023, 13:39:12) [MSC v.1916 64 bit (AMD64)]",
-    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.12.4 | packaged by Anaconda, Inc. | (main, Jun 18 2024, 15:03:56) [MSC v.1929 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26200-SP0",
     "torch_available": true,
-    "cuda_available": true,
-    "cuda_device_name": "NVIDIA GeForce GTX 1650",
+    "cuda_available": false,
+    "cuda_device_name": null,
     "ffmpeg_available": true,
-    "ffmpeg_path": "C:\\Users\\27335\\miniconda3\\Library\\bin\\ffmpeg.EXE",
-    "ffmpeg_version": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers",
+    "ffmpeg_path": "C:\\Users\\刁智怀\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.EXE",
+    "ffmpeg_version": "ffmpeg version 8.1.1-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
     "ffmpeg_search_trace": [
-      "path: C:\\Users\\27335\\miniconda3\\Library\\bin\\ffmpeg.EXE"
+      "path: C:\\Users\\刁智怀\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.EXE"
     ],
-    "cuda_device_count": 1,
     "ffmpeg_discovery_method": "path"
   },
   "summary": {

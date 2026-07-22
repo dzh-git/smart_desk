@@ -29,6 +29,18 @@ class TranslationInterimEvent(BaseEvent):
 
 
 @dataclass
+class TranslationSentenceEvent(BaseEvent):
+    """Ephemeral sentence-level lyric translation.
+
+    A ``pending`` event is published as soon as a semantic sentence is
+    committed.  The ordered translation worker then publishes ``ok`` or
+    ``unavailable`` for the same sentence_id.
+    """
+
+    event_name: str = "translation_sentence"
+
+
+@dataclass
 class TranslationInterimCancelledEvent(BaseEvent):
     """Indicates a pending interim utterance was discarded.
 

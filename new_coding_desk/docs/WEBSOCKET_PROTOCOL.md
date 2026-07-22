@@ -35,7 +35,7 @@ Audio format:
 Frontend to backend JSON messages:
 
 ```json
-{"type": "start"}
+{"type": "start", "language_mode": "auto"}
 ```
 
 Starts an utterance session and returns:
@@ -44,9 +44,14 @@ Starts an utterance session and returns:
 {
   "type": "started",
   "utterance_id": "utt_1_1_000001",
-  "session_key": "speech_1_1"
+  "session_key": "speech_1_1",
+  "language_mode": "auto"
 }
 ```
+
+`language_mode` is `auto`, `zh`, or `en` and defaults to `auto` for older
+clients. Invalid values return `INVALID_LANGUAGE_MODE`. The selected route is
+locked for one utterance and inherited by automatic rollover/reconnection.
 
 ```json
 {"type": "end_hint"}
@@ -68,19 +73,30 @@ Primary path:
 1. Speaker Seat connects to `/ws/speech/{meeting_id}?seat=N`.
 2. Frontend sends `start`.
 3. Frontend streams PCM16 binary frames.
-4. After 500 ms noise calibration and three onset frames, the backend
+4. After 300 ms noise calibration and two confirming onset frames, the backend
    publishes `translation_interim` events for live caption display. Frames
-   below the adaptive voice gate are not sent to ASR.
-5. Punctuation-aware pause thresholds decide complete sentence/clause
-   boundaries. After 30 seconds the next real sentence/clause boundary rolls
-   the utterance; 45 seconds is the hard duration limit. A provisional period
-   appended at the current text tail does not trigger the soft boundary.
+   below the adaptive voice gate are not sent to ASR. The absolute onset floor
+   is 5 mRMS so clean low-output browser microphones are still admitted.
+5. Semantic sentence boundaries are terminal punctuation plus a 0.9 second
+   pause, terminal punctuation confirmed by following content, or a 2 second
+   natural pause. For English, the 0.9 second boundary commits the lyric
+   sentence but keeps the same Zipformer stream alive, so the next sentence's
+   onset is not lost. Commas and visual wrapping do not trigger translation.
+   The 45 second hard duration limit commits remaining text.
 6. On an automatic duration rollover, the backend publishes
    `translation_finalizing`, fully resets the streaming cache, and starts the
    next utterance immediately. The final 300 ms of PCM is replayed once to
    seed acoustic context; replay text and audio are not persisted twice.
-7. Translation and persistence run in a bounded single-worker queue, then
-   publish `translation_final`. Explicit `end_hint` still runs final ASR.
+7. `zh` uses streaming Paraformer. `en` uses the local sherpa-onnx Zipformer
+   online stream, accepting each PCM frame once. `auto` probes 1.2 seconds of
+   admitted speech, locks the detected route for the utterance, and replays the
+   probe PCM into the selected stream so sentence onset is retained. When the
+   Zipformer model is missing, English visibly falls back to one-second bounded
+   SenseVoice snapshots (`sensevoice_rolling_fallback`). SenseVoiceSmall still
+   performs final language detection/correction; Chinese audio is rescored by
+   Paraformer-large. Translation and persistence run in a bounded single-worker
+   queue, then publish `translation_final`.
+   Explicit `end_hint` uses the same queue.
 
 Fallback path:
 
@@ -111,7 +127,9 @@ Broadcast events use:
 
 ## `translation_interim`
 
-Published for live speech captions. It is not persisted and is not translated.
+Published for immediate live source captions. It is not persisted and does not
+translate incomplete text. Semantic sentence identity is independent from the
+optional two-line visual caption.
 
 ```json
 {
@@ -125,6 +143,14 @@ Published for live speech captions. It is not persisted and is not translated.
     "source_lang": "zh",
     "target_lang": "en",
     "source_text": "Current punctuated interim text.",
+    "translated_text": "",
+    "requested_language": "auto",
+    "detected_language": "zh",
+    "recognition_engine": "paraformer_streaming",
+    "sentence_id": "utt_1_1_000001:s000001",
+    "sentence_sequence": 1,
+    "sentence_source_text": "Current sentence being formed.",
+    "sentence_state": "forming",
     "caption": {
       "previous_line": "Previous short caption line.",
       "current_line": "Current short caption line.",
@@ -134,7 +160,49 @@ Published for live speech captions. It is not persisted and is not translated.
 }
 ```
 
-Clients keep only the newest revision for each `utterance_id`.
+Clients keep only the newest source revision for each `utterance_id` and update
+the forming lyric row by `sentence_id`. For English, a completed Zipformer row
+is first published with `recognition_status: "correcting"` and
+`source_locked: false`; the local SenseVoice correction may replace it once.
+When `source_locked: true` arrives, clients must never replace that row's
+`source_text` again, even if a delayed event has a higher revision.
+
+PCM ingress is buffered in an ordered 50-frame queue. `end_hint` drains it
+before finalization; `cancel` clears it. The status endpoint exposes queue depth,
+audio backlog, recognition route and CPU thread budget.
+
+## `translation_sentence`
+
+Published twice for each completed semantic sentence: first with `pending`,
+then with `ok` or `unavailable`. English adds a sentence-recognition correction
+step before translation. Completed jobs are processed FIFO and are not
+replaced by later sentences.
+
+```json
+{
+  "event": "translation_sentence",
+  "meeting_id": 1,
+  "timestamp": 1748700000,
+  "payload": {
+    "utterance_id": "utt_1_1_000001",
+    "sentence_id": "utt_1_1_000001:s000001",
+    "sentence_sequence": 1,
+    "seat_id": 1,
+    "revision": 8,
+    "source_lang": "zh",
+    "target_lang": "en",
+    "source_text": "第一句完成了。",
+    "translated_text": "The first sentence is complete.",
+    "translation_status": "ok"
+  }
+}
+```
+
+Clients retain the meeting's sentence pairs per seat. The fixed-height lyric viewport
+keeps the newest completed/forming row at the bottom and scrolls older pairs upward.
+A forming row has no translation;
+after completion it shows pending, then the result. Source and target scroll or
+disappear together. `translation_error` is optional for unavailable results.
 
 ## `translation_finalizing`
 
@@ -151,8 +219,8 @@ utterance has produced its own line, so the live box never becomes empty.
   "payload": {
     "utterance_id": "utt_1_1_000001",
     "seat_id": 1,
-    "source_lang": "zh",
-    "target_lang": "en",
+    "source_lang": "unknown",
+    "target_lang": "unknown",
     "source_text": "Completed realtime source text.",
     "boundary_reason": "soft_sentence_limit",
     "next_utterance_id": "utt_1_1_000002",
@@ -170,8 +238,8 @@ The last three fields are optional for compatibility with older clients.
 
 ## `translation_final`
 
-Published after final ASR and persistence. Clients remove the matching interim
-caption and display the final history record.
+Published after final ASR and persistence. Clients remove the matching legacy
+interim and update persisted history, but do not clear sentence lyric pairs.
 
 ```json
 {
@@ -186,10 +254,17 @@ caption and display the final history record.
     "target_lang": "en",
     "source_text": "Final punctuated source text.",
     "translated_text": "Final translated text or [translation not available].",
-    "source_type": "speech_ws"
+    "source_type": "speech_ws",
+    "translation_status": "ok",
+    "recognition_status": "ok"
   }
 }
 ```
+
+Final language pairs are `zh→en` or `en→zh`. On a non-fatal model failure,
+`translation_status` is `unavailable`, `translation_error` explains the local
+model problem, and `recognition_status` may be `degraded` when streaming text
+was used as the fallback.
 
 ## `translation_interim_cancelled`
 

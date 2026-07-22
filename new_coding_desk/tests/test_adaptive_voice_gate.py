@@ -37,7 +37,9 @@ def make_service():
     module = FakeSpeechModule()
     service._speech_module = module
     key, token = service.create_session(1, 1)
-    service.start_utterance(key, "utt_1_1_000001")
+    service.start_utterance(
+        key, "utt_1_1_000001", language_mode="zh",
+    )
     return service, module, key, token
 
 
@@ -80,6 +82,19 @@ def test_early_low_level_voice_does_not_make_gate_chase_speech():
     assert module.calls == 3
 
 
+def test_clean_six_mrms_microphone_voice_opens_gate():
+    service, module, key, _ = make_service()
+    for _ in range(VAD_CALIBRATION_FRAMES):
+        service.process_pcm_frame(key, pcm(0.001))
+
+    for _ in range(VAD_START_CONFIRM_FRAMES):
+        result = service.process_pcm_frame(key, pcm(0.006))
+
+    assert result["source_text"]
+    assert service.get_session(key).voice_active is True
+    assert module.calls == 3
+
+
 def test_content_aware_boundary_thresholds():
     service, _, key, _ = make_service()
     session = service.get_session(key)
@@ -91,8 +106,9 @@ def test_content_aware_boundary_thresholds():
     assert service._boundary_reason(session, "完整句子。") == "sentence_pause"
 
     session.vad_silence_seconds = 1.3
-    assert service._boundary_reason(session, "这是一个从句，") == "clause_pause"
+    assert service._boundary_reason(session, "这是一个从句，") is None
     session.vad_silence_seconds = 2.0
+    assert service._boundary_reason(session, "这是一个从句，") == "natural_pause"
     assert service._boundary_reason(session, "没有标点但是内容充分") == "natural_pause"
 
 

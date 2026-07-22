@@ -1,8 +1,10 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { MessageSquare, Loader2, Mic } from "lucide-react";
 import { PanelCard, TechEmptyState, SectionHeader, formatTranscriptTime } from "./shared";
 import type { TranslationRecord } from "../api/types";
 import type { PendingTranslation } from "../types";
+import type { LiveLyricSentence } from "../types";
+import { trace } from "../audio/speechTrace";
 
 const avatarColors = [
   "bg-techCyan",
@@ -35,6 +37,10 @@ export interface InterimDisplayEntry {
   targetLang: string;
   sourceText: string;
   translatedText: string;
+  /** Exact two-line source window represented by translatedText. */
+  translationSourceText?: string;
+  /** Revision of the newest translated prefix; source recognition may be newer. */
+  translationRevision?: number;
   /** Optional two-line caption from backend caption formatter. */
   caption?: {
     previousLine: string;
@@ -48,8 +54,12 @@ export interface InterimDisplayEntry {
 interface TranscriptPanelProps {
   /** Persisted final translation records from GET /api/translations. */
   entries: TranslationRecord[];
+  /** Latest sentence-final pair retained in the live subtitle area. */
+  liveFinal?: TranslationRecord | null;
   /** Live interim subtitles keyed by utterance_id. */
   interims?: InterimDisplayEntry[];
+  /** Sentence-level lyric history per seat; fixed viewport scrolls old pairs. */
+  lyrics?: LiveLyricSentence[];
   /** Realtime text already rolled into history while translation is pending. */
   pendingFinals?: PendingTranslation[];
   /** Mapping seat_id -> speaker name. */
@@ -213,7 +223,9 @@ function deduplicateInterims(
 
 export function TranscriptPanel({
   entries,
+  liveFinal = null,
   interims = [],
+  lyrics = [],
   pendingFinals = [],
   seatNameMap,
   loading = false,
@@ -225,9 +237,21 @@ export function TranscriptPanel({
     () => sortFinalsOldestFirst(deduplicateFinals(entries)),
     [entries],
   );
+  const visibleHistoryEntries = useMemo(
+    () => dedupedEntries.filter((entry) => {
+      if (!liveEnabled || !liveFinal) return true;
+      if (entry.id === liveFinal.id) return false;
+      return !(
+        entry.utterance_id
+        && liveFinal.utterance_id
+        && entry.utterance_id === liveFinal.utterance_id
+      );
+    }),
+    [dedupedEntries, liveEnabled, liveFinal],
+  );
   const finalGroups = useMemo(
-    () => groupFinals(dedupedEntries),
-    [dedupedEntries],
+    () => groupFinals(visibleHistoryEntries),
+    [visibleHistoryEntries],
   );
 
   // Collect utterance_ids that have finals
@@ -250,6 +274,19 @@ export function TranscriptPanel({
     () => deduplicateInterims(interims, finalUtteranceIds),
     [interims, finalUtteranceIds],
   );
+  const lyricGroups = useMemo(() => {
+    const bySeat = new Map<number, LiveLyricSentence[]>();
+    for (const sentence of lyrics) {
+      const group = bySeat.get(sentence.seatId) ?? [];
+      group.push(sentence);
+      bySeat.set(sentence.seatId, group);
+    }
+    return Array.from(bySeat.entries()).map(([seatId, sentences]) => ({
+      seatId,
+      sentences: [...sentences]
+        .sort((a, b) => a.sentenceSequence - b.sentenceSequence),
+    }));
+  }, [lyrics]);
 
   // Caption entries with visible lines use the two-line live box. Empty
   // captions and entries without caption use the fallback row, whose active
@@ -262,15 +299,16 @@ export function TranscriptPanel({
   );
 
   const hasInterims = filteredInterims.length > 0;
-  const hasEntries = dedupedEntries.length > 0;
+  const hasLyrics = lyricGroups.length > 0;
+  const hasEntries = visibleHistoryEntries.length > 0;
   const hasPendingFinals = filteredPendingFinals.length > 0;
-  const isEmpty = !loading && !hasEntries && !hasPendingFinals && !hasInterims && !liveEnabled;
+  const isEmpty = !loading && !hasEntries && !hasPendingFinals && !hasInterims && !hasLyrics && !liveEnabled;
 
   return (
     <PanelCard
       titleCn="会议记录"
       titleEn="Transcript"
-      variant={hasInterims ? "active" : "default"}
+      variant={hasInterims || hasLyrics ? "active" : "default"}
       headerRight={
         <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted">
           EN / ZH
@@ -300,7 +338,7 @@ export function TranscriptPanel({
       ) : (
         <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1 md:max-h-72">
           {/* Keep the live section mounted throughout an active meeting. */}
-          {(liveEnabled || hasInterims) && (
+          {(liveEnabled || hasInterims || hasLyrics || liveFinal) && (
             <SectionHeader
               titleCn="实时识别"
               titleEn="Live Speech"
@@ -308,12 +346,27 @@ export function TranscriptPanel({
             />
           )}
 
-          {liveEnabled && captionInterims.length === 0 && textInterims.length === 0 && (
+          {liveEnabled && !liveFinal && !hasLyrics && captionInterims.length === 0 && textInterims.length === 0 && (
             <LiveCaptionPlaceholder reconnecting={liveReconnecting} />
           )}
 
+          {liveEnabled && liveFinal && !hasLyrics && captionInterims.length === 0 && textInterims.length === 0 && (
+            <LiveFinalBlock
+              entry={liveFinal}
+              speakerName={seatNameMap[liveFinal.seat_id] ?? `Seat ${liveFinal.seat_id}`}
+            />
+          )}
+
+          {lyricGroups.map(({ seatId, sentences }) => (
+            <LiveLyricsBlock
+              key={`lyrics-seat-${seatId}`}
+              sentences={sentences}
+              speakerName={seatNameMap[seatId] ?? `Seat ${seatId}`}
+            />
+          ))}
+
           {/* Live caption blocks (interims with caption) */}
-          {captionInterims.map((interim) => (
+          {!hasLyrics && captionInterims.map((interim) => (
             <LiveCaptionBlock
               key={`seat-${interim.seatId}`}
               interim={interim}
@@ -324,7 +377,7 @@ export function TranscriptPanel({
           ))}
 
           {/* Keep fallback interims in a fixed-height shell during a meeting. */}
-          {textInterims.map((interim) => (
+          {!hasLyrics && textInterims.map((interim) => (
             <InterimRow
               key={interim.utteranceId}
               interim={interim}
@@ -340,7 +393,7 @@ export function TranscriptPanel({
             <SectionHeader
               titleCn="历史记录"
               titleEn="History"
-              className={hasInterims ? "mt-2 pt-2 border-t border-techBorder" : ""}
+              className={hasInterims || hasLyrics ? "mt-2 pt-2 border-t border-techBorder" : ""}
             />
           )}
 
@@ -367,6 +420,48 @@ export function TranscriptPanel({
         </div>
       )}
     </PanelCard>
+  );
+}
+
+function LiveFinalBlock({
+  entry,
+  speakerName,
+}: {
+  entry: TranslationRecord;
+  speakerName: string;
+}) {
+  const translated = !isUnavailableTranslation(entry.translated_text)
+    ? entry.translated_text
+    : "";
+  return (
+    <div
+      className="bg-techCardSoft border border-techGreen/40 rounded-lg p-3 min-h-[7.25rem]"
+      data-testid="transcript-final"
+      data-utterance-id={entry.utterance_id ?? ""}
+      data-seat-id={entry.seat_id}
+      data-translation-id={entry.id}
+    >
+      <div data-testid="live-final-translation">
+        <div className="flex items-baseline gap-2 mb-1.5">
+          <span className="text-xs font-semibold text-techGreen">{speakerName}</span>
+          <span className="text-[0.6rem] font-mono uppercase tracking-wider text-techGreen/70 ml-auto">
+            {entry.source_lang.toUpperCase()} → {entry.target_lang.toUpperCase()} · 最终译文
+          </span>
+        </div>
+        <p className="text-sm text-techText leading-relaxed" data-testid="live-final-source">
+          {entry.source_text}
+        </p>
+        {translated ? (
+          <p className="text-sm text-techCyan mt-2 leading-relaxed border-l-2 border-techCyan/50 pl-2" data-testid="live-final-target">
+            {translated}
+          </p>
+        ) : (
+          <p className="text-xs text-techAmber mt-2" data-testid="live-final-target-unavailable">
+            翻译模型不可用{entry.translation_error ? `：${entry.translation_error}` : ""}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -417,8 +512,7 @@ const TranscriptGroupRow = memo(function TranscriptGroupRow({
   const color = avatarColors[(entry.seat_id - 1) % avatarColors.length];
   const time = formatTranscriptTime(entry.created_at);
 
-  const langLabel =
-    entry.source_lang.toUpperCase() === "EN" ? "EN" : "ZH";
+  const langLabel = `${entry.source_lang.toUpperCase()} → ${entry.target_lang.toUpperCase()}`;
 
   const utteranceIds = entries
     .map((item) => item.utterance_id)
@@ -469,7 +563,7 @@ const TranscriptGroupRow = memo(function TranscriptGroupRow({
           </p>
         ) : (
           <p className="text-xs text-techAmber mt-1" data-testid="transcript-target-unavailable">
-            翻译模型不可用
+            翻译模型不可用{entry.translation_error ? `：${entry.translation_error}` : ""}
           </p>
         )}
       </div>
@@ -477,7 +571,145 @@ const TranscriptGroupRow = memo(function TranscriptGroupRow({
   );
 });
 
-// ── Live Caption Block (two-line subtitle display) ────────────────────────────
+// ── Sentence-paired lyric display ────────────────────────────────────────────
+
+function LiveLyricsBlock({
+  sentences,
+  speakerName,
+}: {
+  sentences: LiveLyricSentence[];
+  speakerName: string;
+}) {
+  const renderedStatesRef = useRef<Set<string>>(new Set());
+  const lyricViewportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    for (const sentence of sentences) {
+      if (sentence.translationStatus === "forming") continue;
+      const stateKey = [
+        sentence.sentenceId,
+        sentence.revision,
+        sentence.translationStatus,
+      ].join(":");
+      if (renderedStatesRef.current.has(stateKey)) continue;
+      renderedStatesRef.current.add(stateKey);
+      trace(
+        sentence.translationStatus === "pending"
+          ? "frontend_sentence_pending_rendered_at"
+          : "frontend_sentence_translation_rendered_at",
+        {
+        utteranceId: sentence.utteranceId,
+        sentenceId: sentence.sentenceId,
+        sentenceSequence: sentence.sentenceSequence,
+        revision: sentence.revision,
+        seatId: sentence.seatId,
+        translationStatus: sentence.translationStatus,
+        },
+      );
+    }
+  }, [sentences]);
+
+  useEffect(() => {
+    const viewport = lyricViewportRef.current;
+    if (viewport) viewport.scrollTop = viewport.scrollHeight;
+  }, [sentences]);
+
+  const latest = sentences[sentences.length - 1];
+  const busy = latest?.translationStatus === "forming"
+    || latest?.translationStatus === "pending";
+  return (
+    <div
+      data-testid="live-lyrics"
+      data-seat-id={latest?.seatId}
+      className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow h-[15rem] flex flex-col"
+    >
+      <div className="flex items-baseline gap-2 mb-2">
+        <span className="text-xs font-semibold text-techCyan">{speakerName}</span>
+        {busy && <Loader2 size={10} className="animate-spin text-techCyan" />}
+        <span className="text-[0.6rem] font-mono uppercase tracking-wider text-techCyan/50 ml-auto">
+          逐句 / LYRICS
+        </span>
+      </div>
+      <div
+        ref={lyricViewportRef}
+        className="space-y-2 flex flex-col justify-end flex-1 min-h-0 overflow-y-auto pr-1"
+        data-testid="live-lyric-pairs"
+      >
+        {sentences.map((sentence, index) => {
+          const current = index === sentences.length - 1;
+          return (
+            <div
+              key={sentence.sentenceId}
+              data-testid="live-lyric-pair"
+              data-sentence-id={sentence.sentenceId}
+              data-sentence-sequence={sentence.sentenceSequence}
+              className={current ? "opacity-100" : "opacity-55"}
+            >
+              <LiveLyricText
+                data-testid="live-lyric-source"
+                className={`leading-snug ${
+                  current
+                    ? "text-base text-techText font-medium"
+                    : "text-sm text-techMuted"
+                }`}
+                text={sentence.sourceText}
+                language={sentence.sourceLang}
+              />
+              <div className="min-h-[1.1rem] mt-0.5 border-l-2 border-techCyan/45 pl-2">
+                {sentence.translationStatus === "pending" ? (
+                  <p className="text-xs text-techMuted/70" data-testid="live-lyric-pending">
+                    {sentence.recognitionStatus === "correcting"
+                      ? "识别校正中… / Correcting speech…"
+                      : "正在翻译… / Translating…"}
+                  </p>
+                ) : sentence.translationStatus === "unavailable" ? (
+                  <p className="text-xs text-techRose" data-testid="live-lyric-unavailable">
+                    译文不可用 / Translation unavailable
+                  </p>
+                ) : sentence.translationStatus === "ok" ? (
+                  <LiveLyricText
+                    className="text-sm text-techCyan leading-snug"
+                    data-testid="live-lyric-translation"
+                    text={sentence.translatedText}
+                    language={sentence.targetLang}
+                  />
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LiveLyricText({
+  text,
+  className,
+  language,
+  ...props
+}: {
+  text: string;
+  className: string;
+  language: string;
+  "data-testid": string;
+}) {
+  return (
+    <div
+      {...props}
+      className={`${className} whitespace-normal`}
+      lang={language === "en" ? "en" : language === "zh" ? "zh-CN" : undefined}
+      style={{
+        overflowWrap: "normal",
+        wordBreak: "normal",
+        hyphens: "none",
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+// ── Legacy Live Caption Block (protocol compatibility) ───────────────────────
 
 function LiveCaptionBlock({
   interim,
@@ -496,7 +728,7 @@ function LiveCaptionBlock({
       data-utterance-id={interim.utteranceId}
       data-seat-id={interim.seatId}
       data-revision={interim.revision}
-      className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow min-h-[7.25rem]"
+      className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow min-h-[9rem]"
     >
       <div className="flex items-baseline gap-2 mb-1.5">
         <span className="text-xs font-semibold text-techCyan">
@@ -519,6 +751,20 @@ function LiveCaptionBlock({
       >
         {caption.currentLine}
       </div>
+      {interim.translatedText ? (
+        <p
+          className="mt-2 border-l-2 border-techCyan/50 pl-2 text-sm text-techCyan leading-snug overflow-hidden"
+          data-testid="live-caption-translation"
+          data-window-lines="2"
+          style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+        >
+          {interim.translatedText}
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-techMuted/70" data-testid="live-caption-translation-pending">
+          正在生成实时译文… / Translating live speech…
+        </p>
+      )}
     </div>
   );
 }
@@ -565,8 +811,7 @@ function InterimRow({
 }) {
   const color = avatarColors[(interim.seatId - 1) % avatarColors.length];
 
-  const langLabel =
-    interim.sourceLang.toUpperCase() === "EN" ? "EN" : "ZH";
+  const langLabel = interim.sourceLang === "unknown" ? "识别中" : interim.sourceLang.toUpperCase();
 
   return (
     <div

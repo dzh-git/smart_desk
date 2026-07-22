@@ -3,6 +3,7 @@
 from __future__ import annotations
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 
 def normalize_zh(text: str) -> str:
@@ -135,6 +136,166 @@ def detect_language(text: str) -> str:
     cjk = sum(1 for c in text if '一' <= c <= '鿿')
     latin = sum(1 for c in text if c.isascii() and c.isalpha())
     return "zh" if cjk > latin else "en"
+
+
+def normalize_english_display(text: str) -> str:
+    """Normalize model-provided English spacing without inventing words.
+
+    SenseVoice already supplies English punctuation.  This helper deliberately
+    avoids guessing where a malformed glued token should be split; it only
+    removes whitespace before punctuation, collapses repeated whitespace and
+    ensures punctuation is followed by one space when more text follows.
+    """
+    clean = unicodedata.normalize("NFKC", text or "")
+    clean = re.sub(r"\s+", " ", clean).strip()
+    clean = re.sub(r"\s+([,.;:!?])", r"\1", clean)
+    clean = re.sub(r"([,.;:!?])(?=[A-Za-z0-9])", r"\1 ", clean)
+    return clean
+
+
+def normalize_english_sentence_final(text: str) -> str:
+    """Normalize a sentence-final SenseVoice result for lyric display.
+
+    SenseVoice supplies punctuation and true casing.  Only transport/control
+    remnants and non-speech emoji are removed here; words, apostrophes and
+    model-provided punctuation are intentionally preserved.
+    """
+    clean = re.sub(r"<\|[^|]+\|>", "", text or "")
+    clean = re.sub(r"[\U0001F300-\U0001FAFF]", "", clean)
+    clean = normalize_english_display(clean)
+    clean = re.sub(r"([,.;:!?])\1+", r"\1", clean)
+    return clean.strip()
+
+
+# Zipformer is an online acoustic/word recognizer, not a punctuation or
+# true-casing model.  Keep this deliberately conservative: it repairs the
+# all-caps transport format and a small set of unambiguous English forms, but
+# never guesses where glued words or commas should be.
+_ENGLISH_PROPER_WORDS = frozenset({
+    "american", "america", "britain", "british", "canada", "canadian",
+    "chinese", "china", "english", "england", "france", "french",
+    "germany", "german", "london", "thursday", "tuesday", "wednesday",
+    "friday", "saturday", "sunday", "monday", "washington",
+})
+_ENGLISH_ACRONYMS = frozenset({"ai", "api", "asr", "cpu", "eu", "uk", "usa", "vad"})
+
+
+def format_english_streaming_display(text: str, *, sentence_complete: bool = False) -> str:
+    """Make Zipformer interim text readable without pretending it is final ASR.
+
+    The local English streaming model emits upper-case word tokens and no
+    punctuation.  Lowercasing is safe for ordinary words; sentence starts,
+    pronoun ``I``, standard acronyms, and a short set of unambiguous names are
+    restored.  A terminal period is introduced only after VAD has confirmed a
+    sentence pause, never just because the interim grew longer.
+    """
+    clean = normalize_english_display(text).lower()
+    if not clean:
+        return ""
+
+    def _restore_word(match: re.Match[str]) -> str:
+        word = match.group(0)
+        key = word.casefold()
+        if key in _ENGLISH_ACRONYMS:
+            return key.upper()
+        if key in _ENGLISH_PROPER_WORDS:
+            return key.capitalize()
+        if key == "i" or key.startswith("i'"):
+            return "I" + word[1:]
+        return word
+
+    clean = re.sub(r"[a-z]+(?:'[a-z]+)?", _restore_word, clean)
+    # Capitalize only sentence starts already supported by punctuation. During
+    # an unfinished stream this affects the first visible word only.
+    clean = re.sub(
+        r"(^|[.!?]\s+)([a-z])",
+        lambda match: match.group(1) + match.group(2).upper(),
+        clean,
+    )
+    if sentence_complete and clean[-1] not in ".!?":
+        clean += "."
+    return clean
+
+
+def merge_english_display_with_history(previous: str, current: str) -> str:
+    """Keep punctuation already shown when a Zipformer hypothesis grows.
+
+    The online recognizer returns one cumulative punctuation-free hypothesis.
+    After a VAD pause the UI has already shown a terminal period; this helper
+    carries that boundary into the next cumulative hypothesis while appending
+    only genuinely new whole words. If the recognizer revises the prefix, the
+    latest hypothesis wins rather than duplicating or inventing text.
+    """
+    previous = format_english_streaming_display(previous)
+    current = format_english_streaming_display(current)
+    if not previous or not current:
+        return current or previous
+
+    def key(token: str) -> str:
+        return re.sub(r"[^a-z0-9']", "", token.casefold())
+
+    prev_tokens = previous.split()
+    current_tokens = current.split()
+    comparable_prev = [key(token) for token in prev_tokens]
+    comparable_current = [key(token) for token in current_tokens]
+    if len(comparable_current) < len(comparable_prev):
+        return current
+    prefix_len = len(comparable_prev)
+    if comparable_current == comparable_prev:
+        current_punctuation = sum(1 for char in current if char in ".!?;:,")
+        previous_punctuation = sum(1 for char in previous if char in ".!?;:,")
+        return current if current_punctuation > previous_punctuation else previous
+    if comparable_current[:prefix_len] == comparable_prev:
+        suffix = current_tokens[prefix_len:]
+        return format_english_streaming_display(
+            previous + (" " + " ".join(suffix) if suffix else ""),
+        )
+    return current
+
+
+def merge_english_transcripts(previous: str, current: str) -> str:
+    """Merge rolling English ASR snapshots at token boundaries.
+
+    The rolling SenseVoice window may contain an overlap with the preceding
+    snapshot.  Matching case-insensitively on complete whitespace-delimited
+    tokens prevents both duplicated phrases and the character concatenation
+    that previously produced strings such as ``thefirst``.
+    """
+    previous = normalize_english_display(previous)
+    current = normalize_english_display(current)
+    if not current:
+        return previous
+    if not previous:
+        return current
+    if current.casefold().startswith(previous.casefold()):
+        return current
+
+    prev_tokens = previous.split()
+    current_tokens = current.split()
+    comparable = lambda token: re.sub(r"[^a-z0-9']", "", token.casefold())
+    prev_keys = [comparable(token) for token in prev_tokens]
+    current_keys = [comparable(token) for token in current_tokens]
+    limit = min(len(prev_tokens), len(current_tokens))
+    overlap = 0
+    for size in range(limit, 0, -1):
+        if prev_keys[-size:] == current_keys[:size]:
+            overlap = size
+            break
+    if overlap:
+        return normalize_english_display(
+            " ".join(prev_tokens + current_tokens[overlap:]),
+        )
+    # ASR may revise one or two words inside the overlap. Retain the stable
+    # prefix when a sufficiently long nearby block still anchors both windows.
+    matcher = SequenceMatcher(None, prev_keys, current_keys, autojunk=False)
+    block = max(matcher.get_matching_blocks(), key=lambda item: item.size)
+    if block.size >= 3 and block.b <= max(4, len(current_tokens) // 3):
+        return normalize_english_display(" ".join(
+            prev_tokens[:block.a] + current_tokens[block.b:],
+        ))
+    # Never append an unanchored full rolling window: that creates the severe
+    # duplicated/glued subtitle failure this merger is designed to prevent.
+    return current if len(current_tokens) >= len(prev_tokens) else previous
 
 
 def text_similarity(a: str, b: str) -> float:

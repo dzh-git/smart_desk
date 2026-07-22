@@ -40,6 +40,7 @@ from backend.events.speech_events import (
 from backend.events.translation_events import (
     TranslationFinalEvent,
     TranslationFinalizingEvent,
+    TranslationSentenceEvent,
 )
 from backend.events.agenda_events import AgendaUpdatedEvent
 
@@ -72,5 +73,6 @@ __all__ = [
     "SpeakerSpeakingStopEvent",
     # Translation events
     "TranslationFinalizingEvent",
+    "TranslationSentenceEvent",
     "TranslationFinalEvent",
 ]

@@ -18,6 +18,7 @@ numpy>=1.26.0
 torch>=2.0.0              # PyTorch — required by FunASR for model inference
 funasr>=1.0.0             # FunASR: Paraformer Streaming + Paraformer-large + FSMN-VAD
                           #   also pulls modelscope, huggingface-hub transitively
+sherpa-onnx>=1.12.24      # English Zipformer online streaming ASR (CPU)
 scipy>=1.11.0
 soundfile>=0.12.0
 

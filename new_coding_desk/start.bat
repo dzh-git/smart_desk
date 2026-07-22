@@ -22,7 +22,17 @@ set ENABLE_DEMO_SEED_WHEN_NO_ACTIVE=true
 set ENABLE_DEMO_SEAT_API=true
 set VITE_ENABLE_DEMO_CONTROLS=true
 set ENABLE_TRANSLATION_MODEL=true
+if not defined SMART_DESK_ENABLE_SPEECH_TRACE set "SMART_DESK_ENABLE_SPEECH_TRACE=true"
+if not defined VITE_ENABLE_SPEECH_TRACE set "VITE_ENABLE_SPEECH_TRACE=true"
+if not defined SMART_DESK_TORCH_THREADS set "SMART_DESK_TORCH_THREADS=4"
+if not defined SMART_DESK_TORCH_INTEROP_THREADS set "SMART_DESK_TORCH_INTEROP_THREADS=1"
+if not defined OMP_NUM_THREADS set "OMP_NUM_THREADS=4"
+if not defined MKL_NUM_THREADS set "MKL_NUM_THREADS=4"
 set "TRANSLATION_MODEL_PATH=%SD_ROOT%\models\opus-mt-zh-en"
+set "TRANSLATION_ZH_EN_MODEL_PATH=%SD_ROOT%\models\opus-mt-zh-en"
+set "TRANSLATION_EN_ZH_MODEL_PATH=%SD_ROOT%\models\opus-mt-en-zh"
+set "BILINGUAL_ASR_MODEL_PATH=%SD_ROOT%\models\SenseVoiceSmall"
+set "CHINESE_ASR_MODEL_PATH=%SD_ROOT%\models\iic\speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
 if not defined ENABLE_SCREEN_STREAM set "ENABLE_SCREEN_STREAM=false"
 if not defined ENABLE_DISPLAY_AGENT set "ENABLE_DISPLAY_AGENT=true"
 
@@ -32,7 +42,14 @@ echo     ENABLE_DEMO_SEED_WHEN_NO_ACTIVE = true
 echo     ENABLE_DEMO_SEAT_API         = true
 echo     VITE_ENABLE_DEMO_CONTROLS    = true
 echo     ENABLE_TRANSLATION_MODEL     = true
+echo     SMART_DESK_SPEECH_TRACE      = %SMART_DESK_ENABLE_SPEECH_TRACE%
+echo     VITE_SPEECH_TRACE            = %VITE_ENABLE_SPEECH_TRACE%
+echo     TORCH_THREADS                = %SMART_DESK_TORCH_THREADS% / interop %SMART_DESK_TORCH_INTEROP_THREADS%
+echo     OMP/MKL_THREADS              = %OMP_NUM_THREADS% / %MKL_NUM_THREADS%
 echo     TRANSLATION_MODEL_PATH       = %TRANSLATION_MODEL_PATH%
+echo     TRANSLATION_EN_ZH_MODEL_PATH = %TRANSLATION_EN_ZH_MODEL_PATH%
+echo     BILINGUAL_ASR_MODEL_PATH     = %BILINGUAL_ASR_MODEL_PATH%
+echo     CHINESE_ASR_MODEL_PATH       = %CHINESE_ASR_MODEL_PATH%
 echo     ENABLE_SCREEN_STREAM         = %ENABLE_SCREEN_STREAM%
 echo     ENABLE_DISPLAY_AGENT         = %ENABLE_DISPLAY_AGENT%
 echo.
@@ -89,14 +106,21 @@ if %ERRORLEVEL% NEQ 0 (
     echo   Speech packages: OK
 )
 
-:: Translation packages and local model (required for zh -> en output)
+:: Bilingual final ASR and local translation models
 python -c "import transformers, sentencepiece" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo   [WARN] Translation packages missing - English translation unavailable.
-) else if not exist "%TRANSLATION_MODEL_PATH%\model.safetensors" (
-    echo   [WARN] Translation model missing: %TRANSLATION_MODEL_PATH%
+    echo   [WARN] Translation packages missing - bilingual translation unavailable.
+) else if not exist "%TRANSLATION_ZH_EN_MODEL_PATH%\model.safetensors" (
+    echo   [WARN] Chinese-to-English model missing: %TRANSLATION_ZH_EN_MODEL_PATH%
+) else if not exist "%TRANSLATION_EN_ZH_MODEL_PATH%\model.safetensors" if not exist "%TRANSLATION_EN_ZH_MODEL_PATH%\pytorch_model.bin" (
+    echo   [WARN] English-to-Chinese model missing: %TRANSLATION_EN_ZH_MODEL_PATH%
+) else if not exist "%BILINGUAL_ASR_MODEL_PATH%\model.pt" if not exist "%BILINGUAL_ASR_MODEL_PATH%\model.safetensors" (
+    echo   [WARN] SenseVoiceSmall model missing: %BILINGUAL_ASR_MODEL_PATH%
+    echo   Run: python backend\scripts\prepare_bilingual_models.py
+) else if not exist "%CHINESE_ASR_MODEL_PATH%\model.pt" (
+    echo   [WARN] Chinese Paraformer-large model missing: %CHINESE_ASR_MODEL_PATH%
 ) else (
-    echo   Translation model: OK
+    echo   Chinese and bilingual ASR plus translation models: OK
 )
 
 :: pydub (optional)
@@ -268,7 +292,7 @@ if exist "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid" del "%SD_ROOT%\.sm
 :: Display Agent is independent from FFmpeg / MediaMTX screen streaming.
 if /I "%ENABLE_DISPLAY_AGENT%"=="true" (
     echo   [display-agent] Starting on http://127.0.0.1:8766 ...
-    start "SmartDesk Display Agent" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'agent.py' -WorkingDirectory '%SD_ROOT%\host_services\display_agent' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\display_agent.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and !$exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\display_agent.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\display_agent.pid' -ErrorAction SilentlyContinue }"
+    start "SmartDesk Display Agent" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'agent.py' -WorkingDirectory '%SD_ROOT%\host_services\display_agent' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\display_agent.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and -not $exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\display_agent.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\display_agent.pid' -ErrorAction SilentlyContinue }"
     %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
 ) else (
     echo   [display-agent] Disabled: ENABLE_DISPLAY_AGENT is not true.
@@ -293,7 +317,7 @@ if /I "%ENABLE_SCREEN_STREAM%"=="true" if %SCREEN_STREAM_READY% EQU 1 (
 if /I "%ENABLE_SCREEN_STREAM%"=="true" (
     if %SCREEN_STREAM_READY% EQU 1 (
         echo   [screen-stream] Starting Screen Supervisor ...
-        start "SmartDesk Screen Supervisor" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'supervisor.py' -WorkingDirectory '%SD_ROOT%\host_services\screen_stream' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and !$exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid' -ErrorAction SilentlyContinue }"
+        start "SmartDesk Screen Supervisor" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'supervisor.py' -WorkingDirectory '%SD_ROOT%\host_services\screen_stream' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and -not $exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid' -ErrorAction SilentlyContinue }"
         %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
     ) else (
         if %SCREEN_STREAM_READY% EQU 0 (

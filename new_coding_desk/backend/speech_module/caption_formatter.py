@@ -7,10 +7,9 @@ suitable for real-time subtitle-style display:
     current_line  — sentence currently being formed/refined
     mode          — "two_line"
 
-Sentence splitting is driven by:
-  1. Punctuation boundaries (。？！!? 优先，, 作为次选)
-  2. Length-based forced split at configurable maximum (default 35 chars)
-  3. Idle timeout (default 2 s of no text change)
+Caption layout is driven by the browser. This formatter only preserves
+compatibility caption fields and commits true terminal punctuation that is
+followed by later text. Visual wrapping never changes translation semantics.
 
 Usage:
     from speech_module.caption_formatter import CaptionFormatter, CaptionConfig
@@ -32,7 +31,13 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .punctuation import add_punctuation, ALL_BOUNDARY, SENTENCE_END
+from .text_utils import normalize_english_display
 
+
+# Layout breaks include colons as well as the ASR punctuation model's semantic
+# boundaries.  This is intentionally local to caption presentation: a colon
+# must not cause a semantic translation sentence to be finalized.
+DISPLAY_BOUNDARY = ALL_BOUNDARY | frozenset({"：", ":"})
 
 # ── Data Structures ──────────────────────────────────────────────────────────
 
@@ -48,19 +53,21 @@ class CaptionConfig:
         default_factory=lambda: SENTENCE_END,
     )
     comma_boundary: frozenset[str] = field(
-        default_factory=lambda: frozenset({"，", ",", "、", "；", ";"}),
+        default_factory=lambda: frozenset({"，", ",", "、", "；", ";", "：", ":"}),
     )
     all_boundary: frozenset[str] = field(
-        default_factory=lambda: ALL_BOUNDARY,
+        default_factory=lambda: DISPLAY_BOUNDARY,
     )
 
     #: Minimum characters before a punctuation boundary causes a line break.
     min_line_length: int = 20
 
-    #: Maximum characters (including punctuation) before a forced line break.
+    #: Legacy compatibility setting. Visual line length is no longer used to
+    #: commit caption text.
     max_line_length: int = 35
 
-    #: Seconds of no text change before the uncommitted line is auto-submitted.
+    #: Legacy compatibility setting. Semantic idle finalization is owned by
+    #: ``SpeechStreamService`` VAD, never by visual captions.
     text_change_timeout_s: float = 2.0
 
 
@@ -134,10 +141,16 @@ class CaptionFormatter:
         self._last_change_time: float = 0.0
         self._natural_boundary_committed: bool = False
         self._committed_boundary: str = ""
+        self._source_lang: str = "zh"
 
     # ── Public API ─────────────────────────────────────────────────────────
 
-    def update(self, raw_text: str, now: float) -> CaptionResult:
+    def update(
+        self,
+        raw_text: str,
+        now: float,
+        source_lang: str = "zh",
+    ) -> CaptionResult:
         """Feed the **full cumulative** ASR text and get the updated caption.
 
         Parameters
@@ -168,46 +181,35 @@ class CaptionFormatter:
             self._previous_line = ""
 
         # ── Punctuate ─────────────────────────────────────────────────
+        self._source_lang = "en" if source_lang == "en" else "zh"
         self._last_raw = raw_text
         self._last_change_time = now
-        self._last_punctuated = self._punctuator(raw_text)
+        self._last_punctuated = (
+            normalize_english_display(raw_text)
+            if self._source_lang == "en"
+            else self._punctuator(raw_text)
+        )
         self._natural_boundary_committed = False
         self._committed_boundary = ""
 
-        # ── Commit any complete sentences ─────────────────────────────
-        self._commit_sentences()
+        # ── Commit true completed sentences only ───────────────────────
+        # English streaming text keeps its own punctuation/word layout. For
+        # Chinese, only terminal punctuation followed by later text can move
+        # content into the compatibility previous_line field.
+        if self._source_lang != "en":
+            self._commit_sentences()
 
         return self._make_result()
 
     def check_timeout(self, now: float) -> Optional[CaptionResult]:
-        """If no text change for longer than the timeout, commit the
-        current uncommitted line (provided it has at least ``min_line_length``
-        characters).
+        """Compatibility no-op.
 
-        Returns ``None`` when the timeout has not yet expired or when there
-        is nothing to commit.  Otherwise returns the updated ``CaptionResult``.
+        Natural pauses are detected from PCM by ``SpeechStreamService``. A
+        frozen interim ASR hypothesis must not make this display formatter
+        split a long sentence merely because two seconds elapsed.
         """
-        if not self._last_raw:
-            return None
-
-        elapsed = now - self._last_change_time
-        if elapsed < self.config.text_change_timeout_s:
-            return None
-
-        uncommitted = self._get_uncommitted()
-        if len(uncommitted) < self.config.min_line_length:
-            return None
-
-        raw_chars = _count_raw_chars(uncommitted, self.config.all_boundary)
-        if raw_chars == 0:
-            return None
-
-        self._previous_line = uncommitted.strip()
-        self._committed_raw_len += raw_chars
-        self._last_change_time = now  # prevent repeated trigger
-        self._natural_boundary_committed = False
-        self._committed_boundary = ""
-        return self._make_result()
+        del now
+        return None
 
     def reset(self) -> None:
         """Clear all state for a new utterance."""
@@ -218,6 +220,7 @@ class CaptionFormatter:
         self._last_change_time = 0.0
         self._natural_boundary_committed = False
         self._committed_boundary = ""
+        self._source_lang = "zh"
 
     # ── Internal helpers ───────────────────────────────────────────────
 
@@ -232,20 +235,26 @@ class CaptionFormatter:
         return self._last_punctuated[offset:]
 
     def _commit_sentences(self) -> None:
-        """Repeatedly find and commit complete sentences from the
-        uncommitted suffix until no more can be found."""
+        """Commit terminal-punctuation sentences with following text only.
+
+        Length-based visual wrapping used to call ``_find_split_details``
+        here, which incorrectly turned long Chinese speech into semantic
+        sentences. The frontend owns wrapping and the service owns VAD/end
+        finalization.
+        """
         while True:
             uncommitted = self._get_uncommitted()
             if not uncommitted:
                 break
 
-            split, natural_boundary = _find_split_details(
-                uncommitted,
-                max_len=self.config.max_line_length,
-                min_len=self.config.min_line_length,
-                all_boundary=self.config.all_boundary,
-                sentence_end=self.config.sentence_end,
-                comma_boundary=self.config.comma_boundary,
+            split = next(
+                (
+                    index + 1
+                    for index, char in enumerate(uncommitted)
+                    if char in self.config.sentence_end
+                    and uncommitted[index + 1:].strip()
+                ),
+                0,
             )
             if split == 0:
                 break
@@ -261,9 +270,8 @@ class CaptionFormatter:
 
             self._previous_line = sentence
             self._committed_raw_len += raw_chars
-            self._natural_boundary_committed |= natural_boundary
-            if natural_boundary:
-                self._committed_boundary = sentence[-1]
+            self._natural_boundary_committed = True
+            self._committed_boundary = sentence[-1]
 
     def _make_result(self) -> CaptionResult:
         return CaptionResult(
@@ -283,7 +291,7 @@ def _find_split(
     text: str,
     max_len: int = 35,
     min_len: int = 20,
-    all_boundary: frozenset[str] = ALL_BOUNDARY,
+    all_boundary: frozenset[str] = DISPLAY_BOUNDARY,
     sentence_end: frozenset[str] = SENTENCE_END,
     comma_boundary: frozenset[str] = frozenset({"，", ",", "、", "；", ";"}),
 ) -> int:
@@ -325,7 +333,7 @@ def _find_split_details(
     text: str,
     max_len: int = 35,
     min_len: int = 20,
-    all_boundary: frozenset[str] = ALL_BOUNDARY,
+    all_boundary: frozenset[str] = DISPLAY_BOUNDARY,
     sentence_end: frozenset[str] = SENTENCE_END,
     comma_boundary: frozenset[str] = frozenset({"，", ",", "、", "；", ";"}),
 ) -> tuple[int, bool]:

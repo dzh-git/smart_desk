@@ -16,7 +16,7 @@ from backend.speech_module.speech_module import SpeechModule
 from backend.speech_module.stt_streaming import StreamingChunkProcessor
 
 
-def test_long_utterance_uses_soft_punctuation_and_hard_duration_boundaries() -> None:
+def test_long_utterance_ignores_comma_and_uses_hard_duration_boundary() -> None:
     service = SpeechStreamService()
     session = SpeechStreamSession(1, 1, "speech_1_1")
     session.has_speech = True
@@ -27,7 +27,7 @@ def test_long_utterance_uses_soft_punctuation_and_hard_duration_boundaries() -> 
         "这是一个完整从句，后面仍在继续。",
         natural_boundary_committed=True,
         committed_boundary="，",
-    ) == "soft_clause_limit"
+    ) is None
     assert service._boundary_reason(
         session,
         "标点模型临时补出的句号。",
@@ -60,7 +60,7 @@ def test_speech_status_reports_pcm_input_before_voice_gate() -> None:
     assert diagnostic["pcm_bytes_received"] == len(pcm)
     assert diagnostic["last_input_rms"] > 0
     assert diagnostic["voice_active"] is False
-    assert diagnostic["calibration_frames_remaining"] == 4
+    assert diagnostic["calibration_frames_remaining"] == 2
 
 
 def test_start_utterance_fully_resets_streaming_processor_cache() -> None:
@@ -105,7 +105,7 @@ def test_slow_translation_worker_does_not_block_submission(
         seat_id=1,
         utterance_id="utt_slow",
         source_text="后台翻译不应阻塞实时音频。",
-        boundary_reason="max_duration",
+        boundary_reason="end_hint",
         audio_seconds=30.0,
     ))
     assert time.monotonic() - started < 0.05
@@ -214,12 +214,55 @@ async def test_auto_final_starts_next_utterance_before_background_translation(
         assert len(submitted) == 1
         assert submitted[0].utterance_id == "utt_1_1_000001"
         assert submitted[0].source_text == "这是一段足够长的实时识别文本。"
+        assert submitted[0].sample_rate == 16000
+        assert submitted[0].audio is not None
+        assert len(submitted[0].audio) == 1600
     finally:
         stream_service.remove_session(key, token)
         if previous_sequence is None:
             stream_service._utterance_sequences.pop(sequence_key, None)
         else:
             stream_service._utterance_sequences[sequence_key] = previous_sequence
+
+
+@pytest.mark.anyio
+async def test_end_hint_queues_bilingual_final_audio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    from backend.services.speech_finalization_service import finalization_queue
+    from backend.services.speech_stream_service import stream_service
+    from backend.websocket.speech_ws import _handle_text_message
+
+    key, token = stream_service.create_session(9, 1)
+    try:
+        stream_service.start_utterance(key, "utt_9_1_000001")
+        session = stream_service.get_session(key)
+        assert session is not None
+        session.has_speech = True
+        session.last_source_text = "Welcome to the meeting."
+        session.utterance_audio_seconds = 0.1
+        session._utterance_buffer.append(b"\x01\x00" * 1600)
+        submitted: list[object] = []
+        monkeypatch.setattr(
+            finalization_queue,
+            "submit",
+            lambda job: submitted.append(job) or True,
+        )
+
+        await _handle_text_message(
+            AsyncMock(), json.dumps({"type": "end_hint"}), 9, 1, key,
+        )
+
+        assert len(submitted) == 1
+        job = submitted[0]
+        assert job.source_text == "Welcome to the meeting."
+        assert job.audio is not None and len(job.audio) == 1600
+        assert job.sample_rate == 16000
+        assert stream_service.is_utterance_terminal(key, job.utterance_id)
+    finally:
+        stream_service.remove_session(key, token)
 
 
 def test_duration_rollover_replays_300ms_once_without_counting_it() -> None:
@@ -247,7 +290,9 @@ def test_duration_rollover_replays_300ms_once_without_counting_it() -> None:
     fake = FakeSpeechModule()
     service._speech_module = fake
     key, _token = service.create_session(1, 1)
-    service.start_utterance(key, "utt_1_1_000001")
+    service.start_utterance(
+        key, "utt_1_1_000001", language_mode="zh",
+    )
     session = service.get_session(key)
     assert session is not None
     session.has_speech = True

@@ -1978,6 +1978,71 @@ describe("SeatTablet - live caption display", () => {
     });
   });
 
+  it("merges a trailing realtime translation without replacing newer source text", async () => {
+    mockSpeakerWithCaption();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+
+    const ws = findMeetingWs();
+    await act(async () => {
+      ws?.onmessage?.({ data: JSON.stringify({
+        event: "translation_interim", meeting_id: 1, timestamp: 1,
+        payload: {
+          utterance_id: "utt_live_mt", seat_id: 1, revision: 5,
+          source_lang: "zh", target_lang: "en", source_text: "这是更新后的实时识别",
+          translation_source_text: "这是更新后的实时识别", translated_text: "", is_final: false,
+          caption: { previous_line: "", current_line: "这是更新后的实时识别", mode: "two_line" },
+        },
+      }) });
+      ws?.onmessage?.({ data: JSON.stringify({
+        event: "translation_interim", meeting_id: 1, timestamp: 2,
+        payload: {
+          utterance_id: "utt_live_mt", seat_id: 1, revision: 3,
+          translation_revision: 3, translation_only: true,
+          source_lang: "zh", target_lang: "en", source_text: "这是更新后的实时识别",
+          translation_source_text: "这是更新后的实时识别",
+          translated_text: "This is the updated live translation.", is_final: false,
+        },
+      }) });
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(screen.getByTestId("live-caption-current")).toHaveTextContent("这是更新后的实时识别");
+    expect(screen.getByTestId("live-caption-translation")).toHaveTextContent("This is the updated live translation.");
+
+    await act(async () => {
+      ws?.onmessage?.({ data: JSON.stringify({
+        event: "translation_interim", meeting_id: 1, timestamp: 3,
+        payload: {
+          utterance_id: "utt_live_mt", seat_id: 1, revision: 6,
+          source_lang: "zh", target_lang: "en", source_text: "已经滚动到新的两行",
+          translation_source_text: "已经滚动到新的两行", translated_text: "", is_final: false,
+          caption: { previous_line: "已经滚动到", current_line: "新的两行", mode: "two_line" },
+        },
+      }) });
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(screen.queryByTestId("live-caption-translation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("live-caption-translation-pending")).toBeInTheDocument();
+
+    await act(async () => {
+      ws?.onmessage?.({ data: JSON.stringify({
+        event: "translation_interim", meeting_id: 1, timestamp: 4,
+        payload: {
+          utterance_id: "utt_live_mt", seat_id: 1, revision: 6,
+          translation_revision: 6, translation_only: true,
+          source_lang: "zh", target_lang: "en", source_text: "已经滚动到新的两行",
+          translation_source_text: "已经滚动到新的两行",
+          translated_text: "The newly scrolled two lines.", is_final: false,
+        },
+      }) });
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(screen.getByTestId("live-caption-translation")).toHaveTextContent("The newly scrolled two lines.");
+  });
+
   it("shows transcript-interim when caption is absent (fallback to source_text)", async () => {
     mockSpeakerWithCaption();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
@@ -3524,7 +3589,7 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
     act(() => send("translation_interim", {
       utterance_id: "utt_roll_old", seat_id: 1, revision: 8,
       source_lang: "zh", target_lang: "en", source_text: "旧段最后一行。",
-      translated_text: "", caption: {
+      translated_text: "The last line of the old segment.", translation_revision: 8, caption: {
         previous_line: "旧段上一行，", current_line: "旧段最后一行。", mode: "two_line",
       },
     }));
@@ -3545,6 +3610,7 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
       expect(live).toBe(originalNode);
       expect(live).toHaveAttribute("data-utterance-id", "utt_roll_next");
       expect(screen.queryByTestId("live-caption-placeholder")).not.toBeInTheDocument();
+      expect(screen.getByTestId("live-caption-translation")).toHaveTextContent("The last line of the old segment.");
       expect(screen.getByTestId("transcript-pending-final")).toHaveTextContent("旧段最后一行。");
     });
 
@@ -4294,4 +4360,30 @@ describe("SeatTablet - speech local cleanup (Task 127A)", () => {
     expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
     expect(screen.getByText("Final content after stop.")).toBeInTheDocument();
   }, 15000);
+});
+
+describe("SeatTablet - sentence lyric events", () => {
+  it("shows the sentence-bound translation received on the meeting socket", async () => {
+    mockFetch.mockImplementation(createSeatMock("checked_in"));
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
+
+    const base = {
+      utterance_id: "utt_1_1_000001", sentence_id: "utt_1_1_000001:s000001",
+      sentence_sequence: 1, seat_id: 1, revision: 3,
+      source_lang: "en", target_lang: "zh", source_text: "Welcome everyone.",
+    };
+    await triggerWsEvent("translation_interim", 1, {
+      ...base, sentence_source_text: "Welcome everyone.", sentence_state: "completed",
+      translated_text: "", is_final: false,
+    });
+    await triggerWsEvent("translation_sentence", 1, {
+      ...base, translated_text: "欢迎大家。", translation_status: "ok",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("live-lyric-source")).toHaveTextContent("Welcome everyone.");
+      expect(screen.getByTestId("live-lyric-translation")).toHaveTextContent("欢迎大家。");
+    });
+  });
 });

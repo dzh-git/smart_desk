@@ -257,7 +257,9 @@ class TestPipelineTracePoints:
 
         key, token = stream_service.create_session(1, 1)
         try:
-            stream_service.start_utterance(key, "utt_trace_asr_timing_001")
+            stream_service.start_utterance(
+                key, "utt_trace_asr_timing_001", language_mode="zh",
+            )
 
             mock_sm = _MockSpeechModuleWithTrace()
             monkeypatch.setattr(

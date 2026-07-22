@@ -30,6 +30,8 @@ export type SpeechWsStatus =
   | "started"
   | "error";
 
+export type SpeechLanguageMode = "auto" | "zh" | "en";
+
 export interface StartResult {
   utteranceId: string;
   sessionKey: string;
@@ -96,8 +98,12 @@ export class SpeechWsClient {
    *
    * @returns Promise that resolves with utterance_id and session_key.
    */
-  connect(meetingId: number, seatId: number): Promise<StartResult> {
-    trace("speech_ws_connect_start_at", { meetingId, seatId });
+  connect(
+    meetingId: number,
+    seatId: number,
+    languageMode: SpeechLanguageMode = "auto",
+  ): Promise<StartResult> {
+    trace("speech_ws_connect_start_at", { meetingId, seatId, languageMode });
     return new Promise((resolve, reject) => {
       this.resolveConnect = resolve;
       this.rejectConnect = reject;
@@ -119,6 +125,7 @@ export class SpeechWsClient {
             sample_rate: 16000,
             encoding: "pcm_s16le",
             channels: 1,
+            language_mode: languageMode,
           }),
         );
       };

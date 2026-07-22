@@ -21,6 +21,16 @@ import pytest
 from backend.speech_module.speech_module import SpeechModule, STATUS_UNKNOWN, STATUS_LOADED, STATUS_ERROR, _INITIAL_STATUS
 
 
+@pytest.fixture(autouse=True)
+def _mock_english_streaming_warmup():
+    """Keep status-contract tests independent from a real Zipformer load."""
+    with (
+        patch("backend.speech_module.english_streaming.warmup_english_streaming"),
+        patch("backend.speech_module.bilingual_asr.warmup_bilingual_asr"),
+    ):
+        yield
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────────
 
 # Shortcut to the testable thread‑creation function so tests can patch it
@@ -224,6 +234,24 @@ class TestSpeechStatusAPI:
             assert resp.status_code == 200
             data = resp.json()
             assert data["success"] is True
+
+    def test_get_diagnostics_exposes_runtime_queues_and_bounded_events(self):
+        resp = _api_client.get("/api/speech/diagnostics?limit=25")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert isinstance(data["trace_enabled"], bool)
+        assert data["event_count_returned"] <= 25
+        assert "finalization" in data["queues"]
+        assert "sentence_translation" in data["queues"]
+        assert "last_queue_wait_ms" in data["queues"]["finalization"]
+        assert "last_inference_ms" in data["queues"]["sentence_translation"]
+        assert "streaming_asr_slower_than_realtime" in data["indicators"]
+
+    def test_clear_diagnostics_only_clears_trace_buffer(self):
+        resp = _api_client.post("/api/speech/diagnostics/clear")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["event_count"] == 0
 
     def test_status_after_triggered_preload(self):
         """After triggering preload, status should show preloading=true.

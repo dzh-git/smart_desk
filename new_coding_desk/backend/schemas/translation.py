@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, model_validator
 
 
 # ── Interim ────────────────────────────────────────────────────────────────────
@@ -31,12 +33,22 @@ class TranslationRecordResponse(BaseModel):
     target_lang: str
     source_text: str
     translated_text: str
+    translation_status: Literal["ok", "unavailable"] = "ok"
+    translation_error: str | None = None
     created_at: datetime
     # Phase 4: speech WS traceability
     utterance_id: str | None = None
     source_type: str | None = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def derive_translation_status(self):
+        normalized = self.translated_text.strip().lower()
+        if not normalized or normalized.startswith("[translation not available"):
+            self.translation_status = "unavailable"
+            self.translation_error = self.translation_error or "Local translation model unavailable"
+        return self
 
 
 # ── History ────────────────────────────────────────────────────────────────────

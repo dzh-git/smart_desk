@@ -20,6 +20,7 @@ Usage:
 """
 
 from __future__ import annotations
+from pathlib import Path
 
 # ── Boundary character sets (used by caption formatter and sentence merger) ──
 
@@ -28,6 +29,7 @@ COMMA_BOUNDARY = frozenset({"，", ",", "、", "；", ";"})
 ALL_BOUNDARY: frozenset[str] = SENTENCE_END | COMMA_BOUNDARY
 
 _punc_model = None
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def is_punctuation_loaded() -> bool:
@@ -58,11 +60,13 @@ def warmup_punc(model_dir: str | None = None, device: str = "cpu"):
     model_id = "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"
 
     # Try local cache first (ModelScope format, then HF cache)
-    local = _glob.glob("models/iic/*punc_ct-transformer*")
+    local = _glob.glob(str(_PROJECT_ROOT / "models" / "iic" / "*punc_ct-transformer*"))
     if local and _os.path.isdir(local[0]):
         path = local[0]
     else:
-        hf_candidates = _glob.glob("models/models--funasr--punc_ct*/snapshots/*")
+        hf_candidates = _glob.glob(
+            str(_PROJECT_ROOT / "models" / "models--funasr--punc_ct*" / "snapshots" / "*")
+        )
         if hf_candidates and _os.path.isdir(hf_candidates[0]):
             path = hf_candidates[0]
         else:
@@ -95,7 +99,7 @@ def add_punctuation(text: str) -> str:
         if not text or not text.strip():
             return text
         try:
-            result = _punc_model.generate(input=text)
+            result = _punc_model.generate(input=text, disable_pbar=True)
             if isinstance(result, list) and len(result) > 0:
                 item = result[0]
                 if isinstance(item, dict):
