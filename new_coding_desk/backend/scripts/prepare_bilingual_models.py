@@ -25,6 +25,12 @@ ENGLISH_STREAMING_FILES = (
     "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
     "tokens.txt",
 )
+ENGLISH_PUNCTUATION_ARCHIVE = (
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-models/"
+    "sherpa-onnx-online-punct-en-2024-08-06.tar.bz2"
+)
+ENGLISH_PUNCTUATION_DIR = "sherpa-onnx-online-punct-en-2024-08-06"
+ENGLISH_PUNCTUATION_FILES = ("model.int8.onnx", "bpe.vocab")
 
 
 def _has_weights(path: Path) -> bool:
@@ -92,7 +98,7 @@ def _prepare_english_streaming(target: Path, force: bool) -> None:
             destination = (extract_root / member.name).resolve()
             if destination != root and root not in destination.parents:
                 raise RuntimeError(f"Unsafe archive member: {member.name}")
-        tar.extractall(extract_root)
+        tar.extractall(extract_root, filter="data")
     unpacked = extract_root / ENGLISH_STREAMING_DIR
     if not _has_english_streaming_model(unpacked):
         raise RuntimeError(f"Zipformer archive is incomplete: {unpacked}")
@@ -101,6 +107,39 @@ def _prepare_english_streaming(target: Path, force: bool) -> None:
     shutil.move(str(unpacked), str(target))
     shutil.rmtree(extract_root, ignore_errors=True)
     print(f"[OK] English streaming Zipformer -> {target}")
+
+
+def _prepare_english_punctuation(target: Path, force: bool) -> None:
+    """Download the official lightweight sherpa-onnx English punctuator."""
+    if target.is_dir() and all(
+        (target / name).is_file() for name in ENGLISH_PUNCTUATION_FILES
+    ) and not force:
+        print(f"[OK] {target.name} already exists")
+        return
+    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    archive = CACHE_ROOT / f"{ENGLISH_PUNCTUATION_DIR}.tar.bz2"
+    if force or not archive.is_file():
+        print(f"[DOWNLOAD] {ENGLISH_PUNCTUATION_ARCHIVE}")
+        urllib.request.urlretrieve(ENGLISH_PUNCTUATION_ARCHIVE, archive)
+    extract_root = CACHE_ROOT / f"{ENGLISH_PUNCTUATION_DIR}.extract"
+    if extract_root.exists():
+        shutil.rmtree(extract_root)
+    extract_root.mkdir(parents=True)
+    with tarfile.open(archive, "r:bz2") as tar:
+        root = extract_root.resolve()
+        for member in tar.getmembers():
+            destination = (extract_root / member.name).resolve()
+            if destination != root and root not in destination.parents:
+                raise RuntimeError(f"Unsafe archive member: {member.name}")
+        tar.extractall(extract_root)
+    unpacked = extract_root / ENGLISH_PUNCTUATION_DIR
+    if not all((unpacked / name).is_file() for name in ENGLISH_PUNCTUATION_FILES):
+        raise RuntimeError(f"English punctuation archive is incomplete: {unpacked}")
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.move(str(unpacked), str(target))
+    shutil.rmtree(extract_root, ignore_errors=True)
+    print(f"[OK] English online punctuation -> {target}")
 
 
 def main() -> int:
@@ -126,6 +165,9 @@ def main() -> int:
     )
     _prepare_english_streaming(
         MODELS_ROOT / ENGLISH_STREAMING_DIR, args.force,
+    )
+    _prepare_english_punctuation(
+        MODELS_ROOT / ENGLISH_PUNCTUATION_DIR, args.force,
     )
     print("All bilingual speech translation models are ready.")
     return 0

@@ -3,13 +3,29 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+import backend.services.speech_stream_service as speech_stream_module
 from backend.services.speech_stream_service import SpeechStreamService
 from backend.services.speech_inference_runtime import inference_runtime
 from backend.speech_module.bilingual_asr import SpeechRecognitionResult
+from backend.speech_module.text_utils import format_english_streaming_display
 
 
 @pytest.fixture(autouse=True)
-def _clear_runtime_stream():
+def _clear_runtime_stream(monkeypatch):
+    def fake_punctuation(text: str) -> str:
+        clean = format_english_streaming_display(text, sentence_complete=True)
+        if clean.casefold().startswith("do we have any assignments"):
+            return clean.rstrip(".") + "?"
+        return clean
+
+    monkeypatch.setattr(
+        speech_stream_module, "add_english_punctuation", fake_punctuation,
+    )
+    monkeypatch.setattr(
+        speech_stream_module,
+        "get_english_punctuation_status",
+        lambda: {"last_inference_ms": 0.1},
+    )
     yield
     inference_runtime.remove_stream("speech_90_1")
 
@@ -99,7 +115,7 @@ def test_manual_english_uses_true_streaming_without_chinese_punctuation(monkeypa
     result = {}
     for _ in range(10):
         result = service.process_pcm_frame(key, _voice_frame())
-    assert result["source_text"] == "All right, that sounds good. Next word."
+    assert result["source_text"] == "All right, that sounds good. Next word"
     assert result["recognition_engine"] == "sherpa_onnx_streaming"
     assert module.frames == []
     assert len(module.english_frames) == 10
@@ -185,3 +201,34 @@ def test_english_sentence_pause_starts_an_isolated_decoder_for_next_sentence() -
     assert "people" not in result["source_text"]
     assert module.english_rotations == 1
     assert result["vad_should_finalize"] is False
+
+
+def test_short_pause_does_not_freeze_incomplete_english_question() -> None:
+    service, key, module = _service()
+    hypothesis = {"text": "DO WE HAVE ANY"}
+
+    def _streaming_hypothesis(*_args):
+        module.english_frames.append(np.zeros(1, dtype=np.float32))
+        return hypothesis["text"]
+
+    module.process_english_interim_array = _streaming_hypothesis
+    service.start_utterance(key, "utt_90_1_000008", language_mode="en")
+    _admit_immediately(service, key)
+    service.process_pcm_frame(key, _voice_frame())
+    result = {}
+    for _ in range(9):
+        result = service.process_pcm_frame(key, _silence_frame())
+
+    assert result["source_text"] == "Do we have any"
+    assert result["completed_sentences"] == []
+    assert module.english_rotations == 0
+
+    hypothesis["text"] = "DO WE HAVE ANY ASSIGNMENTS"
+    service.process_pcm_frame(key, _voice_frame())
+    for _ in range(9):
+        result = service.process_pcm_frame(key, _silence_frame())
+
+    assert result["source_text"] == "Do we have any assignments?"
+    assert result["boundary_reason"] == "english_sentence_pause"
+    assert result["completed_sentences"][0]["source_text"].endswith("?")
+    assert module.english_rotations == 1

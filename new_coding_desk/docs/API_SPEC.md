@@ -50,6 +50,8 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `TRANSLATION_ZH_EN_MODEL_PATH` | `models/opus-mt-zh-en` | Local Chinese-to-English model directory. |
 | `TRANSLATION_EN_ZH_MODEL_PATH` | `models/opus-mt-en-zh` | Local English-to-Chinese model directory. |
 | `BILINGUAL_ASR_MODEL_PATH` | `models/SenseVoiceSmall` | Local bilingual sentence-final ASR directory. |
+| `ENGLISH_STREAMING_ASR_MODEL_PATH` | `models/sherpa-onnx-streaming-zipformer-en-2023-06-26` | Local English streaming Zipformer directory. |
+| `ENGLISH_ONLINE_PUNCTUATION_MODEL_PATH` | `models/sherpa-onnx-online-punct-en-2024-08-06` | Local English online punctuation and casing model directory. |
 | `CHINESE_ASR_MODEL_PATH` | `models/iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch` | Local Chinese-specialized sentence-final ASR directory. |
 | `TRANSLATION_MODEL_PATH` | unset | Legacy Chinese-to-English path override. |
 | `RUN_TRANSLATION_SMOKE` | unset | Run translation model smoke tests. |
@@ -457,7 +459,9 @@ are not written to translation history.
 `voice_gate` defaults. `live_asr` reports automatic probe/window intervals,
 PyTorch/OMP/MKL thread budgets and maximum audio backlog; each active session
 reports `pcm_queue_frames`, `audio_backlog_ms`, requested/detected language and
-recognition engine. Translation readiness is diagnostic and does not block
+recognition engine. English diagnostics include `english_streaming_asr` and
+`english_online_punctuation` model state, path, load error and latest inference
+latency. Translation readiness is diagnostic and does not block
 Chinese speech recognition. Runtime diagnostics include `active_sessions`,
 `pending_finalizations`, `process_rss_mb`, `max_buffered_audio_seconds`,
 `soft_utterance_seconds` (30), `hard_utterance_seconds` (45), and

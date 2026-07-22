@@ -79,10 +79,12 @@ Primary path:
    is 5 mRMS so clean low-output browser microphones are still admitted.
 5. Semantic sentence boundaries are terminal punctuation plus a 0.9 second
    pause, terminal punctuation confirmed by following content, or a 2 second
-   natural pause. For English, the 0.9 second boundary commits the lyric
-   sentence but keeps the same Zipformer stream alive, so the next sentence's
-   onset is not lost. Commas and visual wrapping do not trigger translation.
-   The 45 second hard duration limit commits remaining text.
+   natural pause. English Zipformer hypotheses pass through a local online
+   punctuation/casing model. The 0.9 second pause is only a candidate: an
+   incomplete tail such as `Do we have any` remains forming, while later words
+   can reveal internal boundaries such as `Any questions? Do we have any
+   assignments?`. Commas and visual wrapping do not trigger translation. The
+   45 second hard duration limit commits remaining text.
 6. On an automatic duration rollover, the backend publishes
    `translation_finalizing`, fully resets the streaming cache, and starts the
    next utterance immediately. The final 300 ms of PCM is replayed once to
@@ -90,7 +92,10 @@ Primary path:
 7. `zh` uses streaming Paraformer. `en` uses the local sherpa-onnx Zipformer
    online stream, accepting each PCM frame once. `auto` probes 1.2 seconds of
    admitted speech, locks the detected route for the utterance, and replays the
-   probe PCM into the selected stream so sentence onset is retained. When the
+   probe PCM into the selected stream so sentence onset is retained. English
+   text is post-processed by the local sherpa-onnx CNN-BiLSTM punctuation model;
+   missing punctuation degrades to readable unpunctuated text without stopping
+   ASR. When the
    Zipformer model is missing, English visibly falls back to one-second bounded
    SenseVoice snapshots (`sensevoice_rolling_fallback`). SenseVoiceSmall still
    performs final language detection/correction; Chinese audio is rescored by

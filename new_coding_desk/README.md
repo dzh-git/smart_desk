@@ -97,6 +97,7 @@ Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 | `TRANSLATION_EN_ZH_MODEL_PATH=...` | 覆盖本地英译中模型路径。 |
 | `BILINGUAL_ASR_MODEL_PATH=...` | 覆盖本地 SenseVoiceSmall 终稿识别路径。 |
 | `ENGLISH_STREAMING_ASR_MODEL_PATH=...` | 覆盖本地 sherpa-onnx Zipformer 英语流式识别模型路径。 |
+| `ENGLISH_ONLINE_PUNCTUATION_MODEL_PATH=...` | 覆盖本地 sherpa-onnx 英文在线标点模型路径。 |
 | `CHINESE_ASR_MODEL_PATH=...` | 覆盖本地 Paraformer-large 中文终稿识别路径。 |
 | `TRANSLATION_MODEL_PATH=...` | 旧版中译英路径兼容项。 |
 | `RUN_TRANSLATION_SMOKE=true` | 启用翻译模型 smoke test。 |
@@ -210,8 +211,8 @@ python host_services/screen_stream/supervisor.py --check
 - Meeting broadcast：`/ws/{meeting_id}?seat=N`
 - Audio：PCM16 little-endian、16 kHz、mono
 - Language mode：发言席可选自动/中文/English；自动模式用 1.2 秒 SenseVoice 探测，本句锁定语言
-- Interim events：中文由 Paraformer Streaming、英文由 sherpa-onnx Zipformer 真流式识别；仅在本地 Zipformer 缺失时降级到 SenseVoice 滚动识别。`translation_interim` 携带稳定 `sentence_id`、实际语言和识别引擎
-- Sentence translation：终止标点经 0.9 秒停顿或后续文本确认、无标点自然停顿 2 秒、手动停止时，以 `translation_sentence` 按句顺序翻译；英文句末先由本地 SenseVoice 一次性校正标点、大小写与空格，`source_locked` 后不再被后续流式结果改写；实时区保留本次会议的句组历史，在固定高度框内从底部向上滚动
+- Interim events：中文由 Paraformer Streaming、英文由 sherpa-onnx Zipformer 真流式识别，并由本地 sherpa-onnx 在线标点模型低延迟恢复大小写和句内标点；仅在本地 Zipformer 缺失时降级到 SenseVoice 滚动识别。`translation_interim` 携带稳定 `sentence_id`、实际语言和识别引擎
+- Sentence translation：英文短停顿只是候选边界，在线标点或后续文本确认后才提交；不完整尾词不会因 0.9 秒停顿被强制切开，无标点自然停顿 2 秒或手动停止仍会提交。完成后以 `translation_sentence` 按句顺序翻译；英文句末再由本地 SenseVoice 一次性校正，`source_locked` 后不再被后续流式结果改写
 - Final events：SenseVoiceSmall 检测语言并识别英文；中文由 Paraformer-large 重识别，OPUS-MT 翻译到另一语言并持久化
 - Live lyrics：终稿不会清除已配对的逐句字幕；中英文均随字幕框宽度自然换行，英文不拆单词；固定高度字幕框保留完整句组内容并自动向下滚动
 - Cancel cleanup：`translation_interim_cancelled`

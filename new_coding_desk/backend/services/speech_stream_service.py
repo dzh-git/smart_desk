@@ -31,6 +31,12 @@ from backend.services.speech_inference_runtime import inference_runtime
 import numpy as np
 
 from backend.speech_module.caption_formatter import CaptionFormatter
+from backend.speech_module.english_punctuation import (
+    add_english_punctuation,
+    get_english_punctuation_status,
+    has_trusted_terminal_boundary,
+    strip_provisional_terminal,
+)
 from backend.speech_module.punctuation import ALL_BOUNDARY
 from backend.speech_module.text_utils import (
     format_english_streaming_display,
@@ -176,6 +182,10 @@ class SpeechStreamSession:
         self.english_streaming_frames: int = 0
         self.english_streaming_last_error: str | None = None
         self.english_streaming_flushed: bool = False
+        self.english_punctuation_last_error: str | None = None
+        self.english_punctuation_source_text: str = ""
+        self.english_punctuation_text: str = ""
+        self.english_punctuation_inference_ms: float = 0.0
         self.paraformer_replayed_frames: int = 0
         # PCM ingress diagnostics are updated by the WebSocket queue.
         self.pcm_queue_frames: int = 0
@@ -330,6 +340,14 @@ class SpeechStreamService:
                 "status": "error", "path": "", "error": str(exc),
                 "engine": "sherpa_onnx_streaming",
             }
+        try:
+            base["english_online_punctuation"] = get_english_punctuation_status()
+        except Exception as exc:
+            base["english_online_punctuation"] = {
+                "status": "error", "path": "", "error": str(exc),
+                "engine": "sherpa_onnx_online_punctuation",
+                "last_inference_ms": 0.0,
+            }
 
         try:
             from backend.speech_module.stt_streaming import get_offline_asr_status
@@ -402,6 +420,16 @@ class SpeechStreamService:
                     "last_error": session.english_streaming_last_error,
                     "fallback_active": (
                         session.recognition_engine == "sensevoice_rolling_fallback"
+                    ),
+                },
+                "english_online_punctuation": {
+                    "engine": "sherpa_onnx_online_punctuation",
+                    "last_inference_ms": round(
+                        session.english_punctuation_inference_ms, 2,
+                    ),
+                    "last_error": session.english_punctuation_last_error,
+                    "source_text_len": len(
+                        session.english_punctuation_source_text,
                     ),
                 },
             }
@@ -535,6 +563,7 @@ class SpeechStreamService:
         *,
         natural_boundary_committed: bool = False,
         committed_boundary: str = "",
+        english_boundary_confirmed: bool = False,
     ) -> str | None:
         if not session.has_speech:
             return None
@@ -545,16 +574,19 @@ class SpeechStreamService:
         stripped = text.rstrip()
         meaningful = self._meaningful_length(stripped)
         if stripped and meaningful >= 2:
-            if (
-                session.detected_language == "en"
-                and stripped[-1] in ".!?"
+            if session.detected_language == "en" and (
+                english_boundary_confirmed
                 and silence + 1e-6 >= VAD_SENTENCE_PAUSE_S
             ):
                 # A short English pause closes only the semantic lyric sentence.
                 # The utterance and Zipformer stream remain alive so the next
                 # sentence keeps its acoustic context and onset words.
                 return "english_sentence_pause"
-            if stripped[-1] in "。！？.!?" and silence + 1e-6 >= VAD_SENTENCE_PAUSE_S:
+            if (
+                session.detected_language != "en"
+                and stripped[-1] in "。！？.!?"
+                and silence + 1e-6 >= VAD_SENTENCE_PAUSE_S
+            ):
                 return "sentence_pause"
             if (
                 session.utterance_audio_seconds >= VAD_SOFT_UTTERANCE_S
@@ -1000,6 +1032,10 @@ class SpeechStreamService:
         session.english_streaming_frames = 0
         session.english_streaming_last_error = None
         session.english_streaming_flushed = False
+        session.english_punctuation_last_error = None
+        session.english_punctuation_source_text = ""
+        session.english_punctuation_text = ""
+        session.english_punctuation_inference_ms = 0.0
         session._pre_roll.clear()
         if continuous_rollover:
             session.speaking_event_active = previous_speaking_event
@@ -1039,6 +1075,10 @@ class SpeechStreamService:
         session.active_sentence_sequence = 0
         session.sentence_committed_raw_len = 0
         session.english_sentence_start_frame = 0
+        session.english_punctuation_last_error = None
+        session.english_punctuation_source_text = ""
+        session.english_punctuation_text = ""
+        session.english_punctuation_inference_ms = 0.0
         # Task 122: reset VAD state
         session.utterance_state = UTTERANCE_STATE_IDLE
         session.vad_silence_seconds = 0.0
@@ -1429,16 +1469,59 @@ class SpeechStreamService:
                 force=True,
                 purpose="rolling",
             )
+        english_boundary_confirmed = False
         if session.detected_language == "en":
-            # Zipformer emits upper-case, punctuation-free tokens. A VAD pause
-            # is the only live signal strong enough to close a sentence; this
-            # yields a readable sentence and lets the normal sentence queue
-            # translate it, without fabricating commas while speech continues.
-            english_sentence_pause = bool(raw_text) and (
+            # Zipformer supplies words while the lightweight text model restores
+            # punctuation/casing. A 0.9 s pause is only a candidate boundary:
+            # an incomplete tail such as "do we have any" stays in the same
+            # decoder until more words arrive or the natural-silence fallback
+            # fires. This prevents a VAD hesitation from fabricating a period.
+            unpunctuated = normalize_english_display(raw_text)
+            short_pause = bool(unpunctuated) and (
                 session.vad_silence_seconds + 1e-6 >= VAD_SENTENCE_PAUSE_S
             )
+            try:
+                punctuated = add_english_punctuation(unpunctuated)
+                english_boundary_confirmed = short_pause and (
+                    has_trusted_terminal_boundary(unpunctuated, punctuated)
+                )
+                if not english_boundary_confirmed:
+                    punctuated = strip_provisional_terminal(punctuated)
+                raw_text = punctuated
+                punct_status = get_english_punctuation_status()
+                session.english_punctuation_source_text = unpunctuated
+                session.english_punctuation_text = punctuated
+                session.english_punctuation_inference_ms = float(
+                    punct_status.get("last_inference_ms") or 0.0
+                )
+                session.english_punctuation_last_error = None
+                trace(
+                    "english_online_punctuation_at",
+                    utterance_id=session.current_utterance_id,
+                    meeting_id=session.meeting_id,
+                    seat_id=session.seat_id,
+                    inference_ms=session.english_punctuation_inference_ms,
+                    boundary_confirmed=english_boundary_confirmed,
+                    short_pause=short_pause,
+                    source_text_len=len(unpunctuated),
+                )
+            except Exception as exc:
+                session.english_punctuation_last_error = str(exc)
+                # Missing punctuation is a readable degraded state. Do not
+                # restore the old short-pause forced period; a 2 s natural
+                # pause or explicit end still commits the sentence safely.
+                raw_text = format_english_streaming_display(
+                    unpunctuated, sentence_complete=False,
+                )
+                trace(
+                    "english_online_punctuation_failed_at",
+                    utterance_id=session.current_utterance_id,
+                    meeting_id=session.meeting_id,
+                    seat_id=session.seat_id,
+                    error=str(exc),
+                )
             if (
-                english_sentence_pause
+                english_boundary_confirmed
                 and session.recognition_engine == "sherpa_onnx_streaming"
             ):
                 # Finish this decoder before exposing the sentence, then let
@@ -1456,16 +1539,20 @@ class SpeechStreamService:
                         # expose only the streaming input method. The sentence
                         # still freezes; production SpeechModule always has a
                         # dedicated rotation method.
-                        flushed = raw_text
-                    raw_text = flushed or raw_text
+                        flushed = unpunctuated
+                    if flushed:
+                        flushed_punctuated = add_english_punctuation(flushed)
+                        raw_text = (
+                            flushed_punctuated
+                            if has_trusted_terminal_boundary(
+                                flushed, flushed_punctuated,
+                            )
+                            else raw_text
+                        )
                     session.english_streaming_flushed = True
                 except Exception as exc:
                     session.english_streaming_last_error = str(exc)
                     logger.warning("English sentence decoder rotation failed: %s", exc)
-            raw_text = format_english_streaming_display(
-                raw_text,
-                sentence_complete=english_sentence_pause,
-            )
         _asr_ms = round((time.perf_counter() - _asr_t0) * 1000)
 
         # 4. Apply caption formatter and evaluate a content-aware boundary.
@@ -1492,6 +1579,7 @@ class SpeechStreamService:
             source_text,
             natural_boundary_committed=caption_result.natural_boundary_committed,
             committed_boundary=caption_result.committed_boundary,
+            english_boundary_confirmed=english_boundary_confirmed,
         )
         # English sentence pauses feed translation_sentence but must not reset
         # the underlying online recognizer. Only a hard/manual/duration

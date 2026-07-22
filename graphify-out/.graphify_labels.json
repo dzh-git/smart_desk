@@ -344,6 +344,9 @@
   "342": "test_dispatch_scroll_negative_recorded",
   "344": "TestIntegrationScenarios",
   "345": "test_dispatch_full_mouse_drag_sequence",
+  "346": "._get_speech_module",
+  "347": "base_event.py",
+  "348": "lighting_manager.py",
   "350": "SET_MODE Serial Command",
   "355": ".publish",
   "356": "TestPowerShellInsideDelayedExpansion"

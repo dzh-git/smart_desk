@@ -48,6 +48,7 @@ _INITIAL_STATUS = {
     "preloading": False,
     "streaming_model": STATUS_UNKNOWN,
     "english_streaming_asr": STATUS_UNKNOWN,
+    "english_online_punctuation": STATUS_UNKNOWN,
     "offline_model": STATUS_UNKNOWN,
     "bilingual_final_asr": STATUS_UNKNOWN,
     "chinese_final_asr": STATUS_UNKNOWN,
@@ -102,6 +103,7 @@ class SpeechModule:
             preloading        — bool, preload in progress
             streaming_model   — "unknown" | "loading" | "loaded" | "error"
             english_streaming_asr — sherpa-onnx English online ASR status
+            english_online_punctuation — sherpa-onnx English punctuation status
             offline_model     — "unknown" | "loading" | "loaded" | "error"
             bilingual_final_asr — SenseVoice language/English final status
             chinese_final_asr — Paraformer-large Chinese final status
@@ -118,9 +120,10 @@ class SpeechModule:
         Load order:
             1. Paraformer Streaming (for process_interim_*)
             2. sherpa-onnx Zipformer (for English online ASR; degradable)
-            3. SenseVoiceSmall (language detection and final ASR)
-            4. Paraformer-large (for Chinese final ASR)
-            5. CT-Transformer punctuation (for Chinese final punctuation)
+            3. sherpa-onnx online punctuation (English text post-processing)
+            4. SenseVoiceSmall (language detection and final ASR)
+            5. Paraformer-large (for Chinese final ASR)
+            6. CT-Transformer punctuation (for Chinese final punctuation)
 
         On failure, marks the failing model as STATUS_ERROR and keeps
         last_error populated.  Other models may still load.  The overall
@@ -168,7 +171,18 @@ class SpeechModule:
                 self._status["english_streaming_asr"] = STATUS_ERROR
                 _log_warning(f"English streaming model load failed; fallback enabled: {exc}")
 
-            # 3. Bilingual language detection + English final ASR
+            # 3. Lightweight English online punctuation. Missing punctuation
+            # delays sentence confirmation but must not take English ASR down.
+            self._status["english_online_punctuation"] = STATUS_LOADING
+            try:
+                from .english_punctuation import warmup_english_punctuation
+                warmup_english_punctuation()
+                self._status["english_online_punctuation"] = STATUS_LOADED
+            except Exception as exc:
+                self._status["english_online_punctuation"] = STATUS_ERROR
+                _log_warning(f"English online punctuation unavailable: {exc}")
+
+            # 4. Bilingual language detection + English final ASR
             self._status["offline_model"] = STATUS_LOADING
             self._status["bilingual_final_asr"] = STATUS_LOADING
             try:
@@ -180,7 +194,7 @@ class SpeechModule:
                 self._status["last_error"] = f"offline: {exc}"
                 _log_warning(f"Bilingual final model load failed: {exc}")
 
-            # 4. Chinese-specialized final ASR
+            # 5. Chinese-specialized final ASR
             self._status["chinese_final_asr"] = STATUS_LOADING
             try:
                 from .stt_streaming import warmup_offline
@@ -198,7 +212,7 @@ class SpeechModule:
                 else STATUS_ERROR
             )
 
-            # 5. Punctuation model (CT-Transformer, Paraformer Chinese only)
+            # 6. Punctuation model (CT-Transformer, Paraformer Chinese only)
             self._status["punctuation_model"] = STATUS_LOADING
             try:
                 from .punctuation import warmup_punc

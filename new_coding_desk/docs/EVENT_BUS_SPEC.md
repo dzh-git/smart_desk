@@ -101,7 +101,10 @@ the current effective meeting id.
   newer sentence;
 - clients retain the meeting's source/translation pairs per seat; the fixed-height
   lyric viewport keeps the newest pair at the bottom and scrolls older pairs upward;
-- terminal punctuation requires a short pause or following content; commas and
+- English Zipformer hypotheses are post-processed by the local sherpa-onnx
+  online punctuation model. A short pause is only a boundary candidate; an
+  incomplete tail such as `Do we have any` is not frozen. Following content,
+  a 2-second natural pause or explicit end can confirm the sentence. Commas and
   visual length wrapping do not complete a sentence.
 
 `translation_final`:

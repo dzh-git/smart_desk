@@ -166,6 +166,10 @@ export interface SpeechModelStatus {
   english_streaming_asr?: DetailedModelStatus & {
     engine?: "sherpa_onnx_streaming";
   };
+  english_online_punctuation?: DetailedModelStatus & {
+    engine?: "sherpa_onnx_online_punctuation";
+    last_inference_ms?: number;
+  };
   punctuation_fallback: boolean;
   last_error: string | null;
   voice_gate?: {
@@ -206,6 +210,12 @@ export interface SpeechModelStatus {
       flushed: boolean;
       last_error: string | null;
       fallback_active: boolean;
+    };
+    english_online_punctuation?: {
+      engine: "sherpa_onnx_online_punctuation";
+      last_inference_ms: number;
+      last_error: string | null;
+      source_text_len: number;
     };
   }>;
 }
