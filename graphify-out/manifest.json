@@ -650,8 +650,8 @@
     "semantic_hash": "8b8a59b2321d2a35d74bda2fe18ba7c1"
   },
   "new_coding_desk/frontend/src/components/TranscriptPanel.tsx": {
-    "mtime": 1784688006.5340314,
-    "ast_hash": "8ed6272e8a26a0db98c3e252bb2df9f1",
+    "mtime": 1784696885.3101246,
+    "ast_hash": "634af8c09d2d02b52f6ca073a3aa42e2",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/VotePanel.tsx": {
@@ -660,8 +660,8 @@
     "semantic_hash": "9ef4fe7c645da1a12dffc82b2a605a4f"
   },
   "new_coding_desk/frontend/src/components/__tests__/TranscriptPanel.test.tsx": {
-    "mtime": 1784684048.8956728,
-    "ast_hash": "d7ca0f31088e347537fabd878eec6ab2",
+    "mtime": 1784696886.3965175,
+    "ast_hash": "138ea079b57219334ea923f84e01ba89",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/shared.tsx": {
@@ -1165,8 +1165,8 @@
     "semantic_hash": "dcd829a94300a82a873fc266ba20a80b"
   },
   "new_coding_desk/README.md": {
-    "mtime": 1784692849.8421764,
-    "ast_hash": "301efd8eac5b27b3408e41afe919fbbb",
+    "mtime": 1784696990.8591213,
+    "ast_hash": "1bdfd3ece43dc9960871df3821a9bf86",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/API_SPEC.md": {
@@ -1220,8 +1220,8 @@
     "semantic_hash": "765442c0cbfc583c8383401e68913349"
   },
   "new_coding_desk/docs/WEBSOCKET_PROTOCOL.md": {
-    "mtime": 1784692851.4818454,
-    "ast_hash": "b96c79eef5a30452d350b994e510a95c",
+    "mtime": 1784696991.396203,
+    "ast_hash": "6a95ca337751fa67f9ca681ce75f23c1",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/adr/0001-ws-audio-streaming.md": {
@@ -1437,6 +1437,16 @@
   "new_coding_desk/tests/test_english_online_punctuation.py": {
     "mtime": 1784693534.6982431,
     "ast_hash": "e18f8e90a0044a921dd67e5c564c9876",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/utils/liveLyricWrapping.test.ts": {
+    "mtime": 1784696943.90612,
+    "ast_hash": "28399fbbc37c197edd4ecb56cccbfb72",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/utils/liveLyricWrapping.ts": {
+    "mtime": 1784696884.7952557,
+    "ast_hash": "b2339216b449f5ca3230121f0af71265",
     "semantic_hash": ""
   }
 }

@@ -311,7 +311,6 @@
   "309": "._update_hold",
   "310": "TestSpeechModulePreload",
   "311": "TestSpeechDependencies",
-  "312": "autoprefixer",
   "313": "init .py 313",
   "314": "Dual WebSocket Architecture",
   "315": "Server VAD Finalization",
@@ -345,11 +344,9 @@
   "343": ".cancel",
   "344": "TestIntegrationScenarios",
   "345": "test_dispatch_full_mouse_drag_sequence",
-  "346": "._get_speech_module",
   "347": "base_event.py",
   "348": "lighting_manager.py",
   "349": ".reset",
-  "350": "SET_MODE Serial Command",
   "355": ".publish",
   "356": "TestPowerShellInsideDelayedExpansion"
 }
