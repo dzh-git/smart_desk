@@ -214,7 +214,7 @@ python host_services/screen_stream/supervisor.py --check
 - Interim events：中文由 Paraformer Streaming、英文由 sherpa-onnx Zipformer 真流式识别，并由本地 sherpa-onnx 在线标点模型低延迟恢复大小写和句内标点；仅在本地 Zipformer 缺失时降级到 SenseVoice 滚动识别。`translation_interim` 携带稳定 `sentence_id`、实际语言和识别引擎
 - Sentence translation：英文短停顿只是候选边界，在线标点或后续文本确认后才提交；不完整尾词不会因 0.9 秒停顿被强制切开，无标点自然停顿 2 秒或手动停止仍会提交。完成后以 `translation_sentence` 按句顺序翻译；英文句末再由本地 SenseVoice 一次性校正，`source_locked` 后不再被后续流式结果改写
 - Final events：SenseVoiceSmall 检测语言并识别英文；中文由 Paraformer-large 重识别，OPUS-MT 翻译到另一语言并持久化
-- Live lyrics：终稿不会清除已配对的逐句字幕；中文随字幕框宽度自然换行，英文在 30 词后等待句末标点、40 词后接受逗号/分号等、50 词强制视觉换行且不拆单词；`14rem` 固定高度字幕框保留完整句组内容并自动向下滚动
+- Live lyrics：终稿不会清除已配对的逐句字幕；英文在线标点确认句末且后续内容已经出现时，上一句立即结算、翻译并锁定为独立段落；超长内容在 40 词后可于逗号/分号等处结算，50 词按单词边界强制结算。`13rem` 固定高度字幕框保留完整句组并自动向下滚动
 - Cancel cleanup：`translation_interim_cancelled`
 - Auto-final：后端 RMS endpoint detection
 - Manual fallback：`end_hint`

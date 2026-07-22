@@ -172,11 +172,13 @@ is first published with `recognition_status: "correcting"` and
 When `source_locked: true` arrives, clients must never replace that row's
 `source_text` again, even if a delayed event has a higher revision.
 
-The live lyric viewport applies display-only English wrapping: after 30 words
-it waits for the next sentence-ending punctuation, after 40 words it accepts
-the next comma/semicolon/other clause punctuation, and at 50 words it forces a
-word-boundary line break. This does not alter WebSocket text, sentence IDs,
-translation input, or persisted meeting records.
+The English online punctuator also drives lyric settlement. Sentence-ending
+punctuation followed by new content completes the prior `sentence_id`, queues
+its translation, and assigns the suffix a new ID without restarting the
+Zipformer audio stream. For unusually long unpunctuated content, clause
+punctuation after 40 words or a hard 50-word boundary performs the same
+semantic settlement. These are separate source/translation paragraphs rather
+than display-only line breaks.
 
 PCM ingress is buffered in an ordered 50-frame queue. `end_hint` drains it
 before finalization; `cancel` clears it. The status endpoint exposes queue depth,

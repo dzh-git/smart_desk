@@ -5,7 +5,6 @@ import type { TranslationRecord } from "../api/types";
 import type { PendingTranslation } from "../types";
 import type { LiveLyricSentence } from "../types";
 import { trace } from "../audio/speechTrace";
-import { splitLiveLyricDisplayLines } from "../utils/liveLyricWrapping";
 
 const avatarColors = [
   "bg-techCyan",
@@ -621,7 +620,7 @@ function LiveLyricsBlock({
     <div
       data-testid="live-lyrics"
       data-seat-id={latest?.seatId}
-      className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow h-[14rem] flex flex-col"
+      className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow h-[13rem] flex flex-col"
     >
       <div className="flex items-baseline gap-2 mb-2">
         <span className="text-xs font-semibold text-techCyan">{speakerName}</span>
@@ -694,12 +693,10 @@ function LiveLyricText({
   language: string;
   "data-testid": string;
 }) {
-  const lines = splitLiveLyricDisplayLines(text, language);
   return (
     <div
       {...props}
       className={`${className} whitespace-normal`}
-      data-display-lines={lines.length}
       lang={language === "en" ? "en" : language === "zh" ? "zh-CN" : undefined}
       style={{
         overflowWrap: "normal",
@@ -707,12 +704,7 @@ function LiveLyricText({
         hyphens: "none",
       }}
     >
-      {lines.map((line, index) => (
-        <span key={`${index}:${line}`} className="contents">
-          {line}
-          {index < lines.length - 1 ? <><span aria-hidden="true"> </span><br /></> : null}
-        </span>
-      ))}
+      {text}
     </div>
   );
 }

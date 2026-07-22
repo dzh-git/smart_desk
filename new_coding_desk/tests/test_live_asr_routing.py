@@ -232,3 +232,65 @@ def test_short_pause_does_not_freeze_incomplete_english_question() -> None:
     assert result["boundary_reason"] == "english_sentence_pause"
     assert result["completed_sentences"][0]["source_text"].endswith("?")
     assert module.english_rotations == 1
+
+
+def test_confirmed_online_punctuation_settles_previous_english_paragraphs() -> None:
+    service, key, _ = _service()
+    service.start_utterance(key, "utt_90_1_000009", language_mode="en")
+    session = service.get_session(key)
+    assert session is not None
+    source = (
+        "Since the class is quite small, I plan to run this course as a discussion. "
+        "I hope everyone will be fully engaged and volunteer to share your knowledge "
+        "and opinions. I won't take attendance. But since part of your grade depends "
+        "on participation."
+    )
+
+    result = service._track_english_sentences(session, source, None)
+
+    assert [item["source_text"] for item in result["completed_sentences"]] == [
+        "Since the class is quite small, I plan to run this course as a discussion.",
+        "I hope everyone will be fully engaged and volunteer to share your knowledge and opinions.",
+        "I won't take attendance.",
+    ]
+    assert all(
+        item["source_locked"] and not item["requires_english_correction"]
+        for item in result["completed_sentences"]
+    )
+    assert result["sentence_source_text"] == (
+        "But since part of your grade depends on participation."
+    )
+    completed_ids = {
+        item["sentence_id"] for item in result["completed_sentences"]
+    }
+    assert result["sentence_id"] not in completed_ids
+
+    repeated = service._track_english_sentences(session, source, None)
+    assert repeated["completed_sentences"] == []
+    assert repeated["sentence_id"] == result["sentence_id"]
+
+
+def test_long_english_clause_and_hard_limit_create_semantic_sentences() -> None:
+    service, key, _ = _service()
+    service.start_utterance(key, "utt_90_1_000010", language_mode="en")
+    session = service.get_session(key)
+    assert session is not None
+
+    clause_source = " ".join([
+        *[f"word{i}" for i in range(1, 42)],
+        "word42,",
+        "new",
+        "paragraph",
+    ])
+    clause = service._track_english_sentences(session, clause_source, None)
+    assert len(clause["completed_sentences"][0]["source_text"].split()) == 42
+    assert clause["completed_sentences"][0]["source_text"].endswith(",")
+    assert clause["sentence_source_text"] == "new paragraph"
+
+    service.start_utterance(key, "utt_90_1_000011", language_mode="en")
+    session = service.get_session(key)
+    assert session is not None
+    hard_source = " ".join(f"token{i}" for i in range(1, 53))
+    hard = service._track_english_sentences(session, hard_source, None)
+    assert len(hard["completed_sentences"][0]["source_text"].split()) == 50
+    assert hard["sentence_source_text"] == "token51 token52"

@@ -19,6 +19,7 @@ Phase 3 additions:
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 import uuid
@@ -85,6 +86,9 @@ CONTINUOUS_ROLLOVER_REASONS = frozenset({
     "max_duration",
 })
 SEMANTIC_SENTENCE_END = frozenset("。！？.!?")
+ENGLISH_CLAUSE_COMMIT_WORDS = 40
+ENGLISH_FORCE_COMMIT_WORDS = 50
+ENGLISH_CLAUSE_END = frozenset(",;:，；：")
 SENTENCE_COMMIT_REASONS = frozenset({
     "english_sentence_pause",
     "sentence_pause",
@@ -168,6 +172,7 @@ class SpeechStreamSession:
         # English uses one online decoder per semantic sentence.  A completed
         # sentence is never reconstructed from a later cumulative hypothesis.
         self.english_sentence_start_frame: int = 0
+        self.english_committed_text_len: int = 0
         # Task 130: bilingual live recognition routing.
         self.requested_language: str = "auto"
         self.detected_language: str = "unknown"
@@ -760,13 +765,14 @@ class SpeechStreamService:
         source_text: str,
         boundary_reason: str | None,
     ) -> dict[str, Any]:
-        """Track the one active English decoder sentence.
+        """Commit confirmed English prefixes and expose one forming suffix.
 
-        Zipformer returns a revisable cumulative hypothesis.  Unlike the old
-        ordinal matcher, this state machine discards that decoder at a VAD
-        boundary, snapshots its exact audio and never emits the same sentence
-        from a later decoder.  The correction worker is the only allowed
-        one-time source replacement after completion.
+        The online punctuator can confirm an earlier sentence once following
+        words arrive. Such prefixes become locked lyric rows immediately and
+        enter translation without waiting for the whole utterance. Long text
+        may also settle at clause punctuation after 40 words or at a hard
+        50-word boundary. The cumulative Zipformer decoder remains alive so
+        the next sentence keeps its acoustic context.
         """
         text = normalize_english_display(source_text).strip()
         if not text:
@@ -778,39 +784,117 @@ class SpeechStreamService:
                 "completed_sentences": [],
             }
 
-        sentence_id, sequence = self._ensure_sentence_identity(session)
-        if boundary_reason in SENTENCE_COMMIT_REASONS:
+        completed: list[dict[str, Any]] = []
+        cursor = min(session.english_committed_text_len, len(text))
+
+        while cursor < len(text):
+            untrimmed = text[cursor:]
+            suffix = untrimmed.lstrip()
+            if not suffix:
+                cursor = len(text)
+                break
+            start = cursor + (len(untrimmed) - len(suffix))
+            split_at = self._english_confirmed_split_offset(suffix)
+            if split_at == 0:
+                cursor = start
+                break
+
+            sentence = suffix[:split_at].strip()
+            sentence_id, sequence = self._ensure_sentence_identity(session)
+            completed.append({
+                "sentence_id": sentence_id,
+                "sentence_sequence": sequence,
+                "source_text": sentence,
+                "requires_english_correction": False,
+                "recognition_status": "ok",
+                "source_locked": True,
+            })
+            cursor = start + split_at
+            while cursor < len(text) and text[cursor].isspace():
+                cursor += 1
+            session.english_committed_text_len = cursor
+            session.active_sentence_id = None
+            session.active_sentence_sequence = 0
+
+        remaining = text[cursor:].strip() if cursor < len(text) else ""
+        had_internal_commits = session.english_committed_text_len > 0
+
+        if remaining and boundary_reason in SENTENCE_COMMIT_REASONS:
+            sentence_id, sequence = self._ensure_sentence_identity(session)
             start = min(
                 max(0, session.english_sentence_start_frame),
                 len(session._utterance_buffer),
             )
             raw_audio = b"".join(session._utterance_buffer[start:])
             session.english_sentence_start_frame = len(session._utterance_buffer)
-            completed = {
+            can_correct = bool(raw_audio) and not had_internal_commits
+            committed = {
                 "sentence_id": sentence_id,
                 "sentence_sequence": sequence,
-                "source_text": text,
-                "requires_english_correction": bool(raw_audio),
+                "source_text": remaining,
+                "requires_english_correction": can_correct,
                 "audio": self.pcm16_to_float32(raw_audio).copy()
-                if raw_audio else None,
+                if can_correct else None,
+                "recognition_status": "correcting" if can_correct else "ok",
+                "source_locked": not can_correct,
             }
+            completed.append(committed)
+            session.english_committed_text_len = len(text)
             session.active_sentence_id = None
             session.active_sentence_sequence = 0
+            remaining = ""
+
+        if remaining:
+            sentence_id, sequence = self._ensure_sentence_identity(session)
             return {
                 "sentence_id": sentence_id,
                 "sentence_sequence": sequence,
-                "sentence_source_text": text,
-                "sentence_state": "completed",
-                "completed_sentences": [completed],
+                "sentence_source_text": remaining,
+                "sentence_state": "forming",
+                "completed_sentences": completed,
             }
-
+        if completed:
+            latest = completed[-1]
+            return {
+                "sentence_id": latest["sentence_id"],
+                "sentence_sequence": latest["sentence_sequence"],
+                "sentence_source_text": latest["source_text"],
+                "sentence_state": "completed",
+                "completed_sentences": completed,
+            }
         return {
-            "sentence_id": sentence_id,
-            "sentence_sequence": sequence,
-            "sentence_source_text": text,
+            "sentence_id": None,
+            "sentence_sequence": 0,
+            "sentence_source_text": "",
             "sentence_state": "forming",
             "completed_sentences": [],
         }
+
+    @staticmethod
+    def _english_confirmed_split_offset(text: str) -> int:
+        """Return an end offset for a stable English semantic prefix."""
+        word_count = 0
+        for match in re.finditer(r"\S+", text):
+            token = match.group(0)
+            if any(ch.isalnum() for ch in token):
+                word_count += 1
+            visible = token.rstrip("]})\"'”’")
+            boundary = visible[-1] if visible else ""
+            has_following = bool(text[match.end():].strip())
+
+            # Following content confirms sentence-final punctuation at any
+            # length. This is the normal lyrics-style paragraph boundary.
+            if boundary in SEMANTIC_SENTENCE_END and has_following:
+                return match.end()
+            if (
+                word_count > ENGLISH_CLAUSE_COMMIT_WORDS
+                and boundary in ENGLISH_CLAUSE_END
+                and has_following
+            ):
+                return match.end()
+            if word_count >= ENGLISH_FORCE_COMMIT_WORDS:
+                return match.end()
+        return 0
 
     def complete_active_sentence(
         self,
@@ -1024,6 +1108,7 @@ class SpeechStreamService:
         session.active_sentence_sequence = 0
         session.sentence_committed_raw_len = 0
         session.english_sentence_start_frame = 0
+        session.english_committed_text_len = 0
         session.detected_language = (
             session.requested_language
             if session.requested_language in {"zh", "en"}
@@ -1086,6 +1171,7 @@ class SpeechStreamService:
         session.active_sentence_sequence = 0
         session.sentence_committed_raw_len = 0
         session.english_sentence_start_frame = 0
+        session.english_committed_text_len = 0
         session.english_punctuation_last_error = None
         session.english_punctuation_source_text = ""
         session.english_punctuation_text = ""
@@ -1608,6 +1694,16 @@ class SpeechStreamService:
                 boundary_reason,
             )
         )
+        if (
+            session.detected_language == "en"
+            and english_boundary_confirmed
+            and boundary_reason == "english_sentence_pause"
+            and session.english_streaming_flushed
+        ):
+            # The current result was tracked against the completed cumulative
+            # decoder. The next PCM frame starts a fresh decoder and therefore
+            # a fresh text offset.
+            session.english_committed_text_len = 0
 
         if raw_text and session._rollover_started_at is not None:
             logger.info(

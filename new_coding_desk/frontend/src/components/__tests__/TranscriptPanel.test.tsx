@@ -141,14 +141,14 @@ describe("TranscriptPanel - sentence-paired lyrics", () => {
     const translationNode = screen.getByTestId("live-lyric-translation");
     expect(sourceNode).toHaveTextContent(source);
     expect(translationNode).toHaveTextContent(translation);
-    expect(sourceNode).toHaveAttribute("data-display-lines", "1");
-    expect(translationNode).toHaveAttribute("data-display-lines", "1");
+    expect(sourceNode.querySelectorAll("span")).toHaveLength(0);
+    expect(translationNode.querySelectorAll("span")).toHaveLength(0);
     expect(translationNode).toHaveStyle({
       overflowWrap: "normal",
       wordBreak: "normal",
       hyphens: "none",
     });
-    expect(screen.getByTestId("live-lyrics")).toHaveClass("h-[14rem]");
+    expect(screen.getByTestId("live-lyrics")).toHaveClass("h-[13rem]");
     expect(screen.getByTestId("live-lyric-pairs")).toHaveClass("overflow-y-auto");
   });
 

@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/speech_stream_service.py": {
-    "mtime": 1784695697.782879,
-    "ast_hash": "055f0405747ae22fcf141c4797b96bb0",
+    "mtime": 1784697750.2425208,
+    "ast_hash": "080bed8f76ef6a3849e9f6bacb45f718",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/translation_model_service.py": {
@@ -650,8 +650,8 @@
     "semantic_hash": "8b8a59b2321d2a35d74bda2fe18ba7c1"
   },
   "new_coding_desk/frontend/src/components/TranscriptPanel.tsx": {
-    "mtime": 1784696885.3101246,
-    "ast_hash": "634af8c09d2d02b52f6ca073a3aa42e2",
+    "mtime": 1784697750.7075856,
+    "ast_hash": "d2889e83d4269fe5231cf543c66ea79b",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/VotePanel.tsx": {
@@ -660,8 +660,8 @@
     "semantic_hash": "9ef4fe7c645da1a12dffc82b2a605a4f"
   },
   "new_coding_desk/frontend/src/components/__tests__/TranscriptPanel.test.tsx": {
-    "mtime": 1784696886.3965175,
-    "ast_hash": "138ea079b57219334ea923f84e01ba89",
+    "mtime": 1784697753.0177064,
+    "ast_hash": "3b15f8d1db8b8063af67be4004075c80",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/shared.tsx": {
@@ -1165,8 +1165,8 @@
     "semantic_hash": "dcd829a94300a82a873fc266ba20a80b"
   },
   "new_coding_desk/README.md": {
-    "mtime": 1784696990.8591213,
-    "ast_hash": "1bdfd3ece43dc9960871df3821a9bf86",
+    "mtime": 1784697816.2773485,
+    "ast_hash": "69b34ceea5fd099b52d96e21e8e8b26b",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/API_SPEC.md": {
@@ -1220,8 +1220,8 @@
     "semantic_hash": "765442c0cbfc583c8383401e68913349"
   },
   "new_coding_desk/docs/WEBSOCKET_PROTOCOL.md": {
-    "mtime": 1784696991.396203,
-    "ast_hash": "6a95ca337751fa67f9ca681ce75f23c1",
+    "mtime": 1784697816.7557044,
+    "ast_hash": "2ba91cbbedf16b7c6fc078f9f7ae569a",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/adr/0001-ws-audio-streaming.md": {
@@ -1385,8 +1385,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_live_asr_routing.py": {
-    "mtime": 1784692274.516978,
-    "ast_hash": "b96cf3a44d85d107a46be2e9d274d876",
+    "mtime": 1784697815.7600718,
+    "ast_hash": "33b4a3ab7ae8e04d15aa22dd30c564be",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/scripts/prepare_open_speech_latency_dataset.py": {
@@ -1437,16 +1437,6 @@
   "new_coding_desk/tests/test_english_online_punctuation.py": {
     "mtime": 1784693534.6982431,
     "ast_hash": "e18f8e90a0044a921dd67e5c564c9876",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/frontend/src/utils/liveLyricWrapping.test.ts": {
-    "mtime": 1784696943.90612,
-    "ast_hash": "28399fbbc37c197edd4ecb56cccbfb72",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/frontend/src/utils/liveLyricWrapping.ts": {
-    "mtime": 1784696884.7952557,
-    "ast_hash": "b2339216b449f5ca3230121f0af71265",
     "semantic_hash": ""
   }
 }
