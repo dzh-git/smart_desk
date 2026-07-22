@@ -1728,7 +1728,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Punctuation model unavailable — basic fallback active"),
+        screen.getByText("Chinese punctuation model unavailable — basic fallback active"),
       ).toBeInTheDocument();
     });
   });
@@ -1740,7 +1740,9 @@ describe("SeatTablet - speech control (speaker seat)", () => {
       streaming_model: "loading",
       offline_model: "loading",
       punctuation_model: "unknown",
-      punctuation_fallback: false,
+      // Legacy backends reported fallback=true while the model was only
+      // loading. The UI must not turn that transitional state into an error.
+      punctuation_fallback: true,
       last_error: null,
     });
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
@@ -1748,6 +1750,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     await waitFor(() => {
       expect(screen.getByText("Loading models")).toBeInTheDocument();
     });
+    expect(screen.queryByText(/punctuation model unavailable/i)).not.toBeInTheDocument();
 
     // Start should not be rendered during loading (not idle)
     // The "Waiting for speech models..." text should appear instead

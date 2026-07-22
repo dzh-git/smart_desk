@@ -294,12 +294,23 @@ class SpeechStreamService:
             from backend.speech_module.speech_module import _INITIAL_STATUS
             base = dict(_INITIAL_STATUS)
 
-        # Add punctuation_fallback indicator
+        # Add the legacy Chinese punctuation fallback indicator. Loading and
+        # preloading are transitional states, not failures; reporting fallback
+        # there made the frontend show a false "model unavailable" warning.
         try:
             from backend.speech_module.punctuation import is_punctuation_loaded
-            base["punctuation_fallback"] = not is_punctuation_loaded()
+            punctuation_status = base.get("punctuation_model", "unknown")
+            base["punctuation_fallback"] = (
+                punctuation_status == "error"
+                or (
+                    punctuation_status == "loaded"
+                    and not is_punctuation_loaded()
+                )
+            )
         except Exception:
-            base["punctuation_fallback"] = True
+            base["punctuation_fallback"] = (
+                base.get("punctuation_model") == "error"
+            )
 
         try:
             from backend.services.translation_model_service import (

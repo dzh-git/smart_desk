@@ -1300,7 +1300,14 @@ function SpeechControl({
 
   const modelsReady = speechStatus?.ready ?? false;
   const modelsPreloading = speechStatus?.preloading ?? false;
-  const punctuationFallback = speechStatus?.punctuation_fallback ?? true;
+  const chinesePunctuationUnavailable =
+    !modelsPreloading &&
+    languageMode !== "en" &&
+    speechStatus?.punctuation_model === "error";
+  const englishPunctuationUnavailable =
+    !modelsPreloading &&
+    languageMode !== "zh" &&
+    speechStatus?.english_online_punctuation?.status === "error";
   const translationReady = speechStatus?.translation_model === "loaded";
   const unavailableDirections = Object.entries(speechStatus?.translation_models ?? {})
     .filter(([, model]) => model.status !== "loaded")
@@ -1382,12 +1389,21 @@ function SpeechControl({
         </div>
       )}
 
-      {/* Punctuation fallback hint (non-blocking) */}
-      {punctuationFallback && status !== "recording" && status !== "error" && status !== "requesting_microphone" && status !== "connecting_speech_ws" && (
+      {/* Language-specific punctuation fallback hints (non-blocking). */}
+      {chinesePunctuationUnavailable && status !== "recording" && status !== "error" && status !== "requesting_microphone" && status !== "connecting_speech_ws" && (
         <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-1.5 flex items-start gap-2">
           <AlertCircle size={12} className="text-techAmber flex-shrink-0 mt-0.5" />
           <p className="text-[11px] text-techAmber">
-            Punctuation model unavailable — basic fallback active
+            Chinese punctuation model unavailable — basic fallback active
+          </p>
+        </div>
+      )}
+
+      {englishPunctuationUnavailable && status !== "recording" && status !== "error" && status !== "requesting_microphone" && status !== "connecting_speech_ws" && (
+        <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-1.5 flex items-start gap-2">
+          <AlertCircle size={12} className="text-techAmber flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-techAmber">
+            English punctuation model unavailable — unpunctuated fallback active
           </p>
         </div>
       )}

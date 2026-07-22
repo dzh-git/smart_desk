@@ -221,7 +221,7 @@ class TestSpeechStatusAPI:
         status = data["data"]
         assert status["ready"] is False
         assert status["preloading"] is False
-        assert "punctuation_fallback" in status
+        assert status["punctuation_fallback"] is False
 
     def test_post_preload_returns_ok(self):
         """POST /api/speech/preload should return success.
@@ -358,7 +358,27 @@ class TestGetModelStatus:
         status = stream_service.get_model_status()
         assert status["ready"] is False
         assert status["preloading"] is False
-        assert "punctuation_fallback" in status
+        assert status["punctuation_fallback"] is False
+
+    def test_loading_punctuation_is_not_reported_as_unavailable(self):
+        """A transitional loading state must not show a fallback warning."""
+        from backend.services.speech_stream_service import stream_service
+        from backend.speech_module import SpeechModule
+
+        module = SpeechModule()
+        module._status["preloading"] = True
+        module._status["punctuation_model"] = "loading"
+        stream_service._speech_module = module
+
+        with patch(
+            "backend.speech_module.punctuation.is_punctuation_loaded",
+            return_value=False,
+        ):
+            status = stream_service.get_model_status()
+
+        assert status["preloading"] is True
+        assert status["punctuation_model"] == "loading"
+        assert status["punctuation_fallback"] is False
 
     def test_get_model_status_after_successful_load(self):
         """After successful module load, status should reflect readiness."""
