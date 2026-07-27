@@ -1,0 +1,22 @@
+**/.gradle/
+**/build/
+**/node_modules/
+diagnostic-web/dist/
+*.iml
+.idea/
+local.properties
+
+# 诊断页面构建产物，由 build-debug.ps1 复制。
+android-app/app/src/main/assets/web/
+
+# 模型权重不进入产品仓库；转换和许可说明见 model-tools/README.md。
+android-app/app/src/main/assets/models/*.tflite
+model-tools/*.h5
+model-tools/*.onnx
+model-tools/*.local.json
+
+# 真机标定数据、截图和本地安装记录。
+static-test-data/
+STATIC_IMAGE_TEST_RESULTS.json
+install-blocked.png
+smartdesk-*.png

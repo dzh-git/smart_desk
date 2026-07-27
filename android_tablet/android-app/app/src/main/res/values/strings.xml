@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">智能会议桌平板</string>
+    <string name="camera_preview_hint">正在本地检测人脸 · 请正对摄像头</string>
+    <string name="face_status_none">未检测到人脸 · 请正对摄像头</string>
+    <string name="face_status_one">已检测到 1 张人脸 · %1$d ms</string>
+    <string name="face_status_multiple">已检测到 %1$d 张人脸 · %2$d ms</string>
+    <string name="face_status_error">人脸检测暂时失败 · 请重试</string>
+    <string name="face_enrolling">注册采样 %1$d/%2$d · 请正对摄像头</string>
+    <string name="face_enrolled">人脸模板注册完成 · 点击停止返回</string>
+    <string name="face_verifying">正在验证身份 · 相似度 %1$.3f</string>
+    <string name="face_verified">身份验证通过 · 相似度 %1$.3f</string>
+    <string name="face_unknown">身份验证未通过 · 相似度 %1$.3f</string>
+    <string name="face_status_guide_multiple">圆圈内检测到多人 · 请只保留一人</string>
+    <string name="face_status_guide_waiting">请将正脸置于圆圈中央</string>
+    <string name="stop_camera">停止摄像头</string>
+</resources>

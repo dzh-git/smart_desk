@@ -1,0 +1,6 @@
+{
+  "seatId": 1,
+  "deviceId": "tablet-seat-01",
+  "serverUrl": "http://192.168.1.10:8000",
+  "frontendUrl": "http://192.168.1.10:5173"
+}

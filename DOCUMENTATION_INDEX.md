@@ -6,6 +6,8 @@
 
 - 9 个完整席位：`seat 1` 为主持人位，`seat 2..9` 为八个参会位。
 - 主程序：`new_coding_desk/`。
+- 席位终端：`android_tablet/`；正式会议页面仍唯一位于
+  `new_coding_desk/frontend/`。
 - 手势控制：`smartdesk_gesture_controller/`，运行在中央 Windows 主机。
 - 灯控固件：`arduino_nano_controller/`。
 - I Love You 右滑控制 PowerPoint，左滑控制 SolidWorks；应用切换统一通过 Display Agent `127.0.0.1:8766`。
@@ -25,6 +27,7 @@
 | 手势部署与验收 | `smartdesk_gesture_controller/docs/OPERATIONS_AND_ACCEPTANCE.md` |
 | Arduino 串口协议 | `arduino_nano_controller/protocol.md` |
 | 三模块部署联调 | `docs/deployment/智能会议桌硬件集成-部署与联调.md`、`new_coding_desk/docs/DEMO_RUNBOOK.md` |
+| Android 平板、Bridge 与人脸标定 | `android_tablet/README.md`、`android_tablet/docs/CALIBRATION.md` |
 
 ## 维护规则
 

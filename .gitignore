@@ -51,6 +51,23 @@ log/
 .cache/
 modelscope_cache/
 
+# ---------- Android tablet ----------
+.android-user-home/
+.gradle-user-home/
+.npm-cache/
+**/.gradle/
+**/local.properties
+*.iml
+android_tablet/android-app/app/src/main/assets/web/
+android_tablet/android-app/app/src/main/assets/models/*.tflite
+android_tablet/model-tools/*.h5
+android_tablet/model-tools/*.onnx
+android_tablet/model-tools/*.local.json
+android_tablet/static-test-data/
+android_tablet/STATIC_IMAGE_TEST_RESULTS.json
+android_tablet/install-blocked.png
+android_tablet/smartdesk-*.png
+
 # ---------- Playwright ----------
 .playwright-mcp/
 playwright-report/
