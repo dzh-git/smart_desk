@@ -406,10 +406,8 @@
   "404": "._get_speech_module",
   "405": ".note",
   "406": "SmartDesk 自主集成进度",
-  "407": "TestCliRobustness",
   "408": "SecureStringStore",
   "409": "._compute_rms",
   "410": "is_trace_enabled",
-  "413": "verify_software_baseline.ps1",
-  "414": "autoprefixer"
+  "413": "verify_software_baseline.ps1"
 }

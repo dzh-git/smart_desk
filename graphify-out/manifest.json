@@ -155,9 +155,9 @@
     "semantic_hash": "e6efef1479cca0022e185c3e03eee7fb"
   },
   "new_coding_desk/backend/hardware/lighting_manager.py": {
-    "mtime": 1784022625.2491457,
-    "ast_hash": "1665454855a7849306e9bdaf922d336f",
-    "semantic_hash": "1665454855a7849306e9bdaf922d336f"
+    "mtime": 1785172950.84919,
+    "ast_hash": "02bc8c140091b50e99004c3d28e6d726",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/hardware/lighting_modes.py": {
     "mtime": 1783605702.8108897,
@@ -165,8 +165,8 @@
     "semantic_hash": "78bde4f62557eaaa663150744d21917b"
   },
   "new_coding_desk/backend/hardware/seat_gateway.py": {
-    "mtime": 1785171918.1615324,
-    "ast_hash": "fd5efd9120d34d9028be052802352b30",
+    "mtime": 1785173117.8981602,
+    "ast_hash": "98ecf529bfe4eca49657f237b22a373e",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/hardware/seat_hardware.py": {
@@ -835,9 +835,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/conftest.py": {
-    "mtime": 1784019721.735809,
-    "ast_hash": "21154aaa63529ec5158a110d1c8b9f24",
-    "semantic_hash": "21154aaa63529ec5158a110d1c8b9f24"
+    "mtime": 1785173086.7238548,
+    "ast_hash": "a93d6f924b3c705ce5a3346c0317a49f",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_adaptive_voice_gate.py": {
     "mtime": 1784477866.2768433,
@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "docs/integration/AUTONOMOUS_PROGRESS.md": {
-    "mtime": 1785172629.6178818,
-    "ast_hash": "f0adb7cd9c10d9c2896c3256512d2831",
+    "mtime": 1785173411.4413526,
+    "ast_hash": "560691f11d1ac2349eec5bd97c69ba3c",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.esp32.example.json": {
@@ -1917,6 +1917,21 @@
   "esp32_seat_controller/simulator/requirements.txt": {
     "mtime": 1785171774.1997628,
     "ast_hash": "388690835e456dfc7bd26947cf8e2c0f",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/fixtures/android_identity_verified.json": {
+    "mtime": 1785173040.07643,
+    "ast_hash": "207136e2cfddb0be3d31a77d3b217f53",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_one_seat_integration.py": {
+    "mtime": 1785173040.3009534,
+    "ast_hash": "a6d3bedf6116e5c57d452bf85efddd2a",
+    "semantic_hash": ""
+  },
+  "scripts/run_seat1_integration_test.ps1": {
+    "mtime": 1785173040.5165238,
+    "ast_hash": "fcf0173bf384d223e3d1520d62c9ee85",
     "semantic_hash": ""
   }
 }
