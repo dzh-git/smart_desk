@@ -76,11 +76,19 @@ class SeatRepository:
             .all()
         )
 
-    def save_seat(self, seat: SeatState) -> SeatState:
+    def save_seat(
+        self,
+        seat: SeatState,
+        *,
+        commit: bool = True,
+    ) -> SeatState:
         """Persist changes to a seat."""
         seat.updated_at = datetime.now(timezone.utc)
-        self.db.commit()
-        self.db.refresh(seat)
+        if commit:
+            self.db.commit()
+            self.db.refresh(seat)
+        else:
+            self.db.flush()
         return seat
 
     # ── SpeakerSeat ──────────────────────────────────────────────────────────

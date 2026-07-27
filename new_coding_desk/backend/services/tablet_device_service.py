@@ -11,6 +11,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.exceptions import ConflictError, NotFoundError, ValidationError
+from backend.security.version_compat import (
+    meets_minimum_version,
+    parse_semantic_version,
+)
 from backend.models.tablet_device import TabletDevice
 from backend.repositories.tablet_device_repository import TabletDeviceRepository
 
@@ -159,6 +163,23 @@ class TabletDeviceService:
             seat_id=seat_id,
             token=token,
         )
+        minimum_version = os.environ.get(
+            "SMARTDESK_TABLET_MIN_APP_VERSION",
+            "0.8.0",
+        )
+        if parse_semantic_version(app_version) is None:
+            raise ValidationError(
+                "Tablet app version must use semantic versioning",
+                "DEVICE_APP_VERSION_INVALID",
+            )
+        if not meets_minimum_version(app_version, minimum_version):
+            raise ValidationError(
+                (
+                    f"Tablet app {app_version} is older than the "
+                    f"minimum supported version {minimum_version}"
+                ),
+                "DEVICE_APP_VERSION_UNSUPPORTED",
+            )
         device.app_version = app_version
         device.last_seen_at = datetime.now(timezone.utc)
         device.camera_status = camera_status

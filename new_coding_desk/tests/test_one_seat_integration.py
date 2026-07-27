@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from backend.api import hardware as hardware_api
 from backend.api import seat_ws
+from backend.api import seats as seats_api
 from backend.events import event_bus
 from backend.hardware import set_lighting_manager, set_seat_gateway
 from backend.hardware.esp32_protocol import decode_uplink
@@ -189,7 +190,7 @@ def _replay_identity(
     envelope["data"]["personId"] = person_code
     payload = {
         "eventId": envelope["eventId"],
-        "eventTimestamp": envelope["timestamp"],
+        "eventTimestamp": int(time.time() * 1000),
         "personCode": envelope["data"]["personId"],
         "deviceId": "tablet-seat-01",
         "deviceSeatId": 1,
@@ -205,6 +206,7 @@ def _replay_identity(
 
 
 def test_seat1_twenty_round_full_software_closure(monkeypatch):
+    seats_api.identity_rate_limiter.clear()
     monkeypatch.setattr(
         "backend.hardware.seat_gateway.asyncio.run_coroutine_threadsafe",
         _immediate_schedule,
@@ -403,6 +405,7 @@ def test_seat1_twenty_round_full_software_closure(monkeypatch):
         finally:
             db.close()
     finally:
+        seats_api.identity_rate_limiter.clear()
         manager.unregister()
         for event_name in broadcast_events:
             event_bus.unsubscribe(event_name, broadcast_handler)

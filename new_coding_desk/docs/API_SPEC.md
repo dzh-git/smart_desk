@@ -302,16 +302,27 @@ The endpoint never trusts face evidence as a direct attendee ID. It:
 
 1. authenticates an enabled device provisioned for the URL seat and rejects
    either a registry or request seat mismatch;
-2. rejects non-`VERIFIED` and `CALIBRATION_PENDING` results;
-3. accepts `VALIDATED` only with `thresholdStatus=VALIDATED`;
-4. rejects `PROTOTYPE` by default; the explicit development environment flag
+2. requires `eventTimestamp` in Unix epoch milliseconds; a new event older
+   than 120 seconds or more than 30 seconds in the future is rejected with
+   `IDENTITY_EVENT_STALE` or `IDENTITY_EVENT_FUTURE` (bounded settings:
+   `SMARTDESK_IDENTITY_MAX_EVENT_AGE_SECONDS` and
+   `SMARTDESK_IDENTITY_MAX_FUTURE_SKEW_SECONDS`);
+3. rejects non-`VERIFIED` and `CALIBRATION_PENDING` results;
+4. accepts `VALIDATED` only with `thresholdStatus=VALIDATED`;
+5. rejects `PROTOTYPE` by default; the explicit development environment flag
    may allow `PROTOTYPE` only with `thresholdStatus=PROVISIONAL`;
-5. resolves `Person.id` to exactly one attendee in the active meeting;
-6. delegates occupancy, duplicate-seat, and attendee-binding checks to the
+6. resolves `Person.id` to exactly one attendee in the active meeting;
+7. delegates occupancy, duplicate-seat, and attendee-binding checks to the
    existing `SeatService.check_in`;
-7. persists `eventId`; an identical retry returns the existing checked-in
+8. atomically commits Seat, Attendee and the durable identity event;
+9. persists `eventId`; an identical retry returns the existing checked-in
    state without broadcasting a second `check_in`, while conflicting evidence
    using the same ID returns HTTP 409.
+
+Identity submissions use a bounded per-device/seat sliding-window limiter
+(default 60/minute). HTTP 429 returns stable `RATE_LIMITED` plus
+`Retry-After`; change the bounded limit with
+`SMARTDESK_IDENTITY_RATE_LIMIT_PER_MINUTE`.
 
 Provisioning is fail-closed unless
 `SMARTDESK_DEVICE_PROVISIONING_TOKEN` contains at least 24 characters:
@@ -358,6 +369,13 @@ Content-Type: application/json
 
 The device ID, token, and bound seat must all match. Heartbeats never contain
 face images, embeddings, diagnostic crops, or raw audio.
+`appVersion` must be SemVer and at least
+`SMARTDESK_TABLET_MIN_APP_VERSION` (default `0.8.0`). Invalid and old clients
+receive `DEVICE_APP_VERSION_INVALID` and `DEVICE_APP_VERSION_UNSUPPORTED`.
+Heartbeat rate is limited per device/seat (default 30/minute, configurable
+through `SMARTDESK_TABLET_HEARTBEAT_RATE_LIMIT_PER_MINUTE`); provisioning is
+limited per client (default 10/minute). Both return `RATE_LIMITED` and
+`Retry-After` when exceeded.
 
 Current Android face results remain `CALIBRATION_PENDING` until the 75-run
 field calibration is complete. The production default therefore cannot use

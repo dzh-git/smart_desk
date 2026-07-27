@@ -19,6 +19,24 @@ esp32_seat_controller/
 的 `deploy_mode` 改为 `esp32`。中央模式 `central` 和旧 Windows Agent 模式
 `distributed` 均不会被删除。
 
+正式模式还必须为每台控制器配置独立凭据，不能写入仓库：
+
+```powershell
+$env:SMARTDESK_ESP32_DEVICE_TOKENS_JSON = @'
+{
+  "esp32-seat-01": {
+    "seatId": 1,
+    "token": "replace-with-random-token-at-least-24-chars"
+  }
+}
+'@
+```
+
+设备、席位和令牌必须与固件 `DeviceConfig.h` 一致。凭据 JSON 缺失或无效时
+后端保持运行以便诊断，但正式 ESP32 连接全部失败关闭且不会显示在线。
+最低固件版本默认 `0.1.0`，可用
+`SMARTDESK_ESP32_MIN_FIRMWARE_VERSION` 提高。
+
 ## 模拟器
 
 后端以 ESP32 模式启动后，可模拟 1–9 席：
@@ -28,6 +46,10 @@ python -m esp32_seat_controller.simulator.esp32_simulator `
   --server-url ws://127.0.0.1:8000 `
   --seats 9
 ```
+
+模拟器默认从同一个 `SMARTDESK_ESP32_DEVICE_TOKENS_JSON` 读取各席独立令牌；
+缺少任一席位、席位绑定错误或令牌过短都会在连接前失败。仅测试旧
+`distributed` 台架时可显式传 `--allow-unauthenticated-test`。
 
 协议和异常场景测试：
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from uuid import uuid4
+import time
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect, text
@@ -10,7 +11,9 @@ from backend.events import event_bus
 from backend.main import app
 from backend.migrations import ensure_attendee_identity_columns
 from backend.models.attendee import Attendee
+from backend.models.identity_checkin_event import IdentityCheckInEvent
 from backend.models.seat_state import SeatState
+from backend.services.seat_service import SeatService
 from backend.services.tablet_device_service import TabletDeviceService
 from tests.conftest import TestSessionLocal
 
@@ -97,6 +100,7 @@ def _prepare_active_attendee(
         "thresholdStatus": "VALIDATED",
         "verificationLevel": "VALIDATED",
         "modelVersion": "future-validated-model",
+        "eventTimestamp": int(time.time() * 1000),
     }
     headers = {"X-SmartDesk-Device-Token": DEVICE_TOKEN}
     return meeting_id, attendee_id, payload, headers
@@ -132,6 +136,97 @@ def test_validated_identity_delegates_to_existing_checkin_state_machine():
     assert response.status_code == 200
     assert response.json()["data"]["status"] == "checked_in"
     assert response.json()["data"]["attendee_id"] is not None
+
+
+def test_stale_and_future_identity_events_are_rejected(monkeypatch):
+    _, _, payload, headers = _prepare_active_attendee()
+    now_ms = int(time.time() * 1000)
+    payload["eventTimestamp"] = now_ms - 121_000
+
+    stale = _identity_post(1, payload, headers)
+
+    assert stale.status_code == 400
+    assert stale.json()["error_code"] == "IDENTITY_EVENT_STALE"
+
+    payload["eventId"] = f"identity-{uuid4().hex}"
+    payload["eventTimestamp"] = now_ms + 31_000
+    future = _identity_post(1, payload, headers)
+
+    assert future.status_code == 400
+    assert future.json()["error_code"] == "IDENTITY_EVENT_FUTURE"
+
+
+def test_identity_rate_limit_has_stable_error_and_retry_header(
+    monkeypatch,
+):
+    from backend.api import seats as seats_api
+
+    _, _, payload, headers = _prepare_active_attendee()
+    seats_api.identity_rate_limiter.clear()
+    monkeypatch.setenv(
+        "SMARTDESK_IDENTITY_RATE_LIMIT_PER_MINUTE",
+        "1",
+    )
+    first = _identity_post(1, payload, headers)
+    payload["eventId"] = f"identity-{uuid4().hex}"
+    payload["eventTimestamp"] = int(time.time() * 1000)
+
+    limited = _identity_post(1, payload, headers)
+
+    assert first.status_code == 200
+    assert limited.status_code == 429
+    assert limited.json()["error_code"] == "RATE_LIMITED"
+    assert int(limited.headers["Retry-After"]) >= 1
+    seats_api.identity_rate_limiter.clear()
+
+
+def test_identity_checkin_rolls_back_all_state_when_event_write_fails(
+    monkeypatch,
+):
+    _, attendee_id, payload, _ = _prepare_active_attendee()
+    db = TestSessionLocal()
+    try:
+        service = SeatService(db, event_bus)
+
+        def fail_event_write(*_args, **_kwargs):
+            raise RuntimeError("simulated identity event write failure")
+
+        monkeypatch.setattr(
+            service.identity_event_repo,
+            "save",
+            fail_event_write,
+        )
+        try:
+            service.identity_check_in(
+                seat_id=1,
+                device_seat_id=payload["deviceSeatId"],
+                device_id=payload["deviceId"],
+                device_token=DEVICE_TOKEN,
+                event_id=payload["eventId"],
+                event_timestamp=payload["eventTimestamp"],
+                person_id=payload["personCode"],
+                identity_status=payload["status"],
+                threshold_status=payload["thresholdStatus"],
+                verification_level=payload["verificationLevel"],
+                similarity=payload["similarity"],
+                model_version=payload["modelVersion"],
+            )
+        except RuntimeError as error:
+            assert "simulated" in str(error)
+        else:
+            raise AssertionError("Injected event write failure did not raise")
+
+        db.expire_all()
+        seat = db.get(SeatState, 1)
+        attendee = db.get(Attendee, attendee_id)
+        event = db.get(IdentityCheckInEvent, payload["eventId"])
+        assert seat is not None and seat.status == "occupied_unchecked"
+        assert seat.attendee_id is None
+        assert attendee is not None and attendee.checked_in is False
+        assert attendee.seat_id is None
+        assert event is None
+    finally:
+        db.close()
 
 
 def test_device_token_is_required():

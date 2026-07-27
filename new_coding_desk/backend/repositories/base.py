@@ -60,10 +60,18 @@ class BaseRepository(Generic[ModelT]):
 
     # ── Update ──────────────────────────────────────────────────────────────
 
-    def save(self, instance: ModelT) -> ModelT:
+    def save(
+        self,
+        instance: ModelT,
+        *,
+        commit: bool = True,
+    ) -> ModelT:
         """Persist changes to an existing instance."""
-        self.db.commit()
-        self.db.refresh(instance)
+        if commit:
+            self.db.commit()
+            self.db.refresh(instance)
+        else:
+            self.db.flush()
         return instance
 
     # ── Delete ──────────────────────────────────────────────────────────────

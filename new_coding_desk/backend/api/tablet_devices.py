@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -17,8 +18,16 @@ from backend.schemas.tablet_device import (
     TabletDeviceResponse,
 )
 from backend.services.tablet_device_service import TabletDeviceService
+from backend.security.rate_limit import (
+    SlidingWindowRateLimiter,
+    bounded_env_int,
+)
+from backend.security.structured_log import log_security_event
 
 router = APIRouter(prefix="/api/tablet-devices", tags=["tablet-devices"])
+logger = logging.getLogger(__name__)
+provision_rate_limiter = SlidingWindowRateLimiter()
+heartbeat_rate_limiter = SlidingWindowRateLimiter()
 
 
 def _error(error, status_code: int) -> JSONResponse:
@@ -47,6 +56,7 @@ def _provisioning_allowed(token: str | None) -> bool:
 )
 def provision_tablet(
     body: TabletDeviceProvisionRequest,
+    request: Request,
     db: Session = Depends(get_db),
     provisioning_token: str | None = Header(
         default=None,
@@ -54,7 +64,33 @@ def provision_tablet(
     ),
 ):
     """Create or rotate a tablet binding; disabled unless an admin token exists."""
+    client_host = request.client.host if request.client else "unknown"
+    rate_decision = provision_rate_limiter.check(
+        client_host,
+        limit=bounded_env_int(
+            "SMARTDESK_PROVISION_RATE_LIMIT_PER_MINUTE",
+            10,
+            minimum=1,
+            maximum=120,
+        ),
+        window_seconds=60,
+    )
+    if not rate_decision.allowed:
+        return _rate_limited_response(
+            rate_decision.retry_after_seconds,
+            event="tablet_provision_rate_limited",
+            client=client_host,
+        )
     if not _provisioning_allowed(provisioning_token):
+        log_security_event(
+            logger,
+            event="tablet_provision",
+            level=logging.WARNING,
+            client=client_host,
+            device_id=body.device_id,
+            seat_id=body.seat_id,
+            result="unauthorized",
+        )
         return JSONResponse(
             content=ApiResponse.fail(
                 "Tablet provisioning is disabled or unauthorized",
@@ -73,6 +109,13 @@ def provision_tablet(
         return _error(error, 409)
     except ValidationError as error:
         return _error(error, 400)
+    log_security_event(
+        logger,
+        event="tablet_provision",
+        device_id=body.device_id,
+        seat_id=body.seat_id,
+        result="accepted",
+    )
     return ApiResponse.ok(
         data=TabletDeviceResponse.model_validate(device),
     )
@@ -92,6 +135,23 @@ def tablet_heartbeat(
     ),
 ):
     """Record authenticated, non-biometric tablet operational status."""
+    rate_decision = heartbeat_rate_limiter.check(
+        f"{device_id}:{body.seat_id}",
+        limit=bounded_env_int(
+            "SMARTDESK_TABLET_HEARTBEAT_RATE_LIMIT_PER_MINUTE",
+            30,
+            minimum=1,
+            maximum=240,
+        ),
+        window_seconds=60,
+    )
+    if not rate_decision.allowed:
+        return _rate_limited_response(
+            rate_decision.retry_after_seconds,
+            event="tablet_heartbeat_rate_limited",
+            device_id=device_id,
+            seat_id=body.seat_id,
+        )
     try:
         device = TabletDeviceService(db).record_heartbeat(
             device_id=device_id,
@@ -107,9 +167,51 @@ def tablet_heartbeat(
             last_error=body.last_error,
         )
     except NotFoundError as error:
+        _log_heartbeat_result(device_id, body.seat_id, error.error_code)
         return _error(error, 404)
     except ValidationError as error:
+        _log_heartbeat_result(device_id, body.seat_id, error.error_code)
         return _error(error, 400)
+    _log_heartbeat_result(device_id, body.seat_id, "OK")
     return ApiResponse.ok(
         data=TabletDeviceResponse.model_validate(device),
+    )
+
+
+def _rate_limited_response(
+    retry_after: int,
+    *,
+    event: str,
+    **fields,
+) -> JSONResponse:
+    log_security_event(
+        logger,
+        event=event,
+        level=logging.WARNING,
+        result="rejected",
+        **fields,
+    )
+    response = JSONResponse(
+        content=ApiResponse.fail(
+            "Device request rate limit exceeded",
+            "RATE_LIMITED",
+        ).model_dump(),
+        status_code=429,
+    )
+    response.headers["Retry-After"] = str(retry_after)
+    return response
+
+
+def _log_heartbeat_result(
+    device_id: str,
+    seat_id: int,
+    result: str,
+) -> None:
+    log_security_event(
+        logger,
+        event="tablet_heartbeat",
+        level=(logging.INFO if result == "OK" else logging.WARNING),
+        device_id=device_id,
+        seat_id=seat_id,
+        result=result,
     )

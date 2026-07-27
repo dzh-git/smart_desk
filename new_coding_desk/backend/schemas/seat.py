@@ -75,8 +75,8 @@ class IdentityCheckInRequest(BaseModel):
         max_length=100,
         alias="modelVersion",
     )
-    event_timestamp: int | None = Field(
-        default=None,
+    event_timestamp: int = Field(
+        ...,
         ge=0,
         alias="eventTimestamp",
     )

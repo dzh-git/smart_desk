@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -19,7 +20,7 @@ class Esp32SeatSimulator:
         seat_id: int,
         *,
         server_url: str = "ws://127.0.0.1:8000",
-        firmware_version: str = "sim-0.1.0",
+        firmware_version: str = "0.1.0",
         device_token: str | None = None,
         sender: Sender | None = None,
     ) -> None:
@@ -219,9 +220,14 @@ async def run_scenario(
     server_url: str,
     seats: int,
     dwell_seconds: float,
+    device_tokens: dict[int, str] | None = None,
 ) -> None:
     simulators = [
-        Esp32SeatSimulator(seat, server_url=server_url)
+        Esp32SeatSimulator(
+            seat,
+            server_url=server_url,
+            device_token=(device_tokens or {}).get(seat),
+        )
         for seat in range(1, seats + 1)
     ]
     try:
@@ -249,6 +255,29 @@ async def run_scenario(
         )
 
 
+def parse_device_tokens(raw: str, seats: int) -> dict[int, str]:
+    """Validate the same per-device credential map used by the backend."""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError("device token JSON is invalid") from error
+    if not isinstance(payload, dict):
+        raise ValueError("device token JSON must be an object")
+    tokens: dict[int, str] = {}
+    for seat_id in range(1, seats + 1):
+        device_id = f"esp32-seat-{seat_id:02d}"
+        credential = payload.get(device_id)
+        if not isinstance(credential, dict):
+            raise ValueError(f"missing credential for {device_id}")
+        if credential.get("seatId") != seat_id:
+            raise ValueError(f"seat binding mismatch for {device_id}")
+        token = credential.get("token")
+        if not isinstance(token, str) or len(token) < 24:
+            raise ValueError(f"invalid token for {device_id}")
+        tokens[seat_id] = token
+    return tokens
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -257,12 +286,44 @@ def main() -> None:
     )
     parser.add_argument("--seats", type=int, default=1, choices=range(1, 10))
     parser.add_argument("--dwell-seconds", type=float, default=1.0)
+    parser.add_argument(
+        "--device-tokens-json",
+        default=os.environ.get(
+            "SMARTDESK_ESP32_DEVICE_TOKENS_JSON",
+            "",
+        ),
+        help=(
+            "Per-device credential JSON; defaults to "
+            "SMARTDESK_ESP32_DEVICE_TOKENS_JSON"
+        ),
+    )
+    parser.add_argument(
+        "--allow-unauthenticated-test",
+        action="store_true",
+        help="Only for the legacy distributed test bench.",
+    )
     args = parser.parse_args()
+    if args.device_tokens_json:
+        try:
+            device_tokens = parse_device_tokens(
+                args.device_tokens_json,
+                args.seats,
+            )
+        except ValueError as error:
+            parser.error(str(error))
+    elif args.allow_unauthenticated_test:
+        device_tokens = None
+    else:
+        parser.error(
+            "device credentials are required; set "
+            "SMARTDESK_ESP32_DEVICE_TOKENS_JSON"
+        )
     asyncio.run(
         run_scenario(
             server_url=args.server_url,
             seats=args.seats,
             dwell_seconds=args.dwell_seconds,
+            device_tokens=device_tokens,
         )
     )
 

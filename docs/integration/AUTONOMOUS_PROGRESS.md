@@ -4,10 +4,10 @@
 
 ## 当前阶段
 
-阶段 0–9 已完成软件实现与定向回归。Tablet 已通过绑定设备令牌上报心跳和
-非生物特征运行状态；后端将 Android 与 ESP32 作为独立通道聚合并执行超时
-离线判断，管理端按席位只读展示两类设备；下一阶段进入发布安全、模型许可
-门禁、CI 和一键验证。
+阶段 0–10 已完成软件实现与定向回归。正式 ESP32 会话和平板接口已做独立
+设备认证、席位绑定、版本门禁、基础限流和结构化脱敏日志；身份证据增加时效
+与原子事务保证；当前非商业人脸权重已由脚本和 Android Release 构建双重阻断。
+下一阶段进入 CI 和一键验证。
 
 ## 已完成
 
@@ -69,6 +69,26 @@
   与 ESP32/兼容控制器的在线、版本、心跳、原生能力、灯效、传感器和最近错误，
   不提供人脸图片。
 - 现有数据库通过可重复执行的启动迁移增加 Tablet 状态列，不删除或猜测旧数据。
+- 正式 `deploy_mode=esp32` 只接受携带独立 Bearer 令牌的 v1 设备；服务端
+  以环境 JSON 绑定 `device_id/seat_id/token`，认证前不登记在线，缺失或错误
+  配置失败关闭。旧 Windows 协议只保留在 `distributed` 测试台架。
+- ESP32 模拟器读取同一多设备凭据映射，并在连接前拒绝缺席位、错席位或短令牌；
+  固件与平板 App 都执行严格 SemVer 最低版本检查。
+- 身份事件必须携带毫秒时间戳；首次事件默认只接受过去120秒至未来30秒窗口，
+  相同已落库事件仍可幂等重试。
+- 身份签到把 Seat、Attendee 和身份事件放在同一数据库事务中；注入事件写入
+  失败的测试证明全部业务状态回滚且不广播成功事件。
+- 身份、Tablet 心跳和设备注册入口使用有界内存滑动窗口限流，429 统一返回
+  `RATE_LIMITED` 与 `Retry-After`。
+- 设备认证、心跳与身份签到记录单行 JSON 安全事件；递归脱敏
+  authorization/cookie/password/secret/token 类字段，自动测试证明错误令牌
+  不进入日志。
+- Android 模板由 Keystore AES-GCM 存储、备份与设备迁移全部排除，
+  Release 关闭 WebView 调试；受信来源、Bridge最小暴露、资源释放和生命周期
+  门禁均已有自动测试。
+- 新增 `MODEL_LICENSE_GATE.md`、机器可读许可状态和发布检查脚本；原型状态检查
+  通过，Release 脚本和 Gradle 任务均按预期以
+  `MODEL_LICENSE_GATE_BLOCKED` 失败，不影响 Debug 编译。
 - Graphify 根级单一快照已更新。
 
 ## 已执行测试
@@ -96,6 +116,11 @@
 | 语音 PCM/权限/切换后端 | 轻量 pytest 节点集 | 通过，21 项；未加载真实 ASR 大模型 |
 | Tablet 心跳/聚合/迁移 | 专项 pytest | 通过，8 项；与 ESP32/单席组合回归 11 项通过 |
 | 管理端设备状态 | Admin + HardwareStatus Vitest | 通过，106 项；另有 Android 心跳/身份定向 5 项 |
+| 阶段10安全/身份/设备/ESP32/单席 | 组合 pytest | 通过，70 项 |
+| Python静态语法 | `python -m compileall` | 通过 |
+| Android安全回归 | JVM + Lint + Debug APK | 通过；JVM 28 项，Release 门禁不参与 Debug |
+| 模型许可原型声明 | `check_model_license_gate.py --mode prototype` | 通过，明确 Release 仍阻断 |
+| 模型许可正式发布 | 脚本与 Gradle `checkModelLicenseGate` | 按预期失败：`MODEL_LICENSE_GATE_BLOCKED` |
 
 `test_speech_stream_service.py` 与 `test_speech_websocket_blackbox.py`
 组合运行超过六分钟执行时限，未取得完整汇总；没有把超时描述为通过。
@@ -118,7 +143,7 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 尚未完成的软件任务
 
-- 安全加固、模型许可门禁、CI 和 `verify_all_software.ps1`。
+- CI 和 `verify_all_software.ps1`。
 - 完整集成文档、部署手册和人工验收包。
 
 ## HARDWARE_VALIDATION_REQUIRED
@@ -131,15 +156,16 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 已知风险
 
-- 当前人脸权重未随仓库提供，许可和商业使用范围尚未通过发布门禁。
-- 设备 token 已受保护，但 TLS、事件时效限制、设备禁用/轮换运维界面仍需在
-  发布安全阶段收口。
+- 当前人脸权重未随仓库提供且仅限非商业研究；发布门禁会持续阻断，直至替换
+  获得明确商业/再分发许可的权重并完成人工审批与重新标定。
+- 局域网部署示例仍使用明文 HTTP/WS；设备令牌虽已受保护且日志脱敏，正式跨
+  不可信网络部署前仍必须增加可信 TLS 终止和证书运维。
+- 设备禁用和令牌轮换已有后端能力，但尚无专用管理 UI；当前通过受保护的
+  provisioning 接口运维。
 - ESP32 固件已编译但尚未在实物验证 PIR/VL53L0X/WS2812B 引脚、阈值、供电、
   Wi-Fi 和看门狗复位行为。
 
 ## 下一步
 
-1. 完成设备接口防滥用、事件时效、日志脱敏和安全配置审计。
-2. 增加模型许可发布门禁和 `MODEL_LICENSE_GATE.md`。
-3. 完成 CI、`verify_all_software.ps1` 和分类验证结果。
-4. 完成部署文档、发布清单与人工验收包。
+1. 完成 CI、`verify_all_software.ps1` 和分类验证结果。
+2. 完成部署文档、发布清单与人工验收包。

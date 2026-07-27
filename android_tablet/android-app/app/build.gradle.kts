@@ -60,3 +60,23 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 }
+
+val workspaceRoot = rootProject.layout.projectDirectory.dir("../..")
+
+val checkModelLicenseGate by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Blocks release builds until model commercial rights are approved."
+    workingDir(workspaceRoot)
+    commandLine(
+        "python",
+        "scripts/check_model_license_gate.py",
+        "--mode",
+        "release"
+    )
+}
+
+tasks.configureEach {
+    if (name == "preReleaseBuild") {
+        dependsOn(checkModelLicenseGate)
+    }
+}

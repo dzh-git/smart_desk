@@ -11,6 +11,8 @@ Per system_architecture §4.2, EVENT_BUS_SPEC §6:
 from __future__ import annotations
 
 import logging
+import os
+import time
 
 from sqlalchemy.orm import Session
 
@@ -42,6 +44,20 @@ from backend.services.speech_stream_service import stream_service
 from backend.websocket.speech_registry import speech_registry
 
 logger = logging.getLogger(__name__)
+
+
+def _bounded_identity_time_setting(
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
 
 
 class SeatService(BaseService):
@@ -218,7 +234,13 @@ class SeatService(BaseService):
     # ── check_in ─────────────────────────────────────────────────────────────
 
     def check_in(
-        self, seat_id: int, attendee_id: int, meeting_id: int | None = None
+        self,
+        seat_id: int,
+        attendee_id: int,
+        meeting_id: int | None = None,
+        *,
+        commit: bool = True,
+        publish: bool = True,
     ) -> SeatState:
         """Transition: occupied_unchecked → checked_in.
 
@@ -283,19 +305,15 @@ class SeatService(BaseService):
         seat.attendee_id = attendee_id
         attendee.seat_id = seat_id
         attendee.checked_in = True
-        self.seat_repo.save_seat(seat)
-        self.attendee_repo.save(attendee)
+        self.seat_repo.save_seat(seat, commit=commit)
+        self.attendee_repo.save(attendee, commit=commit)
 
-        self._publish(
-            CheckInEvent(
-                payload={"seat_id": seat_id, "attendee_id": attendee_id},
-            ),
-            meeting_id=meeting_id,
-        )
-
-        logger.info(
-            "Seat %d: checked_in by attendee %d", seat_id, attendee_id
-        )
+        if publish:
+            self._publish_checkin_success(
+                seat_id=seat_id,
+                attendee_id=attendee_id,
+                meeting_id=meeting_id,
+            )
         return seat
 
     def identity_check_in(
@@ -306,6 +324,7 @@ class SeatService(BaseService):
         device_id: str,
         device_token: str | None,
         event_id: str,
+        event_timestamp: int,
         person_id: str,
         identity_status: str,
         threshold_status: str,
@@ -355,6 +374,36 @@ class SeatService(BaseService):
                     "IDENTITY_EVENT_STATE_CONFLICT",
                 )
             return seat
+
+        now_ms = int(time.time() * 1000)
+        max_age_ms = (
+            _bounded_identity_time_setting(
+                "SMARTDESK_IDENTITY_MAX_EVENT_AGE_SECONDS",
+                120,
+                minimum=10,
+                maximum=600,
+            )
+            * 1000
+        )
+        future_skew_ms = (
+            _bounded_identity_time_setting(
+                "SMARTDESK_IDENTITY_MAX_FUTURE_SKEW_SECONDS",
+                30,
+                minimum=1,
+                maximum=120,
+            )
+            * 1000
+        )
+        if event_timestamp < now_ms - max_age_ms:
+            raise ValidationError(
+                "Identity event is too old",
+                "IDENTITY_EVENT_STALE",
+            )
+        if event_timestamp > now_ms + future_skew_ms:
+            raise ValidationError(
+                "Identity event timestamp is in the future",
+                "IDENTITY_EVENT_FUTURE",
+            )
 
         identity_status = identity_status.upper()
         threshold_status = threshold_status.upper()
@@ -422,20 +471,23 @@ class SeatService(BaseService):
             )
 
         current_seat = self._get_seat(seat_id)
-        if (
+        performed_checkin = not (
             current_seat.status == "checked_in"
             and current_seat.attendee_id == attendee.id
-        ):
-            checked_in_seat = current_seat
-        else:
-            checked_in_seat = self.check_in(
-                seat_id=seat_id,
-                attendee_id=attendee.id,
-                meeting_id=active.id,
-            )
+        )
+        try:
+            if performed_checkin:
+                checked_in_seat = self.check_in(
+                    seat_id=seat_id,
+                    attendee_id=attendee.id,
+                    meeting_id=active.id,
+                    commit=False,
+                    publish=False,
+                )
+            else:
+                checked_in_seat = current_seat
 
-        self.identity_event_repo.save(
-            IdentityCheckInEvent(
+            identity_event = IdentityCheckInEvent(
                 event_id=event_id,
                 device_id=device_id,
                 seat_id=seat_id,
@@ -445,8 +497,43 @@ class SeatService(BaseService):
                 verification_level=verification_level,
                 model_version=model_version,
             )
-        )
+            self.identity_event_repo.save(
+                identity_event,
+                commit=False,
+            )
+            self.db.commit()
+            self.db.refresh(checked_in_seat)
+            self.db.refresh(identity_event)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        if performed_checkin:
+            self._publish_checkin_success(
+                seat_id=seat_id,
+                attendee_id=attendee.id,
+                meeting_id=active.id,
+            )
         return checked_in_seat
+
+    def _publish_checkin_success(
+        self,
+        *,
+        seat_id: int,
+        attendee_id: int,
+        meeting_id: int | None,
+    ) -> None:
+        self._publish(
+            CheckInEvent(
+                payload={"seat_id": seat_id, "attendee_id": attendee_id},
+            ),
+            meeting_id=meeting_id,
+        )
+        logger.info(
+            "Seat %d: checked_in by attendee %d",
+            seat_id,
+            attendee_id,
+        )
 
     # ── Speaker Seat ─────────────────────────────────────────────────────────
 

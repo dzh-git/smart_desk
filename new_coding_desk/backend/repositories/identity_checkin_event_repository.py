@@ -13,8 +13,16 @@ class IdentityCheckInEventRepository:
     def get(self, event_id: str) -> IdentityCheckInEvent | None:
         return self.db.get(IdentityCheckInEvent, event_id)
 
-    def save(self, event: IdentityCheckInEvent) -> IdentityCheckInEvent:
+    def save(
+        self,
+        event: IdentityCheckInEvent,
+        *,
+        commit: bool = True,
+    ) -> IdentityCheckInEvent:
         self.db.add(event)
-        self.db.commit()
-        self.db.refresh(event)
+        if commit:
+            self.db.commit()
+            self.db.refresh(event)
+        else:
+            self.db.flush()
         return event

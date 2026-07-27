@@ -1,6 +1,6 @@
 # SE-MobileFaceNet embedding model card
 
-## Deployed artifact
+## Prototype artifact definition
 
 - Asset: `se_mobilefacenet_emb256_fp32.tflite`
 - SHA-256:
@@ -14,8 +14,9 @@
 - Alignment: InsightFace five-point template
 - Pipeline version: 3
 
-The binary artifact is intentionally excluded from Git because the pretrained
-weight is restricted to non-commercial research use. Reproduce it locally with
+The binary artifact is intentionally excluded from Git and is not approved as
+a product/release artifact because the pretrained weight is restricted to
+non-commercial research use. Reproduce it locally with
 `model-tools/convert_se_mobilefacenet.py` and verify the SHA-256 above before
 building the Android app.
 
@@ -61,3 +62,5 @@ accuracy benchmark and are not used to select the verification threshold.
 - Approved use here: internal technical prototype validation
 - Commercial deployment: prohibited until the weight is replaced by a
   model with explicit commercial and redistribution permission
+- Machine-enforced gate:
+  `model-license-gate.json` and `scripts/check_model_license_gate.py`

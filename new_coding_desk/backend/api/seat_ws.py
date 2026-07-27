@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -35,7 +36,12 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from backend.database import SessionLocal
 from backend.events import event_bus
 from backend.exceptions import NotFoundError, ValidationError
-from backend.hardware import get_seat_gateway, get_lighting_manager, seat_ids
+from backend.hardware import (
+    deploy_mode,
+    get_seat_gateway,
+    get_lighting_manager,
+    seat_ids,
+)
 from backend.hardware.esp32_protocol import (
     ProtocolViolation,
     decode_uplink,
@@ -46,6 +52,15 @@ from backend.hardware.esp32_protocol import (
 from backend.hardware.seat_gateway import SeatGateway
 from backend.services.meeting_service import MeetingService
 from backend.services.seat_service import SeatService
+from backend.security.device_auth import (
+    DeviceAuthenticationError,
+    authenticate_esp32_device,
+)
+from backend.security.version_compat import (
+    meets_minimum_version,
+    parse_semantic_version,
+)
+from backend.security.structured_log import log_security_event
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +87,10 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
         return
 
     await ws.accept()
-    gateway.register(seat_id, ws)
-    logger.info("[seat_ws] seat %d transport connected", seat_id)
+    authorization = ws.headers.get("authorization")
     esp32_ready = False
     legacy_ready = False
+    registered = False
 
     try:
         while True:
@@ -97,6 +112,19 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
 
             legacy = _decode_legacy_message(raw)
             if legacy is not None:
+                if deploy_mode == "esp32":
+                    await _send_protocol_error(
+                        ws,
+                        ProtocolViolation(
+                            "LEGACY_PROTOCOL_DISABLED",
+                            (
+                                "legacy Windows Seat Agent protocol is "
+                                "disabled in esp32 mode"
+                            ),
+                            fatal=True,
+                        ),
+                    )
+                    break
                 if esp32_ready:
                     await _send_protocol_error(
                         ws,
@@ -108,8 +136,14 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
                     )
                     break
                 if not legacy_ready:
+                    gateway.register(seat_id, ws)
+                    registered = True
                     gateway.configure_legacy_session(seat_id)
                     legacy_ready = True
+                    logger.info(
+                        "[seat_ws] seat %d legacy transport authenticated",
+                        seat_id,
+                    )
                     _send_intended_mode(gateway, seat_id)
                 await _handle_legacy_message(
                     gateway,
@@ -128,6 +162,56 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
                             "ESP32 hello cannot follow legacy messages",
                             fatal=True,
                         )
+                    if deploy_mode == "esp32":
+                        try:
+                            authenticate_esp32_device(
+                                device_id=msg["device_id"],
+                                seat_id=seat_id,
+                                authorization=authorization,
+                            )
+                        except DeviceAuthenticationError as error:
+                            log_security_event(
+                                logger,
+                                event="esp32_authentication",
+                                level=logging.WARNING,
+                                seat_id=seat_id,
+                                device_id=msg["device_id"],
+                                result=error.code,
+                            )
+                            raise ProtocolViolation(
+                                error.code,
+                                "ESP32 device authentication failed",
+                                fatal=True,
+                            ) from error
+                        minimum_firmware = os.environ.get(
+                            "SMARTDESK_ESP32_MIN_FIRMWARE_VERSION",
+                            "0.1.0",
+                        )
+                        if parse_semantic_version(
+                            msg["firmware_version"]
+                        ) is None:
+                            raise ProtocolViolation(
+                                "FIRMWARE_VERSION_INVALID",
+                                (
+                                    "ESP32 firmware_version must use "
+                                    "semantic versioning"
+                                ),
+                                fatal=True,
+                            )
+                        if not meets_minimum_version(
+                            msg["firmware_version"],
+                            minimum_firmware,
+                        ):
+                            raise ProtocolViolation(
+                                "FIRMWARE_VERSION_UNSUPPORTED",
+                                (
+                                    "ESP32 firmware is older than the "
+                                    "minimum supported version"
+                                ),
+                                fatal=True,
+                            )
+                    gateway.register(seat_id, ws)
+                    registered = True
                     gateway.configure_esp32_session(
                         seat_id,
                         device_id=msg["device_id"],
@@ -135,6 +219,14 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
                         boot_id=msg["boot_id"],
                     )
                     esp32_ready = True
+                    log_security_event(
+                        logger,
+                        event="esp32_authentication",
+                        seat_id=seat_id,
+                        device_id=msg["device_id"],
+                        firmware_version=msg["firmware_version"],
+                        result="accepted",
+                    )
                     await ws.send_json(
                         hello_ack_message(str(uuid.uuid4()))
                     )
@@ -161,9 +253,9 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
     except Exception:
         logger.exception("[seat_ws] seat %d handler error", seat_id)
     finally:
-        gateway.unregister(seat_id)
-        gateway.set_status(seat_id, False)
-        logger.info("[seat_ws] seat %d agent gone", seat_id)
+        if registered:
+            gateway.unregister(seat_id)
+            logger.info("[seat_ws] seat %d agent gone", seat_id)
 
 
 def _decode_legacy_message(raw: str) -> dict | None:

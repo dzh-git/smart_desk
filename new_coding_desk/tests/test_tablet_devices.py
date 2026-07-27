@@ -163,6 +163,33 @@ def test_authenticated_heartbeat_persists_operational_status():
         db.close()
 
 
+def test_heartbeat_rate_limit_is_bounded_and_retryable(monkeypatch):
+    from backend.api import tablet_devices as tablet_api
+
+    _provision_direct()
+    tablet_api.heartbeat_rate_limiter.clear()
+    monkeypatch.setenv(
+        "SMARTDESK_TABLET_HEARTBEAT_RATE_LIMIT_PER_MINUTE",
+        "1",
+    )
+    first = client.post(
+        "/api/tablet-devices/tablet-seat-01/heartbeat",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json=_heartbeat_payload(),
+    )
+    limited = client.post(
+        "/api/tablet-devices/tablet-seat-01/heartbeat",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json=_heartbeat_payload(),
+    )
+
+    assert first.status_code == 200
+    assert limited.status_code == 429
+    assert limited.json()["error_code"] == "RATE_LIMITED"
+    assert int(limited.headers["Retry-After"]) >= 1
+    tablet_api.heartbeat_rate_limiter.clear()
+
+
 def test_heartbeat_rejects_wrong_token_and_seat():
     _provision_direct()
     wrong_token = client.post(
@@ -185,6 +212,38 @@ def test_heartbeat_rejects_wrong_token_and_seat():
     assert wrong_token.json()["error_code"] == "DEVICE_AUTH_FAILED"
     assert wrong_seat.status_code == 400
     assert wrong_seat.json()["error_code"] == "DEVICE_SEAT_MISMATCH"
+
+
+def test_heartbeat_rejects_invalid_or_unsupported_app_version(
+    monkeypatch,
+):
+    from backend.api import tablet_devices as tablet_api
+
+    _provision_direct()
+    tablet_api.heartbeat_rate_limiter.clear()
+    monkeypatch.setenv("SMARTDESK_TABLET_MIN_APP_VERSION", "0.8.0")
+    invalid_payload = _heartbeat_payload()
+    invalid_payload["appVersion"] = "unknown"
+    invalid = client.post(
+        "/api/tablet-devices/tablet-seat-01/heartbeat",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json=invalid_payload,
+    )
+    old_payload = _heartbeat_payload()
+    old_payload["appVersion"] = "0.7.9"
+    unsupported = client.post(
+        "/api/tablet-devices/tablet-seat-01/heartbeat",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json=old_payload,
+    )
+
+    assert invalid.status_code == 400
+    assert invalid.json()["error_code"] == "DEVICE_APP_VERSION_INVALID"
+    assert unsupported.status_code == 400
+    assert (
+        unsupported.json()["error_code"]
+        == "DEVICE_APP_VERSION_UNSUPPORTED"
+    )
 
 
 def test_hardware_status_separates_tablet_and_esp32_state(monkeypatch):

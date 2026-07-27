@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from backend.hardware.esp32_protocol import decode_uplink
 from esp32_seat_controller.simulator import Esp32SeatSimulator
+from esp32_seat_controller.simulator.esp32_simulator import (
+    parse_device_tokens,
+)
 
 
 def test_simulator_messages_match_server_contract():
@@ -112,3 +116,27 @@ def test_nine_seat_simulators_have_unique_bindings():
     simulators = [Esp32SeatSimulator(seat) for seat in range(1, 10)]
     assert {sim.seat_id for sim in simulators} == set(range(1, 10))
     assert len({sim.device_id for sim in simulators}) == 9
+
+
+def test_multi_seat_device_tokens_require_complete_exact_bindings():
+    raw = json.dumps(
+        {
+            f"esp32-seat-{seat:02d}": {
+                "seatId": seat,
+                "token": f"simulator-device-token-{seat:02d}-000001",
+            }
+            for seat in range(1, 4)
+        }
+    )
+    tokens = parse_device_tokens(raw, 3)
+    assert sorted(tokens) == [1, 2, 3]
+    assert len(set(tokens.values())) == 3
+
+    invalid = json.loads(raw)
+    invalid["esp32-seat-02"]["seatId"] = 1
+    try:
+        parse_device_tokens(json.dumps(invalid), 3)
+    except ValueError as error:
+        assert "seat binding mismatch" in str(error)
+    else:
+        raise AssertionError("Cross-seat simulator credential was accepted")

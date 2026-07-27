@@ -7,9 +7,13 @@ from starlette.websockets import WebSocketDisconnect
 
 from backend.api import seat_ws
 from backend.hardware.seat_gateway import SeatGateway
+from backend.security.device_auth import ESP32_DEVICE_TOKENS_ENV
 
 
-def make_client(monkeypatch):
+DEVICE_TOKEN = "test-esp32-device-token-000001"
+
+
+def make_client(monkeypatch, *, deploy_mode: str = "esp32"):
     application = FastAPI()
     application.include_router(seat_ws.router)
     gateway = SeatGateway(None, list(range(1, 10)))
@@ -19,6 +23,15 @@ def make_client(monkeypatch):
         transitions.append((seat_id, occupied))
 
     monkeypatch.setattr(seat_ws, "get_seat_gateway", lambda: gateway)
+    monkeypatch.setattr(seat_ws, "deploy_mode", deploy_mode)
+    monkeypatch.setenv(
+        ESP32_DEVICE_TOKENS_ENV,
+        (
+            '{"esp32-seat-01":{"seatId":1,'
+            f'"token":"{DEVICE_TOKEN}"'
+            "}}"
+        ),
+    )
     monkeypatch.setattr(
         seat_ws,
         "_send_intended_mode",
@@ -30,6 +43,10 @@ def make_client(monkeypatch):
         fake_occupancy,
     )
     return TestClient(application), gateway, transitions
+
+
+def auth_headers(token: str = DEVICE_TOKEN) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
 
 
 def hello(**overrides):
@@ -64,7 +81,10 @@ def occupancy(**overrides):
 
 def test_hello_occupancy_and_duplicate_are_acknowledged(monkeypatch):
     client, gateway, transitions = make_client(monkeypatch)
-    with client.websocket_connect("/ws/seat/1") as websocket:
+    with client.websocket_connect(
+        "/ws/seat/1",
+        headers=auth_headers(),
+    ) as websocket:
         websocket.send_json(hello())
         hello_ack = websocket.receive_json()
         assert hello_ack["type"] == "hello_ack"
@@ -90,7 +110,10 @@ def test_hello_occupancy_and_duplicate_are_acknowledged(monkeypatch):
 
 def test_message_before_hello_is_rejected_and_closed(monkeypatch):
     client, _, transitions = make_client(monkeypatch)
-    with client.websocket_connect("/ws/seat/1") as websocket:
+    with client.websocket_connect(
+        "/ws/seat/1",
+        headers=auth_headers(),
+    ) as websocket:
         websocket.send_json(occupancy())
         error = websocket.receive_json()
         assert error["error_code"] == "HELLO_REQUIRED"
@@ -105,7 +128,10 @@ def test_message_before_hello_is_rejected_and_closed(monkeypatch):
 
 def test_wrong_protocol_seat_is_rejected_and_closed(monkeypatch):
     client, _, _ = make_client(monkeypatch)
-    with client.websocket_connect("/ws/seat/1") as websocket:
+    with client.websocket_connect(
+        "/ws/seat/1",
+        headers=auth_headers(),
+    ) as websocket:
         websocket.send_json(hello(seat_id=2))
         error = websocket.receive_json()
         assert error["error_code"] == "SEAT_ID_MISMATCH"
@@ -115,3 +141,87 @@ def test_wrong_protocol_seat_is_rejected_and_closed(monkeypatch):
             assert disconnect.code == 1008
         else:
             raise AssertionError("WebSocket should close after seat mismatch")
+
+
+def test_missing_device_token_fails_closed_before_registration(monkeypatch):
+    client, gateway, _ = make_client(monkeypatch)
+    with client.websocket_connect("/ws/seat/1") as websocket:
+        websocket.send_json(hello())
+        error = websocket.receive_json()
+        assert error["error_code"] == "DEVICE_AUTH_FAILED"
+        try:
+            websocket.receive_json()
+        except WebSocketDisconnect as disconnect:
+            assert disconnect.code == 1008
+        else:
+            raise AssertionError("Unauthenticated WebSocket should close")
+    assert gateway.is_connected(1) is False
+
+
+def test_wrong_device_token_is_rejected_without_logging_secret(
+    monkeypatch,
+    caplog,
+):
+    client, gateway, _ = make_client(monkeypatch)
+    secret = "wrong-esp32-device-token-should-not-log"
+    with client.websocket_connect(
+        "/ws/seat/1",
+        headers=auth_headers(secret),
+    ) as websocket:
+        websocket.send_json(hello())
+        assert websocket.receive_json()["error_code"] == "DEVICE_AUTH_FAILED"
+    assert gateway.is_connected(1) is False
+    assert secret not in caplog.text
+
+
+def test_missing_server_credential_registry_fails_closed(
+    monkeypatch,
+):
+    client, gateway, _ = make_client(monkeypatch)
+    monkeypatch.delenv(ESP32_DEVICE_TOKENS_ENV)
+    with client.websocket_connect(
+        "/ws/seat/1",
+        headers=auth_headers(),
+    ) as websocket:
+        websocket.send_json(hello())
+        assert websocket.receive_json()["error_code"] == "DEVICE_AUTH_FAILED"
+    assert gateway.is_connected(1) is False
+
+
+def test_legacy_protocol_only_remains_in_distributed_mode(monkeypatch):
+    client, gateway, _ = make_client(
+        monkeypatch,
+        deploy_mode="distributed",
+    )
+    with client.websocket_connect("/ws/seat/1") as websocket:
+        websocket.send_json({"type": "sync", "seat_id": 1})
+    assert gateway.is_connected(1) is False
+
+    esp32_client, esp32_gateway, _ = make_client(monkeypatch)
+    with esp32_client.websocket_connect("/ws/seat/1") as websocket:
+        websocket.send_json({"type": "sync", "seat_id": 1})
+        assert (
+            websocket.receive_json()["error_code"]
+            == "LEGACY_PROTOCOL_DISABLED"
+        )
+    assert esp32_gateway.is_connected(1) is False
+
+
+def test_old_esp32_firmware_is_rejected_before_registration(
+    monkeypatch,
+):
+    client, gateway, _ = make_client(monkeypatch)
+    monkeypatch.setenv(
+        "SMARTDESK_ESP32_MIN_FIRMWARE_VERSION",
+        "0.2.0",
+    )
+    with client.websocket_connect(
+        "/ws/seat/1",
+        headers=auth_headers(),
+    ) as websocket:
+        websocket.send_json(hello(firmware_version="0.1.0"))
+        assert (
+            websocket.receive_json()["error_code"]
+            == "FIRMWARE_VERSION_UNSUPPORTED"
+        )
+    assert gateway.is_connected(1) is False

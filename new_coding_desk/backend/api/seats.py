@@ -11,6 +11,7 @@ Per API_SPEC §7:
 from __future__ import annotations
 
 import os
+import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, Header
@@ -30,6 +31,14 @@ from backend.schemas.seat import (
 )
 from backend.services.seat_service import SeatService
 from backend.services.meeting_service import MeetingService
+from backend.security.rate_limit import (
+    SlidingWindowRateLimiter,
+    bounded_env_int,
+)
+from backend.security.structured_log import log_security_event
+
+logger = logging.getLogger(__name__)
+identity_rate_limiter = SlidingWindowRateLimiter()
 
 router = APIRouter(prefix="/api/seats", tags=["seats"])
 
@@ -116,6 +125,36 @@ def identity_check_in(
         ).lower()
         == "true"
     )
+    rate_decision = identity_rate_limiter.check(
+        f"{body.device_id}:{seat_id}",
+        limit=bounded_env_int(
+            "SMARTDESK_IDENTITY_RATE_LIMIT_PER_MINUTE",
+            60,
+            minimum=1,
+            maximum=600,
+        ),
+        window_seconds=60,
+    )
+    if not rate_decision.allowed:
+        log_security_event(
+            logger,
+            event="identity_checkin_rate_limited",
+            level=logging.WARNING,
+            device_id=body.device_id,
+            seat_id=seat_id,
+            result="rejected",
+        )
+        response = _to_json(
+            ApiResponse.fail(
+                "Identity check-in rate limit exceeded",
+                "RATE_LIMITED",
+            ),
+            429,
+        )
+        response.headers["Retry-After"] = str(
+            rate_decision.retry_after_seconds
+        )
+        return response
     try:
         seat = _service(db).identity_check_in(
             seat_id=seat_id,
@@ -123,6 +162,7 @@ def identity_check_in(
             device_id=body.device_id,
             device_token=device_token,
             event_id=body.event_id,
+            event_timestamp=body.event_timestamp,
             person_id=body.person_id,
             identity_status=body.status,
             threshold_status=body.threshold_status,
@@ -132,21 +172,41 @@ def identity_check_in(
             allow_prototype=allow_prototype,
         )
     except ConflictError as error:
+        _log_identity_result(body, seat_id, error.error_code)
         return _to_json(
             ApiResponse.fail(error.message, error.error_code),
             409,
         )
     except NotFoundError as error:
+        _log_identity_result(body, seat_id, error.error_code)
         return _to_json(
             ApiResponse.fail(error.message, error.error_code),
             404,
         )
     except ValidationError as error:
+        _log_identity_result(body, seat_id, error.error_code)
         return _to_json(
             ApiResponse.fail(error.message, error.error_code),
             400,
         )
+    _log_identity_result(body, seat_id, "OK")
     return ApiResponse.ok(data=SeatStateResponse.model_validate(seat))
+
+
+def _log_identity_result(
+    body: IdentityCheckInRequest,
+    seat_id: int,
+    result: str,
+) -> None:
+    log_security_event(
+        logger,
+        event="identity_checkin",
+        level=(logging.INFO if result == "OK" else logging.WARNING),
+        device_id=body.device_id,
+        seat_id=seat_id,
+        event_id=body.event_id,
+        result=result,
+    )
 
 
 # ── Speaker Seat ─────────────────────────────────────────────────────────────
