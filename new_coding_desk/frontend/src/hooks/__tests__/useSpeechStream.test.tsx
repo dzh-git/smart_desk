@@ -253,6 +253,9 @@ describe("useSpeechStream lifecycle", () => {
       vi.advanceTimersByTime(500);
     });
     expect(harness.sockets).toHaveLength(2);
+    expect(
+      (harness.microphones[0] as MockMicInstance).stopped,
+    ).toBe(true);
     expect(result.current.status).toBe("connecting_speech_ws");
 
     const replacement = harness.sockets[1] as MockWsInstance;
@@ -264,9 +267,78 @@ describe("useSpeechStream lifecycle", () => {
       await Promise.resolve();
     });
 
+    expect(harness.microphones).toHaveLength(2);
     expect(result.current.status).toBe("recording");
     expect(result.current.utteranceId).toBe("utt_41_1_000027");
     unmount();
     vi.useRealTimers();
+  });
+
+  it("releases microphone and socket when Android Activity pauses", async () => {
+    const { result, unmount } = renderHook(() => useSpeechStream(41, 1, true));
+
+    let startPromise!: Promise<void>;
+    act(() => {
+      startPromise = result.current.start();
+    });
+    await waitFor(() => expect(harness.sockets).toHaveLength(1));
+    const socket = harness.sockets[0] as MockWsInstance;
+    await act(async () => {
+      socket.resolveConnect?.({
+        utteranceId: "utt_41_1_000030",
+        sessionKey: "speech_41_1",
+      });
+      await startPromise;
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "lifecycle-pause-1",
+            timestamp: Date.now(),
+            type: "app_lifecycle",
+            data: { state: "PAUSED", reason: "activity" },
+          },
+        }),
+      );
+    });
+
+    expect(result.current.status).toBe("idle");
+    expect(socket.closed).toBe(true);
+    expect(
+      (harness.microphones[0] as MockMicInstance).stopped,
+    ).toBe(true);
+    unmount();
+  });
+
+  it("releases an active stream when speaker ownership is revoked", async () => {
+    const { result, rerender, unmount } = renderHook(
+      ({ speaker }) => useSpeechStream(41, 1, speaker),
+      { initialProps: { speaker: true } },
+    );
+
+    let startPromise!: Promise<void>;
+    act(() => {
+      startPromise = result.current.start();
+    });
+    await waitFor(() => expect(harness.sockets).toHaveLength(1));
+    const socket = harness.sockets[0] as MockWsInstance;
+    await act(async () => {
+      socket.resolveConnect?.({
+        utteranceId: "utt_41_1_000031",
+        sessionKey: "speech_41_1",
+      });
+      await startPromise;
+    });
+
+    rerender({ speaker: false });
+    await waitFor(() => expect(result.current.status).toBe("idle"));
+    expect(socket.closed).toBe(true);
+    expect(
+      (harness.microphones[0] as MockMicInstance).stopped,
+    ).toBe(true);
+    unmount();
   });
 });

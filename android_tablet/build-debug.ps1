@@ -14,6 +14,20 @@ if (-not $env:JAVA_HOME) {
         throw "JAVA_HOME is not set and Android Studio JBR was not found."
     }
 }
+if (-not $env:ANDROID_HOME) {
+    $sdkCandidates = @(
+        (Join-Path $env:LOCALAPPDATA "Android\Sdk"),
+        "D:\Android\Sdk"
+    )
+    $androidSdk = $sdkCandidates |
+        Where-Object { Test-Path -LiteralPath $_ } |
+        Select-Object -First 1
+    if (-not $androidSdk) {
+        throw "ANDROID_HOME is not set and no Android SDK was found."
+    }
+    $env:ANDROID_HOME = $androidSdk
+}
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 $env:GRADLE_USER_HOME = Join-Path $workspaceRoot ".gradle-user-home"
 $env:ANDROID_USER_HOME = Join-Path $workspaceRoot ".android-user-home"
 $env:npm_config_cache = Join-Path $workspaceRoot ".npm-cache"

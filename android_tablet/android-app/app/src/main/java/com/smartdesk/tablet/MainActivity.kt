@@ -2,6 +2,7 @@ package com.smartdesk.tablet
 
 import android.annotation.SuppressLint
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -10,14 +11,18 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
 import android.os.Bundle
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -33,10 +38,15 @@ import com.smartdesk.tablet.model.ErrorCode
 import com.smartdesk.tablet.model.FaceDetectionResult
 import com.smartdesk.tablet.model.IdentityStatus
 import com.smartdesk.tablet.recognition.FaceRecognitionManager
+import com.smartdesk.tablet.web.BackendHealthChecker
+import com.smartdesk.tablet.web.SeatPageLoadState
+import com.smartdesk.tablet.web.WebViewAccessPolicy
 import org.json.JSONObject
+import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
+    private lateinit var maintenanceButton: Button
     private lateinit var cameraOverlay: FrameLayout
     private lateinit var faceDetectionStatusText: TextView
     private lateinit var faceGuideView: com.smartdesk.tablet.camera.FaceGuideView
@@ -52,6 +62,12 @@ class MainActivity : ComponentActivity() {
     private var showingDiagnosticPage = false
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallbackRegistered = false
+    private var pendingMicrophoneRequest: PermissionRequest? = null
+    private val pageLoadState = SeatPageLoadState()
+    private val backendHealthChecker = BackendHealthChecker()
+    private val healthExecutor = Executors.newSingleThreadExecutor()
+    private var healthCheckGeneration = 0
+    private var pageLoadTimeoutAction: Runnable? = null
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             if (
@@ -322,6 +338,19 @@ class MainActivity : ComponentActivity() {
     @Suppress("DEPRECATION")
     private fun configureWebView() {
         webView = findViewById(R.id.webView)
+        maintenanceButton = findViewById(R.id.maintenanceButton)
+        maintenanceButton.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.device_maintenance_title)
+                .setMessage(R.string.device_maintenance_message)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(
+                    R.string.device_maintenance_confirm
+                ) { _, _ ->
+                    openMaintenancePage()
+                }
+                .show()
+        }
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -440,6 +469,7 @@ class MainActivity : ComponentActivity() {
             BRIDGE_NAME
         )
         webView.webViewClient = TabletWebViewClient()
+        webView.webChromeClient = TabletWebChromeClient()
         registerNetworkRetry()
         loadConfiguredPage()
     }
@@ -466,9 +496,32 @@ class MainActivity : ComponentActivity() {
             )
         }
     }
+    private val microphonePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val request = pendingMicrophoneRequest
+        pendingMicrophoneRequest = null
+        if (request == null) {
+            return@registerForActivityResult
+        }
+        if (granted && mayGrantMicrophone(request, true)) {
+            request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            Log.i(TAG, "WebView microphone permission granted")
+        } else {
+            request.deny()
+            Log.w(TAG, "WebView microphone permission denied")
+            emitToReact(
+                AndroidEvent.error(
+                    ErrorCode.MICROPHONE_PERMISSION_DENIED,
+                    "未获得麦克风权限"
+                )
+            )
+        }
+    }
 
     private fun retryConfiguredPageIfNeeded() {
         if (showingDiagnosticPage && deviceConfigStore.load() != null) {
+            pageLoadState.retry()
             loadConfiguredPage()
         }
     }
@@ -498,19 +551,83 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        cancelSeatPageLoadTimeout()
+        pageLoadState.beginHealthCheck()
+        val generation = ++healthCheckGeneration
+        if (
+            webView.url.isNullOrBlank() ||
+            webView.url == "about:blank" ||
+            showingDiagnosticPage
+        ) {
+            loadDiagnosticPage("checking")
+        }
+        runCatching {
+            healthExecutor.execute {
+                val result = backendHealthChecker.check(config.serverUrl)
+                webView.post {
+                    if (generation != healthCheckGeneration || isFinishing) {
+                        return@post
+                    }
+                    when (result) {
+                        BackendHealthChecker.Result.HEALTHY ->
+                            beginSeatPageLoad(config.seatPageUrl())
+                        BackendHealthChecker.Result.OFFLINE -> {
+                            pageLoadState.offline()
+                            loadDiagnosticPage("offline")
+                        }
+                        BackendHealthChecker.Result.SERVER_ERROR -> {
+                            pageLoadState.serverError()
+                            loadDiagnosticPage("server-error")
+                        }
+                    }
+                }
+            }
+        }.onFailure {
+            pageLoadState.offline()
+            loadDiagnosticPage("offline")
+        }
+    }
+
+    private fun beginSeatPageLoad(url: String) {
         showingDiagnosticPage = false
-        val url = config.seatPageUrl()
+        pageLoadState.beginPageLoad()
         Log.i(TAG, "Loading configured seat page: $url")
         webView.loadUrl(url)
+        cancelSeatPageLoadTimeout()
+        val timeoutAction = Runnable {
+            if (pageLoadState.timedOut()) {
+                Log.e(TAG, "WebView seat page load timed out")
+                webView.stopLoading()
+                loadDiagnosticPage("timeout")
+            }
+        }
+        pageLoadTimeoutAction = timeoutAction
+        webView.postDelayed(timeoutAction, PAGE_LOAD_TIMEOUT_MS)
     }
 
     private fun loadDiagnosticPage(mode: String) {
+        cancelSeatPageLoadTimeout()
         showingDiagnosticPage = true
+        if (::maintenanceButton.isInitialized) {
+            maintenanceButton.visibility = View.GONE
+        }
         val url = "$LOCAL_PAGE_URL?mode=${Uri.encode(mode)}"
         if (webView.url != url) {
             Log.i(TAG, "Loading local diagnostic page: $mode")
             webView.loadUrl(url)
         }
+    }
+
+    private fun cancelSeatPageLoadTimeout() {
+        pageLoadTimeoutAction?.let(webView::removeCallbacks)
+        pageLoadTimeoutAction = null
+    }
+
+    private fun openMaintenancePage() {
+        healthCheckGeneration += 1
+        cancelPendingMicrophoneRequest()
+        emitToReact(AndroidEvent.appLifecycle("PAUSED", "maintenance"))
+        loadDiagnosticPage("maintenance")
     }
 
     private fun defaultDeviceId(): String {
@@ -591,7 +708,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val quotedPayload = JSONObject.quote(payload)
-        webView.post {
+        val dispatch = Runnable {
             webView.evaluateJavascript(
                 """
                 (() => {
@@ -603,6 +720,11 @@ class MainActivity : ComponentActivity() {
                 """.trimIndent(),
                 null
             )
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            dispatch.run()
+        } else {
+            webView.post(dispatch)
         }
     }
 
@@ -641,28 +763,33 @@ class MainActivity : ComponentActivity() {
             webView.url?.startsWith(LOCAL_ASSET_PREFIX) == true
 
     private fun isTrustedSeatPage(): Boolean {
-        val config = deviceConfigStore.load() ?: return false
-        val current = runCatching {
-            Uri.parse(webView.url ?: return false)
-        }.getOrNull() ?: return false
-        val configured = Uri.parse(config.frontendUrl)
-        val expectedPath = "/seat/${config.seatId}"
-        return current.scheme == configured.scheme &&
-            current.host == configured.host &&
-            effectivePort(current) == effectivePort(configured) &&
-            current.path?.trimEnd('/') == expectedPath
+        return WebViewAccessPolicy.isTrustedSeatPage(
+            webView.url,
+            deviceConfigStore.load()
+        )
     }
 
-    private fun effectivePort(uri: Uri): Int =
-        if (uri.port != -1) {
-            uri.port
-        } else if (uri.scheme == "https") {
-            443
-        } else {
-            80
-        }
+    private fun mayGrantMicrophone(
+        request: PermissionRequest,
+        androidPermissionGranted: Boolean
+    ): Boolean = WebViewAccessPolicy.mayGrantMicrophone(
+        originUrl = request.origin?.toString(),
+        currentPageUrl = webView.url,
+        requestedResources = request.resources?.toList().orEmpty(),
+        config = deviceConfigStore.load(),
+        androidPermissionGranted = androidPermissionGranted
+    )
+
+    private fun cancelPendingMicrophoneRequest() {
+        pendingMicrophoneRequest?.deny()
+        pendingMicrophoneRequest = null
+    }
 
     override fun onDestroy() {
+        healthCheckGeneration += 1
+        cancelSeatPageLoadTimeout()
+        cancelPendingMicrophoneRequest()
+        healthExecutor.shutdownNow()
         setFillLightEnabled(false)
         if (::cameraController.isInitialized) {
             cameraController.release()
@@ -684,7 +811,20 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    override fun onStop() {
+    override fun onResume() {
+        super.onResume()
+        if (::webView.isInitialized) {
+            webView.onResume()
+            emitToReact(AndroidEvent.appLifecycle("RESUMED"))
+        }
+    }
+
+    override fun onPause() {
+        cancelPendingMicrophoneRequest()
+        if (::webView.isInitialized) {
+            emitToReact(AndroidEvent.appLifecycle("PAUSED", "activity"))
+            webView.onPause()
+        }
         if (
             ::cameraController.isInitialized &&
             cameraState != CameraState.IDLE
@@ -693,7 +833,7 @@ class MainActivity : ComponentActivity() {
         } else {
             setFillLightEnabled(false)
         }
-        super.onStop()
+        super.onPause()
     }
 
     private fun setFillLightEnabled(enabled: Boolean) {
@@ -727,6 +867,18 @@ class MainActivity : ComponentActivity() {
         override fun onPageFinished(view: WebView, url: String) {
             Log.i(TAG, "WebView loaded: $url")
             showingDiagnosticPage = url.startsWith(LOCAL_ASSET_PREFIX)
+            if (showingDiagnosticPage) {
+                maintenanceButton.visibility = View.GONE
+            } else if (
+                WebViewAccessPolicy.isTrustedSeatPage(
+                    url,
+                    deviceConfigStore.load()
+                )
+            ) {
+                cancelSeatPageLoadTimeout()
+                pageLoadState.ready()
+                maintenanceButton.visibility = View.VISIBLE
+            }
         }
 
         override fun shouldOverrideUrlLoading(
@@ -771,6 +923,8 @@ class MainActivity : ComponentActivity() {
                     )
                 )
                 if (!request.url.toString().startsWith(LOCAL_ASSET_PREFIX)) {
+                    cancelSeatPageLoadTimeout()
+                    pageLoadState.offline()
                     view.post {
                         loadDiagnosticPage("offline")
                     }
@@ -778,14 +932,76 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        private fun isConfiguredFrontendUri(uri: Uri): Boolean {
-            val config = deviceConfigStore.load() ?: return false
-            val configured = Uri.parse(config.frontendUrl)
-            return uri.scheme == configured.scheme &&
-                uri.host == configured.host &&
-                effectivePort(uri) == effectivePort(configured)
+        override fun onReceivedHttpError(
+            view: WebView,
+            request: WebResourceRequest,
+            errorResponse: WebResourceResponse
+        ) {
+            if (
+                request.isForMainFrame &&
+                errorResponse.statusCode >= 400 &&
+                !request.url.toString().startsWith(LOCAL_ASSET_PREFIX)
+            ) {
+                Log.e(
+                    TAG,
+                    "WebView main frame HTTP ${errorResponse.statusCode}"
+                )
+                cancelSeatPageLoadTimeout()
+                pageLoadState.serverError()
+                view.post {
+                    loadDiagnosticPage("server-error")
+                }
+            }
         }
 
+        private fun isConfiguredFrontendUri(uri: Uri): Boolean {
+            return WebViewAccessPolicy.isTrustedFrontendOrigin(
+                uri.toString(),
+                deviceConfigStore.load()
+            )
+        }
+
+    }
+
+    private inner class TabletWebChromeClient : WebChromeClient() {
+        override fun onPermissionRequest(request: PermissionRequest) {
+            runOnUiThread {
+                if (!mayGrantMicrophone(request, true)) {
+                    Log.w(
+                        TAG,
+                        "Blocked WebView resource request from ${request.origin}"
+                    )
+                    request.deny()
+                    return@runOnUiThread
+                }
+
+                if (
+                    ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    request.grant(
+                        arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                    )
+                    return@runOnUiThread
+                }
+
+                cancelPendingMicrophoneRequest()
+                pendingMicrophoneRequest = request
+                microphonePermissionLauncher.launch(
+                    Manifest.permission.RECORD_AUDIO
+                )
+            }
+        }
+
+        override fun onPermissionRequestCanceled(request: PermissionRequest) {
+            runOnUiThread {
+                if (pendingMicrophoneRequest === request) {
+                    pendingMicrophoneRequest = null
+                }
+            }
+        }
     }
 
     private companion object {
@@ -796,6 +1012,7 @@ class MainActivity : ComponentActivity() {
         const val FACE_EVENT_HEARTBEAT_MS = 1_000L
         const val CONFIG_RELOAD_DELAY_MS = 250L
         const val NETWORK_RETRY_DELAY_MS = 1_000L
+        const val PAGE_LOAD_TIMEOUT_MS = 15_000L
     }
 
     private enum class CameraState {

@@ -68,6 +68,15 @@ export default function App() {
   });
   const diagnosticMode =
     new URLSearchParams(window.location.search).get("mode") ?? "diagnostic";
+  const diagnosticMessage = {
+    setup: "请先保存设备配置，正式会议界面由中央主机 /seat/{seatId} 提供。",
+    checking: "正在检查中央后端健康状态，请稍候。",
+    offline: "无法连接中央后端，请检查网络或配置后重试。",
+    "server-error": "中央后端或会议页面返回错误，请检查服务状态后重试。",
+    timeout: "会议页面加载超时，请检查网络、前端服务和配置后重试。",
+    maintenance: "已进入管理员维护模式；会议页面和录音已暂停。",
+    diagnostic: "正式会议界面由中央主机 /seat/{seatId} 提供。",
+  }[diagnosticMode] ?? "正式会议界面由中央主机 /seat/{seatId} 提供。";
 
   useEffect(() => {
     setStatus((current) => ({
@@ -430,11 +439,7 @@ export default function App() {
       <section className="hero">
         <span className="eyebrow">SMART DESK · ANDROID DIAGNOSTICS</span>
         <h1>平板配置与原生能力诊断</h1>
-        <p>
-          {diagnosticMode === "offline"
-            ? "中央会议页面暂时不可用，请检查网络或配置后重试。"
-            : "正式会议界面由中央主机 /seat/{seatId} 提供。"}
-        </p>
+        <p>{diagnosticMessage}</p>
       </section>
 
       <form

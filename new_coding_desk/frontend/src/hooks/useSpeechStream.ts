@@ -17,6 +17,7 @@ import { MicrophoneCapture } from "../audio/microphone";
 import { SpeechWsClient } from "../audio/speechWsClient";
 import type { SpeechLanguageMode } from "../audio/speechWsClient";
 import type { SpeechStatus } from "../audio/types";
+import { subscribeNativeEvents } from "../native/nativeEvents";
 
 import { trace } from "../audio/speechTrace";
 
@@ -84,6 +85,7 @@ export function useSpeechStream(
   const startingRef = useRef(false);
   const recordingRef = useRef(false);
   const reconnectingRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
   const generationRef = useRef(0);
   const mountedRef = useRef(true);
@@ -112,6 +114,7 @@ export function useSpeechStream(
     startingRef.current = false;
     recordingRef.current = false;
     reconnectingRef.current = false;
+    reconnectAttemptsRef.current = 0;
     if (reconnectTimerRef.current !== null) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
@@ -141,6 +144,7 @@ export function useSpeechStream(
     const generation = generationRef.current + 1;
     generationRef.current = generation;
     startingRef.current = true;
+    reconnectAttemptsRef.current = 0;
     const isCurrent = () => (
       mountedRef.current && generationRef.current === generation
     );
@@ -157,6 +161,21 @@ export function useSpeechStream(
     let wsClient: SpeechWsClient | null = null;
     micRef.current = mic;
 
+    const forwardAudio = (pcm16: ArrayBufferLike) => {
+      if (isCurrent() && recordingRef.current) {
+        trace("frontend_pcm_sent_at", { size: pcm16.byteLength });
+        wsRef.current?.sendAudio(pcm16);
+      }
+    };
+
+    const failMicrophone = (micError: string) => {
+      if (!isCurrent()) return;
+      generationRef.current += 1;
+      cleanup();
+      setError(micError);
+      setStatus("error");
+    };
+
     const disposeAttempt = () => {
       if (wsRef.current === wsClient) wsRef.current = null;
       wsClient?.close();
@@ -168,21 +187,8 @@ export function useSpeechStream(
 
     try {
       await mic.start(
-        (pcm16) => {
-          if (isCurrent() && recordingRef.current) {
-            trace("frontend_pcm_sent_at", { size: pcm16.byteLength });
-            wsRef.current?.sendAudio(pcm16);
-          }
-        },
-        (micError) => {
-          if (!isCurrent()) return;
-          generationRef.current += 1;
-          startingRef.current = false;
-          recordingRef.current = false;
-          disposeAttempt();
-          setError(micError);
-          setStatus("error");
-        },
+        forwardAudio,
+        failMicrophone,
       );
     } catch (err) {
       if (!isCurrent()) {
@@ -210,10 +216,19 @@ export function useSpeechStream(
         || reconnectTimerRef.current !== null
       ) return;
 
+      if (reconnectAttemptsRef.current >= 3) {
+        generationRef.current += 1;
+        cleanup();
+        setError("Speech connection lost; microphone released");
+        setStatus("error");
+        return;
+      }
+
       reconnectTimerRef.current = window.setTimeout(() => {
         reconnectTimerRef.current = null;
         if (!isCurrent() || !recordingRef.current) return;
 
+        reconnectAttemptsRef.current += 1;
         reconnectingRef.current = true;
         setStatus("connecting_speech_ws");
         trace("speech_ws_reconnect_start_at", { meetingId, seatId });
@@ -223,7 +238,7 @@ export function useSpeechStream(
           meetingId,
           seatId,
           languageModeRef.current,
-        ).then((result) => {
+        ).then(async (result) => {
           if (
             !isCurrent() || !recordingRef.current
             || wsRef.current !== replacement
@@ -231,9 +246,40 @@ export function useSpeechStream(
             replacement.close();
             return;
           }
+          const replacementMicrophone = new MicrophoneCapture();
+          micRef.current = replacementMicrophone;
+          try {
+            await replacementMicrophone.start(
+              forwardAudio,
+              failMicrophone,
+            );
+          } catch (err) {
+            if (!isCurrent()) {
+              replacementMicrophone.stop();
+              return;
+            }
+            replacement.sendCancel();
+            generationRef.current += 1;
+            cleanup();
+            setError(
+              err instanceof Error
+                ? err.message
+                : "Microphone access denied",
+            );
+            setStatus("error");
+            return;
+          }
+          if (
+            !isCurrent() || !recordingRef.current
+            || wsRef.current !== replacement
+          ) {
+            replacementMicrophone.stop();
+            return;
+          }
           utteranceIdRef.current = result.utteranceId;
           setUtteranceId(result.utteranceId);
           reconnectingRef.current = false;
+          reconnectAttemptsRef.current = 0;
           setError(null);
           setStatus("recording");
           trace("speech_ws_reconnected_at", {
@@ -264,6 +310,9 @@ export function useSpeechStream(
           || !recordingRef.current || wsRef.current !== client
         ) return;
         wsRef.current = null;
+        const activeMicrophone = micRef.current;
+        micRef.current = null;
+        activeMicrophone?.stop();
         reconnectingRef.current = false;
         scheduleReconnect();
       });
@@ -379,6 +428,47 @@ export function useSpeechStream(
       cancel();
     }
   }, [isSpeaker, cancel]);
+
+  // Android Activity pause, browser backgrounding, and page teardown must
+  // release both getUserMedia and the speech WebSocket immediately.
+  useEffect(() => {
+    const releaseForPageLifecycle = () => {
+      if (
+        startingRef.current ||
+        recordingRef.current ||
+        micRef.current !== null ||
+        wsRef.current !== null
+      ) {
+        cancel();
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        releaseForPageLifecycle();
+      }
+    };
+    const unsubscribeNative = subscribeNativeEvents((event) => {
+      if (
+        event.type === "app_lifecycle" &&
+        typeof event.data === "object" &&
+        event.data !== null &&
+        "state" in event.data &&
+        event.data.state !== "RESUMED"
+      ) {
+        releaseForPageLifecycle();
+      }
+    });
+    window.addEventListener("pagehide", releaseForPageLifecycle);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      unsubscribeNative();
+      window.removeEventListener("pagehide", releaseForPageLifecycle);
+      document.removeEventListener(
+        "visibilitychange",
+        onVisibilityChange,
+      );
+    };
+  }, [cancel]);
 
   return {
     status,

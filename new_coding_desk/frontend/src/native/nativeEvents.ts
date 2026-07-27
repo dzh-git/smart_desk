@@ -28,6 +28,10 @@ export type SmartDeskNativeEvent = NativeEventEnvelope &
     | { type: "identity_status"; data: NativeIdentityStatus }
     | { type: "camera_status"; data: Record<string, unknown> }
     | { type: "face_detection_status"; data: Record<string, unknown> }
+    | {
+        type: "app_lifecycle";
+        data: { state?: string; reason?: string };
+      }
     | { type: "error"; data: { code?: string; message?: string } }
     | { type: string; data: unknown }
   );

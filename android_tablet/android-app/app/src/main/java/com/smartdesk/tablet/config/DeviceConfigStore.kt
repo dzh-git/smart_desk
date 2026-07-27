@@ -2,13 +2,21 @@ package com.smartdesk.tablet.config
 
 import android.content.Context
 import android.util.Log
+import com.google.gson.Gson
+import com.smartdesk.tablet.security.LocalStringStore
 import com.smartdesk.tablet.security.SecureStringStore
 
-class DeviceConfigStore(context: Context) {
-    private val secureStore = SecureStringStore(
-        context,
-        PREFERENCES_NAME,
-        KEY_ALIAS
+class DeviceConfigStore internal constructor(
+    private val secureStore: LocalStringStore
+) {
+    private val gson = Gson()
+
+    constructor(context: Context) : this(
+        SecureStringStore(
+            context,
+            PREFERENCES_NAME,
+            KEY_ALIAS
+        )
     )
 
     fun load(): DeviceConfig? {
@@ -27,7 +35,7 @@ class DeviceConfigStore(context: Context) {
         )
         secureStore.putString(
             CONFIG_KEY,
-            config.toJson(includeSecret = true).toString()
+            gson.toJson(config)
         )
         return config
     }

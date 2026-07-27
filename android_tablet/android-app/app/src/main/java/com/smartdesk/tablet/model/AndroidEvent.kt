@@ -30,6 +30,18 @@ object AndroidEvent {
             JSONObject().put("status", status)
         )
 
+    fun appLifecycle(state: String, reason: String? = null): String =
+        event(
+            "app_lifecycle",
+            JSONObject()
+                .put("state", state)
+                .also { payload ->
+                    if (reason != null) {
+                        payload.put("reason", reason)
+                    }
+                }
+        )
+
     fun faceDetectionStatus(result: FaceDetectionResult): String =
         event(
             "face_detection_status",

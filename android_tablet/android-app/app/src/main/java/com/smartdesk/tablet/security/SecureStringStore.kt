@@ -11,6 +11,12 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+interface LocalStringStore {
+    fun getString(key: String): String?
+    fun putString(key: String, value: String)
+    fun remove(key: String)
+}
+
 /**
  * AES-GCM string storage backed by a non-exportable Android Keystore key.
  *
@@ -21,14 +27,14 @@ class SecureStringStore(
     context: Context,
     preferencesName: String,
     private val keyAlias: String
-) {
+) : LocalStringStore {
     private val preferences = context.getSharedPreferences(
         preferencesName,
         Context.MODE_PRIVATE
     )
 
     @Synchronized
-    fun getString(key: String): String? {
+    override fun getString(key: String): String? {
         val stored = preferences.getString(key, null) ?: return null
         if (!stored.startsWith(ENCRYPTED_PREFIX)) {
             putString(key, stored)
@@ -42,7 +48,7 @@ class SecureStringStore(
     }
 
     @Synchronized
-    fun putString(key: String, value: String) {
+    override fun putString(key: String, value: String) {
         val encrypted = encrypt(value)
         check(preferences.edit().putString(key, encrypted).commit()) {
             "Failed to persist encrypted local value"
@@ -50,7 +56,7 @@ class SecureStringStore(
     }
 
     @Synchronized
-    fun remove(key: String) {
+    override fun remove(key: String) {
         preferences.edit().remove(key).apply()
     }
 
