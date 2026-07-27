@@ -1,0 +1,3 @@
+include/DeviceConfig.h
+.pio/
+.vscode/

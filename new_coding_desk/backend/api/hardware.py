@@ -110,6 +110,17 @@ async def hardware_status():
                     "command_pending": diag.get("command_pending", False),
                     "last_ack_at": diag.get("last_ack_at"),
                     "last_error": diag.get("last_error"),
+                    "device_type": diag.get("device_type", "unknown"),
+                    "device_id": diag.get("device_id"),
+                    "firmware_version": diag.get("firmware_version"),
+                    "last_heartbeat_at": diag.get("last_heartbeat_at"),
+                    "last_sequence": diag.get("last_sequence"),
+                    "sensor_ok": diag.get("sensor_ok"),
+                    "pir": diag.get("pir"),
+                    "distance_mm": diag.get("distance_mm"),
+                    "pending_command_id": diag.get(
+                        "pending_command_id"
+                    ),
                 }
             )
 

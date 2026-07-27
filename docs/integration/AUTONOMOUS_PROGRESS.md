@@ -4,9 +4,9 @@
 
 ## 当前阶段
 
-阶段 0–5 的仓库合并、稳定身份、受信设备认证、Native Bridge 事件契约和
-identity-checkin 幂等链路已经完成软件实现与定向回归。下一阶段进入 ESP32
-协议、固件骨架、模拟器和单席闭环。
+阶段 0–6 已完成软件实现与定向回归。ESP32 正式直连路径、版本化协议、实际可
+编译固件、模拟器和旧 Windows/Arduino 台架兼容均已落地；下一阶段进入 seat 1
+自动闭环和连续 20 轮恢复/幂等测试。
 
 ## 已完成
 
@@ -32,6 +32,14 @@ identity-checkin 幂等链路已经完成软件实现与定向回归。下一阶
 - Native Bridge 已覆盖设备信息、受限设备凭据、身份状态、已注册人员以及
   开始/停止验证；设备密钥只允许受信 `/seat/{seatId}` 页面读取。
 - `PROTOTYPE` 默认不能自动签到，`CALIBRATION_PENDING` 会被拒绝。
+- 新增 `esp32_seat_controller/`：PlatformIO 固件、协议、模拟器和静态契约
+  测试；固件已实际编译为 ESP32 Dev Module 镜像。
+- 后端 `/ws/seat/{seatId}` 同时支持 ESP32 v1 和旧 Windows Seat Agent；
+  `deploy_mode=esp32` 为正式直连模式，`central/distributed` 仍保留。
+- ESP32 协议实现 hello、心跳/离线、入座、传感器错误、版本/席位校验、4096
+  bytes 上限、sequence、事件去重、命令 ID、ACK、同 ID 重试、超时与重连同步。
+- 硬件状态接口可以区分 `esp32/windows_agent`，并报告固件、心跳、传感器、
+  距离、命令待确认和最近错误。
 - Graphify 根级单一快照已更新。
 
 ## 已执行测试
@@ -51,6 +59,9 @@ identity-checkin 幂等链路已经完成软件实现与定向回归。下一阶
 | Android Lint | `gradlew lintDebug` | 通过 |
 | Android APK编译 | `gradlew assembleDebug` | 通过；不含未提供的模型权重 |
 | Graphify | `scripts\graphify_update_single.bat` | 通过 |
+| ESP32 服务端协议/WS/灯光兼容 | 定向 pytest | 通过，23 项 |
+| ESP32 模拟器/固件契约 | `pytest simulator/tests` | 通过，8 项 |
+| ESP32 固件 | `platformio run` | 通过；RAM 14.9%，Flash 74.7% |
 
 `test_speech_stream_service.py` 与 `test_speech_websocket_blackbox.py`
 组合运行超过六分钟执行时限，未取得完整汇总；没有把超时描述为通过。
@@ -71,7 +82,6 @@ OpenCV 4.11 兼容线，复验通过。
 ## 尚未完成的软件任务
 
 - Android 健康检查、加载超时和管理员重新配置入口。
-- ESP32 协议、固件骨架、后端兼容处理、模拟器和协议测试。
 - seat 1 自动闭环与连续 20 轮恢复/幂等测试。
 - Android WebView 麦克风权限和生命周期处理。
 - Tablet/ESP32 分离的设备状态与管理端只读视图。
@@ -91,12 +101,12 @@ OpenCV 4.11 兼容线，复验通过。
 - 当前人脸权重未随仓库提供，许可和商业使用范围尚未通过发布门禁。
 - 设备 token 已受保护，但 TLS、事件时效限制、设备禁用/轮换运维界面仍需在
   发布安全阶段收口。
-- 现有 Seat Agent 协议适合 Windows+Arduino，但尚不满足 ESP32 ACK、
-  顺序、版本和传感器错误要求。
+- ESP32 固件已编译但尚未在实物验证 PIR/VL53L0X/WS2812B 引脚、阈值、供电、
+  Wi-Fi 和看门狗复位行为。
 
 ## 下一步
 
-1. 提交阶段 1–5 设备安全和身份幂等闭环。
-2. 在现有 SeatGateway 上实现版本化 ESP32 协议和模拟器。
-3. 完成 20 轮单席软件闭环与故障恢复测试。
-4. 接入 Android WebView 语音和设备运维状态。
+1. 提交阶段 6 ESP32 直连协议、固件和模拟器。
+2. 完成 20 轮单席软件闭环与故障恢复测试。
+3. 接入 Android WebView 语音和设备运维状态。
+4. 完成发布安全、CI、一键验证与人工验收包。

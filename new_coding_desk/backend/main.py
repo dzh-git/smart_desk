@@ -314,8 +314,8 @@ app.include_router(hardware.router)
 app.include_router(people.router)
 app.include_router(tablet_devices.router)
 
-# Distributed mode only: Seat Edge Agent WebSocket channel.
-if deploy_mode == "distributed":
+# Network hardware modes: legacy Windows Seat Agent or direct ESP32 channel.
+if deploy_mode in {"distributed", "esp32"}:
     app.include_router(seat_ws.router)
 
 

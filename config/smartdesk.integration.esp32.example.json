@@ -1,0 +1,15 @@
+{
+  "deploy_mode": "esp32",
+  "lighting": {
+    "demo_seat_id": null
+  },
+  "arduino": {
+    "enabled": false,
+    "seats": {}
+  },
+  "seats_total": 9,
+  "gesture": {
+    "enabled": true,
+    "status_ws_url": "ws://127.0.0.1:8765"
+  }
+}

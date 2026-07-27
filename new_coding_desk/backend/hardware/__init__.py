@@ -11,8 +11,10 @@ Two deploy modes (config/smartdesk.integration.json -> ``deploy_mode``):
   serial ports directly via ``seat_managers`` (``{seat_id: ArduinoManager}``).
   Use this to test on one machine with Arduinos plugged into the host.
 
-* ``distributed`` (production): the central host talks to Seat Edge Agents over
-  WebSocket (``/ws/seat/{seat_id}``); each agent owns its seat's serial port.
+* ``distributed`` (compatibility): the central host talks to Windows Seat Edge
+  Agents over WebSocket.
+* ``esp32`` (production): ESP32 controllers connect directly to the same
+  versioned WebSocket endpoint.
   ``seat_managers`` is empty here.
 
 In both modes a ``SeatGatewayLike`` gateway is built (``LocalSeatGateway`` or
@@ -56,7 +58,7 @@ def load_integration_config() -> dict:
 _config = load_integration_config()
 gesture_config = _config.get("gesture", {})
 deploy_mode = (_config.get("deploy_mode") or "central").strip().lower()
-if deploy_mode not in ("central", "distributed"):
+if deploy_mode not in ("central", "distributed", "esp32"):
     logger.warning("Unknown deploy_mode %r; falling back to 'central'.", deploy_mode)
     deploy_mode = "central"
 
@@ -81,7 +83,7 @@ lighting_config = _config.get("lighting") or {}
 demo_seat_id: Optional[int] = lighting_config.get("demo_seat_id")
 
 # In central mode, build the per-seat serial managers at import (ports NOT yet
-# opened). In distributed mode, the central host owns no serial ports.
+# opened). In network modes, the central host owns no serial ports.
 seat_managers: dict[int, ArduinoManager] = (
     build_seat_managers(_config) if deploy_mode == "central" else {}
 )

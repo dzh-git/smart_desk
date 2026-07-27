@@ -1,9 +1,9 @@
 """
-Seat Edge Agent WebSocket — /ws/seat/{seat_id}
+Seat hardware WebSocket — /ws/seat/{seat_id}
 
-Distributed-mode only (deploy_mode=distributed). Each seat's Windows terminal
-runs a ``seat_agent`` that opens this WebSocket and keeps it alive for the
-whole session. Two directions:
+Network-hardware modes accept both the legacy Windows Seat Agent and the
+versioned ESP32 direct protocol. ESP32 is the production path; legacy messages
+remain available for the Windows/Arduino test bench.
 
 * Downlink (central -> agent): lighting commands, e.g.
       {"type":"lighting","cmd":"SET_MODE","arg":"meeting"}
@@ -25,8 +25,10 @@ reconnecting agent resyncs its Arduino.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -34,6 +36,13 @@ from backend.database import SessionLocal
 from backend.events import event_bus
 from backend.exceptions import NotFoundError, ValidationError
 from backend.hardware import get_seat_gateway, get_lighting_manager, seat_ids
+from backend.hardware.esp32_protocol import (
+    ProtocolViolation,
+    decode_uplink,
+    event_ack_message,
+    hello_ack_message,
+    protocol_error_message,
+)
 from backend.hardware.seat_gateway import SeatGateway
 from backend.services.meeting_service import MeetingService
 from backend.services.seat_service import SeatService
@@ -50,7 +59,7 @@ def _active_meeting_id(db) -> int | None:
 
 @router.websocket("/ws/seat/{seat_id}")
 async def seat_agent_ws(ws: WebSocket, seat_id: int):
-    """Bidirectional channel with one seat's Edge Agent."""
+    """Bidirectional channel with one ESP32 or legacy Windows Seat Agent."""
     gateway = get_seat_gateway()
     if not isinstance(gateway, SeatGateway):
         await ws.accept()
@@ -64,44 +73,89 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
 
     await ws.accept()
     gateway.register(seat_id, ws)
-    logger.info("[seat_ws] seat %d agent connected", seat_id)
-
-    # Resync: push the seat's current intended mode immediately.
-    lm = get_lighting_manager()
-    mode = lm.seat_mode.get(seat_id, "IDLE") if lm else "IDLE"
-    try:
-        await ws.send_json({"type": "lighting", "cmd": "SET_MODE", "arg": mode})
-    except Exception:
-        logger.exception("[seat_ws] initial sync send failed seat=%d", seat_id)
+    logger.info("[seat_ws] seat %d transport connected", seat_id)
+    esp32_ready = False
+    legacy_ready = False
 
     try:
-        async for raw in ws.iter_text():
+        while True:
             try:
-                msg = json.loads(raw)
-            except json.JSONDecodeError:
-                logger.warning("[seat_ws] bad json from seat %d: %r", seat_id, raw)
+                raw = await asyncio.wait_for(
+                    ws.receive_text(),
+                    timeout=1.0,
+                )
+            except asyncio.TimeoutError:
+                gateway.retry_due_command(seat_id)
+                if gateway.heartbeat_expired(seat_id):
+                    gateway.mark_heartbeat_timeout(seat_id)
+                    await ws.close(
+                        code=1011,
+                        reason="ESP32 heartbeat timeout",
+                    )
+                    break
                 continue
 
-            mtype = msg.get("type")
-            if mtype == "pir":
-                await _handle_pir(seat_id, bool(msg.get("occupied", False)))
-            elif mtype == "status":
-                gateway.set_status(
+            legacy = _decode_legacy_message(raw)
+            if legacy is not None:
+                if esp32_ready:
+                    await _send_protocol_error(
+                        ws,
+                        ProtocolViolation(
+                            "PROTOCOL_MIXED",
+                            "legacy messages cannot follow ESP32 hello",
+                            fatal=True,
+                        ),
+                    )
+                    break
+                if not legacy_ready:
+                    gateway.configure_legacy_session(seat_id)
+                    legacy_ready = True
+                    _send_intended_mode(gateway, seat_id)
+                await _handle_legacy_message(
+                    gateway,
                     seat_id,
-                    bool(msg.get("connected", True)),
-                    msg.get("current_mode"),
-                    last_error=msg.get("last_error"),
-                    last_ack_at=msg.get("last_ack_at"),
-                    command_pending=msg.get("command_pending"),
+                    legacy,
                 )
-            elif mtype == "sync":
-                lm2 = get_lighting_manager()
-                mode2 = lm2.seat_mode.get(seat_id, "IDLE") if lm2 else "IDLE"
-                await ws.send_json(
-                    {"type": "lighting", "cmd": "SET_MODE", "arg": mode2}
+                continue
+
+            try:
+                msg = decode_uplink(raw, seat_id)
+                message_type = msg["type"]
+                if message_type == "hello":
+                    if legacy_ready:
+                        raise ProtocolViolation(
+                            "PROTOCOL_MIXED",
+                            "ESP32 hello cannot follow legacy messages",
+                            fatal=True,
+                        )
+                    gateway.configure_esp32_session(
+                        seat_id,
+                        device_id=msg["device_id"],
+                        firmware_version=msg["firmware_version"],
+                        boot_id=msg["boot_id"],
+                    )
+                    esp32_ready = True
+                    await ws.send_json(
+                        hello_ack_message(str(uuid.uuid4()))
+                    )
+                    _send_intended_mode(gateway, seat_id)
+                    continue
+                if not esp32_ready:
+                    raise ProtocolViolation(
+                        "HELLO_REQUIRED",
+                        "hello must be the first ESP32 message",
+                        fatal=True,
+                    )
+                await _handle_esp32_message(
+                    ws,
+                    gateway,
+                    seat_id,
+                    msg,
                 )
-            else:
-                logger.debug("[seat_ws] ignored msg type %r from seat %d", mtype, seat_id)
+            except ProtocolViolation as error:
+                await _send_protocol_error(ws, error)
+                if error.fatal:
+                    break
     except WebSocketDisconnect:
         pass
     except Exception:
@@ -112,7 +166,180 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
         logger.info("[seat_ws] seat %d agent gone", seat_id)
 
 
-async def _handle_pir(seat_id: int, occupied: bool) -> None:
+def _decode_legacy_message(raw: str) -> dict | None:
+    """Return a legacy message, or None when it belongs to protocol v1."""
+    if len(raw.encode("utf-8")) > 4096:
+        return None
+    try:
+        message = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if (
+        isinstance(message, dict)
+        and "schema_version" not in message
+        and message.get("type") in {"pir", "status", "sync"}
+    ):
+        return message
+    return None
+
+
+def _send_intended_mode(gateway: SeatGateway, seat_id: int) -> None:
+    manager = get_lighting_manager()
+    mode = (
+        manager.seat_mode.get(seat_id, "IDLE")
+        if manager is not None
+        else "IDLE"
+    )
+    gateway.send(seat_id, "SET_MODE", mode)
+
+
+async def _send_protocol_error(
+    ws: WebSocket,
+    error: ProtocolViolation,
+) -> None:
+    await ws.send_json(protocol_error_message(error))
+    if error.fatal:
+        await ws.close(code=1008, reason=error.code)
+
+
+async def _handle_legacy_message(
+    gateway: SeatGateway,
+    seat_id: int,
+    message: dict,
+) -> None:
+    message_type = message.get("type")
+    if message_type == "pir":
+        await _handle_occupancy(
+            seat_id,
+            bool(message.get("occupied", False)),
+        )
+    elif message_type == "status":
+        gateway.set_status(
+            seat_id,
+            bool(message.get("connected", True)),
+            message.get("current_mode"),
+            last_error=message.get("last_error"),
+            last_ack_at=message.get("last_ack_at"),
+            command_pending=message.get("command_pending"),
+        )
+    elif message_type == "sync":
+        _send_intended_mode(gateway, seat_id)
+
+
+async def _handle_esp32_message(
+    ws: WebSocket,
+    gateway: SeatGateway,
+    seat_id: int,
+    message: dict,
+) -> None:
+    message_type = message["type"]
+    sequence = message["sequence"]
+    if message_type == "occupancy":
+        disposition = gateway.accept_occupancy_event(
+            seat_id,
+            event_id=message["event_id"],
+            sequence=sequence,
+        )
+        if disposition == "duplicate":
+            await ws.send_json(
+                event_ack_message(
+                    message["event_id"],
+                    accepted=True,
+                    duplicate=True,
+                )
+            )
+            return
+        if disposition == "out_of_order":
+            await ws.send_json(
+                event_ack_message(
+                    message["event_id"],
+                    accepted=False,
+                    error_code="SEQUENCE_OUT_OF_ORDER",
+                )
+            )
+            return
+        gateway.record_occupancy_evidence(
+            seat_id,
+            pir=message["pir"],
+            distance_mm=message.get("distance_mm"),
+            sensor_ok=message.get("sensor_ok"),
+        )
+        await _handle_occupancy(seat_id, message["occupied"])
+        await ws.send_json(
+            event_ack_message(message["event_id"], accepted=True)
+        )
+        return
+
+    if message_type == "command_ack":
+        if not gateway.accept_sequence(seat_id, sequence):
+            if gateway.is_duplicate_command_ack(
+                seat_id,
+                message["command_id"],
+            ):
+                return
+            raise ProtocolViolation(
+                "SEQUENCE_OUT_OF_ORDER",
+                "command_ack sequence is not newer",
+            )
+        gateway.acknowledge_command(
+            seat_id,
+            command_id=message["command_id"],
+            success=message["success"],
+            current_mode=message["current_mode"],
+            error_code=message.get("error_code"),
+        )
+        return
+
+    if message_type == "sensor_error":
+        disposition = gateway.accept_event(
+            seat_id,
+            event_id=message["event_id"],
+            sequence=sequence,
+        )
+        if disposition == "duplicate":
+            await ws.send_json(
+                event_ack_message(
+                    message["event_id"],
+                    accepted=True,
+                    duplicate=True,
+                )
+            )
+            return
+        if disposition == "out_of_order":
+            await ws.send_json(
+                event_ack_message(
+                    message["event_id"],
+                    accepted=False,
+                    error_code="SEQUENCE_OUT_OF_ORDER",
+                )
+            )
+            return
+        gateway.record_sensor_error(
+            seat_id,
+            component=message["component"],
+            error_code=message["error_code"],
+        )
+        await ws.send_json(
+            event_ack_message(message["event_id"], accepted=True)
+        )
+        return
+
+    if not gateway.accept_sequence(seat_id, sequence):
+        raise ProtocolViolation(
+            "SEQUENCE_OUT_OF_ORDER",
+            "message sequence is not newer",
+        )
+    if message_type == "heartbeat":
+        gateway.record_heartbeat(
+            seat_id,
+            mode=message["current_mode"],
+            sensor_ok=message.get("sensor_ok"),
+        )
+    elif message_type == "sync":
+        _send_intended_mode(gateway, seat_id)
+
+
+async def _handle_occupancy(seat_id: int, occupied: bool) -> None:
     """Occupancy from hardware -> seat state machine -> EventBus -> lighting.
 
     Mirrors the dev endpoint: updates DB seat state and publishes
