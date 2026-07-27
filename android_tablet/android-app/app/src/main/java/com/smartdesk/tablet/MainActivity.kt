@@ -336,6 +336,7 @@ class MainActivity : ComponentActivity() {
             AndroidBridge(
                 defaultDeviceId = defaultDeviceId(),
                 onGetDeviceConfig = deviceConfigStore::load,
+                onGetDeviceCredential = ::getDeviceCredential,
                 onSaveDeviceConfig = ::saveDeviceConfiguration,
                 onReloadSeatPage = {
                     runOnUiThread(::loadConfiguredPage)
@@ -453,10 +454,10 @@ class MainActivity : ComponentActivity() {
         return runCatching {
             val config = deviceConfigStore.save(payload)
             webView.postDelayed(::loadConfiguredPage, CONFIG_RELOAD_DELAY_MS)
-            JSONObject()
-                .put("type", "device_config_saved")
-                .put("data", config.toJson())
-                .toString()
+            AndroidEvent.event(
+                "device_config_saved",
+                config.toJson()
+            )
         }.getOrElse { error ->
             Log.w(TAG, "Rejected device configuration", error)
             AndroidEvent.error(
@@ -470,6 +471,24 @@ class MainActivity : ComponentActivity() {
         if (showingDiagnosticPage && deviceConfigStore.load() != null) {
             loadConfiguredPage()
         }
+    }
+
+    private fun getDeviceCredential(): String {
+        if (!isTrustedSeatPage()) {
+            return AndroidEvent.error(
+                ErrorCode.BRIDGE_ACTION_FORBIDDEN,
+                "设备凭据只能提供给已配置的正式席位页面"
+            )
+        }
+        val config = deviceConfigStore.load()
+            ?: return AndroidEvent.error(
+                ErrorCode.DEVICE_CONFIG_INVALID,
+                "设备尚未完成配置"
+            )
+        return AndroidEvent.event(
+            "device_credential",
+            JSONObject().put("deviceToken", config.deviceToken)
+        )
     }
 
     private fun loadConfiguredPage() {
@@ -621,6 +640,28 @@ class MainActivity : ComponentActivity() {
         ::webView.isInitialized &&
             webView.url?.startsWith(LOCAL_ASSET_PREFIX) == true
 
+    private fun isTrustedSeatPage(): Boolean {
+        val config = deviceConfigStore.load() ?: return false
+        val current = runCatching {
+            Uri.parse(webView.url ?: return false)
+        }.getOrNull() ?: return false
+        val configured = Uri.parse(config.frontendUrl)
+        val expectedPath = "/seat/${config.seatId}"
+        return current.scheme == configured.scheme &&
+            current.host == configured.host &&
+            effectivePort(current) == effectivePort(configured) &&
+            current.path?.trimEnd('/') == expectedPath
+    }
+
+    private fun effectivePort(uri: Uri): Int =
+        if (uri.port != -1) {
+            uri.port
+        } else if (uri.scheme == "https") {
+            443
+        } else {
+            80
+        }
+
     override fun onDestroy() {
         setFillLightEnabled(false)
         if (::cameraController.isInitialized) {
@@ -745,14 +786,6 @@ class MainActivity : ComponentActivity() {
                 effectivePort(uri) == effectivePort(configured)
         }
 
-        private fun effectivePort(uri: Uri): Int =
-            if (uri.port != -1) {
-                uri.port
-            } else if (uri.scheme == "https") {
-                443
-            } else {
-                80
-            }
     }
 
     private companion object {

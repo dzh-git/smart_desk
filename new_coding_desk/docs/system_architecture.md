@@ -132,7 +132,9 @@ use `WebNativeBridge`; Android WebView sessions use `AndroidNativeBridge`.
 Android emits `smartdesk-native-event`. A `PROTOTYPE` result is displayed but
 does not automatically check in. Only `VALIDATED` evidence is submitted
 automatically; an explicit demo control may submit `PROTOTYPE`, and the backend
-still rejects it unless its development-only gate is enabled.
+still rejects it unless its development-only gate is enabled. Every current
+native event carries `schemaVersion`, `eventId`, `timestamp`, `type`, and
+`data`; the frontend suppresses repeated event IDs.
 
 ## Android Tablet Integration
 
@@ -146,7 +148,8 @@ persisted seat/device/server/frontend configuration
   -> CameraX + ML Kit + alignment + MobileFaceNet
   -> smartdesk-native-event identity_status
   -> frontend policy gate
-  -> POST /api/seats/{seatId}/identity-checkin
+  -> POST /api/seats/{seatId}/identity-checkin + device token + event ID
+  -> authenticated TabletDevice binding + durable idempotency record
   -> Person -> active Attendee
   -> existing SeatService.check_in
 ```
@@ -154,7 +157,10 @@ persisted seat/device/server/frontend configuration
 Android does not access SQLite. The backend never performs face inference.
 Configuration, enrollment, diagnostics, and threshold calibration stay in the
 local `android_tablet/diagnostic-web` fallback page.
-The frontend reads the tablet `serverUrl` synchronously through
+Device configuration and face templates are encrypted at rest with
+Android Keystore AES-GCM keys. The credential Bridge method is origin- and
+seat-path restricted, and raw tokens never appear in device-info/config
+responses. The frontend reads the tablet `serverBaseUrl` synchronously through
 `SmartDeskNative.getDeviceInfo()` for HTTP and WebSocket connections. Explicit
 `app-config.js` values continue to take precedence.
 

@@ -1,6 +1,7 @@
 package com.smartdesk.tablet.recognition
 
 import android.content.Context
+import com.smartdesk.tablet.security.SecureStringStore
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -13,10 +14,15 @@ class FaceTemplateStore(
         PREFERENCES_NAME,
         Context.MODE_PRIVATE
     )
+    private val secureStore = SecureStringStore(
+        context,
+        PREFERENCES_NAME,
+        KEY_ALIAS
+    )
 
     @Synchronized
     fun loadAll(): List<PersonFaceTemplate> {
-        val raw = preferences.getString(TEMPLATES_KEY, null)
+        val raw = secureStore.getString(TEMPLATES_KEY)
             ?: return emptyList()
         return runCatching {
             val payload = JSONObject(raw)
@@ -73,8 +79,8 @@ class FaceTemplateStore(
 
     @Synchronized
     fun clearAll() {
+        secureStore.remove(TEMPLATES_KEY)
         preferences.edit()
-            .remove(TEMPLATES_KEY)
             .remove(LEGACY_TEMPLATE_KEY)
             .remove(THRESHOLD_KEY)
             .remove(THRESHOLD_STATUS_KEY)
@@ -168,8 +174,8 @@ class FaceTemplateStore(
             .put("modelHash", modelConfig.modelSha256)
             .put("pipelineVersion", modelConfig.pipelineVersion)
             .put("persons", persons)
+        secureStore.putString(TEMPLATES_KEY, payload.toString())
         preferences.edit()
-            .putString(TEMPLATES_KEY, payload.toString())
             .remove(LEGACY_TEMPLATE_KEY)
             .remove(THRESHOLD_KEY)
             .remove(THRESHOLD_STATUS_KEY)
@@ -196,6 +202,7 @@ class FaceTemplateStore(
     companion object {
         const val MAX_PERSON_COUNT = 9
         private const val PREFERENCES_NAME = "face_identity_private"
+        private const val KEY_ALIAS = "smartdesk_face_templates_key_v1"
         private const val TEMPLATES_KEY = "face_templates_v3"
         private const val LEGACY_TEMPLATE_KEY = "seat_face_template"
         private const val THRESHOLD_KEY = "cosine_threshold_v3"

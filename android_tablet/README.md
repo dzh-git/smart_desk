@@ -11,7 +11,7 @@
 Android App 加载：
 
 ```text
-{frontendUrl}/seat/{seatId}
+{frontendBaseUrl}/seat/{seatId}
 ```
 
 `diagnostic-web` 不是第二套会议界面。它只在首次配置、中央页面不可用或管理员
@@ -31,22 +31,24 @@ android_tablet/
 
 ## 设备配置
 
-首次启动会进入本地配置页。配置会保存在 App 私有
-`SharedPreferences`，示例见
+首次启动会进入本地配置页。配置通过 Android Keystore 的不可导出 AES-GCM
+密钥加密后保存在 App 私有存储；旧明文配置首次读取时自动迁移。示例见
 `android-app/app/src/main/assets/device-config.example.json`：
 
 ```json
 {
   "seatId": 1,
   "deviceId": "tablet-seat-01",
-  "serverUrl": "http://192.168.1.10:8000",
-  "frontendUrl": "http://192.168.1.10:5173"
+  "deviceToken": "replace-with-provisioned-token",
+  "serverBaseUrl": "http://192.168.1.10:8000",
+  "frontendBaseUrl": "http://192.168.1.10:5173"
 }
 ```
 
-席位范围固定为 1–9。App 只允许 WebView 在已配置前端的同源页面内导航；主页面
+`deviceToken` 必须是后端为该设备签发的 24–256 位非空白密钥，诊断页不会回显
+已保存密钥。席位范围固定为 1–9。App 只允许 WebView 在已配置前端的同源页面内导航；主页面
 加载失败时回退到本地诊断页，网络恢复后自动重试，也可手动重试。
-主前端会通过 `SmartDeskNative.getDeviceInfo()` 读取 `serverUrl`，并据此连接后端
+主前端会通过 `SmartDeskNative.getDeviceInfo()` 读取 `serverBaseUrl`，并据此连接后端
 HTTP API 和会议/语音 WebSocket。
 
 ## Bridge 契约
@@ -55,9 +57,15 @@ HTTP API 和会议/语音 WebSocket。
 
 ```javascript
 window.SmartDeskNative.getDeviceInfo()
+window.SmartDeskNative.getDeviceCredential()
+window.SmartDeskNative.getIdentityStatus()
+window.SmartDeskNative.getRegisteredFaces()
 window.SmartDeskNative.startFaceVerification()
 window.SmartDeskNative.stopFaceVerification()
 ```
+
+`getDeviceCredential()` 只允许已配置前端同源且路径严格为
+`/seat/{seatId}` 的正式页面调用；诊断页和外部页面均被拒绝。
 
 异步状态统一派发为：
 
@@ -65,7 +73,10 @@ window.SmartDeskNative.stopFaceVerification()
 window.dispatchEvent(
   new CustomEvent("smartdesk-native-event", {
     detail: {
+      schemaVersion: 1,
+      eventId: "6fe8e135-15f5-4a3f-946c-8800d7519937",
       type: "identity_status",
+      timestamp: 1785168000000,
       data: {
         status: "VERIFIED",
         personId: "person_001",

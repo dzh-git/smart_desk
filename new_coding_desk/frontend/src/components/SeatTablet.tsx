@@ -65,6 +65,7 @@ import {
 import {
   subscribeNativeEvents,
   type NativeIdentityStatus,
+  type SmartDeskNativeEvent,
 } from "../native/nativeEvents";
 
 // Shared dark-theme components
@@ -137,12 +138,17 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     useState<NativeIdentityStatus | null>(null);
   const [identityCheckinSubmitting, setIdentityCheckinSubmitting] =
     useState(false);
+  const nativeDeviceCredential = useRef<string | null>(null);
+  const nativeIdentityEvent = useRef<SmartDeskNativeEvent | null>(
+    null,
+  );
   const submittedIdentityKey = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
     const unsubscribe = subscribeNativeEvents((event) => {
       if (event.type === "identity_status") {
+        nativeIdentityEvent.current = event;
         setNativeIdentityStatus(event.data as NativeIdentityStatus);
       } else if (event.type === "error") {
         const data = event.data as { code?: string; message?: string };
@@ -165,6 +171,20 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
               error instanceof Error
                 ? error.message
                 : "Unable to read Android device configuration",
+            );
+          }
+        });
+      void nativeBridge
+        .getDeviceCredential()
+        .then((deviceToken) => {
+          if (active) nativeDeviceCredential.current = deviceToken;
+        })
+        .catch((error: unknown) => {
+          if (active) {
+            setActionError(
+              error instanceof Error
+                ? error.message
+                : "Unable to read Android device credential",
             );
           }
         });
@@ -268,6 +288,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       status: "VERIFYING",
       message: "正在启动 Android 本地人脸验证",
     });
+    nativeIdentityEvent.current = null;
     try {
       await nativeBridge.startFaceVerification();
     } catch (error: unknown) {
@@ -304,6 +325,15 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         );
         return;
       }
+      const sourceEvent = nativeIdentityEvent.current;
+      if (!sourceEvent || sourceEvent.type !== "identity_status") {
+        setActionError("身份签到缺少原生事件编号");
+        return;
+      }
+      if (!nativeDeviceCredential.current) {
+        setActionError("身份签到缺少设备认证密钥");
+        return;
+      }
       if (nativeDeviceInfo.seatId !== seatId) {
         setActionError(
           `设备绑定席位 ${nativeDeviceInfo.seatId ?? "未配置"} 与当前页面席位 ${seatId} 不一致`,
@@ -314,17 +344,24 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       setIdentityCheckinSubmitting(true);
       setActionError(null);
       try {
-        await identityCheckinSeat(seatId, {
-          personId: identity.personId,
-          deviceId: nativeDeviceInfo.deviceId,
-          deviceSeatId: nativeDeviceInfo.seatId,
-          status: identity.status,
-          similarity: identity.similarity,
-          thresholdStatus:
-            identity.thresholdStatus ?? "CALIBRATION_PENDING",
-          verificationLevel: identity.verificationLevel ?? "NONE",
-          modelVersion: identity.modelVersion,
-        });
+        await identityCheckinSeat(
+          seatId,
+          {
+            eventId: sourceEvent.eventId,
+            eventTimestamp: sourceEvent.timestamp,
+            personCode: identity.personId,
+            deviceId: nativeDeviceInfo.deviceId,
+            deviceSeatId: nativeDeviceInfo.seatId,
+            status: identity.status,
+            similarity: identity.similarity,
+            thresholdStatus:
+              identity.thresholdStatus ?? "CALIBRATION_PENDING",
+            verificationLevel:
+              identity.verificationLevel ?? "NONE",
+            modelVersion: identity.modelVersion ?? null,
+          },
+          nativeDeviceCredential.current,
+        );
         refresh();
       } catch (error: unknown) {
         setActionError(
@@ -350,11 +387,8 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       return;
     }
 
-    const identityKey = [
-      nativeIdentityStatus.personId,
-      nativeIdentityStatus.modelVersion,
-      nativeIdentityStatus.similarity,
-    ].join(":");
+    const identityKey = nativeIdentityEvent.current?.eventId;
+    if (!identityKey) return;
     if (submittedIdentityKey.current === identityKey) return;
     submittedIdentityKey.current = identityKey;
     void submitIdentityCheckin(nativeIdentityStatus);

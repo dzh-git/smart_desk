@@ -17,12 +17,55 @@ export interface NativeIdentityStatus {
   timestamp?: number;
 }
 
-export type SmartDeskNativeEvent =
-  | { type: "identity_status"; data: NativeIdentityStatus }
-  | { type: "camera_status"; data: Record<string, unknown> }
-  | { type: "face_detection_status"; data: Record<string, unknown> }
-  | { type: "error"; data: { code?: string; message?: string } }
-  | { type: string; data: unknown };
+export interface NativeEventEnvelope {
+  schemaVersion: number;
+  eventId: string;
+  timestamp: number;
+}
+
+export type SmartDeskNativeEvent = NativeEventEnvelope &
+  (
+    | { type: "identity_status"; data: NativeIdentityStatus }
+    | { type: "camera_status"; data: Record<string, unknown> }
+    | { type: "face_detection_status"; data: Record<string, unknown> }
+    | { type: "error"; data: { code?: string; message?: string } }
+    | { type: string; data: unknown }
+  );
+
+function legacyEventId(type: string): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return `legacy:${globalThis.crypto.randomUUID()}`;
+  }
+  return `legacy:${type}:${Date.now()}:${Math.random()}`;
+}
+
+export function normalizeNativeEvent(
+  value: unknown,
+): SmartDeskNativeEvent {
+  if (!value || typeof value !== "object") {
+    throw new Error("SmartDeskNative returned an invalid event");
+  }
+  const candidate = value as Partial<SmartDeskNativeEvent>;
+  if (typeof candidate.type !== "string" || !("data" in candidate)) {
+    throw new Error("SmartDeskNative returned an invalid event");
+  }
+  return {
+    schemaVersion:
+      typeof candidate.schemaVersion === "number"
+        ? candidate.schemaVersion
+        : 0,
+    eventId:
+      typeof candidate.eventId === "string" && candidate.eventId
+        ? candidate.eventId
+        : legacyEventId(candidate.type),
+    timestamp:
+      typeof candidate.timestamp === "number"
+        ? candidate.timestamp
+        : Date.now(),
+    type: candidate.type,
+    data: candidate.data,
+  } as SmartDeskNativeEvent;
+}
 
 export function dispatchNativeEvent(event: SmartDeskNativeEvent): void {
   window.dispatchEvent(
@@ -35,10 +78,21 @@ export function dispatchNativeEvent(event: SmartDeskNativeEvent): void {
 export function subscribeNativeEvents(
   listener: (event: SmartDeskNativeEvent) => void,
 ): () => void {
+  const deliveredEventIds = new Set<string>();
   const handler = (event: Event) => {
-    const detail = (event as CustomEvent<SmartDeskNativeEvent>).detail;
-    if (detail && typeof detail.type === "string") {
+    try {
+      const detail = normalizeNativeEvent(
+        (event as CustomEvent<unknown>).detail,
+      );
+      if (deliveredEventIds.has(detail.eventId)) return;
+      deliveredEventIds.add(detail.eventId);
+      if (deliveredEventIds.size > 256) {
+        const oldest = deliveredEventIds.values().next().value;
+        if (oldest) deliveredEventIds.delete(oldest);
+      }
       listener(detail);
+    } catch {
+      // Ignore malformed events from unrelated or stale bridge versions.
     }
   };
 

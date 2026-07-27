@@ -51,8 +51,9 @@ export default function App() {
   const [device, setDevice] = useState({
     deviceId: "未配置",
     seatId: null,
-    serverUrl: null,
-    frontendUrl: null,
+    serverBaseUrl: null,
+    frontendBaseUrl: null,
+    deviceTokenConfigured: false,
     manufacturer: "—",
     model: "—",
     androidVersion: "—",
@@ -60,8 +61,10 @@ export default function App() {
   const [deviceConfig, setDeviceConfig] = useState({
     seatId: 1,
     deviceId: "",
-    serverUrl: "http://192.168.1.10:8000",
-    frontendUrl: "http://192.168.1.10:5173",
+    serverBaseUrl: "http://192.168.1.10:8000",
+    frontendBaseUrl: "http://192.168.1.10:5173",
+    deviceToken: "",
+    deviceTokenConfigured: false,
   });
   const diagnosticMode =
     new URLSearchParams(window.location.search).get("mode") ?? "diagnostic";
@@ -117,8 +120,14 @@ export default function App() {
         setDeviceConfig({
           seatId: event.data.seatId,
           deviceId: event.data.deviceId,
-          serverUrl: event.data.serverUrl,
-          frontendUrl: event.data.frontendUrl,
+          serverBaseUrl:
+            event.data.serverBaseUrl ?? event.data.serverUrl,
+          frontendBaseUrl:
+            event.data.frontendBaseUrl ?? event.data.frontendUrl,
+          deviceToken: "",
+          deviceTokenConfigured: Boolean(
+            event.data.deviceTokenConfigured,
+          ),
         });
       } else {
         setDeviceConfig((current) => ({
@@ -135,12 +144,20 @@ export default function App() {
     }
 
     if (event?.type === "device_config" && event.data) {
-      setDeviceConfig(event.data);
+      setDeviceConfig((current) => ({
+        ...current,
+        ...event.data,
+        deviceToken: "",
+      }));
       return;
     }
 
     if (event?.type === "device_config_saved") {
-      setDeviceConfig(event.data);
+      setDeviceConfig((current) => ({
+        ...current,
+        ...event.data,
+        deviceToken: "",
+      }));
       setDevice((current) => ({
         ...current,
         ...event.data,
@@ -458,9 +475,9 @@ export default function App() {
             <input
               type="url"
               required
-              value={deviceConfig.serverUrl}
+              value={deviceConfig.serverBaseUrl}
               onChange={(event) =>
-                updateDeviceConfig("serverUrl", event.target.value)
+                updateDeviceConfig("serverBaseUrl", event.target.value)
               }
             />
           </label>
@@ -469,9 +486,28 @@ export default function App() {
             <input
               type="url"
               required
-              value={deviceConfig.frontendUrl}
+              value={deviceConfig.frontendBaseUrl}
               onChange={(event) =>
-                updateDeviceConfig("frontendUrl", event.target.value)
+                updateDeviceConfig("frontendBaseUrl", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            <span>
+              设备密钥
+              {deviceConfig.deviceTokenConfigured
+                ? "（留空保留现有密钥）"
+                : ""}
+            </span>
+            <input
+              type="password"
+              minLength="24"
+              maxLength="256"
+              required={!deviceConfig.deviceTokenConfigured}
+              autoComplete="new-password"
+              value={deviceConfig.deviceToken}
+              onChange={(event) =>
+                updateDeviceConfig("deviceToken", event.target.value)
               }
             />
           </label>

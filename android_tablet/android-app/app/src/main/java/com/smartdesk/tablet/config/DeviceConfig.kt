@@ -8,22 +8,32 @@ data class DeviceConfig(
     val seatId: Int,
     val deviceId: String,
     val serverUrl: String,
-    val frontendUrl: String
+    val frontendUrl: String,
+    val deviceToken: String
 ) {
     fun seatPageUrl(): String = "$frontendUrl/seat/$seatId"
 
-    fun toJson(): JSONObject =
+    fun toJson(includeSecret: Boolean = false): JSONObject =
         JSONObject()
             .put("seatId", seatId)
             .put("deviceId", deviceId)
-            .put("serverUrl", serverUrl)
-            .put("frontendUrl", frontendUrl)
+            .put("serverBaseUrl", serverUrl)
+            .put("frontendBaseUrl", frontendUrl)
+            .put("deviceTokenConfigured", deviceToken.isNotBlank())
+            .also { payload ->
+                if (includeSecret) {
+                    payload.put("deviceToken", deviceToken)
+                }
+            }
 
     companion object {
         private val deviceIdPattern = Regex("[A-Za-z0-9._-]{3,64}")
         private val gson = Gson()
 
-        fun parse(json: String): DeviceConfig {
+        fun parse(
+            json: String,
+            fallbackDeviceToken: String? = null
+        ): DeviceConfig {
             val payload = runCatching {
                 gson.fromJson(json, DeviceConfigPayload::class.java)
             }.getOrElse {
@@ -44,17 +54,32 @@ data class DeviceConfig(
                 "deviceId must contain 3-64 letters, numbers, dots, underscores, or hyphens"
             }
 
+            val deviceToken = (
+                payload.deviceToken?.trim()
+                    ?.takeIf(String::isNotBlank)
+                    ?: fallbackDeviceToken
+                ).orEmpty()
+            require(
+                deviceToken.length in 24..256 &&
+                    deviceToken.all { !it.isWhitespace() }
+            ) {
+                "deviceToken must contain 24-256 non-whitespace characters"
+            }
+
             return DeviceConfig(
                 seatId = seatId,
                 deviceId = deviceId,
                 serverUrl = normalizeBaseUrl(
-                    payload.serverUrl.orEmpty(),
-                    "serverUrl"
+                    payload.serverBaseUrl
+                        ?: payload.serverUrl.orEmpty(),
+                    "serverBaseUrl"
                 ),
                 frontendUrl = normalizeBaseUrl(
-                    payload.frontendUrl.orEmpty(),
-                    "frontendUrl"
-                )
+                    payload.frontendBaseUrl
+                        ?: payload.frontendUrl.orEmpty(),
+                    "frontendBaseUrl"
+                ),
+                deviceToken = deviceToken
             )
         }
 
@@ -78,6 +103,9 @@ data class DeviceConfig(
         private data class DeviceConfigPayload(
             val seatId: Int = 0,
             val deviceId: String? = null,
+            val deviceToken: String? = null,
+            val serverBaseUrl: String? = null,
+            val frontendBaseUrl: String? = null,
             val serverUrl: String? = null,
             val frontendUrl: String? = null
         )

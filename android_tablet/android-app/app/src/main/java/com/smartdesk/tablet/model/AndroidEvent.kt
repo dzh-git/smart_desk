@@ -1,45 +1,43 @@
 package com.smartdesk.tablet.model
 
 import org.json.JSONObject
+import java.util.UUID
 
 object AndroidEvent {
+    fun event(type: String, data: JSONObject): String =
+        JSONObject()
+            .put("schemaVersion", 1)
+            .put("eventId", UUID.randomUUID().toString())
+            .put("type", type)
+            .put("timestamp", System.currentTimeMillis())
+            .put("data", data)
+            .toString()
+
     fun registeredPeople(personIds: List<String>): String {
         val people = org.json.JSONArray()
         personIds.forEach(people::put)
-        return JSONObject()
-            .put("type", "registered_people")
-            .put(
-                "data",
-                JSONObject()
-                    .put("personIds", people)
-                    .put("count", personIds.size)
-            )
-            .toString()
+        return event(
+            "registered_people",
+            JSONObject()
+                .put("personIds", people)
+                .put("count", personIds.size)
+        )
     }
 
     fun cameraStatus(status: String): String =
-        JSONObject()
-            .put("type", "camera_status")
-            .put(
-                "data",
-                JSONObject()
-                    .put("status", status)
-                    .put("timestamp", System.currentTimeMillis())
-            )
-            .toString()
+        event(
+            "camera_status",
+            JSONObject().put("status", status)
+        )
 
     fun faceDetectionStatus(result: FaceDetectionResult): String =
-        JSONObject()
-            .put("type", "face_detection_status")
-            .put(
-                "data",
-                JSONObject()
-                    .put("status", result.status)
-                    .put("faceCount", result.faceCount)
-                    .put("processingTimeMs", result.processingTimeMs)
-                    .put("timestamp", System.currentTimeMillis())
-            )
-            .toString()
+        event(
+            "face_detection_status",
+            JSONObject()
+                .put("status", result.status)
+                .put("faceCount", result.faceCount)
+                .put("processingTimeMs", result.processingTimeMs)
+        )
 
     fun identityStatus(result: IdentityStatus): String {
         val data = JSONObject()
@@ -78,12 +76,8 @@ object AndroidEvent {
                 result.processingTimeMs ?: JSONObject.NULL
             )
             .put("message", result.message)
-            .put("timestamp", System.currentTimeMillis())
 
-        return JSONObject()
-            .put("type", "identity_status")
-            .put("data", data)
-            .toString()
+        return event("identity_status", data)
     }
 
     fun error(
@@ -91,14 +85,11 @@ object AndroidEvent {
         message: String,
         cameraStillRunning: Boolean = false
     ): String =
-        JSONObject()
-            .put("type", "error")
-            .put(
-                "data",
-                JSONObject()
-                    .put("code", code)
-                    .put("message", message)
-                    .put("cameraStillRunning", cameraStillRunning)
-            )
-            .toString()
+        event(
+            "error",
+            JSONObject()
+                .put("code", code)
+                .put("message", message)
+                .put("cameraStillRunning", cameraStillRunning)
+        )
 }

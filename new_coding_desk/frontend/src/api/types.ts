@@ -79,14 +79,16 @@ export interface SpeakerSeat {
 }
 
 export interface IdentityCheckInPayload {
-  personId: string;
+  eventId: string;
+  eventTimestamp: number;
+  personCode: string;
   deviceId: string;
   deviceSeatId: number;
   status: string;
   similarity: number;
   thresholdStatus: string;
   verificationLevel: string;
-  modelVersion?: string | null;
+  modelVersion: string | null;
 }
 
 // ── Vote ──────────────────────────────────────────────────────────────────

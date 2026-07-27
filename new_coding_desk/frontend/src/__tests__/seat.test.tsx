@@ -402,7 +402,10 @@ describe("SeatTablet - Android identity check-in", () => {
       value: {
         getDeviceInfo: vi.fn(() =>
           JSON.stringify({
+            schemaVersion: 1,
+            eventId: "device-info-event-0001",
             type: "device_info",
+            timestamp: 1_700_000_000_000,
             data: {
               deviceId: "tablet-seat-01",
               seatId: 1,
@@ -412,9 +415,41 @@ describe("SeatTablet - Android identity check-in", () => {
             },
           }),
         ),
+        getDeviceCredential: vi.fn(() =>
+          JSON.stringify({
+            schemaVersion: 1,
+            eventId: "device-credential-event-0001",
+            type: "device_credential",
+            timestamp: 1_700_000_000_000,
+            data: {
+              deviceToken: "device-secret-token-00000001",
+            },
+          }),
+        ),
+        getIdentityStatus: vi.fn(() =>
+          JSON.stringify({
+            schemaVersion: 1,
+            eventId: "identity-status-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_000,
+            data: { status: "IDLE" },
+          }),
+        ),
+        getRegisteredFaces: vi.fn(() =>
+          JSON.stringify({
+            schemaVersion: 1,
+            eventId: "registered-faces-event-0001",
+            type: "registered_people",
+            timestamp: 1_700_000_000_000,
+            data: { personIds: [], count: 0 },
+          }),
+        ),
         startFaceVerification: vi.fn(() =>
           JSON.stringify({
+            schemaVersion: 1,
+            eventId: "verification-start-event-0001",
             type: "identity_status",
+            timestamp: 1_700_000_000_000,
             data: { status: "VERIFYING" },
           }),
         ),
@@ -425,12 +460,17 @@ describe("SeatTablet - Android identity check-in", () => {
 
   it("automatically submits only a VALIDATED identity result", async () => {
     installNativeBridge();
-    const identityCalls: Array<{ url: string; body: unknown }> = [];
+    const identityCalls: Array<{
+      url: string;
+      body: unknown;
+      headers?: HeadersInit;
+    }> = [];
     mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
       if (url === "/api/seats/1/identity-checkin") {
         identityCalls.push({
           url,
           body: JSON.parse(String(opts?.body)),
+          headers: opts?.headers,
         });
         return okResponse({
           seat_id: 1,
@@ -448,7 +488,10 @@ describe("SeatTablet - Android identity check-in", () => {
       window.dispatchEvent(
         new CustomEvent("smartdesk-native-event", {
           detail: {
+            schemaVersion: 1,
+            eventId: "verified-event-0001",
             type: "identity_status",
+            timestamp: 1_700_000_000_123,
             data: {
               status: "VERIFIED",
               personId: "person_001",
@@ -464,12 +507,18 @@ describe("SeatTablet - Android identity check-in", () => {
 
     await waitFor(() => expect(identityCalls).toHaveLength(1));
     expect(identityCalls[0].body).toMatchObject({
-      personId: "person_001",
+      eventId: "verified-event-0001",
+      eventTimestamp: 1_700_000_000_123,
+      personCode: "person_001",
       deviceId: "tablet-seat-01",
       deviceSeatId: 1,
       status: "VERIFIED",
       thresholdStatus: "VALIDATED",
       verificationLevel: "VALIDATED",
+    });
+    expect(identityCalls[0].headers).toMatchObject({
+      "X-SmartDesk-Device-Token":
+        "device-secret-token-00000001",
     });
   });
 
@@ -489,7 +538,10 @@ describe("SeatTablet - Android identity check-in", () => {
       window.dispatchEvent(
         new CustomEvent("smartdesk-native-event", {
           detail: {
+            schemaVersion: 1,
+            eventId: "prototype-event-0001",
             type: "identity_status",
+            timestamp: 1_700_000_000_456,
             data: {
               status: "VERIFIED",
               personId: "person_001",

@@ -4,7 +4,13 @@
 //
 // See docs/API_SPEC.md for complete documentation.
 
-import { apiDelete, apiGet, apiGetRaw, apiPost } from "./client";
+import {
+  apiDelete,
+  apiGet,
+  apiGetRaw,
+  apiPost,
+  apiRequest,
+} from "./client";
 import type {
   Meeting,
   SeatState,
@@ -237,11 +243,15 @@ export function checkinSeat(
 export function identityCheckinSeat(
   seatId: number,
   payload: IdentityCheckInPayload,
+  deviceToken: string,
 ): Promise<SeatState> {
-  return apiPost<SeatState>(
-    `/seats/${seatId}/identity-checkin`,
-    payload,
-  );
+  return apiRequest<SeatState>(`/seats/${seatId}/identity-checkin`, {
+    method: "POST",
+    headers: {
+      "X-SmartDesk-Device-Token": deviceToken,
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 // ── Dev Seat Controls (demo-only) ────────────────────────────────────────────

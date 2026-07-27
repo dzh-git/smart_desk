@@ -6,7 +6,11 @@ export interface DeviceInfo {
   seatId: number | null;
   serverUrl: string | null;
   frontendUrl: string | null;
+  serverBaseUrl?: string | null;
+  frontendBaseUrl?: string | null;
   configured: boolean;
+  deviceTokenConfigured?: boolean;
+  appVersion?: string;
   manufacturer?: string;
   model?: string;
   androidVersion?: string;
@@ -14,9 +18,17 @@ export interface DeviceInfo {
   bridgeReady?: boolean;
 }
 
+export interface RegisteredFaces {
+  personIds: string[];
+  count: number;
+}
+
 export interface NativeBridge {
   isAvailable(): boolean;
   getDeviceInfo(): Promise<DeviceInfo>;
+  getDeviceCredential(): Promise<string>;
+  getNativeStatus(): Promise<import("./nativeEvents").NativeIdentityStatus>;
+  getRegisteredFaces(): Promise<RegisteredFaces>;
   startFaceVerification(): Promise<void>;
   stopFaceVerification(): Promise<void>;
 }

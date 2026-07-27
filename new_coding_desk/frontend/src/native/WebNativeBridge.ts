@@ -1,4 +1,9 @@
-import type { DeviceInfo, NativeBridge } from "./NativeBridge";
+import type {
+  DeviceInfo,
+  NativeBridge,
+  RegisteredFaces,
+} from "./NativeBridge";
+import type { NativeIdentityStatus } from "./nativeEvents";
 
 export class WebNativeBridge implements NativeBridge {
   isAvailable(): boolean {
@@ -14,6 +19,22 @@ export class WebNativeBridge implements NativeBridge {
       configured: false,
       bridgeReady: false,
     };
+  }
+
+  async getDeviceCredential(): Promise<string> {
+    throw new Error("Android device credential is unavailable");
+  }
+
+  async getNativeStatus(): Promise<NativeIdentityStatus> {
+    return {
+      status: "UNAVAILABLE",
+      verificationLevel: "NONE",
+      message: "Android native face verification is unavailable",
+    };
+  }
+
+  async getRegisteredFaces(): Promise<RegisteredFaces> {
+    return { personIds: [], count: 0 };
   }
 
   async startFaceVerification(): Promise<void> {

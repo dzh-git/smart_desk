@@ -3,12 +3,15 @@ package com.smartdesk.tablet.bridge
 import android.os.Build
 import android.util.Log
 import android.webkit.JavascriptInterface
+import com.smartdesk.tablet.BuildConfig
 import com.smartdesk.tablet.config.DeviceConfig
+import com.smartdesk.tablet.model.AndroidEvent
 import org.json.JSONObject
 
 class AndroidBridge(
     private val defaultDeviceId: String,
     private val onGetDeviceConfig: () -> DeviceConfig?,
+    private val onGetDeviceCredential: () -> String,
     private val onSaveDeviceConfig: (String) -> String,
     private val onReloadSeatPage: () -> Unit,
     private val onStartFaceDetection: () -> Unit,
@@ -31,41 +34,40 @@ class AndroidBridge(
     @JavascriptInterface
     fun getDeviceInfo(): String {
         val config = onGetDeviceConfig()
-        val payload = JSONObject()
-            .put("type", "device_info")
+        val data = JSONObject()
+            .put("deviceId", config?.deviceId ?: defaultDeviceId)
+            .put("seatId", config?.seatId ?: JSONObject.NULL)
+            .put("serverUrl", config?.serverUrl ?: JSONObject.NULL)
+            .put("serverBaseUrl", config?.serverUrl ?: JSONObject.NULL)
+            .put("frontendUrl", config?.frontendUrl ?: JSONObject.NULL)
             .put(
-                "data",
-                JSONObject()
-                    .put("deviceId", config?.deviceId ?: defaultDeviceId)
-                    .put("seatId", config?.seatId ?: JSONObject.NULL)
-                    .put("serverUrl", config?.serverUrl ?: JSONObject.NULL)
-                    .put(
-                        "frontendUrl",
-                        config?.frontendUrl ?: JSONObject.NULL
-                    )
-                    .put("configured", config != null)
-                    .put("manufacturer", Build.MANUFACTURER)
-                    .put("model", Build.MODEL)
-                    .put("androidVersion", Build.VERSION.RELEASE)
-                    .put("sdkInt", Build.VERSION.SDK_INT)
-                    .put("bridgeReady", true)
+                "frontendBaseUrl",
+                config?.frontendUrl ?: JSONObject.NULL
             )
+            .put("configured", config != null)
+            .put("deviceTokenConfigured", config != null)
+            .put("manufacturer", Build.MANUFACTURER)
+            .put("model", Build.MODEL)
+            .put("androidVersion", Build.VERSION.RELEASE)
+            .put("sdkInt", Build.VERSION.SDK_INT)
+            .put("appVersion", BuildConfig.VERSION_NAME)
+            .put("bridgeReady", true)
 
         Log.i(TAG, "Device info requested")
-        return payload.toString()
+        return AndroidEvent.event("device_info", data)
     }
 
     @JavascriptInterface
     fun getDeviceConfig(): String {
         val config = onGetDeviceConfig()
-        return JSONObject()
-            .put("type", "device_config")
-            .put(
-                "data",
-                config?.toJson() ?: JSONObject.NULL
-            )
-            .toString()
+        return AndroidEvent.event(
+            "device_config",
+            config?.toJson() ?: JSONObject()
+        )
     }
+
+    @JavascriptInterface
+    fun getDeviceCredential(): String = onGetDeviceCredential()
 
     @JavascriptInterface
     fun saveDeviceConfig(configJson: String): String =
