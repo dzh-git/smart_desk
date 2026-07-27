@@ -406,8 +406,22 @@
   "404": "._get_speech_module",
   "405": ".note",
   "406": "SmartDesk 自主集成进度",
+  "407": "TestCliRobustness",
   "408": "SecureStringStore",
   "409": "._compute_rms",
   "410": "is_trace_enabled",
-  "413": "verify_software_baseline.ps1"
+  "411": "WebViewAccessPolicy",
+  "412": ".to_hand_input",
+  "413": "verify_software_baseline.ps1",
+  "414": "TestGestureRecognizerModelExists",
+  "415": "FaceQualityException",
+  "416": ".check",
+  "417": "TestUtteranceIdUniqueness",
+  "418": "TestPunctuationFallbackDoesNotBlockASR",
+  "419": "test_gesture_camera_driver.py",
+  "420": "TestExpectedGesture",
+  "421": "WebViewAccessPolicyTest",
+  "422": "._get_speech_module",
+  "423": ".cancel",
+  "424": ".test_tracker_still_works_without_recording"
 }
