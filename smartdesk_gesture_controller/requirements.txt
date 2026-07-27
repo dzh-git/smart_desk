@@ -1,6 +1,10 @@
 # Runtime dependencies
-mediapipe>=0.10.0
-opencv-python>=4.8.0
+# Keep the shared SmartDesk Python environment compatible with the backend's
+# SciPy/Numba stack, which currently requires NumPy 1.x.
+numpy>=1.26,<2
+mediapipe>=0.10.0,<0.11
+opencv-python>=4.8.0,<4.12
+opencv-contrib-python>=4.8.0,<4.12
 pyautogui>=0.9.54
 pywin32>=306
 keyboard>=0.13.5
@@ -12,4 +16,4 @@ websockets>=12.0
 PySide6>=6.5.0,<6.8
 
 # Test dependencies
-pytest>=8.0.0
+pytest>=8.0.0,<9
