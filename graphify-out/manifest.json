@@ -55,13 +55,13 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/seat_ws.py": {
-    "mtime": 1785171918.3679152,
-    "ast_hash": "616578807010e58f0f0a921439776c16",
+    "mtime": 1785193625.4131594,
+    "ast_hash": "ffe0b002082b42fe805c9c84e70e53ad",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/seats.py": {
-    "mtime": 1785168154.0668569,
-    "ast_hash": "5de535f656472dfa1bf5c18bc11ac4b5",
+    "mtime": 1785192763.0480783,
+    "ast_hash": "f391d2776a10264b4fd6b59fc6fdab60",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/service_calls.py": {
@@ -195,9 +195,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/base.py": {
-    "mtime": 1780286778.3493037,
-    "ast_hash": "1e435e3c81c43289a43b42b21717eaba",
-    "semantic_hash": "1e435e3c81c43289a43b42b21717eaba"
+    "mtime": 1785193032.5965059,
+    "ast_hash": "7849b0f9f93a1697a38a530b27948820",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/meeting_repository.py": {
     "mtime": 1781360535.8999088,
@@ -205,9 +205,9 @@
     "semantic_hash": "7aa710f22fc4f178bc65e245dd73e08c"
   },
   "new_coding_desk/backend/repositories/seat_repository.py": {
-    "mtime": 1784019321.5379581,
-    "ast_hash": "6f414c0e23432d7f5f81a296bc2503ce",
-    "semantic_hash": "6f414c0e23432d7f5f81a296bc2503ce"
+    "mtime": 1785193032.8008091,
+    "ast_hash": "3a88ac48d95406f017ff91ec3b3488e7",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/service_call_repository.py": {
     "mtime": 1780301895.958617,
@@ -235,8 +235,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/schemas/seat.py": {
-    "mtime": 1785168145.3988483,
-    "ast_hash": "db591d17969518dce96f2870a9b077d9",
+    "mtime": 1785192762.6368432,
+    "ast_hash": "79e77c96106622cc9af235604bb5fd26",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/schemas/service_call.py": {
@@ -290,8 +290,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/seat_service.py": {
-    "mtime": 1785168145.6320064,
-    "ast_hash": "7d1169ba762b44ea044daf4995fc7e3c",
+    "mtime": 1785193033.2047849,
+    "ast_hash": "2ee15503a590846084e6980220f5f95f",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/service_call_service.py": {
@@ -1170,8 +1170,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/docs/API_SPEC.md": {
-    "mtime": 1785192012.50836,
-    "ast_hash": "2c30dc3202dac929cb385c5d9daef3c3",
+    "mtime": 1785193624.9889836,
+    "ast_hash": "12fe7356657e8d659a8227be53731645",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/DATABASE_SCHEMA.md": {
@@ -1440,8 +1440,8 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/build.gradle.kts": {
-    "mtime": 1785163453.2061708,
-    "ast_hash": "ce1aa959796d62c3c0cd8ffe0b2d8ab4",
+    "mtime": 1785193439.802244,
+    "ast_hash": "4658af124309e3b25bdb94e7a4ff0ada",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/assets/device-config.example.json": {
@@ -1750,8 +1750,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_identity_checkin.py": {
-    "mtime": 1785168613.7556553,
-    "ast_hash": "94b08f2e33c620a35a6d13edd1a2760d",
+    "mtime": 1785193062.96366,
+    "ast_hash": "4905c721abdf0d8f7eb602c6078d3aa6",
     "semantic_hash": ""
   },
   "android_tablet/README.md": {
@@ -1760,8 +1760,8 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/assets/models/MODEL_CARD.md": {
-    "mtime": 1785077083.831277,
-    "ast_hash": "85644c79d6f2510ea2c26b837d85d760",
+    "mtime": 1785193337.7112408,
+    "ast_hash": "4e666fac8558e31c22c7377703b35c35",
     "semantic_hash": ""
   },
   "android_tablet/diagnostic-web/index.html": {
@@ -1810,13 +1810,13 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/tablet_devices.py": {
-    "mtime": 1785191298.317216,
-    "ast_hash": "7a613e4ea178e19f498227fe296172de",
+    "mtime": 1785192763.2572186,
+    "ast_hash": "265fe56042cc39b8c55a0a3b48deeb9d",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/identity_checkin_event_repository.py": {
-    "mtime": 1785168103.959759,
-    "ast_hash": "0b583e8dc7c07f62b5256e7a38d72555",
+    "mtime": 1785193033.0026407,
+    "ast_hash": "807a507ad537e703339766e958bddac0",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/tablet_device_repository.py": {
@@ -1830,13 +1830,13 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/tablet_device_service.py": {
-    "mtime": 1785191298.1075492,
-    "ast_hash": "e27b4fce49dd0fc1e06783e20fda7b2d",
+    "mtime": 1785193214.226256,
+    "ast_hash": "34bb2cb0b769b4a6d82f7e5e8344b0d3",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_tablet_devices.py": {
-    "mtime": 1785191943.371307,
-    "ast_hash": "8789cad7dabd9f2202613d8b120651db",
+    "mtime": 1785193214.6547122,
+    "ast_hash": "2ce05f3a7ab08c5c4709fc38a9742718",
     "semantic_hash": ""
   },
   "scripts/verify_software_baseline.ps1": {
@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "docs/integration/AUTONOMOUS_PROGRESS.md": {
-    "mtime": 1785192114.4179974,
-    "ast_hash": "dc6d38e0fbabbe9b2fa5aa2c3632560d",
+    "mtime": 1785194175.916766,
+    "ast_hash": "a1baca08245c3361b238e226dcec2815",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.esp32.example.json": {
@@ -1870,8 +1870,8 @@
     "semantic_hash": ""
   },
   "esp32_seat_controller/simulator/esp32_simulator.py": {
-    "mtime": 1785171773.983066,
-    "ast_hash": "cb86dd6f9130d36026644c5809e6523b",
+    "mtime": 1785193950.9274578,
+    "ast_hash": "5a7fb25dd334b4d0820aa9c5ef20f0cd",
     "semantic_hash": ""
   },
   "esp32_seat_controller/simulator/tests/conftest.py": {
@@ -1885,8 +1885,8 @@
     "semantic_hash": ""
   },
   "esp32_seat_controller/simulator/tests/test_simulator.py": {
-    "mtime": 1785171774.8091063,
-    "ast_hash": "bd85d0dbea2de0082864952c099527f2",
+    "mtime": 1785193815.2931845,
+    "ast_hash": "6e55f5007fc81c69a3bdb5dadee3daf3",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/hardware/esp32_protocol.py": {
@@ -1900,18 +1900,18 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_esp32_websocket.py": {
-    "mtime": 1785171918.6105592,
-    "ast_hash": "cdd9b37dd8066c37da8f375f43dd232b",
+    "mtime": 1785193214.8648229,
+    "ast_hash": "e9ea71db8609c8a7462049dcd9ee4f2b",
     "semantic_hash": ""
   },
   "esp32_seat_controller/README.md": {
-    "mtime": 1785171834.182009,
-    "ast_hash": "7d4c8683c78240abdbc6531338ff4cbb",
+    "mtime": 1785193778.86542,
+    "ast_hash": "e6d564b6c1cdb17d42cf6bb645a7cbe0",
     "semantic_hash": ""
   },
   "esp32_seat_controller/protocol.md": {
-    "mtime": 1785171834.398284,
-    "ast_hash": "2488ea922d2f551f3a56f9f31e1fbb20",
+    "mtime": 1785193624.5355866,
+    "ast_hash": "2ae51d1733232ee8d63e70e2960753d9",
     "semantic_hash": ""
   },
   "esp32_seat_controller/simulator/requirements.txt": {
@@ -1925,8 +1925,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_one_seat_integration.py": {
-    "mtime": 1785173040.3009534,
-    "ast_hash": "a6d3bedf6116e5c57d452bf85efddd2a",
+    "mtime": 1785192926.1344023,
+    "ast_hash": "0adfbe36b096c5aee608845dab8627f0",
     "semantic_hash": ""
   },
   "scripts/run_seat1_integration_test.ps1": {
@@ -1967,6 +1967,51 @@
   "new_coding_desk/frontend/src/components/__tests__/HardwareStatus.test.tsx": {
     "mtime": 1785191669.5679927,
     "ast_hash": "627792c82e6962a4e9bc88dd39aff54d",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/assets/models/model-license-gate.json": {
+    "mtime": 1785193337.4985242,
+    "ast_hash": "b61efeaed9dce40550ca6c1bb4e0b550",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/__init__.py": {
+    "mtime": 1785192531.032948,
+    "ast_hash": "41732294cd9efeb1005268da71d1e5da",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/device_auth.py": {
+    "mtime": 1785192531.2506218,
+    "ast_hash": "640d0f5057ed4dd744c6b47d0fc4c53e",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/rate_limit.py": {
+    "mtime": 1785192762.2132964,
+    "ast_hash": "a8caf73520bb46781b5241db076f4b13",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/structured_log.py": {
+    "mtime": 1785192762.4188745,
+    "ast_hash": "72927ee8d2b45a3d0a507ec45d821273",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/version_compat.py": {
+    "mtime": 1785193968.9340723,
+    "ast_hash": "44f0201ebeb958f5291d584d0638196c",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_security_controls.py": {
+    "mtime": 1785193950.7245522,
+    "ast_hash": "8329a6f77f3b0b58a93bf62bd7a87884",
+    "semantic_hash": ""
+  },
+  "scripts/check_model_license_gate.py": {
+    "mtime": 1785193338.124379,
+    "ast_hash": "8a03166367739b645ae483851b958103",
+    "semantic_hash": ""
+  },
+  "docs/integration/MODEL_LICENSE_GATE.md": {
+    "mtime": 1785193625.2040782,
+    "ast_hash": "c8bc3f81dae13d6bf05cd4ea52b33b30",
     "semantic_hash": ""
   }
 }
