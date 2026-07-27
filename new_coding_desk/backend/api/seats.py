@@ -10,6 +10,7 @@ Per API_SPEC §7:
 """
 from __future__ import annotations
 
+import os
 from typing import List
 
 from fastapi import APIRouter, Depends
@@ -23,6 +24,7 @@ from backend.schemas import ApiResponse
 from backend.schemas.seat import (
     SeatStateResponse,
     CheckInRequest,
+    IdentityCheckInRequest,
     SpeakerSeatResponse,
     SetSpeakerRequest,
 )
@@ -86,6 +88,50 @@ def check_in(
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
     except ValidationError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
+    return ApiResponse.ok(data=SeatStateResponse.model_validate(seat))
+
+
+@router.post(
+    "/{seat_id}/identity-checkin",
+    response_model=ApiResponse[SeatStateResponse],
+)
+def identity_check_in(
+    seat_id: int,
+    body: IdentityCheckInRequest,
+    db: Session = Depends(get_db),
+):
+    """Resolve a verified stable person and delegate to SeatService.check_in.
+
+    PROTOTYPE results remain blocked by default. Development-only testing may
+    opt in with SMARTDESK_ALLOW_PROTOTYPE_IDENTITY_CHECKIN=true.
+    """
+    allow_prototype = (
+        os.environ.get(
+            "SMARTDESK_ALLOW_PROTOTYPE_IDENTITY_CHECKIN",
+            "",
+        ).lower()
+        == "true"
+    )
+    try:
+        seat = _service(db).identity_check_in(
+            seat_id=seat_id,
+            device_seat_id=body.device_seat_id,
+            person_id=body.person_id,
+            identity_status=body.status,
+            threshold_status=body.threshold_status,
+            verification_level=body.verification_level,
+            allow_prototype=allow_prototype,
+        )
+    except NotFoundError as error:
+        return _to_json(
+            ApiResponse.fail(error.message, error.error_code),
+            404,
+        )
+    except ValidationError as error:
+        return _to_json(
+            ApiResponse.fail(error.message, error.error_code),
+            400,
+        )
     return ApiResponse.ok(data=SeatStateResponse.model_validate(seat))
 
 

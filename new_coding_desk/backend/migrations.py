@@ -72,3 +72,57 @@ def ensure_agenda_columns(engine) -> None:
             conn.execute(text(stmt))
             logger.info("Added column %s to agendas", col_name)
         conn.commit()
+
+
+# ── Android tablet identity integration ─────────────────────────────────────
+
+_ATTENDEE_IDENTITY_COLUMNS_TO_ADD: dict[str, str] = {
+    "person_id": "VARCHAR(64)",
+}
+
+
+def ensure_attendee_identity_columns(engine) -> None:
+    """Add the stable Person link to existing attendee tables.
+
+    Fresh databases receive the full foreign key and unique constraint from
+    SQLAlchemy metadata. Existing SQLite databases cannot add those constraints
+    with ALTER COLUMN, so a partial unique index enforces one Person per meeting
+    while preserving legacy rows whose person_id is NULL.
+    """
+    inspector = inspect(engine)
+    if "attendees" not in inspector.get_table_names():
+        return
+    existing = {
+        column["name"]
+        for column in inspector.get_columns("attendees")
+    }
+
+    with engine.connect() as conn:
+        for column_name, column_type in (
+            _ATTENDEE_IDENTITY_COLUMNS_TO_ADD.items()
+        ):
+            if column_name in existing:
+                continue
+            conn.execute(
+                text(
+                    "ALTER TABLE attendees "
+                    f"ADD COLUMN {column_name} {column_type}"
+                )
+            )
+            logger.info("Added column %s to attendees", column_name)
+
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_attendees_person_id "
+                "ON attendees(person_id)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "ix_attendees_meeting_person_id "
+                "ON attendees(meeting_id, person_id) "
+                "WHERE person_id IS NOT NULL"
+            )
+        )
+        conn.commit()

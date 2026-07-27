@@ -314,9 +314,12 @@ def create_attendee(
             meeting_id=meeting_id,
             name=body.name,
             title=body.title,
+            person_id=body.person_id,
         )
     except NotFoundError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ConflictError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 409)
     return ApiResponse.ok(data=AttendeeResponse.model_validate(attendee))
 
 

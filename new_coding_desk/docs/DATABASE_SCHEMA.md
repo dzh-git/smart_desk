@@ -35,12 +35,25 @@ Only one active meeting is supported.
 Agenda state is backend persisted. Only one agenda item may be active for a
 meeting. Status mutation rules are documented in `API_SPEC.md`.
 
+### `people`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | string | Stable primary key returned by Android local identity recognition. |
+| `name` | string | Canonical display name. |
+| `active` | boolean | Whether identity may be used for check-in. |
+| `created_at` | datetime | Creation time. |
+
+A Person is stable across meetings. Face templates refer to `people.id`, never
+to a temporary attendee row.
+
 ### `attendees`
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | integer | Primary key. |
 | `meeting_id` | integer | FK to `meetings.id`. |
+| `person_id` | string nullable | Optional FK to `people.id`. Unique per meeting when present. |
 | `name` | string | Attendee name. |
 | `title` | string | Attendee title. |
 | `seat_id` | integer nullable | Bound seat. |
@@ -129,11 +142,16 @@ SQLite schema updates must be idempotent. Existing demo databases may be
 deleted during cleanup, but code-level migrations must preserve existing rows
 when users keep a local database.
 
+The Android identity migration adds nullable `attendees.person_id` without
+guessing mappings for historical attendees. Existing deployments receive a
+partial unique index on `(meeting_id, person_id)` for non-null values.
+
 ## Repository Ownership
 
 | Repository | Owns |
 |---|---|
 | `MeetingRepository` | `meetings`, `agendas` |
+| `PersonRepository` | `people` |
 | `AttendeeRepository` | `attendees` |
 | `SeatRepository` | `seat_states`, `speaker_seat` |
 | `VoteRepository` | `votes`, `vote_records` |

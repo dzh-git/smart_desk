@@ -31,6 +31,7 @@ from backend.models.attendee import Attendee
 from backend.models.meeting import Meeting
 from backend.repositories.seat_repository import SeatRepository, SEAT_COUNT
 from backend.repositories.attendee_repository import AttendeeRepository
+from backend.repositories.person_repository import PersonRepository
 from backend.services.base import BaseService
 from backend.services.speech_stream_service import stream_service
 from backend.websocket.speech_registry import speech_registry
@@ -54,6 +55,7 @@ class SeatService(BaseService):
         super().__init__(db, event_bus)
         self.seat_repo = SeatRepository(db)
         self.attendee_repo = AttendeeRepository(db)
+        self.person_repo = PersonRepository(db)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -288,6 +290,99 @@ class SeatService(BaseService):
             "Seat %d: checked_in by attendee %d", seat_id, attendee_id
         )
         return seat
+
+    def identity_check_in(
+        self,
+        *,
+        seat_id: int,
+        device_seat_id: int,
+        person_id: str,
+        identity_status: str,
+        threshold_status: str,
+        verification_level: str,
+        allow_prototype: bool = False,
+    ) -> SeatState:
+        """Resolve a stable person in the active meeting, then reuse check_in.
+
+        The Android result is evidence only. This method enforces the rollout
+        gate before mapping Person -> Attendee and delegates the actual seat
+        transition to check_in(), so there is still one check-in state machine.
+        """
+        if device_seat_id != seat_id:
+            raise ValidationError(
+                (
+                    f"Device is bound to seat {device_seat_id}, "
+                    f"not requested seat {seat_id}"
+                ),
+                "DEVICE_SEAT_MISMATCH",
+            )
+        if identity_status != "VERIFIED":
+            raise ValidationError(
+                "Identity result is not VERIFIED",
+                "IDENTITY_NOT_VERIFIED",
+            )
+        if threshold_status == "CALIBRATION_PENDING":
+            raise ValidationError(
+                "Face verification calibration is still pending",
+                "FACE_CALIBRATION_PENDING",
+            )
+        if verification_level == "PROTOTYPE":
+            if threshold_status != "PROVISIONAL":
+                raise ValidationError(
+                    "Prototype verification requires a PROVISIONAL threshold",
+                    "IDENTITY_THRESHOLD_INVALID",
+                )
+            if not allow_prototype:
+                raise ValidationError(
+                    "Prototype identity check-in is disabled",
+                    "PROTOTYPE_IDENTITY_CHECKIN_DISABLED",
+                )
+        elif verification_level == "VALIDATED":
+            if threshold_status != "VALIDATED":
+                raise ValidationError(
+                    "Validated verification requires a VALIDATED threshold",
+                    "IDENTITY_THRESHOLD_INVALID",
+                )
+        else:
+            raise ValidationError(
+                f"Unsupported verification level: {verification_level}",
+                "IDENTITY_VERIFICATION_LEVEL_INVALID",
+            )
+
+        active = self._active_meeting()
+        if active is None:
+            raise ValidationError(
+                "There is no active meeting",
+                "NO_ACTIVE_MEETING",
+            )
+
+        person = self.person_repo.get_by_id(person_id)
+        if person is None:
+            raise ValidationError(
+                f"Person {person_id} not found",
+                "PERSON_NOT_FOUND",
+            )
+        if not person.active:
+            raise ValidationError(
+                f"Person {person_id} is inactive",
+                "PERSON_INACTIVE",
+            )
+
+        attendee = self.attendee_repo.get_by_person_and_meeting(
+            person_id,
+            active.id,
+        )
+        if attendee is None:
+            raise ValidationError(
+                f"Person {person_id} is not in the active meeting",
+                "PERSON_NOT_IN_ACTIVE_MEETING",
+            )
+
+        return self.check_in(
+            seat_id=seat_id,
+            attendee_id=attendee.id,
+            meeting_id=active.id,
+        )
 
     # ── Speaker Seat ─────────────────────────────────────────────────────────
 

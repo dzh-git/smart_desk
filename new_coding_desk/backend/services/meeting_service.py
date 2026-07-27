@@ -25,6 +25,7 @@ from backend.models.seat_state import SeatState
 from backend.models.vote import Vote
 from backend.repositories.meeting_repository import MeetingRepository
 from backend.repositories.attendee_repository import AttendeeRepository
+from backend.repositories.person_repository import PersonRepository
 from backend.services.base import BaseService
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class MeetingService(BaseService):
         super().__init__(db, event_bus)
         self.meeting_repo = MeetingRepository(db)
         self.attendee_repo = AttendeeRepository(db)
+        self.person_repo = PersonRepository(db)
 
     # ── Meeting CRUD ─────────────────────────────────────────────────────────
 
@@ -503,12 +505,34 @@ class MeetingService(BaseService):
     # ── Attendee ─────────────────────────────────────────────────────────────
 
     def create_attendee(
-        self, meeting_id: int, name: str, title: str = ""
+        self,
+        meeting_id: int,
+        name: str,
+        title: str = "",
+        person_id: str | None = None,
     ) -> Attendee:
         """Add an attendee to a meeting."""
         self.get_meeting(meeting_id)  # ensure meeting exists
+        if person_id is not None:
+            if self.person_repo.get_by_id(person_id) is None:
+                raise NotFoundError(
+                    f"Person {person_id} not found",
+                    "PERSON_NOT_FOUND",
+                )
+            if (
+                self.attendee_repo.get_by_person_and_meeting(
+                    person_id,
+                    meeting_id,
+                )
+                is not None
+            ):
+                raise ConflictError(
+                    f"Person {person_id} is already attending meeting {meeting_id}",
+                    "PERSON_ALREADY_IN_MEETING",
+                )
         return self.attendee_repo.create(
             meeting_id=meeting_id,
+            person_id=person_id,
             name=name,
             title=title,
         )

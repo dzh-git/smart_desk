@@ -25,6 +25,47 @@ class CheckInRequest(BaseModel):
     attendee_id: int = Field(..., gt=0)
 
 
+class IdentityCheckInRequest(BaseModel):
+    """Locally verified identity submitted by the bound Android tablet."""
+
+    person_id: str = Field(
+        ...,
+        min_length=3,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._-]+$",
+        alias="personId",
+    )
+    device_id: str = Field(
+        ...,
+        min_length=3,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._-]+$",
+        alias="deviceId",
+    )
+    device_seat_id: int = Field(..., ge=1, le=9, alias="deviceSeatId")
+    status: str = Field(..., min_length=1, max_length=32)
+    similarity: float = Field(..., ge=0, le=1)
+    threshold_status: str = Field(
+        ...,
+        min_length=1,
+        max_length=32,
+        alias="thresholdStatus",
+    )
+    verification_level: str = Field(
+        ...,
+        min_length=1,
+        max_length=32,
+        alias="verificationLevel",
+    )
+    model_version: str | None = Field(
+        default=None,
+        max_length=100,
+        alias="modelVersion",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 class SpeakerSeatResponse(BaseModel):
     """Speaker seat data returned to clients."""
     seat_id: int | None

@@ -54,6 +54,7 @@ from backend.api import (
     speech,
     host_display,
     hardware,
+    people,
 )
 from backend.api import seat_ws
 
@@ -215,10 +216,15 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
 
     # Phase 4: idempotent column additions for translation_records
-    from backend.migrations import ensure_translation_record_columns, ensure_agenda_columns
+    from backend.migrations import (
+        ensure_agenda_columns,
+        ensure_attendee_identity_columns,
+        ensure_translation_record_columns,
+    )
     ensure_translation_record_columns(engine)
     # Phase 1: idempotent column additions for agenda state machine
     ensure_agenda_columns(engine)
+    ensure_attendee_identity_columns(engine)
 
     # Seed: initialize seat_states (1..9), speaker_seat (id=1), and demo data
     db = SessionLocal()
@@ -304,6 +310,7 @@ app.include_router(translations.router)
 app.include_router(speech.router)
 app.include_router(host_display.router)
 app.include_router(hardware.router)
+app.include_router(people.router)
 
 # Distributed mode only: Seat Edge Agent WebSocket channel.
 if deploy_mode == "distributed":

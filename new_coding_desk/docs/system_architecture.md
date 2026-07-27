@@ -13,6 +13,11 @@ frontend/ React + Vite + TypeScript
   -> /ws/{meeting_id}?seat=N for broadcast events
   -> /ws/speech/{meeting_id}?seat=N for Speaker Seat PCM audio
 
+../android_tablet/ Android APK
+  -> WebView loads the same frontend /seat/{seatId}
+  -> SmartDeskNative exposes local camera and face verification only
+  -> diagnostic-web is limited to configuration, enrollment, and calibration
+
 backend/ FastAPI
   -> routers validate HTTP requests
   -> services own business rules
@@ -22,7 +27,7 @@ backend/ FastAPI
   -> backend/speech_module owns ASR, punctuation, caption formatting
 
 SQLite
-  -> meetings, agendas, attendees, seats, votes, service calls, translation_records
+  -> people, meetings, agendas, attendees, seats, votes, service calls, translation_records
 ```
 
 The frontend never connects directly to FunASR. All audio and business state
@@ -38,6 +43,7 @@ do not contain business rules or direct database writes.
 Current routers:
 
 - `meetings.py`
+- `people.py`
 - `seats.py`
 - `votes.py`
 - `service_calls.py`
@@ -52,8 +58,10 @@ Services own business behavior:
 
 - `MeetingService`: create/start/end meetings, reset seats on end, trigger
   speech preload on meeting start.
+- `PersonService`: create and list stable identities shared across meetings.
 - `SeatService`: occupy/vacate/check-in seats, manage Speaker Seat, cancel old
-  speech sessions on speaker switch.
+  speech sessions on speaker switch, and resolve guarded Android identity
+  evidence to the active meeting attendee before reusing normal check-in.
 - `VoteService`: create, submit/update, summarize, and close votes.
 - `ServiceCallService`: create, resolve, and cancel service calls.
 - `SpeechStreamService`: manage speech WebSocket sessions, receive PCM frames,
@@ -118,6 +126,37 @@ The transcript UI displays:
 The frontend must not synthesize business state from events when HTTP refresh is
 safer. For speech interim captions, it may update the live caption directly by
 `utterance_id` and `revision`.
+
+`frontend/src/native/` provides one `NativeBridge` boundary. Browser sessions
+use `WebNativeBridge`; Android WebView sessions use `AndroidNativeBridge`.
+Android emits `smartdesk-native-event`. A `PROTOTYPE` result is displayed but
+does not automatically check in. Only `VALIDATED` evidence is submitted
+automatically; an explicit demo control may submit `PROTOTYPE`, and the backend
+still rejects it unless its development-only gate is enabled.
+
+## Android Tablet Integration
+
+The Android module remains separately built and never imports FastAPI or React
+business logic. Its production flow is:
+
+```text
+persisted seat/device/server/frontend configuration
+  -> WebView /seat/{seatId}
+  -> SmartDeskNative.startFaceVerification()
+  -> CameraX + ML Kit + alignment + MobileFaceNet
+  -> smartdesk-native-event identity_status
+  -> frontend policy gate
+  -> POST /api/seats/{seatId}/identity-checkin
+  -> Person -> active Attendee
+  -> existing SeatService.check_in
+```
+
+Android does not access SQLite. The backend never performs face inference.
+Configuration, enrollment, diagnostics, and threshold calibration stay in the
+local `android_tablet/diagnostic-web` fallback page.
+The frontend reads the tablet `serverUrl` synchronously through
+`SmartDeskNative.getDeviceInfo()` for HTTP and WebSocket connections. Explicit
+`app-config.js` values continue to take precedence.
 
 ## Host Services (Screen Stream & Display Agent)
 

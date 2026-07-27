@@ -28,6 +28,7 @@ in `WEBSOCKET_PROTOCOL.md`.
   `{"detail": "<ERROR_CODE>"}` form **instead of** the common envelope. Their
   success responses still use the common envelope above.
 - Create endpoints return HTTP **201** on success: `POST /api/meetings`,
+  `POST /api/people`,
   `POST /api/votes`, `POST /api/service-calls`, and `POST /api/translations`
   (when `final=true`). All other successful writes return 200.
 - The frontend must initialize by calling the concrete resources below. There
@@ -46,6 +47,7 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `ENABLE_DEMO_SEED` | `false` | Create demo data only when the database has no meetings. |
 | `ENABLE_DEMO_SEED_WHEN_NO_ACTIVE` | `false` | Create a demo active meeting if startup finds no active meeting. |
 | `ENABLE_DEMO_SEAT_API` | `false` | Enable development-only seat occupy/vacate endpoints. |
+| `SMARTDESK_ALLOW_PROTOTYPE_IDENTITY_CHECKIN` | `false` | Development-only opt-in allowing a `PROTOTYPE` + `PROVISIONAL` identity result to reach the existing seat check-in state machine. Never enable before local calibration is accepted. |
 | `ENABLE_TRANSLATION_MODEL` | unset | Enable local OPUS-MT translation for final records. |
 | `TRANSLATION_ZH_EN_MODEL_PATH` | `models/opus-mt-zh-en` | Local Chinese-to-English model directory. |
 | `TRANSLATION_EN_ZH_MODEL_PATH` | `models/opus-mt-en-zh` | Local English-to-Chinese model directory. |
@@ -94,7 +96,8 @@ POST /api/meetings/{meeting_id}/agendas
 { "title": "Opening", "sort_order": 0 }          // title 1..500 (required); sort_order int >= 0, default 0
 
 POST /api/meetings/{meeting_id}/attendees
-{ "name": "Alice", "title": "" }                 // name 1..100 (required); title default ""
+{ "name": "Alice", "title": "", "personId": "person_001" }
+// name 1..100 (required); title default ""; personId optional stable identity
 ```
 
 Meeting backend statuses are `pending`, `active`, and `finished`. The frontend
@@ -104,6 +107,26 @@ Ending a meeting resets seats to `vacant`, clears attendee seat bindings,
 sets attendees to `checked_in=false`, closes any open vote, preserves the
 speaker seat value, and keeps historical votes, service calls, and translation
 records.
+
+## People APIs
+
+`Person.id` is the stable identifier used by local face templates across
+meetings. It is distinct from the per-meeting, auto-incrementing
+`Attendee.id`.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/people` | List stable people. |
+| `POST` | `/api/people` | Create a stable person; returns 201. |
+
+```json
+POST /api/people
+{ "id": "person_001", "name": "Alice" }
+```
+
+`id` must contain 3–64 ASCII letters, numbers, dots, underscores, or hyphens.
+An attendee may reference a Person through optional `personId`; the same Person
+cannot appear twice in one meeting.
 
 ## Agenda APIs
 
@@ -219,6 +242,7 @@ Frontend clients must still be able to refresh the source of truth through
 |---|---|---|
 | `GET` | `/api/seats` | Return all 9 seat states. |
 | `POST` | `/api/seats/{seat_id}/checkin` | Check an attendee into an occupied unchecked seat. |
+| `POST` | `/api/seats/{seat_id}/identity-checkin` | Validate Android identity evidence, map stable Person to the active meeting attendee, then reuse normal check-in. |
 | `GET` | `/api/seats/speaker` | Return the current speaker seat. |
 | `POST` | `/api/seats/speaker` | Set speaker seat. See request body below. |
 | `DELETE` | `/api/seats/speaker` | Clear speaker seat. |
@@ -252,6 +276,36 @@ Check-in requires:
 
 Successful check-in sets `seat.status=checked_in`, sets both seat and attendee
 bindings, and broadcasts `check_in`.
+
+`POST /api/seats/{seat_id}/identity-checkin` request body:
+
+```json
+{
+  "personId": "person_001",
+  "deviceId": "tablet-seat-01",
+  "deviceSeatId": 1,
+  "status": "VERIFIED",
+  "similarity": 0.82,
+  "thresholdStatus": "PROVISIONAL",
+  "verificationLevel": "PROTOTYPE",
+  "modelVersion": "se-mobilefacenet-ms1mv3-arcface-emb256-v1"
+}
+```
+
+The endpoint never trusts face evidence as a direct attendee ID. It:
+
+1. rejects a device seat that differs from the URL seat;
+2. rejects non-`VERIFIED` and `CALIBRATION_PENDING` results;
+3. accepts `VALIDATED` only with `thresholdStatus=VALIDATED`;
+4. rejects `PROTOTYPE` by default; the explicit development environment flag
+   may allow `PROTOTYPE` only with `thresholdStatus=PROVISIONAL`;
+5. resolves `Person.id` to exactly one attendee in the active meeting;
+6. delegates occupancy, duplicate-seat, and attendee-binding checks to the
+   existing `SeatService.check_in`.
+
+Current Android face results remain `CALIBRATION_PENDING` until the 75-run
+field calibration is complete. The production default therefore cannot use
+them for automatic check-in.
 
 ## Development Seat APIs
 
