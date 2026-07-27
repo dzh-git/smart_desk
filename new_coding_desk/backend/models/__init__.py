@@ -15,6 +15,8 @@ Package structure mirrors Repository ownership (§15):
 Total: 10 tables.
 """
 from backend.models.person import Person
+from backend.models.tablet_device import TabletDevice
+from backend.models.identity_checkin_event import IdentityCheckInEvent
 from backend.models.meeting import Meeting
 from backend.models.agenda import Agenda
 from backend.models.attendee import Attendee
@@ -28,6 +30,8 @@ from backend.models.translation_record import TranslationRecord
 __all__ = [
     "Meeting",
     "Person",
+    "TabletDevice",
+    "IdentityCheckInEvent",
     "Agenda",
     "Attendee",
     "SeatState",

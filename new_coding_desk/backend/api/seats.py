@@ -13,13 +13,13 @@ from __future__ import annotations
 import os
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.events import event_bus
-from backend.exceptions import NotFoundError, ValidationError
+from backend.exceptions import ConflictError, NotFoundError, ValidationError
 from backend.schemas import ApiResponse
 from backend.schemas.seat import (
     SeatStateResponse,
@@ -99,6 +99,10 @@ def identity_check_in(
     seat_id: int,
     body: IdentityCheckInRequest,
     db: Session = Depends(get_db),
+    device_token: str | None = Header(
+        default=None,
+        alias="X-SmartDesk-Device-Token",
+    ),
 ):
     """Resolve a verified stable person and delegate to SeatService.check_in.
 
@@ -116,11 +120,21 @@ def identity_check_in(
         seat = _service(db).identity_check_in(
             seat_id=seat_id,
             device_seat_id=body.device_seat_id,
+            device_id=body.device_id,
+            device_token=device_token,
+            event_id=body.event_id,
             person_id=body.person_id,
             identity_status=body.status,
             threshold_status=body.threshold_status,
             verification_level=body.verification_level,
+            similarity=body.similarity,
+            model_version=body.model_version,
             allow_prototype=allow_prototype,
+        )
+    except ConflictError as error:
+        return _to_json(
+            ApiResponse.fail(error.message, error.error_code),
+            409,
         )
     except NotFoundError as error:
         return _to_json(

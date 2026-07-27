@@ -7,7 +7,7 @@ Per API_SPEC §7:
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class SeatStateResponse(BaseModel):
@@ -33,7 +33,19 @@ class IdentityCheckInRequest(BaseModel):
         min_length=3,
         max_length=64,
         pattern=r"^[A-Za-z0-9._-]+$",
-        alias="personId",
+        validation_alias=AliasChoices(
+            "personCode",
+            "personId",
+            "person_code",
+        ),
+        serialization_alias="personCode",
+    )
+    event_id: str = Field(
+        ...,
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+        alias="eventId",
     )
     device_id: str = Field(
         ...,
@@ -58,9 +70,15 @@ class IdentityCheckInRequest(BaseModel):
         alias="verificationLevel",
     )
     model_version: str | None = Field(
-        default=None,
+        ...,
+        min_length=1,
         max_length=100,
         alias="modelVersion",
+    )
+    event_timestamp: int | None = Field(
+        default=None,
+        ge=0,
+        alias="eventTimestamp",
     )
 
     model_config = {"populate_by_name": True}

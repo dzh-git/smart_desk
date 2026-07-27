@@ -281,7 +281,9 @@ bindings, and broadcasts `check_in`.
 
 ```json
 {
-  "personId": "person_001",
+  "eventId": "6fe8e135-15f5-4a3f-946c-8800d7519937",
+  "eventTimestamp": 1785168000000,
+  "personCode": "person_001",
   "deviceId": "tablet-seat-01",
   "deviceSeatId": 1,
   "status": "VERIFIED",
@@ -292,16 +294,45 @@ bindings, and broadcasts `check_in`.
 }
 ```
 
+The request must include `X-SmartDesk-Device-Token`. The token is compared
+against the salted PBKDF2 hash stored for the provisioned tablet; raw device
+tokens are never stored by the backend.
+
 The endpoint never trusts face evidence as a direct attendee ID. It:
 
-1. rejects a device seat that differs from the URL seat;
+1. authenticates an enabled device provisioned for the URL seat and rejects
+   either a registry or request seat mismatch;
 2. rejects non-`VERIFIED` and `CALIBRATION_PENDING` results;
 3. accepts `VALIDATED` only with `thresholdStatus=VALIDATED`;
 4. rejects `PROTOTYPE` by default; the explicit development environment flag
    may allow `PROTOTYPE` only with `thresholdStatus=PROVISIONAL`;
 5. resolves `Person.id` to exactly one attendee in the active meeting;
 6. delegates occupancy, duplicate-seat, and attendee-binding checks to the
-   existing `SeatService.check_in`.
+   existing `SeatService.check_in`;
+7. persists `eventId`; an identical retry returns the existing checked-in
+   state without broadcasting a second `check_in`, while conflicting evidence
+   using the same ID returns HTTP 409.
+
+Provisioning is fail-closed unless
+`SMARTDESK_DEVICE_PROVISIONING_TOKEN` contains at least 24 characters:
+
+```http
+POST /api/tablet-devices/provision
+X-SmartDesk-Provisioning-Token: <admin provisioning token>
+Content-Type: application/json
+```
+
+```json
+{
+  "deviceId": "tablet-seat-01",
+  "seatId": 1,
+  "deviceToken": "unique-device-token-at-least-24-chars",
+  "enabled": true
+}
+```
+
+Provisioning the same device rotates its token. A seat may have only one
+registered tablet.
 
 Current Android face results remain `CALIBRATION_PENDING` until the 75-run
 field calibration is complete. The production default therefore cannot use

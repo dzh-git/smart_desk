@@ -55,6 +55,7 @@ from backend.api import (
     host_display,
     hardware,
     people,
+    tablet_devices,
 )
 from backend.api import seat_ws
 
@@ -311,6 +312,7 @@ app.include_router(speech.router)
 app.include_router(host_display.router)
 app.include_router(hardware.router)
 app.include_router(people.router)
+app.include_router(tablet_devices.router)
 
 # Distributed mode only: Seat Edge Agent WebSocket channel.
 if deploy_mode == "distributed":

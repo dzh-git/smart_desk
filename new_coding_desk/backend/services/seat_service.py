@@ -29,10 +29,15 @@ from backend.models.seat_state import SeatState
 from backend.models.speaker_seat import SpeakerSeat
 from backend.models.attendee import Attendee
 from backend.models.meeting import Meeting
+from backend.models.identity_checkin_event import IdentityCheckInEvent
 from backend.repositories.seat_repository import SeatRepository, SEAT_COUNT
 from backend.repositories.attendee_repository import AttendeeRepository
 from backend.repositories.person_repository import PersonRepository
+from backend.repositories.identity_checkin_event_repository import (
+    IdentityCheckInEventRepository,
+)
 from backend.services.base import BaseService
+from backend.services.tablet_device_service import TabletDeviceService
 from backend.services.speech_stream_service import stream_service
 from backend.websocket.speech_registry import speech_registry
 
@@ -56,6 +61,8 @@ class SeatService(BaseService):
         self.seat_repo = SeatRepository(db)
         self.attendee_repo = AttendeeRepository(db)
         self.person_repo = PersonRepository(db)
+        self.identity_event_repo = IdentityCheckInEventRepository(db)
+        self.tablet_device_service = TabletDeviceService(db)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -296,10 +303,15 @@ class SeatService(BaseService):
         *,
         seat_id: int,
         device_seat_id: int,
+        device_id: str,
+        device_token: str | None,
+        event_id: str,
         person_id: str,
         identity_status: str,
         threshold_status: str,
         verification_level: str,
+        similarity: float,
+        model_version: str | None,
         allow_prototype: bool = False,
     ) -> SeatState:
         """Resolve a stable person in the active meeting, then reuse check_in.
@@ -316,6 +328,37 @@ class SeatService(BaseService):
                 ),
                 "DEVICE_SEAT_MISMATCH",
             )
+        self.tablet_device_service.authenticate(
+            device_id=device_id,
+            seat_id=seat_id,
+            token=device_token,
+        )
+
+        existing_event = self.identity_event_repo.get(event_id)
+        if existing_event is not None:
+            if (
+                existing_event.device_id != device_id
+                or existing_event.seat_id != seat_id
+                or existing_event.person_id != person_id
+            ):
+                raise ConflictError(
+                    "Identity event_id was already used for different evidence",
+                    "IDENTITY_EVENT_CONFLICT",
+                )
+            seat = self._get_seat(existing_event.seat_id)
+            if (
+                seat.status != "checked_in"
+                or seat.attendee_id != existing_event.attendee_id
+            ):
+                raise ConflictError(
+                    "Identity event exists but its seat state no longer matches",
+                    "IDENTITY_EVENT_STATE_CONFLICT",
+                )
+            return seat
+
+        identity_status = identity_status.upper()
+        threshold_status = threshold_status.upper()
+        verification_level = verification_level.upper()
         if identity_status != "VERIFIED":
             raise ValidationError(
                 "Identity result is not VERIFIED",
@@ -378,11 +421,32 @@ class SeatService(BaseService):
                 "PERSON_NOT_IN_ACTIVE_MEETING",
             )
 
-        return self.check_in(
-            seat_id=seat_id,
-            attendee_id=attendee.id,
-            meeting_id=active.id,
+        current_seat = self._get_seat(seat_id)
+        if (
+            current_seat.status == "checked_in"
+            and current_seat.attendee_id == attendee.id
+        ):
+            checked_in_seat = current_seat
+        else:
+            checked_in_seat = self.check_in(
+                seat_id=seat_id,
+                attendee_id=attendee.id,
+                meeting_id=active.id,
+            )
+
+        self.identity_event_repo.save(
+            IdentityCheckInEvent(
+                event_id=event_id,
+                device_id=device_id,
+                seat_id=seat_id,
+                person_id=person_id,
+                attendee_id=attendee.id,
+                similarity=similarity,
+                verification_level=verification_level,
+                model_version=model_version,
+            )
         )
+        return checked_in_seat
 
     # ── Speaker Seat ─────────────────────────────────────────────────────────
 

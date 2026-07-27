@@ -145,6 +145,13 @@ when users keep a local database.
 The Android identity migration adds nullable `attendees.person_id` without
 guessing mappings for historical attendees. Existing deployments receive a
 partial unique index on `(meeting_id, person_id)` for non-null values.
+Fresh and existing deployments create two additional tables through startup
+metadata:
+
+- `tablet_devices`: stable device ID, unique bound seat, salted PBKDF2 token
+  hash, enable flag, version and last-seen/error operational fields.
+- `identity_checkin_events`: durable native event ID, device/seat/person/
+  attendee evidence, similarity, verification level and model version.
 
 ## Repository Ownership
 
@@ -153,6 +160,8 @@ partial unique index on `(meeting_id, person_id)` for non-null values.
 | `MeetingRepository` | `meetings`, `agendas` |
 | `PersonRepository` | `people` |
 | `AttendeeRepository` | `attendees` |
+| `TabletDeviceRepository` | `tablet_devices` |
+| `IdentityCheckInEventRepository` | `identity_checkin_events` |
 | `SeatRepository` | `seat_states`, `speaker_seat` |
 | `VoteRepository` | `votes`, `vote_records` |
 | `ServiceCallRepository` | `service_calls` |
