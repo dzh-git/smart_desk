@@ -51,10 +51,18 @@ export interface Agenda {
 export interface Attendee {
   id: number;
   meeting_id: number;
+  person_id?: string | null;
   name: string;
   title: string;
   seat_id: number | null;
   checked_in: boolean;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  active: boolean;
+  created_at: string;
 }
 
 // ── Seat ──────────────────────────────────────────────────────────────────
@@ -68,6 +76,17 @@ export interface SeatState {
 
 export interface SpeakerSeat {
   seat_id: number | null;
+}
+
+export interface IdentityCheckInPayload {
+  personId: string;
+  deviceId: string;
+  deviceSeatId: number;
+  status: string;
+  similarity: number;
+  thresholdStatus: string;
+  verificationLevel: string;
+  modelVersion?: string | null;
 }
 
 // ── Vote ──────────────────────────────────────────────────────────────────

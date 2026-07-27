@@ -14,6 +14,8 @@ import type {
   ServiceCall,
   Agenda,
   Attendee,
+  Person,
+  IdentityCheckInPayload,
   TranslationHistoryResponse,
   ServiceType,
 } from "./types";
@@ -114,11 +116,23 @@ export function createAttendee(
   meetingId: number,
   name: string,
   title: string = "",
+  personId?: string,
 ): Promise<Attendee> {
   return apiPost<Attendee>(`/meetings/${meetingId}/attendees`, {
     name,
     title,
+    ...(personId ? { personId } : {}),
   });
+}
+
+/** List stable people available for meeting attendee assignment. */
+export function fetchPeople(): Promise<Person[]> {
+  return apiGet<Person[]>("/people");
+}
+
+/** Create a stable person identity before face enrollment. */
+export function createPerson(id: string, name: string): Promise<Person> {
+  return apiPost<Person>("/people", { id, name });
 }
 
 /** Delete an attendee from a meeting. */
@@ -213,6 +227,21 @@ export function checkinSeat(
   return apiPost<SeatState>(`/seats/${seatId}/checkin`, {
     attendee_id: attendeeId,
   });
+}
+
+/**
+ * Submit Android's local identity evidence for server-side policy checks.
+ * The server maps personId to the active meeting attendee and reuses the
+ * existing SeatService check-in state machine.
+ */
+export function identityCheckinSeat(
+  seatId: number,
+  payload: IdentityCheckInPayload,
+): Promise<SeatState> {
+  return apiPost<SeatState>(
+    `/seats/${seatId}/identity-checkin`,
+    payload,
+  );
 }
 
 // ── Dev Seat Controls (demo-only) ────────────────────────────────────────────

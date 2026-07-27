@@ -1,4 +1,10 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Cpu,
@@ -31,6 +37,7 @@ import { useSpeechStream } from "../hooks/useSpeechStream";
 import { TranscriptPanel } from "./TranscriptPanel";
 import {
   checkinSeat,
+  identityCheckinSeat,
   devOccupySeat,
   devVacateSeat,
   submitVote,
@@ -51,6 +58,14 @@ import {
   canStartSpeech,
 } from "../utils/uiState";
 import { deriveAgendaState } from "../utils/agendaState";
+import {
+  getNativeBridge,
+  type DeviceInfo,
+} from "../native/NativeBridge";
+import {
+  subscribeNativeEvents,
+  type NativeIdentityStatus,
+} from "../native/nativeEvents";
 
 // Shared dark-theme components
 import {
@@ -114,6 +129,52 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const [creatingService, setCreatingService] = useState(false);
   const [cancellingService, setCancellingService] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const nativeBridge = useMemo(() => getNativeBridge(), []);
+  const [nativeDeviceInfo, setNativeDeviceInfo] = useState<DeviceInfo | null>(
+    null,
+  );
+  const [nativeIdentityStatus, setNativeIdentityStatus] =
+    useState<NativeIdentityStatus | null>(null);
+  const [identityCheckinSubmitting, setIdentityCheckinSubmitting] =
+    useState(false);
+  const submittedIdentityKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = subscribeNativeEvents((event) => {
+      if (event.type === "identity_status") {
+        setNativeIdentityStatus(event.data as NativeIdentityStatus);
+      } else if (event.type === "error") {
+        const data = event.data as { code?: string; message?: string };
+        setActionError(
+          [data.code, data.message].filter(Boolean).join("：") ||
+            "Android native operation failed",
+        );
+      }
+    });
+
+    if (nativeBridge.isAvailable()) {
+      void nativeBridge
+        .getDeviceInfo()
+        .then((deviceInfo) => {
+          if (active) setNativeDeviceInfo(deviceInfo);
+        })
+        .catch((error: unknown) => {
+          if (active) {
+            setActionError(
+              error instanceof Error
+                ? error.message
+                : "Unable to read Android device configuration",
+            );
+          }
+        });
+    }
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [nativeBridge]);
 
   // Derived state
   const mySeat = seats.find((s) => s.seatId === seatId) ?? null;
@@ -190,6 +251,114 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       );
     }
   }
+
+  async function handleFaceVerification() {
+    setActionError(null);
+    if (
+      nativeDeviceInfo?.seatId != null &&
+      nativeDeviceInfo.seatId !== seatId
+    ) {
+      setActionError(
+        `设备绑定席位 ${nativeDeviceInfo.seatId} 与当前页面席位 ${seatId} 不一致`,
+      );
+      return;
+    }
+
+    setNativeIdentityStatus({
+      status: "VERIFYING",
+      message: "正在启动 Android 本地人脸验证",
+    });
+    try {
+      await nativeBridge.startFaceVerification();
+    } catch (error: unknown) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to start native face verification",
+      );
+    }
+  }
+
+  async function handleStopFaceVerification() {
+    setActionError(null);
+    try {
+      await nativeBridge.stopFaceVerification();
+    } catch (error: unknown) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to stop native face verification",
+      );
+    }
+  }
+
+  const submitIdentityCheckin = useCallback(
+    async (identity: NativeIdentityStatus) => {
+      if (
+        !nativeDeviceInfo ||
+        !identity.personId ||
+        identity.similarity == null
+      ) {
+        setActionError(
+          "身份签到缺少设备编号、稳定 personId 或相似度",
+        );
+        return;
+      }
+      if (nativeDeviceInfo.seatId !== seatId) {
+        setActionError(
+          `设备绑定席位 ${nativeDeviceInfo.seatId ?? "未配置"} 与当前页面席位 ${seatId} 不一致`,
+        );
+        return;
+      }
+
+      setIdentityCheckinSubmitting(true);
+      setActionError(null);
+      try {
+        await identityCheckinSeat(seatId, {
+          personId: identity.personId,
+          deviceId: nativeDeviceInfo.deviceId,
+          deviceSeatId: nativeDeviceInfo.seatId,
+          status: identity.status,
+          similarity: identity.similarity,
+          thresholdStatus:
+            identity.thresholdStatus ?? "CALIBRATION_PENDING",
+          verificationLevel: identity.verificationLevel ?? "NONE",
+          modelVersion: identity.modelVersion,
+        });
+        refresh();
+      } catch (error: unknown) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Identity check-in failed",
+        );
+      } finally {
+        setIdentityCheckinSubmitting(false);
+      }
+    },
+    [nativeDeviceInfo, refresh, seatId],
+  );
+
+  useEffect(() => {
+    if (nativeIdentityStatus?.status !== "VERIFIED") {
+      if (nativeIdentityStatus?.status === "VERIFYING") {
+        submittedIdentityKey.current = null;
+      }
+      return;
+    }
+    if (nativeIdentityStatus.verificationLevel !== "VALIDATED") {
+      return;
+    }
+
+    const identityKey = [
+      nativeIdentityStatus.personId,
+      nativeIdentityStatus.modelVersion,
+      nativeIdentityStatus.similarity,
+    ].join(":");
+    if (submittedIdentityKey.current === identityKey) return;
+    submittedIdentityKey.current = identityKey;
+    void submitIdentityCheckin(nativeIdentityStatus);
+  }, [nativeIdentityStatus, submitIdentityCheckin]);
 
   async function handleOccupy() {
     setActionError(null);
@@ -420,6 +589,16 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           onVacate={handleVacate}
           writesAllowed={writesAllowed}
           meetingStatus={meetingStatus}
+          nativeAvailable={nativeBridge.isAvailable()}
+          nativeIdentityStatus={nativeIdentityStatus}
+          onFaceVerification={handleFaceVerification}
+          onStopFaceVerification={handleStopFaceVerification}
+          onIdentityCheckin={() => {
+            if (nativeIdentityStatus) {
+              void submitIdentityCheckin(nativeIdentityStatus);
+            }
+          }}
+          identityCheckinSubmitting={identityCheckinSubmitting}
         />
 
         {/* Current Topic Card (read-only) */}
@@ -699,6 +878,12 @@ interface SeatStatusCardProps {
   onVacate: () => void;
   writesAllowed: boolean;
   meetingStatus: "no_meeting" | "meeting_active";
+  nativeAvailable: boolean;
+  nativeIdentityStatus: NativeIdentityStatus | null;
+  onFaceVerification: () => void;
+  onStopFaceVerification: () => void;
+  onIdentityCheckin: () => void;
+  identityCheckinSubmitting: boolean;
 }
 
 function SeatStatusCard({
@@ -716,6 +901,12 @@ function SeatStatusCard({
   onVacate,
   writesAllowed,
   meetingStatus,
+  nativeAvailable,
+  nativeIdentityStatus,
+  onFaceVerification,
+  onStopFaceVerification,
+  onIdentityCheckin,
+  identityCheckinSubmitting,
 }: SeatStatusCardProps) {
   // ── Vacant ────────────────────────────────────────────────────────────
   if (isVacant) {
@@ -754,6 +945,16 @@ function SeatStatusCard({
 
   // ── Occupied Unchecked (needs check-in) ──────────────────────────────
   if (isOccupiedUnchecked) {
+    const verificationActive = [
+      "VERIFYING",
+      "WAITING_FOR_FACE",
+      "MULTIPLE_FACES",
+    ].includes(nativeIdentityStatus?.status ?? "");
+    const similarity =
+      nativeIdentityStatus?.similarity == null
+        ? null
+        : Number(nativeIdentityStatus.similarity).toFixed(3);
+
     return (
       <PanelCard variant="warning" className="shadow-card-glow">
         <div className="flex items-center gap-3 mb-4">
@@ -772,6 +973,80 @@ function SeatStatusCard({
             </p>
           </div>
         </div>
+
+        {nativeAvailable && (
+          <div
+            data-testid="native-identity-panel"
+            className="mb-4 rounded-lg border border-techCyan/30 bg-techCyan/5 p-3"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-techText">
+                  Android 本地身份验证
+                </p>
+                <p className="mt-1 text-xs text-techMuted">
+                  {nativeIdentityStatus?.message ??
+                    "结果仅显示在页面中，本阶段不会自动签到。"}
+                </p>
+                {nativeIdentityStatus && (
+                  <p className="mt-2 text-xs font-mono text-techCyan">
+                    {nativeIdentityStatus.status}
+                    {nativeIdentityStatus.personId
+                      ? ` · ${nativeIdentityStatus.personId}`
+                      : ""}
+                    {similarity ? ` · ${similarity}` : ""}
+                    {nativeIdentityStatus.verificationLevel
+                      ? ` · ${nativeIdentityStatus.verificationLevel}`
+                      : ""}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <ActionButton
+                  variant="primary"
+                  size="sm"
+                  touch
+                  icon={<UserCheck size={14} />}
+                  onClick={onFaceVerification}
+                  disabled={verificationActive}
+                >
+                  身份验证
+                </ActionButton>
+                {verificationActive && (
+                  <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    touch
+                    onClick={onStopFaceVerification}
+                  >
+                    停止
+                  </ActionButton>
+                )}
+                {nativeIdentityStatus?.status === "VERIFIED" &&
+                  nativeIdentityStatus.verificationLevel === "PROTOTYPE" &&
+                  demoControlsEnabled && (
+                    <ActionButton
+                      variant="secondary"
+                      size="sm"
+                      touch
+                      onClick={onIdentityCheckin}
+                      loading={identityCheckinSubmitting}
+                      disabled={identityCheckinSubmitting}
+                    >
+                      提交测试签到
+                    </ActionButton>
+                  )}
+              </div>
+            </div>
+            {nativeIdentityStatus?.status === "VERIFIED" && (
+              <p className="mt-2 text-[0.65rem] text-techMuted">
+                {nativeIdentityStatus.verificationLevel === "VALIDATED"
+                  ? "VALIDATED 结果将由后端校验后自动签到。"
+                  : "PROTOTYPE 结果仅可在显式开发模式中手动提交。"}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Attendee selection */}
         {unboundAttendees.length > 0 ? (

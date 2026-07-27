@@ -127,10 +127,12 @@ beforeEach(() => {
   // Clear tracked instances from previous tests
   wsInstances.length = 0;
   (globalThis as unknown as Record<string, unknown>).WebSocket = MultiMockWebSocket as unknown as typeof WebSocket;
+  Reflect.deleteProperty(window, "SmartDeskNative");
   mockDemoControls = false;
 });
 
 afterEach(() => {
+  Reflect.deleteProperty(window, "SmartDeskNative");
   mockDemoControls = false;
 });
 
@@ -390,6 +392,119 @@ describe("SeatTablet - check-in action", () => {
       (b: unknown) => (b as Record<string, unknown>)?.attendee_id === 42,
     );
     expect(checkinBody).toEqual({ attendee_id: 42 });
+  });
+});
+
+describe("SeatTablet - Android identity check-in", () => {
+  function installNativeBridge() {
+    Object.defineProperty(window, "SmartDeskNative", {
+      configurable: true,
+      value: {
+        getDeviceInfo: vi.fn(() =>
+          JSON.stringify({
+            type: "device_info",
+            data: {
+              deviceId: "tablet-seat-01",
+              seatId: 1,
+              serverUrl: "http://host:8000",
+              frontendUrl: "http://host:5173",
+              configured: true,
+            },
+          }),
+        ),
+        startFaceVerification: vi.fn(() =>
+          JSON.stringify({
+            type: "identity_status",
+            data: { status: "VERIFYING" },
+          }),
+        ),
+        stopFaceVerification: vi.fn(),
+      },
+    });
+  }
+
+  it("automatically submits only a VALIDATED identity result", async () => {
+    installNativeBridge();
+    const identityCalls: Array<{ url: string; body: unknown }> = [];
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/seats/1/identity-checkin") {
+        identityCalls.push({
+          url,
+          body: JSON.parse(String(opts?.body)),
+        });
+        return okResponse({
+          seat_id: 1,
+          status: "checked_in",
+          attendee_id: 42,
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      return createSeatMock("occupied_unchecked")(url);
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await screen.findByTestId("native-identity-panel");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            type: "identity_status",
+            data: {
+              status: "VERIFIED",
+              personId: "person_001",
+              similarity: 0.82,
+              thresholdStatus: "VALIDATED",
+              verificationLevel: "VALIDATED",
+              modelVersion: "validated-model-v1",
+            },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => expect(identityCalls).toHaveLength(1));
+    expect(identityCalls[0].body).toMatchObject({
+      personId: "person_001",
+      deviceId: "tablet-seat-01",
+      deviceSeatId: 1,
+      status: "VERIFIED",
+      thresholdStatus: "VALIDATED",
+      verificationLevel: "VALIDATED",
+    });
+  });
+
+  it("displays PROTOTYPE identity without automatic check-in", async () => {
+    installNativeBridge();
+    const identityCalls: string[] = [];
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/seats/1/identity-checkin") {
+        identityCalls.push(url);
+      }
+      return createSeatMock("occupied_unchecked")(url);
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await screen.findByTestId("native-identity-panel");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            type: "identity_status",
+            data: {
+              status: "VERIFIED",
+              personId: "person_001",
+              similarity: 0.82,
+              thresholdStatus: "PROVISIONAL",
+              verificationLevel: "PROTOTYPE",
+            },
+          },
+        }),
+      );
+    });
+
+    await screen.findByText(/VERIFIED · person_001 · 0.820 · PROTOTYPE/);
+    expect(identityCalls).toHaveLength(0);
+    expect(screen.queryByText("提交测试签到")).not.toBeInTheDocument();
   });
 });
 
