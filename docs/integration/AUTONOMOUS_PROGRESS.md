@@ -4,9 +4,10 @@
 
 ## 当前阶段
 
-阶段 0–6 已完成软件实现与定向回归。ESP32 正式直连路径、版本化协议、实际可
-编译固件、模拟器和旧 Windows/Arduino 台架兼容均已落地；下一阶段进入 seat 1
-自动闭环和连续 20 轮恢复/幂等测试。
+阶段 0–7 已完成软件实现与定向回归。seat 1 已通过连续 20 轮软件闭环，
+覆盖 Android 原生身份事件回放、ESP32 入座/灯效、后端签到、双端同步、
+重复/乱序、重连和进程内硬件状态重建；下一阶段进入 Android WebView
+麦克风权限与生命周期处理。
 
 ## 已完成
 
@@ -40,6 +41,13 @@
   bytes 上限、sequence、事件去重、命令 ID、ACK、同 ID 重试、超时与重连同步。
 - 硬件状态接口可以区分 `esp32/windows_agent`，并报告固件、心跳、传感器、
   距离、命令待确认和最近错误。
+- 新增 seat 1 软件闭环测试夹具和一键脚本；连续 20 轮均走真实 REST 路由、
+  `SeatService`、EventBus、WebSocket 广播、`LightingManager`、ESP32
+  模拟器和命令 ACK。
+- 单席闭环覆盖重复事件不重复签到、乱序 sequence 拒绝、每 4 轮 ESP32
+  重连，以及第 11 轮后端硬件内存态重建后从数据库继续运行。
+- 修复 ESP32 快速 ACK 早于后端登记待确认命令的竞态；灯光管理器增加显式
+  注销，确保测试和进程内替换不会遗留 EventBus 订阅或定时器。
 - Graphify 根级单一快照已更新。
 
 ## 已执行测试
@@ -62,6 +70,7 @@
 | ESP32 服务端协议/WS/灯光兼容 | 定向 pytest | 通过，23 项 |
 | ESP32 模拟器/固件契约 | `pytest simulator/tests` | 通过，8 项 |
 | ESP32 固件 | `platformio run` | 通过；RAM 14.9%，Flash 74.7% |
+| seat 1 软件闭环 | `scripts/run_seat1_integration_test.ps1` | 通过；后端/ESP32 18 项、前端 2 项，核心闭环连续 20 轮 |
 
 `test_speech_stream_service.py` 与 `test_speech_websocket_blackbox.py`
 组合运行超过六分钟执行时限，未取得完整汇总；没有把超时描述为通过。
@@ -76,13 +85,15 @@ OpenCV 4.11 兼容线，复验通过。
 - `new_coding_desk/backend/{api,models,repositories,schemas,services}`
 - `new_coding_desk/frontend/src/{native,api,components}`
 - `new_coding_desk/tests/test_identity_checkin.py`
+- `new_coding_desk/tests/test_one_seat_integration.py`
+- `esp32_seat_controller/`
+- `scripts/run_seat1_integration_test.ps1`
 - `new_coding_desk/docs/`
 - `graphify-out/`
 
 ## 尚未完成的软件任务
 
 - Android 健康检查、加载超时和管理员重新配置入口。
-- seat 1 自动闭环与连续 20 轮恢复/幂等测试。
 - Android WebView 麦克风权限和生命周期处理。
 - Tablet/ESP32 分离的设备状态与管理端只读视图。
 - 安全加固、模型许可门禁、CI 和 `verify_all_software.ps1`。
@@ -106,7 +117,7 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 下一步
 
-1. 提交阶段 6 ESP32 直连协议、固件和模拟器。
-2. 完成 20 轮单席软件闭环与故障恢复测试。
-3. 接入 Android WebView 语音和设备运维状态。
+1. 接入 Android WebView 麦克风权限与暂停/恢复生命周期。
+2. 补齐 Android 健康检查、加载失败恢复和管理员重新配置入口。
+3. 接入 Tablet/ESP32 设备运维状态与管理端只读视图。
 4. 完成发布安全、CI、一键验证与人工验收包。

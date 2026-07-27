@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "eventId": "replace-per-replay",
+  "type": "identity_status",
+  "timestamp": 1785168000000,
+  "data": {
+    "status": "VERIFIED",
+    "personId": "replace-per-replay",
+    "similarity": 0.82,
+    "thresholdStatus": "VALIDATED",
+    "verificationLevel": "VALIDATED",
+    "modelVersion": "validated-integration-fixture-v1"
+  }
+}

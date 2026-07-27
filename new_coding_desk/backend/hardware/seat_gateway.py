@@ -358,14 +358,18 @@ class SeatGateway:
             if arg is not None:
                 msg["arg"] = arg
             pending = None
+        # Publish pending state before scheduling. A fast simulator or LAN
+        # controller may ACK before run_coroutine_threadsafe() returns.
+        self._command_pending[seat_id] = True
+        self._pending_command[seat_id] = pending
         try:
             # Thread-safe: works whether called from a service thread or the
             # loop thread itself. Fire-and-forget (we do not await the future).
             asyncio.run_coroutine_threadsafe(ws.send_json(msg), self._loop)  # type: ignore[attr-defined]
-            self._command_pending[seat_id] = True
-            self._pending_command[seat_id] = pending
             return True
         except Exception:
+            self._command_pending[seat_id] = False
+            self._pending_command[seat_id] = None
             logger.exception("[Gateway:net] send failed seat=%s cmd=%s", seat_id, command)
             return False
 
