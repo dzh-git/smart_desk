@@ -410,10 +410,6 @@
   "408": "SecureStringStore",
   "409": "._compute_rms",
   "410": "is_trace_enabled",
-  "411": "TestVadAutoFinalErrorPaths",
-  "412": ".move",
   "413": "verify_software_baseline.ps1",
-  "414": "autoprefixer",
-  "415": "base_event.py",
-  "416": "lighting_manager.py"
+  "414": "autoprefixer"
 }
