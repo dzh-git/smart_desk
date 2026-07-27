@@ -334,6 +334,31 @@ Content-Type: application/json
 Provisioning the same device rotates its token. A seat may have only one
 registered tablet.
 
+The formal Android seat page sends authenticated operational heartbeats:
+
+```http
+POST /api/tablet-devices/tablet-seat-01/heartbeat
+X-SmartDesk-Device-Token: <per-device token>
+Content-Type: application/json
+```
+
+```json
+{
+  "seatId": 1,
+  "appVersion": "0.8.0",
+  "cameraStatus": "READY",
+  "faceModelStatus": "READY",
+  "registeredTemplatesCount": 3,
+  "microphoneStatus": "READY",
+  "meetingWebsocketStatus": "CONNECTED",
+  "diagnosticStatus": "READY",
+  "lastError": null
+}
+```
+
+The device ID, token, and bound seat must all match. Heartbeats never contain
+face images, embeddings, diagnostic crops, or raw audio.
+
 Current Android face results remain `CALIBRATION_PENDING` until the 75-run
 field calibration is complete. The production default therefore cannot use
 them for automatic check-in.
@@ -565,11 +590,18 @@ cadence, sentence-translation waiting/inference, and finalization waiting/work.
 GET /api/hardware/status
 ```
 
-Each item in `data.seats` includes `current_mode` (the last mode confirmed by
-the Arduino ACK), `intended_mode`, `command_pending`, `last_ack_at`, and
-`last_error`, in addition to seat, port, enabled, and connection fields. An
-offline seat remains in the response so the management UI can show pending
-commands and port diagnostics.
+`data.seats` contains the Arduino/Windows-compatible or ESP32 controller
+channel. Each item includes `device_type`, device/firmware identity,
+`current_mode`, `intended_mode`, command ACK state, heartbeat, sensor
+diagnostics, and the last error. ESP32 connections whose heartbeat expires are
+reported offline.
+
+`data.tablets` is a separate nine-seat Android channel. It reports provisioning
+and enablement, online/offline derived from authenticated `last_seen_at`,
+app version, camera, face model, registered-template count, microphone,
+meeting-WebSocket status, diagnostic status, and last error. The default
+offline window is 45 seconds and can be configured from 10–300 seconds with
+`SMARTDESK_TABLET_OFFLINE_TIMEOUT_SECONDS`.
 
 ## Host Display and Screen Stream APIs
 

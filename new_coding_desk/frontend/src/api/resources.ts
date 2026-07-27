@@ -22,6 +22,8 @@ import type {
   Attendee,
   Person,
   IdentityCheckInPayload,
+  TabletDeviceStatus,
+  TabletHeartbeatPayload,
   TranslationHistoryResponse,
   ServiceType,
 } from "./types";
@@ -252,6 +254,23 @@ export function identityCheckinSeat(
     },
     body: JSON.stringify(payload),
   });
+}
+
+export function reportTabletHeartbeat(
+  deviceId: string,
+  payload: TabletHeartbeatPayload,
+  deviceToken: string,
+): Promise<TabletDeviceStatus> {
+  return apiRequest<TabletDeviceStatus>(
+    `/tablet-devices/${encodeURIComponent(deviceId)}/heartbeat`,
+    {
+      method: "POST",
+      headers: {
+        "X-SmartDesk-Device-Token": deviceToken,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 // ── Dev Seat Controls (demo-only) ────────────────────────────────────────────

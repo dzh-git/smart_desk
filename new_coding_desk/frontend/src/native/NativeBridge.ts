@@ -16,6 +16,10 @@ export interface DeviceInfo {
   androidVersion?: string;
   sdkInt?: number;
   bridgeReady?: boolean;
+  cameraReady?: boolean;
+  faceModelReady?: boolean;
+  microphoneReady?: boolean;
+  nativeLastError?: string | null;
 }
 
 export interface RegisteredFaces {

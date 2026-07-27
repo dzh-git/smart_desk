@@ -11,6 +11,7 @@ import org.json.JSONObject
 class AndroidBridge(
     private val defaultDeviceId: String,
     private val onGetDeviceConfig: () -> DeviceConfig?,
+    private val onGetRuntimeStatus: () -> JSONObject,
     private val onGetDeviceCredential: () -> String,
     private val onSaveDeviceConfig: (String) -> String,
     private val onReloadSeatPage: () -> Unit,
@@ -52,6 +53,12 @@ class AndroidBridge(
             .put("sdkInt", Build.VERSION.SDK_INT)
             .put("appVersion", BuildConfig.VERSION_NAME)
             .put("bridgeReady", true)
+            .also { payload ->
+                val runtime = onGetRuntimeStatus()
+                runtime.keys().forEach { key ->
+                    payload.put(key, runtime.get(key))
+                }
+            }
 
         Log.i(TAG, "Device info requested")
         return AndroidEvent.event("device_info", data)

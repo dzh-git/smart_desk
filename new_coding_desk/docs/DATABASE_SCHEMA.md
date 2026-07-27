@@ -149,7 +149,10 @@ Fresh and existing deployments create two additional tables through startup
 metadata:
 
 - `tablet_devices`: stable device ID, unique bound seat, salted PBKDF2 token
-  hash, enable flag, version and last-seen/error operational fields.
+  hash, enable flag, version and last-seen/error operational fields, plus
+  camera/face-model/template-count/microphone/meeting-WebSocket/diagnostic
+  heartbeat status. Existing databases receive the added nullable columns
+  through the idempotent startup migration.
 - `identity_checkin_events`: durable native event ID, device/seat/person/
   attendee evidence, similarity, verification level and model version.
 

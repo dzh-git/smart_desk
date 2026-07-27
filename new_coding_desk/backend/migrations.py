@@ -126,3 +126,41 @@ def ensure_attendee_identity_columns(engine) -> None:
             )
         )
         conn.commit()
+
+
+_TABLET_STATUS_COLUMNS_TO_ADD: dict[str, str] = {
+    "camera_status": "VARCHAR(32)",
+    "face_model_status": "VARCHAR(32)",
+    "registered_templates_count": "INTEGER",
+    "microphone_status": "VARCHAR(32)",
+    "meeting_websocket_status": "VARCHAR(32)",
+    "diagnostic_status": "VARCHAR(32)",
+}
+
+
+def ensure_tablet_device_status_columns(engine) -> None:
+    """Idempotently upgrade existing tablet device registries."""
+    inspector = inspect(engine)
+    if "tablet_devices" not in inspector.get_table_names():
+        return
+    existing = {
+        column["name"]
+        for column in inspector.get_columns("tablet_devices")
+    }
+    with engine.connect() as conn:
+        for column_name, column_type in (
+            _TABLET_STATUS_COLUMNS_TO_ADD.items()
+        ):
+            if column_name in existing:
+                continue
+            conn.execute(
+                text(
+                    "ALTER TABLE tablet_devices "
+                    f"ADD COLUMN {column_name} {column_type}"
+                )
+            )
+            logger.info(
+                "Added column %s to tablet_devices",
+                column_name,
+            )
+        conn.commit()

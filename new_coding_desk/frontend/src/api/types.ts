@@ -91,6 +91,28 @@ export interface IdentityCheckInPayload {
   modelVersion: string | null;
 }
 
+export interface TabletHeartbeatPayload {
+  seatId: number;
+  appVersion: string;
+  cameraStatus: "READY" | "ERROR" | "UNKNOWN";
+  faceModelStatus: "READY" | "ERROR" | "UNKNOWN";
+  registeredTemplatesCount: number;
+  microphoneStatus: "READY" | "ERROR" | "UNKNOWN";
+  meetingWebsocketStatus:
+    | "CONNECTED"
+    | "CONNECTING"
+    | "DISCONNECTED"
+    | "UNKNOWN";
+  diagnosticStatus: "READY" | "ERROR" | "UNKNOWN";
+  lastError: string | null;
+}
+
+export interface TabletDeviceStatus extends TabletHeartbeatPayload {
+  deviceId: string;
+  enabled: boolean;
+  lastSeenAt: string | null;
+}
+
 // ── Vote ──────────────────────────────────────────────────────────────────
 
 export interface Vote {

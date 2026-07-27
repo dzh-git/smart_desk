@@ -4,10 +4,10 @@
 
 ## 当前阶段
 
-阶段 0–8 已完成软件实现与定向回归。Android 已复用正式席位前端唯一的
-Web 麦克风链路，并补齐可信来源权限、Activity/页面生命周期释放、断线重建、
-健康检查、加载超时/HTTP 错误恢复及管理员维护入口；下一阶段进入 Tablet
-心跳、设备状态聚合和管理端只读视图。
+阶段 0–9 已完成软件实现与定向回归。Tablet 已通过绑定设备令牌上报心跳和
+非生物特征运行状态；后端将 Android 与 ESP32 作为独立通道聚合并执行超时
+离线判断，管理端按席位只读展示两类设备；下一阶段进入发布安全、模型许可
+门禁、CI 和一键验证。
 
 ## 已完成
 
@@ -59,6 +59,16 @@ Web 麦克风链路，并补齐可信来源权限、Activity/页面生命周期�
   offline/server-error/timeout/maintenance 状态且仍是唯一配置修改来源。
 - 设备配置存储支持可注入夹具，已验证保存、重载和重新配置时保留现有密钥；
   生产实现仍由 Android Keystore AES-GCM 存储。
+- 增加认证 Tablet 心跳接口，持久化 App 版本、摄像头、人脸模型、模板数量、
+  麦克风、会议 WebSocket、诊断状态和最近错误；不上传照片、embedding 或
+  原始音频。
+- `/api/hardware/status` 分别返回 `tablets` 与席位控制器 `seats`；Tablet
+  默认 45 秒未心跳离线（可限制在 10–300 秒配置），ESP32 查询时也会收口
+  已过期心跳。
+- 管理端原有 `HardwareStatus` 已升级为按席位只读设备面板，分别显示 Tablet
+  与 ESP32/兼容控制器的在线、版本、心跳、原生能力、灯效、传感器和最近错误，
+  不提供人脸图片。
+- 现有数据库通过可重复执行的启动迁移增加 Tablet 状态列，不删除或猜测旧数据。
 - Graphify 根级单一快照已更新。
 
 ## 已执行测试
@@ -84,6 +94,8 @@ Web 麦克风链路，并补齐可信来源权限、Activity/页面生命周期�
 | seat 1 软件闭环 | `scripts/run_seat1_integration_test.ps1` | 通过；后端/ESP32 18 项、前端 2 项，核心闭环连续 20 轮 |
 | Android WebView/语音前端 | `typecheck`、Native/Hook 定向、完整 seat 测试 | 通过；12 项定向、76 项席位 |
 | 语音 PCM/权限/切换后端 | 轻量 pytest 节点集 | 通过，21 项；未加载真实 ASR 大模型 |
+| Tablet 心跳/聚合/迁移 | 专项 pytest | 通过，8 项；与 ESP32/单席组合回归 11 项通过 |
+| 管理端设备状态 | Admin + HardwareStatus Vitest | 通过，106 项；另有 Android 心跳/身份定向 5 项 |
 
 `test_speech_stream_service.py` 与 `test_speech_websocket_blackbox.py`
 组合运行超过六分钟执行时限，未取得完整汇总；没有把超时描述为通过。
@@ -106,7 +118,6 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 尚未完成的软件任务
 
-- Tablet/ESP32 分离的设备状态与管理端只读视图。
 - 安全加固、模型许可门禁、CI 和 `verify_all_software.ps1`。
 - 完整集成文档、部署手册和人工验收包。
 
@@ -128,7 +139,7 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 下一步
 
-1. 接入 Tablet 心跳、超时离线和诊断状态。
-2. 聚合 Tablet/ESP32 状态并增加管理端只读视图。
-3. 完成发布安全、模型许可门禁、CI 和一键验证。
+1. 完成设备接口防滥用、事件时效、日志脱敏和安全配置审计。
+2. 增加模型许可发布门禁和 `MODEL_LICENSE_GATE.md`。
+3. 完成 CI、`verify_all_software.ps1` 和分类验证结果。
 4. 完成部署文档、发布清单与人工验收包。

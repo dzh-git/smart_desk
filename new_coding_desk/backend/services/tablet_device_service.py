@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import os
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -137,3 +138,34 @@ class TabletDeviceService:
                 "DEVICE_AUTH_FAILED",
             )
         return device
+
+    def record_heartbeat(
+        self,
+        *,
+        device_id: str,
+        seat_id: int,
+        token: str | None,
+        app_version: str,
+        camera_status: str,
+        face_model_status: str,
+        registered_templates_count: int,
+        microphone_status: str,
+        meeting_websocket_status: str,
+        diagnostic_status: str,
+        last_error: str | None,
+    ) -> TabletDevice:
+        device = self.authenticate(
+            device_id=device_id,
+            seat_id=seat_id,
+            token=token,
+        )
+        device.app_version = app_version
+        device.last_seen_at = datetime.now(timezone.utc)
+        device.camera_status = camera_status
+        device.face_model_status = face_model_status
+        device.registered_templates_count = registered_templates_count
+        device.microphone_status = microphone_status
+        device.meeting_websocket_status = meeting_websocket_status
+        device.diagnostic_status = diagnostic_status
+        device.last_error = last_error
+        return self.repo.save(device)

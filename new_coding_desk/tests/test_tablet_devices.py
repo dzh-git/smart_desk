@@ -1,9 +1,13 @@
 """Tablet provisioning and credential hashing tests."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, inspect, text
 
 from backend.main import app
+from backend.migrations import ensure_tablet_device_status_columns
 from backend.models.tablet_device import TabletDevice
 from backend.services.tablet_device_service import (
     TabletDeviceService,
@@ -16,6 +20,32 @@ client = TestClient(app)
 
 ADMIN_TOKEN = "test-provisioning-token-000001"
 DEVICE_TOKEN = "test-device-secret-token-000001"
+
+
+def _provision_direct() -> None:
+    db = TestSessionLocal()
+    try:
+        TabletDeviceService(db).provision(
+            device_id="tablet-seat-01",
+            seat_id=1,
+            token=DEVICE_TOKEN,
+        )
+    finally:
+        db.close()
+
+
+def _heartbeat_payload() -> dict:
+    return {
+        "seatId": 1,
+        "appVersion": "0.8.0",
+        "cameraStatus": "READY",
+        "faceModelStatus": "READY",
+        "registeredTemplatesCount": 3,
+        "microphoneStatus": "READY",
+        "meetingWebsocketStatus": "CONNECTED",
+        "diagnosticStatus": "READY",
+        "lastError": None,
+    }
 
 
 def test_token_hash_is_salted_and_verifiable():
@@ -96,3 +126,142 @@ def test_one_tablet_per_seat():
             raise AssertionError("Duplicate seat binding was accepted")
     finally:
         db.close()
+
+
+def test_authenticated_heartbeat_persists_operational_status():
+    _provision_direct()
+
+    response = client.post(
+        "/api/tablet-devices/tablet-seat-01/heartbeat",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json=_heartbeat_payload(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "deviceId": "tablet-seat-01",
+        "seatId": 1,
+        "enabled": True,
+        "appVersion": "0.8.0",
+        "lastSeenAt": response.json()["data"]["lastSeenAt"],
+        "cameraStatus": "READY",
+        "faceModelStatus": "READY",
+        "registeredTemplatesCount": 3,
+        "microphoneStatus": "READY",
+        "meetingWebsocketStatus": "CONNECTED",
+        "diagnosticStatus": "READY",
+        "lastError": None,
+    }
+    db = TestSessionLocal()
+    try:
+        stored = db.get(TabletDevice, "tablet-seat-01")
+        assert stored is not None
+        assert stored.last_seen_at is not None
+        assert stored.registered_templates_count == 3
+        assert stored.meeting_websocket_status == "CONNECTED"
+    finally:
+        db.close()
+
+
+def test_heartbeat_rejects_wrong_token_and_seat():
+    _provision_direct()
+    wrong_token = client.post(
+        "/api/tablet-devices/tablet-seat-01/heartbeat",
+        headers={
+            "X-SmartDesk-Device-Token":
+                "wrong-device-secret-token-000001"
+        },
+        json=_heartbeat_payload(),
+    )
+    wrong_seat_payload = _heartbeat_payload()
+    wrong_seat_payload["seatId"] = 2
+    wrong_seat = client.post(
+        "/api/tablet-devices/tablet-seat-01/heartbeat",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json=wrong_seat_payload,
+    )
+
+    assert wrong_token.status_code == 400
+    assert wrong_token.json()["error_code"] == "DEVICE_AUTH_FAILED"
+    assert wrong_seat.status_code == 400
+    assert wrong_seat.json()["error_code"] == "DEVICE_SEAT_MISMATCH"
+
+
+def test_hardware_status_separates_tablet_and_esp32_state(monkeypatch):
+    _provision_direct()
+    heartbeat = client.post(
+        "/api/tablet-devices/tablet-seat-01/heartbeat",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json=_heartbeat_payload(),
+    )
+    assert heartbeat.status_code == 200
+
+    response = client.get("/api/hardware/status")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    tablet = next(
+        item for item in data["tablets"] if item["seat_id"] == 1
+    )
+    assert tablet["online"] is True
+    assert tablet["camera_status"] == "READY"
+    assert tablet["registered_templates_count"] == 3
+    assert "seats" in data
+
+    db = TestSessionLocal()
+    try:
+        stored = db.get(TabletDevice, "tablet-seat-01")
+        assert stored is not None
+        stored.last_seen_at = (
+            datetime.now(timezone.utc) - timedelta(minutes=10)
+        )
+        db.commit()
+    finally:
+        db.close()
+    monkeypatch.setenv(
+        "SMARTDESK_TABLET_OFFLINE_TIMEOUT_SECONDS",
+        "45",
+    )
+
+    stale = client.get("/api/hardware/status").json()["data"]
+    stale_tablet = next(
+        item for item in stale["tablets"] if item["seat_id"] == 1
+    )
+    assert stale_tablet["online"] is False
+    assert stale_tablet["heartbeat_age_seconds"] >= 600
+
+
+def test_tablet_status_migration_is_idempotent():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.connect() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE tablet_devices (
+                    id VARCHAR(64) PRIMARY KEY,
+                    seat_id INTEGER NOT NULL,
+                    token_hash VARCHAR(256) NOT NULL,
+                    enabled BOOLEAN NOT NULL,
+                    app_version VARCHAR(64),
+                    last_seen_at DATETIME,
+                    last_error VARCHAR(300)
+                )
+                """
+            )
+        )
+        connection.commit()
+
+    ensure_tablet_device_status_columns(engine)
+    ensure_tablet_device_status_columns(engine)
+
+    columns = {
+        column["name"]
+        for column in inspect(engine).get_columns("tablet_devices")
+    }
+    assert {
+        "camera_status",
+        "face_model_status",
+        "registered_templates_count",
+        "microphone_status",
+        "meeting_websocket_status",
+        "diagnostic_status",
+    }.issubset(columns)

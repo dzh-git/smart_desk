@@ -412,6 +412,11 @@ describe("SeatTablet - Android identity check-in", () => {
               serverUrl: "http://host:8000",
               frontendUrl: "http://host:5173",
               configured: true,
+              appVersion: "0.8.0",
+              cameraReady: true,
+              faceModelReady: true,
+              microphoneReady: true,
+              nativeLastError: null,
             },
           }),
         ),
@@ -441,7 +446,10 @@ describe("SeatTablet - Android identity check-in", () => {
             eventId: "registered-faces-event-0001",
             type: "registered_people",
             timestamp: 1_700_000_000_000,
-            data: { personIds: [], count: 0 },
+            data: {
+              personIds: ["person_001", "person_002"],
+              count: 2,
+            },
           }),
         ),
         startFaceVerification: vi.fn(() =>
@@ -557,6 +565,51 @@ describe("SeatTablet - Android identity check-in", () => {
     await screen.findByText(/VERIFIED · person_001 · 0.820 · PROTOTYPE/);
     expect(identityCalls).toHaveLength(0);
     expect(screen.queryByText("提交测试签到")).not.toBeInTheDocument();
+  });
+
+  it("reports authenticated tablet operational heartbeat", async () => {
+    installNativeBridge();
+    const heartbeatCalls: Array<{
+      body: Record<string, unknown>;
+      headers?: HeadersInit;
+    }> = [];
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (
+        url ===
+        "/api/tablet-devices/tablet-seat-01/heartbeat"
+      ) {
+        heartbeatCalls.push({
+          body: JSON.parse(String(opts?.body)),
+          headers: opts?.headers,
+        });
+        return okResponse({
+          deviceId: "tablet-seat-01",
+          seatId: 1,
+          enabled: true,
+          lastSeenAt: "2026-01-01T00:00:00Z",
+        });
+      }
+      return createSeatMock("occupied_unchecked")(url);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(heartbeatCalls).toHaveLength(1));
+    expect(heartbeatCalls[0].body).toMatchObject({
+      seatId: 1,
+      appVersion: "0.8.0",
+      cameraStatus: "READY",
+      faceModelStatus: "READY",
+      registeredTemplatesCount: 2,
+      microphoneStatus: "READY",
+      meetingWebsocketStatus: "CONNECTED",
+      diagnosticStatus: "READY",
+      lastError: null,
+    });
+    expect(heartbeatCalls[0].headers).toMatchObject({
+      "X-SmartDesk-Device-Token":
+        "device-secret-token-00000001",
+    });
   });
 });
 

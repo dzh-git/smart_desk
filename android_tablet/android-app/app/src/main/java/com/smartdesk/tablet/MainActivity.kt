@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var deviceConfigStore: DeviceConfigStore
     private var recognitionManager: FaceRecognitionManager? = null
     private var recognitionInitError: Throwable? = null
+    private var lastNativeError: String? = null
     private var cameraState = CameraState.IDLE
     private var lastFaceStatus: String? = null
     private var lastFaceEventAtMs = 0L
@@ -95,6 +96,7 @@ class MainActivity : ComponentActivity() {
             startCamera()
         } else {
             Log.w(TAG, "Camera permission denied")
+            lastNativeError = ErrorCode.CAMERA_PERMISSION_DENIED
             cameraState = CameraState.IDLE
             cameraOverlay.visibility = View.GONE
             emitToReact(
@@ -142,6 +144,9 @@ class MainActivity : ComponentActivity() {
             recognitionManager = manager
         }.onFailure { error ->
             recognitionInitError = error
+            lastNativeError = (
+                error.message ?: ErrorCode.FACE_MODEL_INIT_FAILED
+            )
             Log.e(TAG, "MobileFaceNet initialization failed", error)
         }
     }
@@ -230,6 +235,7 @@ class MainActivity : ComponentActivity() {
             onError = { code, error ->
                 cameraOverlay.visibility = View.GONE
                 cameraState = CameraState.IDLE
+                lastNativeError = "$code:${error.message.orEmpty()}"
                 emitToReact(
                     AndroidEvent.error(
                         code,
@@ -365,6 +371,7 @@ class MainActivity : ComponentActivity() {
             AndroidBridge(
                 defaultDeviceId = defaultDeviceId(),
                 onGetDeviceConfig = deviceConfigStore::load,
+                onGetRuntimeStatus = ::nativeRuntimeStatus,
                 onGetDeviceCredential = ::getDeviceCredential,
                 onSaveDeviceConfig = ::saveDeviceConfiguration,
                 onReloadSeatPage = {
@@ -506,10 +513,14 @@ class MainActivity : ComponentActivity() {
         }
         if (granted && mayGrantMicrophone(request, true)) {
             request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            if (recognitionManager != null) {
+                lastNativeError = null
+            }
             Log.i(TAG, "WebView microphone permission granted")
         } else {
             request.deny()
             Log.w(TAG, "WebView microphone permission denied")
+            lastNativeError = ErrorCode.MICROPHONE_PERMISSION_DENIED
             emitToReact(
                 AndroidEvent.error(
                     ErrorCode.MICROPHONE_PERMISSION_DENIED,
@@ -638,6 +649,26 @@ class MainActivity : ComponentActivity() {
         val suffix = androidId.takeLast(8).ifBlank { "unconfigured" }
         return "tablet-$suffix"
     }
+
+    private fun nativeRuntimeStatus(): JSONObject =
+        JSONObject()
+            .put(
+                "cameraReady",
+                packageManager.hasSystemFeature(
+                    PackageManager.FEATURE_CAMERA_FRONT
+                )
+            )
+            .put("faceModelReady", recognitionManager != null)
+            .put(
+                "microphoneReady",
+                packageManager.hasSystemFeature(
+                    PackageManager.FEATURE_MICROPHONE
+                )
+            )
+            .put(
+                "nativeLastError",
+                lastNativeError ?: JSONObject.NULL
+            )
 
     private fun registerNetworkRetry() {
         val manager = getSystemService(ConnectivityManager::class.java)

@@ -44,6 +44,7 @@ import {
   createServiceCall,
   cancelServiceCall,
   fetchSpeechStatus,
+  reportTabletHeartbeat,
 } from "../api/resources";
 import type { ServiceType, SpeechModelStatus, VoteStatistics } from "../api/types";
 import {
@@ -139,6 +140,10 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const [identityCheckinSubmitting, setIdentityCheckinSubmitting] =
     useState(false);
   const nativeDeviceCredential = useRef<string | null>(null);
+  const [nativeCredentialReady, setNativeCredentialReady] = useState(false);
+  const [nativeRuntimeError, setNativeRuntimeError] = useState<string | null>(
+    null,
+  );
   const nativeIdentityEvent = useRef<SmartDeskNativeEvent | null>(
     null,
   );
@@ -150,11 +155,20 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       if (event.type === "identity_status") {
         nativeIdentityEvent.current = event;
         setNativeIdentityStatus(event.data as NativeIdentityStatus);
+        if ((event.data as NativeIdentityStatus).status === "ERROR") {
+          setNativeRuntimeError(
+            (event.data as NativeIdentityStatus).message ??
+              "Native identity error",
+          );
+        }
       } else if (event.type === "error") {
         const data = event.data as { code?: string; message?: string };
-        setActionError(
+        const nativeError =
           [data.code, data.message].filter(Boolean).join("：") ||
-            "Android native operation failed",
+          "Android native operation failed";
+        setNativeRuntimeError(nativeError);
+        setActionError(
+          nativeError,
         );
       }
     });
@@ -163,7 +177,10 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       void nativeBridge
         .getDeviceInfo()
         .then((deviceInfo) => {
-          if (active) setNativeDeviceInfo(deviceInfo);
+          if (active) {
+            setNativeDeviceInfo(deviceInfo);
+            setNativeRuntimeError(deviceInfo.nativeLastError ?? null);
+          }
         })
         .catch((error: unknown) => {
           if (active) {
@@ -177,7 +194,10 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       void nativeBridge
         .getDeviceCredential()
         .then((deviceToken) => {
-          if (active) nativeDeviceCredential.current = deviceToken;
+          if (active) {
+            nativeDeviceCredential.current = deviceToken;
+            setNativeCredentialReady(true);
+          }
         })
         .catch((error: unknown) => {
           if (active) {
@@ -202,6 +222,102 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const isCheckedIn = mySeat?.isCheckedIn ?? false;
   const isSpeaker = speakerSeatId === seatId;
   const wsConnected = connection === "connected";
+
+  useEffect(() => {
+    const deviceInfo = nativeDeviceInfo;
+    const deviceToken = nativeDeviceCredential.current;
+    if (
+      !nativeBridge.isAvailable() ||
+      !nativeCredentialReady ||
+      !deviceInfo ||
+      !deviceToken ||
+      deviceInfo.seatId !== seatId
+    ) {
+      return;
+    }
+
+    let active = true;
+    const heartbeat = async () => {
+      const [identityResult, facesResult] = await Promise.allSettled([
+        nativeBridge.getNativeStatus(),
+        nativeBridge.getRegisteredFaces(),
+      ]);
+      if (!active) return;
+
+      const identityError =
+        identityResult.status === "rejected"
+          ? identityResult.reason instanceof Error
+            ? identityResult.reason.message
+            : String(identityResult.reason)
+          : identityResult.value.status === "ERROR"
+            ? identityResult.value.message ?? "Native identity error"
+            : null;
+      const facesError =
+        facesResult.status === "rejected"
+          ? facesResult.reason instanceof Error
+            ? facesResult.reason.message
+            : String(facesResult.reason)
+          : null;
+      const lastError = (
+        nativeRuntimeError ??
+        deviceInfo.nativeLastError ??
+        identityError ??
+        facesError
+      )?.slice(0, 300) ?? null;
+      const statusFromCapability = (
+        ready: boolean | undefined,
+      ): "READY" | "ERROR" | "UNKNOWN" =>
+        ready === true ? "READY" : ready === false ? "ERROR" : "UNKNOWN";
+
+      try {
+        await reportTabletHeartbeat(
+          deviceInfo.deviceId,
+          {
+            seatId,
+            appVersion: deviceInfo.appVersion ?? "unknown",
+            cameraStatus: statusFromCapability(deviceInfo.cameraReady),
+            faceModelStatus:
+              identityResult.status === "fulfilled"
+                ? statusFromCapability(deviceInfo.faceModelReady)
+                : "ERROR",
+            registeredTemplatesCount:
+              facesResult.status === "fulfilled"
+                ? facesResult.value.count
+                : 0,
+            microphoneStatus:
+              typeof navigator.mediaDevices?.getUserMedia === "function" &&
+              deviceInfo.microphoneReady !== false
+                ? statusFromCapability(deviceInfo.microphoneReady ?? true)
+                : "ERROR",
+            meetingWebsocketStatus: connection.toUpperCase() as
+              | "CONNECTED"
+              | "CONNECTING"
+              | "DISCONNECTED",
+            diagnosticStatus: lastError ? "ERROR" : "READY",
+            lastError,
+          },
+          deviceToken,
+        );
+      } catch {
+        // A missed heartbeat is represented by last_seen_at becoming stale.
+        // Do not surface a recurring network error over the meeting UI.
+      }
+    };
+
+    void heartbeat();
+    const timer = window.setInterval(heartbeat, 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [
+    connection,
+    nativeBridge,
+    nativeCredentialReady,
+    nativeDeviceInfo,
+    nativeRuntimeError,
+    seatId,
+  ]);
   const latestClosedVote =
     voteResults.find((vote) => vote.status === "closed") ?? null;
   const displayVoteStats = voteStats ?? latestClosedVote;

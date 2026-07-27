@@ -9,10 +9,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.exceptions import ConflictError, ValidationError
+from backend.exceptions import ConflictError, NotFoundError, ValidationError
 from backend.schemas import ApiResponse
 from backend.schemas.tablet_device import (
     TabletDeviceProvisionRequest,
+    TabletDeviceHeartbeatRequest,
     TabletDeviceResponse,
 )
 from backend.services.tablet_device_service import TabletDeviceService
@@ -70,6 +71,43 @@ def provision_tablet(
         )
     except ConflictError as error:
         return _error(error, 409)
+    except ValidationError as error:
+        return _error(error, 400)
+    return ApiResponse.ok(
+        data=TabletDeviceResponse.model_validate(device),
+    )
+
+
+@router.post(
+    "/{device_id}/heartbeat",
+    response_model=ApiResponse[TabletDeviceResponse],
+)
+def tablet_heartbeat(
+    device_id: str,
+    body: TabletDeviceHeartbeatRequest,
+    db: Session = Depends(get_db),
+    device_token: str | None = Header(
+        default=None,
+        alias="X-SmartDesk-Device-Token",
+    ),
+):
+    """Record authenticated, non-biometric tablet operational status."""
+    try:
+        device = TabletDeviceService(db).record_heartbeat(
+            device_id=device_id,
+            seat_id=body.seat_id,
+            token=device_token,
+            app_version=body.app_version,
+            camera_status=body.camera_status,
+            face_model_status=body.face_model_status,
+            registered_templates_count=body.registered_templates_count,
+            microphone_status=body.microphone_status,
+            meeting_websocket_status=body.meeting_websocket_status,
+            diagnostic_status=body.diagnostic_status,
+            last_error=body.last_error,
+        )
+    except NotFoundError as error:
+        return _error(error, 404)
     except ValidationError as error:
         return _error(error, 400)
     return ApiResponse.ok(
