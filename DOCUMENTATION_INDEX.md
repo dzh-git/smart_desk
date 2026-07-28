@@ -18,7 +18,7 @@
 | 主题 | 权威文档 |
 |---|---|
 | 产品范围与实体约束 | `docs/product/project-goals.md`、`docs/product/智能会议桌实体集成需求.md` |
-| 总体架构 | `new_coding_desk/docs/system_architecture.md` |
+| 总体架构 | `docs/integration/ARCHITECTURE.md`、`new_coding_desk/docs/system_architecture.md` |
 | HTTP、WebSocket 与事件 | `new_coding_desk/docs/API_SPEC.md`、`WEBSOCKET_PROTOCOL.md`、`EVENT_BUS_SPEC.md` |
 | 前端状态、交互与视觉 | `new_coding_desk/docs/FRONTEND_STATE_SPEC.md`、`FRONTEND_INTERACTION_SPEC.md`、`FRONTEND_VISUAL_SPEC.md` |
 | 中央大屏与应用切换 | `new_coding_desk/docs/HOST_DISPLAY_CONTRACT.md` |
@@ -27,7 +27,11 @@
 | 手势部署与验收 | `smartdesk_gesture_controller/docs/OPERATIONS_AND_ACCEPTANCE.md` |
 | Arduino 串口协议 | `arduino_nano_controller/protocol.md` |
 | 三模块部署联调 | `docs/deployment/智能会议桌硬件集成-部署与联调.md`、`new_coding_desk/docs/DEMO_RUNBOOK.md` |
-| Android 平板、Bridge 与人脸标定 | `android_tablet/README.md`、`android_tablet/docs/CALIBRATION.md` |
+| Android 平板、Bridge 与人脸标定 | `android_tablet/README.md`、`docs/integration/ANDROID_BRIDGE_CONTRACT.md`、`android_tablet/docs/CALIBRATION.md` |
+| 稳定身份与签到 | `docs/integration/IDENTITY_CHECKIN_CONTRACT.md` |
+| ESP32 正式协议 | `esp32_seat_controller/protocol.md`；`docs/integration/ESP32_PROTOCOL.md` 仅作接入导航 |
+| 单席/九席部署 | `docs/integration/ONE_SEAT_RUNBOOK.md`、`docs/integration/NINE_SEAT_DEPLOYMENT.md` |
+| 发布与人工验收 | `docs/integration/RELEASE_READINESS.md`、`docs/integration/HUMAN_VALIDATION_REQUIRED.md` |
 
 ## 维护规则
 

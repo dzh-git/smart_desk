@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -129,14 +130,109 @@ def validate_no_tracked_face_weight() -> None:
 def validate_required_files() -> None:
     required = (
         ".github/workflows/software-verification.yml",
+        "README.md",
+        "docs/integration/ANDROID_BRIDGE_CONTRACT.md",
+        "docs/integration/ARCHITECTURE.md",
         "docs/integration/AUTONOMOUS_PROGRESS.md",
+        "docs/integration/ESP32_PROTOCOL.md",
+        "docs/integration/HUMAN_VALIDATION_REQUIRED.md",
+        "docs/integration/IDENTITY_CHECKIN_CONTRACT.md",
         "docs/integration/MODEL_LICENSE_GATE.md",
+        "docs/integration/NINE_SEAT_DEPLOYMENT.md",
+        "docs/integration/ONE_SEAT_RUNBOOK.md",
+        "docs/integration/RELEASE_READINESS.md",
         "esp32_seat_controller/protocol.md",
         "new_coding_desk/docs/API_SPEC.md",
         "scripts/verify_all_software.ps1",
     )
     missing = [path for path in required if not (ROOT / path).is_file()]
     require(not missing, f"Missing required files: {', '.join(missing)}")
+
+
+def validate_markdown_links() -> None:
+    documents = [
+        ROOT / "README.md",
+        ROOT / "DOCUMENTATION_INDEX.md",
+        *(ROOT / "docs/integration").glob("*.md"),
+    ]
+    errors: list[str] = []
+    link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+    uri_pattern = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+    for document in documents:
+        text = document.read_text(encoding="utf-8")
+        for raw_target in link_pattern.findall(text):
+            target = raw_target.strip().strip("<>")
+            if (
+                not target
+                or target.startswith(("#", "//"))
+                or uri_pattern.match(target)
+            ):
+                continue
+            target = target.split("#", 1)[0].split("?", 1)[0]
+            resolved = (document.parent / target).resolve()
+            if not resolved.exists():
+                errors.append(
+                    f"{document.relative_to(ROOT)} -> {raw_target}"
+                )
+    require(
+        not errors,
+        "Broken local Markdown links: " + ", ".join(errors),
+    )
+
+
+def validate_integration_document_contracts() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for heading in (
+        "## 架构与边界",
+        "## 目录",
+        "## 环境",
+        "## 中央主机启动",
+        "## Android",
+        "## ESP32",
+        "## 自动验证",
+    ):
+        require(heading in readme, f"Root README missing {heading}")
+
+    human = (
+        ROOT / "docs/integration/HUMAN_VALIDATION_REQUIRED.md"
+    ).read_text(encoding="utf-8")
+    for number in range(1, 16):
+        identifier = f"HV-{number:02d}"
+        require(
+            f"## {identifier} " in human,
+            f"Human validation missing {identifier}",
+        )
+        require(
+            f"| {identifier} |" in human,
+            f"Human validation record table missing {identifier}",
+        )
+    for field in (
+        "准备条件",
+        "操作步骤",
+        "预期结果",
+        "失败表现",
+        "保存日志",
+        "结果 PASS/FAIL",
+    ):
+        require(field in human, f"Human validation missing {field}")
+
+    esp32_entry = (
+        ROOT / "docs/integration/ESP32_PROTOCOL.md"
+    ).read_text(encoding="utf-8")
+    require(
+        "唯一权威来源" in esp32_entry
+        and "../../esp32_seat_controller/protocol.md" in esp32_entry,
+        "ESP32 integration doc must point to the canonical protocol",
+    )
+
+    release = (
+        ROOT / "docs/integration/RELEASE_READINESS.md"
+    ).read_text(encoding="utf-8")
+    require(
+        "HARDWARE_VALIDATION_REQUIRED" in release
+        and "MODEL_LICENSE_GATE_BLOCKED" in release,
+        "Release report must preserve hardware and model-license gates",
+    )
 
 
 def validate_ci_entrypoints() -> None:
@@ -164,6 +260,8 @@ def validate_ci_entrypoints() -> None:
 def main() -> int:
     checks = (
         validate_required_files,
+        validate_markdown_links,
+        validate_integration_document_contracts,
         validate_ci_entrypoints,
         validate_integration_config,
         validate_android_config,

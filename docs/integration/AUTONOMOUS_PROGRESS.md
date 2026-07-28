@@ -4,10 +4,11 @@
 
 ## 当前阶段
 
-阶段 0–11 已完成软件实现与定向回归。正式 ESP32 会话和平板接口已做独立
+阶段 0–12 的机器可完成工作已实现。正式 ESP32 会话和平板接口已做独立
 设备认证、席位绑定、版本门禁、基础限流和结构化脱敏日志；身份证据增加时效
 与原子事务保证；当前非商业人脸权重已由脚本和 Android Release 构建双重阻断。
-CI 和一键验证已落地；下一阶段完成架构、部署、发布和人工验收文档包。
+CI、一键验证、架构/契约、单席/九席运行手册、发布报告和 15 项人工验收包均已
+落地。最终默认 Full 验证与快照审计正在执行。
 
 ## 已完成
 
@@ -105,6 +106,13 @@ CI 和一键验证已落地；下一阶段完成架构、部署、发布和人�
 - 两个语音 stream/WebSocket 长时文件在本机组合运行20分钟仍未结束，未伪装
   为通过；它们被明确拆为 `OPTIONAL_ENVIRONMENT`，设置
   `SMARTDESK_RUN_SLOW_SPEECH_TESTS=true` 才执行。
+- 根 README 已补齐项目目标、边界、目录、环境、中央/Android/ESP32启动、
+  单席验证、配置、限制和完成度。
+- 新增 Android Bridge、身份签到和 ESP32 集成契约；ESP32 报文仍只以模块内
+  `protocol.md` 为权威，未复制出竞争规范。
+- 新增 seat 1、九席部署手册和发布就绪报告；所有真人、真机、传感器、现场网络、
+  语音稳定性、供电温升与许可证审批集中在 15 项人工验收清单中。
+- 仓库契约检查覆盖上述当前文档、CI入口和本地 Markdown 链接。
 - Graphify 根级单一快照已更新。
 
 ## 已执行测试
@@ -159,12 +167,14 @@ OpenCV 4.11 兼容线，复验通过。
 - `new_coding_desk/tests/test_one_seat_integration.py`
 - `esp32_seat_controller/`
 - `scripts/run_seat1_integration_test.ps1`
-- `new_coding_desk/docs/`
+- `new_coding_desk/docs/`、`docs/integration/`
+- `.github/workflows/software-verification.yml`
+- `scripts/verify_all_software.ps1`
 - `graphify-out/`
 
 ## 尚未完成的软件任务
 
-- 完整集成文档、部署手册和人工验收包。
+无。默认 Full 最终复验属于本阶段收尾；若失败必须修复后才保持此结论。
 
 ## HARDWARE_VALIDATION_REQUIRED
 
@@ -187,5 +197,6 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 下一步
 
-1. 完成部署文档、发布清单与人工验收包。
-2. 扩展文档/链接检查并执行默认 Full 最终验证。
+1. 完成默认 Full 最终验证、更新最终证据和 Graphify 快照。
+2. 由具备设备、人员和现场网络的团队集中执行
+   `HUMAN_VALIDATION_REQUIRED.md`；模型授权未解除前保持 Release 阻断。
