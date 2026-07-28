@@ -8820,8 +8820,8 @@
       "source_location": "L118",
       "_origin": "ast",
       "id": "new_coding_desk_backend_api_speech_clear_speech_diagnostics",
-      "community": 363,
-      "community_name": "ensure_translation_record_columns",
+      "community": 13,
+      "community_name": "Meeting Module",
       "norm_label": "clear_speech_diagnostics()"
     },
     {
@@ -8875,8 +8875,8 @@
       "source_location": "L119",
       "_origin": "ast",
       "id": "new_coding_desk_backend_api_speech_rationale_119",
-      "community": 363,
-      "community_name": "ensure_translation_record_columns",
+      "community": 13,
+      "community_name": "Meeting Module",
       "norm_label": "clear only the in-memory trace ring before a controlled reproduction."
     },
     {
@@ -10217,8 +10217,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_backend_exceptions",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "exceptions.py"
     },
     {
@@ -10327,8 +10327,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_backend_exceptions_rationale_1",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "business exceptions for the service layer.  raised by services, caught by router"
     },
     {
@@ -17697,8 +17697,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_person_service",
-      "community": 34,
-      "community_name": "SeatService Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "person_service.py"
     },
     {
@@ -17708,8 +17708,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_person_service_personservice",
-      "community": 34,
-      "community_name": "SeatService Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "personservice"
     },
     {
@@ -17719,8 +17719,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_person_service_personservice_init",
-      "community": 34,
-      "community_name": "SeatService Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": ".__init__()"
     },
     {
@@ -17730,8 +17730,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_person_service_py_session",
-      "community": 34,
-      "community_name": "SeatService Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "session"
     },
     {
@@ -17741,8 +17741,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_person_service_personservice_create_person",
-      "community": 34,
-      "community_name": "SeatService Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": ".create_person()"
     },
     {
@@ -17752,8 +17752,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_person_service_personservice_list_people",
-      "community": 34,
-      "community_name": "SeatService Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": ".list_people()"
     },
     {
@@ -17763,8 +17763,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_person_service_rationale_1",
-      "community": 34,
-      "community_name": "SeatService Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "business rules for stable people identities."
     },
     {
@@ -18126,8 +18126,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_service_call_service",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "service_call_service.py"
     },
     {
@@ -18247,8 +18247,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_service_call_service_rationale_1",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "servicecallservice \u2014 service request lifecycle.  per system_architecture \u00a74.2, e"
     },
     {
@@ -20480,8 +20480,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_vote_service",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "vote_service.py"
     },
     {
@@ -20623,8 +20623,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_backend_services_vote_service_rationale_1",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 7,
+      "community_name": "ValidationError Module",
       "norm_label": "voteservice \u2014 vote lifecycle, ballot casting, statistics.  per system_architectu"
     },
     {
@@ -24297,8 +24297,8 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "new_coding_desk_backend_websocket_speech_trace_is_trace_enabled",
-      "community": 363,
-      "community_name": "ensure_translation_record_columns",
+      "community": 13,
+      "community_name": "Meeting Module",
       "norm_label": "is_trace_enabled()"
     },
     {
@@ -24374,8 +24374,8 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "new_coding_desk_backend_websocket_speech_trace_rationale_99",
-      "community": 363,
-      "community_name": "ensure_translation_record_columns",
+      "community": 13,
+      "community_name": "Meeting Module",
       "norm_label": "true when smart_desk_enable_speech_trace=true."
     },
     {
@@ -25507,8 +25507,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "new_coding_desk_frontend_package",
-      "community": 429,
-      "community_name": "package.json",
+      "community": 176,
+      "community_name": "scripts Module",
       "norm_label": "package.json"
     },
     {
@@ -25518,8 +25518,8 @@
       "source_location": "L2",
       "_origin": "ast",
       "id": "new_coding_desk_frontend_package_name",
-      "community": 429,
-      "community_name": "package.json",
+      "community": 176,
+      "community_name": "scripts Module",
       "norm_label": "name"
     },
     {
@@ -25529,8 +25529,8 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "new_coding_desk_frontend_package_private",
-      "community": 429,
-      "community_name": "package.json",
+      "community": 176,
+      "community_name": "scripts Module",
       "norm_label": "private"
     },
     {
@@ -25540,8 +25540,8 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "new_coding_desk_frontend_package_version",
-      "community": 429,
-      "community_name": "package.json",
+      "community": 176,
+      "community_name": "scripts Module",
       "norm_label": "version"
     },
     {
@@ -25551,8 +25551,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "new_coding_desk_frontend_package_type",
-      "community": 429,
-      "community_name": "package.json",
+      "community": 176,
+      "community_name": "scripts Module",
       "norm_label": "type"
     },
     {
@@ -43107,8 +43107,8 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testcreatemeeting",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": "testcreatemeeting"
     },
     {
@@ -43118,8 +43118,8 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testcreatemeeting_test_create_meeting_basic",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": ".test_create_meeting_basic()"
     },
     {
@@ -43129,8 +43129,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testcreatemeeting_test_create_meeting_minimal",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": ".test_create_meeting_minimal()"
     },
     {
@@ -43140,8 +43140,8 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testcreatemeeting_test_list_meetings",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": ".test_list_meetings()"
     },
     {
@@ -43151,8 +43151,8 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testcreatemeeting_test_get_meeting",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": ".test_get_meeting()"
     },
     {
@@ -43162,8 +43162,8 @@
       "source_location": "L76",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testcreatemeeting_test_get_meeting_not_found",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": ".test_get_meeting_not_found()"
     },
     {
@@ -43173,8 +43173,8 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testcreatemeeting_test_get_active_meeting_none",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": ".test_get_active_meeting_none()"
     },
     {
@@ -43184,8 +43184,8 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testcreatemeeting_test_get_active_meeting_found",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": ".test_get_active_meeting_found()"
     },
     {
@@ -43206,8 +43206,8 @@
       "source_location": "L100",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_teststartmeeting_test_start_meeting_success",
-      "community": 7,
-      "community_name": "ValidationError Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": ".test_start_meeting_success()"
     },
     {
@@ -43217,8 +43217,8 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_teststartmeeting_test_start_meeting_idempotent",
-      "community": 7,
-      "community_name": "ValidationError Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": ".test_start_meeting_idempotent()"
     },
     {
@@ -43272,8 +43272,8 @@
       "source_location": "L149",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testsingleactivemeeting_test_restart_same_meeting_allowed",
-      "community": 7,
-      "community_name": "ValidationError Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": ".test_restart_same_meeting_allowed()"
     },
     {
@@ -43382,8 +43382,8 @@
       "source_location": "L231",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testagendacrud_test_create_agenda",
-      "community": 7,
-      "community_name": "ValidationError Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": ".test_create_agenda()"
     },
     {
@@ -43514,8 +43514,8 @@
       "source_location": "L323",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testattendeecrud_test_create_attendee_nonexistent_meeting",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": ".test_create_attendee_nonexistent_meeting()"
     },
     {
@@ -43547,8 +43547,8 @@
       "source_location": "L341",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_testattendeecrud_test_list_attendees_nonexistent_meeting",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": ".test_list_attendees_nonexistent_meeting()"
     },
     {
@@ -43756,8 +43756,8 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_46",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": "post /api/meetings \u2014 create meeting."
     },
     {
@@ -43767,8 +43767,8 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_49",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": "create a meeting with title and description."
     },
     {
@@ -43778,8 +43778,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_58",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": "create a meeting with only title."
     },
     {
@@ -43789,8 +43789,8 @@
       "source_location": "L77",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_77",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": "get non-existent meeting raises notfounderror."
     },
     {
@@ -43800,8 +43800,8 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_82",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": "no active meeting returns none."
     },
     {
@@ -43811,8 +43811,8 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_86",
-      "community": 370,
-      "community_name": "test_gesture_camera_driver.py",
+      "community": 37,
+      "community_name": "FakeDriver Module",
       "norm_label": "active meeting is found after start."
     },
     {
@@ -43833,8 +43833,8 @@
       "source_location": "L101",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_101",
-      "community": 7,
-      "community_name": "ValidationError Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": "start a pending meeting \u2192 active."
     },
     {
@@ -43844,8 +43844,8 @@
       "source_location": "L108",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_108",
-      "community": 7,
-      "community_name": "ValidationError Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": "starting an already-active meeting is idempotent."
     },
     {
@@ -43899,8 +43899,8 @@
       "source_location": "L150",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_150",
-      "community": 7,
-      "community_name": "ValidationError Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": "starting the same meeting again does not conflict."
     },
     {
@@ -44009,8 +44009,8 @@
       "source_location": "L232",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_232",
-      "community": 7,
-      "community_name": "ValidationError Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": "create an agenda item for a meeting."
     },
     {
@@ -44141,8 +44141,8 @@
       "source_location": "L324",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_324",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": "creating attendee for non-existent meeting raises notfounderror."
     },
     {
@@ -44174,8 +44174,8 @@
       "source_location": "L342",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_meeting_service_rationale_342",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 4,
+      "community_name": "create pending()",
       "norm_label": "list attendees for non-existent meeting raises notfounderror."
     },
     {
@@ -47672,8 +47672,8 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "testseatoccupied"
     },
     {
@@ -47683,8 +47683,8 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied_test_occupies_vacant_seat",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": ".test_occupies_vacant_seat()"
     },
     {
@@ -47694,8 +47694,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied_test_publishes_seat_occupied_event",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": ".test_publishes_seat_occupied_event()"
     },
     {
@@ -47705,8 +47705,8 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied_test_publishes_checkin_prompt_event",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": ".test_publishes_checkin_prompt_event()"
     },
     {
@@ -47716,8 +47716,8 @@
       "source_location": "L75",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied_test_publishes_both_events_together",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": ".test_publishes_both_events_together()"
     },
     {
@@ -47727,8 +47727,8 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied_test_meeting_id_in_event",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": ".test_meeting_id_in_event()"
     },
     {
@@ -47738,8 +47738,8 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied_test_fails_when_not_vacant",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": ".test_fails_when_not_vacant()"
     },
     {
@@ -47749,8 +47749,8 @@
       "source_location": "L101",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied_test_fails_when_checked_in",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": ".test_fails_when_checked_in()"
     },
     {
@@ -47771,8 +47771,8 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testseatoccupied_test_nonexistent_seat_raises_not_found",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": ".test_nonexistent_seat_raises_not_found()"
     },
     {
@@ -48024,8 +48024,8 @@
       "source_location": "L322",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testlistseats",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 30,
+      "community_name": "HandRecognizer Module",
       "norm_label": "testlistseats"
     },
     {
@@ -48035,8 +48035,8 @@
       "source_location": "L325",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testlistseats_test_returns_9_seats",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 30,
+      "community_name": "HandRecognizer Module",
       "norm_label": ".test_returns_9_seats()"
     },
     {
@@ -48046,8 +48046,8 @@
       "source_location": "L330",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testlistseats_test_seats_ordered_by_id",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 30,
+      "community_name": "HandRecognizer Module",
       "norm_label": ".test_seats_ordered_by_id()"
     },
     {
@@ -48057,8 +48057,8 @@
       "source_location": "L336",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_testlistseats_test_all_initially_vacant",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 30,
+      "community_name": "HandRecognizer Module",
       "norm_label": ".test_all_initially_vacant()"
     },
     {
@@ -48255,8 +48255,8 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_49",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "seat_occupied: vacant \u2192 occupied_unchecked."
     },
     {
@@ -48266,8 +48266,8 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_52",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "vacant seat transitions to occupied_unchecked."
     },
     {
@@ -48277,8 +48277,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_58",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "publishes seat_occupied event."
     },
     {
@@ -48288,8 +48288,8 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_67",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "publishes checkin_prompt event after seat_occupied."
     },
     {
@@ -48299,8 +48299,8 @@
       "source_location": "L76",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_76",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "both seat_occupied and checkin_prompt published."
     },
     {
@@ -48310,8 +48310,8 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_89",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "meeting id is passed through to events."
     },
     {
@@ -48321,8 +48321,8 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_96",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "seat_occupied fails if seat is already occupied."
     },
     {
@@ -48332,8 +48332,8 @@
       "source_location": "L102",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_102",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "seat_occupied fails if seat is checked_in."
     },
     {
@@ -48354,8 +48354,8 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_121",
-      "community": 164,
-      "community_name": "FakeDisplayAgent Module",
+      "community": 8,
+      "community_name": "active meeting with attendee()",
       "norm_label": "seat_occupied on seat_id=99 raises notfounderror."
     },
     {
@@ -48596,8 +48596,8 @@
       "source_location": "L323",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_323",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 30,
+      "community_name": "HandRecognizer Module",
       "norm_label": "list_seats: return all 10 seat states."
     },
     {
@@ -48607,8 +48607,8 @@
       "source_location": "L326",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_326",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 30,
+      "community_name": "HandRecognizer Module",
       "norm_label": "seed data provides exactly nine seats."
     },
     {
@@ -48618,8 +48618,8 @@
       "source_location": "L331",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_331",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 30,
+      "community_name": "HandRecognizer Module",
       "norm_label": "seats returned in seat_id order."
     },
     {
@@ -48629,8 +48629,8 @@
       "source_location": "L337",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_seat_service_rationale_337",
-      "community": 37,
-      "community_name": "FakeDriver Module",
+      "community": 30,
+      "community_name": "HandRecognizer Module",
       "norm_label": "all seats start vacant after seed."
     },
     {
@@ -54360,8 +54360,8 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_speech_trace_testtracehelper_test_is_trace_enabled_returns_false",
-      "community": 363,
-      "community_name": "ensure_translation_record_columns",
+      "community": 13,
+      "community_name": "Meeting Module",
       "norm_label": ".test_is_trace_enabled_returns_false()"
     },
     {
@@ -54371,8 +54371,8 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_speech_trace_testtracehelper_test_is_trace_enabled_returns_true",
-      "community": 363,
-      "community_name": "ensure_translation_record_columns",
+      "community": 13,
+      "community_name": "Meeting Module",
       "norm_label": ".test_is_trace_enabled_returns_true()"
     },
     {
@@ -54899,8 +54899,8 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_speech_trace_rationale_110",
-      "community": 363,
-      "community_name": "ensure_translation_record_columns",
+      "community": 13,
+      "community_name": "Meeting Module",
       "norm_label": "is_trace_enabled() returns false when disabled."
     },
     {
@@ -54910,8 +54910,8 @@
       "source_location": "L114",
       "_origin": "ast",
       "id": "new_coding_desk_tests_test_speech_trace_rationale_114",
-      "community": 363,
-      "community_name": "ensure_translation_record_columns",
+      "community": 13,
+      "community_name": "Meeting Module",
       "norm_label": "is_trace_enabled() returns true when enabled."
     },
     {
@@ -61884,8 +61884,8 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_display_agent_client_displayagentresult",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "displayagentresult"
     },
     {
@@ -61917,8 +61917,8 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_display_agent_client_displayagentclient_status",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 144,
+      "community_name": "DisplayAgentClient Module",
       "norm_label": ".status()"
     },
     {
@@ -61928,8 +61928,8 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_display_agent_client_displayagentclient_activate",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 144,
+      "community_name": "DisplayAgentClient Module",
       "norm_label": ".activate()"
     },
     {
@@ -61939,8 +61939,8 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_display_agent_client_displayagentclient_call",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 144,
+      "community_name": "DisplayAgentClient Module",
       "norm_label": "._call()"
     },
     {
@@ -61950,8 +61950,8 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_display_agent_client_displayagentclient_decode_json",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 144,
+      "community_name": "DisplayAgentClient Module",
       "norm_label": "._decode_json()"
     },
     {
@@ -61961,8 +61961,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_display_agent_client_py_any",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 144,
+      "community_name": "DisplayAgentClient Module",
       "norm_label": "any"
     },
     {
@@ -61972,8 +61972,8 @@
       "source_location": "L101",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_display_agent_client_displayagentclient_result_from_payload",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 144,
+      "community_name": "DisplayAgentClient Module",
       "norm_label": "._result_from_payload()"
     },
     {
@@ -66240,8 +66240,8 @@
       "source_location": "L232",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_gesture_state_actionintent_move_to",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".move_to()"
     },
     {
@@ -66262,8 +66262,8 @@
       "source_location": "L240",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_gesture_state_actionintent_click",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".click()"
     },
     {
@@ -66339,8 +66339,8 @@
       "source_location": "L270",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_gesture_state_actionintent_scroll",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".scroll()"
     },
     {
@@ -66669,8 +66669,8 @@
       "source_location": "L1103",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_gesture_state_gesturestate_begin_solidworks_pan",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 82,
+      "community_name": "get trace()",
       "norm_label": "._begin_solidworks_pan()"
     },
     {
@@ -67406,8 +67406,8 @@
       "source_location": "L1104",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_hands_gesture_state_rationale_1104",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 82,
+      "community_name": "get trace()",
       "norm_label": "begin pan: key_down(\"shift\") + mouse_down(\"middle\") (spec \u00a710.3)."
     },
     {
@@ -68825,8 +68825,8 @@
       "source_location": "L170",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_actions_testmouseactions",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": "testmouseactions"
     },
     {
@@ -68869,8 +68869,8 @@
       "source_location": "L190",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_actions_testmouseactions_test_click_recorded",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".test_click_recorded()"
     },
     {
@@ -68880,8 +68880,8 @@
       "source_location": "L195",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_actions_testmouseactions_test_click_right",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".test_click_right()"
     },
     {
@@ -68891,8 +68891,8 @@
       "source_location": "L200",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_actions_testmouseactions_test_move_to_recorded",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".test_move_to_recorded()"
     },
     {
@@ -68924,8 +68924,8 @@
       "source_location": "L216",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_actions_testmouseactions_test_scroll_recorded",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".test_scroll_recorded()"
     },
     {
@@ -68935,8 +68935,8 @@
       "source_location": "L221",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_actions_testmouseactions_test_scroll_negative",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".test_scroll_negative()"
     },
     {
@@ -69287,8 +69287,8 @@
       "source_location": "L399",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_actions_testactionintentcompat_test_args_for_click",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": ".test_args_for_click()"
     },
     {
@@ -69551,8 +69551,8 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_controller_with_fake_driver",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "_controller_with_fake_driver()"
     },
     {
@@ -69683,8 +69683,8 @@
       "source_location": "L158",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dry_run_fake_driver_never_touches_os",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 422,
+      "community_name": "._get_speech_module",
       "norm_label": "test_dry_run_fake_driver_never_touches_os()"
     },
     {
@@ -69705,8 +69705,8 @@
       "source_location": "L189",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_release_all_idempotent_via_dispatch",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_release_all_idempotent_via_dispatch()"
     },
     {
@@ -69716,8 +69716,8 @@
       "source_location": "L203",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dispatch_mouse_click_left_recorded",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_dispatch_mouse_click_left_recorded()"
     },
     {
@@ -69727,8 +69727,8 @@
       "source_location": "L210",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dispatch_mouse_click_right_recorded",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_dispatch_mouse_click_right_recorded()"
     },
     {
@@ -69738,8 +69738,8 @@
       "source_location": "L217",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dispatch_scroll_positive_recorded",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_dispatch_scroll_positive_recorded()"
     },
     {
@@ -69749,8 +69749,8 @@
       "source_location": "L224",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dispatch_scroll_negative_recorded",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_dispatch_scroll_negative_recorded()"
     },
     {
@@ -69760,8 +69760,8 @@
       "source_location": "L231",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dispatch_move_rel_recorded",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_dispatch_move_rel_recorded()"
     },
     {
@@ -69771,8 +69771,8 @@
       "source_location": "L238",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dispatch_full_mouse_drag_sequence",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 442,
+      "community_name": ".move",
       "norm_label": "test_dispatch_full_mouse_drag_sequence()"
     },
     {
@@ -69782,8 +69782,8 @@
       "source_location": "L251",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dry_run_mouse_actions_never_touch_os",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": "test_dry_run_mouse_actions_never_touch_os()"
     },
     {
@@ -69793,8 +69793,8 @@
       "source_location": "L271",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dispatch_solidworks_mouse_down_middle_recorded",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_dispatch_solidworks_mouse_down_middle_recorded()"
     },
     {
@@ -69804,8 +69804,8 @@
       "source_location": "L278",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dispatch_solidworks_key_down_shift_recorded",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 82,
+      "community_name": "get trace()",
       "norm_label": "test_dispatch_solidworks_key_down_shift_recorded()"
     },
     {
@@ -70002,8 +70002,8 @@
       "source_location": "L477",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_dry_run_fake_driver_never_calls_real_pyautogui",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": "test_dry_run_fake_driver_never_calls_real_pyautogui()"
     },
     {
@@ -70024,8 +70024,8 @@
       "source_location": "L507",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_fakedisplayagent",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "_fakedisplayagent"
     },
     {
@@ -70035,8 +70035,8 @@
       "source_location": "L508",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_fakedisplayagent_init",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": ".__init__()"
     },
     {
@@ -70046,8 +70046,8 @@
       "source_location": "L512",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_fakedisplayagent_status",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": ".status()"
     },
     {
@@ -70057,8 +70057,8 @@
       "source_location": "L515",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_fakedisplayagent_activate",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": ".activate()"
     },
     {
@@ -70068,8 +70068,8 @@
       "source_location": "L531",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_display_agent_receives_all_mode_swipe_mappings",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_display_agent_receives_all_mode_swipe_mappings()"
     },
     {
@@ -70079,8 +70079,8 @@
       "source_location": "L545",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_display_switch_failure_restores_previous_mode",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_display_switch_failure_restores_previous_mode()"
     },
     {
@@ -70090,8 +70090,8 @@
       "source_location": "L565",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_presentation_pen_does_not_reactivate_powerpoint",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_presentation_pen_does_not_reactivate_powerpoint()"
     },
     {
@@ -70156,8 +70156,8 @@
       "source_location": "L623",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_keyboard_backend_registers_global_hotkeys",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_keyboard_backend_registers_global_hotkeys()"
     },
     {
@@ -70167,8 +70167,8 @@
       "source_location": "L656",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_keyboard_backend_registration_failure_still_starts",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_keyboard_backend_registration_failure_still_starts()"
     },
     {
@@ -70189,8 +70189,8 @@
       "source_location": "L708",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_debug_window_space_key_toggles_pause",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_debug_window_space_key_toggles_pause()"
     },
     {
@@ -70200,8 +70200,8 @@
       "source_location": "L725",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_debug_window_q_key_quits",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_debug_window_q_key_quits()"
     },
     {
@@ -70211,8 +70211,8 @@
       "source_location": "L739",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_debug_window_esc_key_quits",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_debug_window_esc_key_quits()"
     },
     {
@@ -70277,8 +70277,8 @@
       "source_location": "L857",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_test_tracker_update_receives_monotonic_time",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "test_tracker_update_receives_monotonic_time()"
     },
     {
@@ -70409,8 +70409,8 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_159",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 422,
+      "community_name": "._get_speech_module",
       "norm_label": "#17: dry-run / fakedriver \u4e0b ppt \u52a8\u4f5c\u53ea\u8bb0\u5f55,\u4e0d\u771f\u5b9e\u63a7\u5236\u9f20\u6807\u952e\u76d8."
     },
     {
@@ -70431,8 +70431,8 @@
       "source_location": "L190",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_190",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "#18: release_all \u4ecd\u7136\u5e42\u7b49 (\u901a\u8fc7 controller dispatch)."
     },
     {
@@ -70442,8 +70442,8 @@
       "source_location": "L204",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_204",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "mouse left click dispatch."
     },
     {
@@ -70453,8 +70453,8 @@
       "source_location": "L211",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_211",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "mouse right click dispatch."
     },
     {
@@ -70464,8 +70464,8 @@
       "source_location": "L218",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_218",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "mouse scroll up dispatch."
     },
     {
@@ -70475,8 +70475,8 @@
       "source_location": "L225",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_225",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "mouse scroll down dispatch."
     },
     {
@@ -70486,8 +70486,8 @@
       "source_location": "L232",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_232",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "mouse relative move dispatch."
     },
     {
@@ -70497,8 +70497,8 @@
       "source_location": "L239",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_239",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 442,
+      "community_name": ".move",
       "norm_label": "full mouse drag sequence in order."
     },
     {
@@ -70508,8 +70508,8 @@
       "source_location": "L252",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_252",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": "phase 4 #23: dry-run / fakedriver mouse actions only recorded."
     },
     {
@@ -70519,8 +70519,8 @@
       "source_location": "L272",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_272",
-      "community": 10,
-      "community_name": "HandInput Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "solidworks rotate: mouse_down(\"middle\") dispatch."
     },
     {
@@ -70530,8 +70530,8 @@
       "source_location": "L279",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_279",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 82,
+      "community_name": "get trace()",
       "norm_label": "solidworks pan: key_down(\"shift\") dispatch."
     },
     {
@@ -70728,8 +70728,8 @@
       "source_location": "L478",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_478",
-      "community": 30,
-      "community_name": "HandRecognizer Module",
+      "community": 10,
+      "community_name": "HandInput Module",
       "norm_label": "dry-run / fakedriver never touches real os mouse/keyboard."
     },
     {
@@ -70805,8 +70805,8 @@
       "source_location": "L624",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_624",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "keyboard backend registers ctrl+alt+g and ctrl+alt+q."
     },
     {
@@ -70816,8 +70816,8 @@
       "source_location": "L657",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_657",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "if keyboard.add_hotkey fails the controller does not crash and prints a warning."
     },
     {
@@ -70838,8 +70838,8 @@
       "source_location": "L709",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_709",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "pressing space in the cv2 window toggles pause/resume."
     },
     {
@@ -70849,8 +70849,8 @@
       "source_location": "L726",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_726",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "pressing 'q' in the cv2 window requests exit."
     },
     {
@@ -70860,8 +70860,8 @@
       "source_location": "L740",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_740",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "pressing esc in the cv2 window requests exit."
     },
     {
@@ -70926,8 +70926,8 @@
       "source_location": "L858",
       "_origin": "ast",
       "id": "smartdesk_gesture_controller_tests_test_gesture_controller_rationale_858",
-      "community": 13,
-      "community_name": "Meeting Module",
+      "community": 219,
+      "community_name": "translation_model_service.py",
       "norm_label": "controller._process_frame passes monotonic time to tracker.update.      we patch"
     },
     {
@@ -81142,7 +81142,7 @@
       "label": "\u5df2\u5b8c\u6210",
       "file_type": "document",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L13",
+      "source_location": "L14",
       "_origin": "ast",
       "id": "docs_integration_autonomous_progress_\u5df2\u5b8c\u6210",
       "community": 406,
@@ -81153,7 +81153,7 @@
       "label": "\u5df2\u6267\u884c\u6d4b\u8bd5",
       "file_type": "document",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L118",
+      "source_location": "L122",
       "_origin": "ast",
       "id": "docs_integration_autonomous_progress_\u5df2\u6267\u884c\u6d4b\u8bd5",
       "community": 406,
@@ -81164,7 +81164,7 @@
       "label": "\u5f53\u524d\u4fee\u6539\u8303\u56f4",
       "file_type": "document",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L161",
+      "source_location": "L166",
       "_origin": "ast",
       "id": "docs_integration_autonomous_progress_\u5f53\u524d\u4fee\u6539\u8303\u56f4",
       "community": 406,
@@ -81175,7 +81175,7 @@
       "label": "\u5c1a\u672a\u5b8c\u6210\u7684\u8f6f\u4ef6\u4efb\u52a1",
       "file_type": "document",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L175",
+      "source_location": "L180",
       "_origin": "ast",
       "id": "docs_integration_autonomous_progress_\u5c1a\u672a\u5b8c\u6210\u7684\u8f6f\u4ef6\u4efb\u52a1",
       "community": 406,
@@ -81186,7 +81186,7 @@
       "label": "HARDWARE_VALIDATION_REQUIRED",
       "file_type": "document",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L179",
+      "source_location": "L184",
       "_origin": "ast",
       "id": "docs_integration_autonomous_progress_hardware_validation_required",
       "community": 406,
@@ -81197,7 +81197,7 @@
       "label": "\u5df2\u77e5\u98ce\u9669",
       "file_type": "document",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L187",
+      "source_location": "L192",
       "_origin": "ast",
       "id": "docs_integration_autonomous_progress_\u5df2\u77e5\u98ce\u9669",
       "community": 406,
@@ -81208,7 +81208,7 @@
       "label": "\u4e0b\u4e00\u6b65",
       "file_type": "document",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L198",
+      "source_location": "L203",
       "_origin": "ast",
       "id": "docs_integration_autonomous_progress_\u4e0b\u4e00\u6b65",
       "community": 406,
@@ -81901,7 +81901,7 @@
       "label": "\u4e3b\u8981\u98ce\u9669",
       "file_type": "document",
       "source_file": "docs/integration/RELEASE_READINESS.md",
-      "source_location": "L55",
+      "source_location": "L57",
       "_origin": "ast",
       "id": "docs_integration_release_readiness_\u4e3b\u8981\u98ce\u9669",
       "community": 440,
@@ -81912,7 +81912,7 @@
       "label": "\u6b63\u5f0f\u53d1\u5e03\u9000\u51fa\u6761\u4ef6",
       "file_type": "document",
       "source_file": "docs/integration/RELEASE_READINESS.md",
-      "source_location": "L67",
+      "source_location": "L69",
       "_origin": "ast",
       "id": "docs_integration_release_readiness_\u6b63\u5f0f\u53d1\u5e03\u9000\u51fa\u6761\u4ef6",
       "community": 440,
@@ -81923,7 +81923,7 @@
       "label": "\u9636\u6bb5\u63d0\u4ea4",
       "file_type": "document",
       "source_file": "docs/integration/RELEASE_READINESS.md",
-      "source_location": "L76",
+      "source_location": "L78",
       "_origin": "ast",
       "id": "docs_integration_release_readiness_\u9636\u6bb5\u63d0\u4ea4",
       "community": 440,
@@ -250643,7 +250643,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L179",
+      "source_location": "L184",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_autonomous_progress_smartdesk_\u81ea\u4e3b\u96c6\u6210\u8fdb\u5ea6",
@@ -250654,7 +250654,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L198",
+      "source_location": "L203",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_autonomous_progress_smartdesk_\u81ea\u4e3b\u96c6\u6210\u8fdb\u5ea6",
@@ -250665,7 +250665,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L175",
+      "source_location": "L180",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_autonomous_progress_smartdesk_\u81ea\u4e3b\u96c6\u6210\u8fdb\u5ea6",
@@ -250676,7 +250676,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_autonomous_progress_smartdesk_\u81ea\u4e3b\u96c6\u6210\u8fdb\u5ea6",
@@ -250687,7 +250687,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L118",
+      "source_location": "L122",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_autonomous_progress_smartdesk_\u81ea\u4e3b\u96c6\u6210\u8fdb\u5ea6",
@@ -250698,7 +250698,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L187",
+      "source_location": "L192",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_autonomous_progress_smartdesk_\u81ea\u4e3b\u96c6\u6210\u8fdb\u5ea6",
@@ -250709,7 +250709,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/AUTONOMOUS_PROGRESS.md",
-      "source_location": "L161",
+      "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_autonomous_progress_smartdesk_\u81ea\u4e3b\u96c6\u6210\u8fdb\u5ea6",
@@ -251358,7 +251358,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/RELEASE_READINESS.md",
-      "source_location": "L55",
+      "source_location": "L57",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_release_readiness_\u53d1\u5e03\u5c31\u7eea\u62a5\u544a",
@@ -251391,7 +251391,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/RELEASE_READINESS.md",
-      "source_location": "L67",
+      "source_location": "L69",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_release_readiness_\u53d1\u5e03\u5c31\u7eea\u62a5\u544a",
@@ -251413,7 +251413,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/integration/RELEASE_READINESS.md",
-      "source_location": "L76",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_integration_release_readiness_\u53d1\u5e03\u5c31\u7eea\u62a5\u544a",
@@ -255824,5 +255824,5 @@
       "source_file": "smartdesk_gesture_controller/hands/frontend/radar.svg"
     }
   ],
-  "built_at_commit": "80f8006e553d37ab6e86608244d61cc290e0c17c"
+  "built_at_commit": "3193b7ce20df7a790300d025edc126cece249265"
 }

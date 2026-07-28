@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "docs/integration/AUTONOMOUS_PROGRESS.md": {
-    "mtime": 1785199108.321457,
-    "ast_hash": "0257a0a617647f497bf1ec149f9bcb41",
+    "mtime": 1785200762.8025045,
+    "ast_hash": "df535f89a1fdd048e33279b775150b48",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.esp32.example.json": {
@@ -2030,8 +2030,8 @@
     "semantic_hash": ""
   },
   "scripts/verify_all_software.ps1": {
-    "mtime": 1785196746.1592324,
-    "ast_hash": "bb4e68e3b93209f476ecc1ac9978668a",
+    "mtime": 1785200017.0681741,
+    "ast_hash": "2ffab3b4a22b2117f9ba4e8a1c18ba99",
     "semantic_hash": ""
   },
   ".github/workflows/software-verification.yml": {
@@ -2080,8 +2080,8 @@
     "semantic_hash": ""
   },
   "docs/integration/RELEASE_READINESS.md": {
-    "mtime": 1785199107.8516517,
-    "ast_hash": "a58b9c9762ec174c93ad1e083f827a18",
+    "mtime": 1785200763.0676484,
+    "ast_hash": "39586ab6881002513829ac606bfd061e",
     "semantic_hash": ""
   }
 }

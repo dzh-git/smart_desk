@@ -1,16 +1,16 @@
 # Graph Report - smart_desktop  (2026-07-28)
 
 ## Corpus Check
-- 407 files · ~356,249 words
+- 407 files · ~356,362 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 7887 nodes · 14787 edges · 446 communities (378 shown, 68 thin omitted)
+- 7887 nodes · 14787 edges · 443 communities (375 shown, 68 thin omitted)
 - Extraction: 84% EXTRACTED · 16% INFERRED · 0% AMBIGUOUS · INFERRED: 2312 edges (avg confidence: 0.64)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `80f8006e`
+- Built from commit: `3193b7ce`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -179,7 +179,6 @@
 - TestComputeCER Module
 - MockSpeechModule Module
 - test windows launcher contract.py
-- FakeDisplayAgent Module
 - app.js Module
 - Arduino 灯带串口协议
 - 智能会议桌 · 实体集成需求（第一次与桌子厂商沟通用）
@@ -368,7 +367,6 @@
 - TestSingletonLifecycle
 - 二、摄像头、人脸检测与对齐
 - 实施问题与解决方案总结
-- test_gesture_camera_driver.py
 - SE-MobileFaceNet embedding model card
 - FillLightOverlayView
 - RecognitionMath
@@ -417,7 +415,6 @@
 - .is_utterance_terminal
 - .active_session_count
 - ConflictingPunctuationModel
-- package.json
 - verify_all_software.ps1
 - check_python_sources.py
 - autoprefixer
@@ -467,7 +464,7 @@
 - **Speech Utterance Lifecycle** — new_coding_desk_docs_adr_0001_ws_audio_streaming_dual_websocket_architecture, new_coding_desk_docs_adr_0001_ws_audio_streaming_server_vad_finalization, new_coding_desk_docs_adr_0002_final_audio_source_offline_asr_rescore, new_coding_desk_docs_adr_0003_utterance_id_backend_backend_generated_utterance_id, new_coding_desk_docs_adr_0004_speaker_seat_switch_hard_speaker_seat_switch, new_coding_desk_docs_system_architecture_speech_utterance_flow [EXTRACTED 1.00]
 - **Radar Visual Composition** — smartdesk_gesture_controller_hands_frontend_radar_central_target_point, smartdesk_gesture_controller_hands_frontend_radar_concentric_range_rings, smartdesk_gesture_controller_hands_frontend_radar_cardinal_direction_ticks [EXTRACTED 1.00]
 
-## Communities (446 total, 68 thin omitted)
+## Communities (443 total, 68 thin omitted)
 
 ### Community 0 - "GestureState Module"
 Cohesion: 0.11
@@ -486,8 +483,8 @@ Cohesion: 0.03
 Nodes (86): _add_agenda(), _create_pending(), Tests for Agenda State Machine — Phase 1.  Covers:     1.  create agenda default, Cannot create agenda in pending (not started) meeting., Requirement 2: GET agendas returns top-level array, each with status/time., list_agendas returns a top-level list., Each agenda item has status, started_at, completed_at, skipped_at., GET agendas for ended meeting still returns data. (+78 more)
 
 ### Community 4 - "create pending()"
-Cohesion: 0.04
-Nodes (49): Session, Persist changes to the speaker_seat row., Data access for seat_states and speaker_seat.      Does NOT extend BaseRepositor, Ensure seat_states 1..9 and speaker_seat (id=1, NULL) exist.          Idempotent, Get a seat by its seat_id (1..9)., List the nine configured seats, ordered by seat_id., Persist changes to a seat., Return the singleton speaker_seat row (id=1).          Raises RuntimeError if no (+41 more)
+Cohesion: 0.03
+Nodes (55): Session, Persist changes to the speaker_seat row., Data access for seat_states and speaker_seat.      Does NOT extend BaseRepositor, Ensure seat_states 1..9 and speaker_seat (id=1, NULL) exist.          Idempotent, Get a seat by its seat_id (1..9)., List the nine configured seats, ordered by seat_id., Persist changes to a seat., Return the singleton speaker_seat row (id=1).          Raises RuntimeError if no (+47 more)
 
 ### Community 5 - "ActionIntent Module"
 Cohesion: 0.06
@@ -499,19 +496,19 @@ Nodes (62): GestureConfig, Legacy alias for ``min_hand_detection_confidence`` (c
 
 ### Community 7 - "ValidationError Module"
 Cohesion: 0.04
-Nodes (49): cancel_call(), create_service_call(), get_current_call(), list_service_calls(), BaseModel, Session, Service call API — tea/coffee/water/other requests.  Per API_SPEC §9:     POST, POST /api/service-calls/{call_id}/cancel — cancel a pending call.      Publishes (+41 more)
+Nodes (51): cancel_call(), create_service_call(), get_current_call(), list_service_calls(), BaseModel, Session, Service call API — tea/coffee/water/other requests.  Per API_SPEC §9:     POST, POST /api/service-calls/{call_id}/cancel — cancel a pending call.      Publishes (+43 more)
 
 ### Community 8 - "active meeting with attendee()"
-Cohesion: 0.04
-Nodes (34): _active_meeting_with_attendee(), Tests for SeatService — state machine, check-in, speaker seat.  Coverage:     -, seat_occupied clears any previous attendee_id., seat_vacant: any → vacant., occupied_unchecked → vacant., Calling seat_vacant on already-vacant is a no-op., No event published if already vacant., Publishes seat_vacant event when transitioning to vacant. (+26 more)
+Cohesion: 0.03
+Nodes (44): _active_meeting_with_attendee(), Tests for SeatService — state machine, check-in, speaker seat.  Coverage:     -, seat_occupied fails if seat is checked_in., seat_occupied clears any previous attendee_id., seat_occupied on seat_id=99 raises NotFoundError., seat_vacant: any → vacant., occupied_unchecked → vacant., Calling seat_vacant on already-vacant is a no-op. (+36 more)
 
 ### Community 9 - "GestureController Module"
 Cohesion: 0.05
 Nodes (34): check_model_files(), GestureController, main(), Any, Entry point: configure logging to file and console, then start controller., Open resources and enter the frame loop. Returns process exit code., Request a graceful stop from another thread., Activate the app for an ILoveYou mode swipe, rolling back on failure. (+26 more)
 
 ### Community 10 - "HandInput Module"
-Cohesion: 0.09
-Nodes (17): Begin pan: key_down("shift") + mouse_down("middle") (spec §10.3)., Update PINCH state with hysteresis, appending mouse_down/mouse_up.          Uses, Tracker reports hand-loss timeout — release once if holding state., PPT 画笔画线: mouse_down("left") + mouse_up("left") 正确分发., #17: dry-run / FakeDriver 下 PPT 动作只记录，不真实控制鼠标键盘., Mouse relative move dispatch., Full mouse drag sequence in order., SolidWorks rotate: mouse_down("middle") dispatch. (+9 more)
+Cohesion: 0.11
+Nodes (13): Update PINCH state with hysteresis, appending mouse_down/mouse_up.          Uses, Tracker reports hand-loss timeout — release once if holding state., TestMouseActions, PPT 画笔画线: mouse_down("left") + mouse_up("left") 正确分发., Phase 4 #23: dry-run / FakeDriver mouse actions only recorded., Full SolidWorks pan sequence: key_down + mouse_down + move + mouse_up + key_up., Phase 5 #25: dry-run / FakeDriver SolidWorks actions only recorded., Dry-run / FakeDriver never touches real OS mouse/keyboard. (+5 more)
 
 ### Community 11 - "SpeechStreamService Module"
 Cohesion: 0.05
@@ -522,8 +519,8 @@ Cohesion: 0.13
 Nodes (17): Esp32SeatSimulator, main(), parse_device_tokens(), Any, Async ESP32 protocol simulator for development and integration tests., One deterministic ESP32 seat controller without hardware dependencies., Validate the same per-device credential map used by the backend., run_scenario() (+9 more)
 
 ### Community 13 - "Meeting Module"
-Cohesion: 0.09
-Nodes (23): DisplayAgentResult, Any, _controller_with_fake_driver(), _FakeDisplayAgent, #18: release_all 仍然幂等 (通过 controller dispatch)., SolidWorks pan: key_down("shift") dispatch., keyboard backend registers Ctrl+Alt+G and Ctrl+Alt+Q., If keyboard.add_hotkey fails the controller does not crash and prints a warning. (+15 more)
+Cohesion: 0.25
+Nodes (6): clear_speech_diagnostics(), Clear only the in-memory trace ring before a controlled reproduction., is_trace_enabled(), True when SMART_DESK_ENABLE_SPEECH_TRACE=true., is_trace_enabled() returns False when disabled., is_trace_enabled() returns True when enabled.
 
 ### Community 14 - "create meeting()"
 Cohesion: 0.11
@@ -590,8 +587,8 @@ Cohesion: 0.05
 Nodes (37): client(), Tests for the Display Agent — uses FastAPI TestClient with all Win32/COM/ subpro, Activate PowerPoint when slideshow window exists → activate_slideshow., No slideshow → start via COM., SolidWorks window found → move + activate., SmartDesk display window exists → activate., No existing window → launch Edge with FIXED argv (no shell)., SolidWorks not found → 409 Conflict with stable body, no crash. (+29 more)
 
 ### Community 30 - "HandRecognizer Module"
-Cohesion: 0.12
-Nodes (13): TestMouseActions, Mouse left click dispatch., Mouse right click dispatch., Mouse scroll up dispatch., Mouse scroll down dispatch., Phase 4 #23: dry-run / FakeDriver mouse actions only recorded., Dry-run / FakeDriver never touches real OS mouse/keyboard., test_dispatch_mouse_click_left_recorded() (+5 more)
+Cohesion: 0.25
+Nodes (5): list_seats: return all 10 seat states., Seed data provides exactly nine seats., Seats returned in seat_id order., All seats start vacant after seed., TestListSeats
 
 ### Community 31 - "ActionLayer Module"
 Cohesion: 0.06
@@ -606,8 +603,8 @@ Cohesion: 0.12
 Nodes (20): Finalized translation record — persisted, then broadcast.      Published by Tran, TranslationFinalEvent, _get_speech(), _is_narrowband_tone(), _normalize_punctuation(), ndarray, Sentence-final bilingual ASR, translation, persistence and event pipeline., Run bilingual final ASR and translate the detected language. (+12 more)
 
 ### Community 34 - "SeatService Module"
-Cohesion: 0.04
-Nodes (40): IdentityCheckInEvent, CheckInEvent, CheckinPromptEvent, Seat events — published by SeatService.  Per EVENT_BUS_SPEC §6., SeatOccupiedEvent, SeatVacantEvent, SpeakerSeatClearEvent, SpeakerSeatSetEvent (+32 more)
+Cohesion: 0.05
+Nodes (37): IdentityCheckInEvent, CheckInEvent, CheckinPromptEvent, Seat events — published by SeatService.  Per EVENT_BUS_SPEC §6., SeatOccupiedEvent, SeatVacantEvent, SpeakerSeatClearEvent, SpeakerSeatSetEvent (+29 more)
 
 ### Community 35 - "patch httpx()"
 Cohesion: 0.08
@@ -619,7 +616,7 @@ Nodes (35): Tests for the screen stream service — config validation, command g
 
 ### Community 37 - "FakeDriver Module"
 Cohesion: 0.06
-Nodes (20): Exception, BusinessError, NotFoundError, Business exceptions for the service layer.  Raised by Services, caught by Router, Base business exception with error_code for API responses., Remove an attendee. Must belong to the given meeting., ServiceCallService — service request lifecycle.  Per system_architecture §4.2, E, VoteService — vote lifecycle, ballot casting, statistics.  Per system_architectu (+12 more)
+Nodes (17): Exception, BusinessError, NotFoundError, Base business exception with error_code for API responses., Remove an attendee. Must belong to the given meeting., Ending non-existent meeting raises NotFoundError., Creating agenda for non-existent meeting raises NotFoundError., List agendas for non-existent meeting raises NotFoundError. (+9 more)
 
 ### Community 38 - "make frame result()"
 Cohesion: 0.18
@@ -798,8 +795,8 @@ Cohesion: 0.18
 Nodes (16): _active_meeting_id(), dev_occupy(), dev_vacate(), ApiResponse, JSONResponse, Session, Dev API — demo/development-only endpoints.  Per Phase 03:     POST /api/dev/seat, Serialize ApiResponse to JSONResponse. (+8 more)
 
 ### Community 82 - "get trace()"
-Cohesion: 0.08
-Nodes (15): _layer(), Tests for hands.gesture_actions — ActionLayer, FakeDriver, execute().  Tests use, release_all must release left/middle/right + shift/ctrl/alt., Calling release_all twice must not crash., release_all with nothing held must not crash and must still fire 6 releases., status must not produce any mouse or keyboard events., FakeDriver must never touch the real OS., When enable_system_mouse=True and no driver injected, it would import         py (+7 more)
+Cohesion: 0.07
+Nodes (18): Begin pan: key_down("shift") + mouse_down("middle") (spec §10.3)., _layer(), Tests for hands.gesture_actions — ActionLayer, FakeDriver, execute().  Tests use, release_all must release left/middle/right + shift/ctrl/alt., Calling release_all twice must not crash., release_all with nothing held must not crash and must still fire 6 releases., status must not produce any mouse or keyboard events., FakeDriver must never touch the real OS. (+10 more)
 
 ### Community 83 - "supervisor.py Module"
 Cohesion: 0.15
@@ -1046,8 +1043,8 @@ Cohesion: 0.27
 Nodes (13): _active_meeting_id(), _decode_legacy_message(), _handle_esp32_message(), _handle_legacy_message(), _handle_occupancy(), WebSocket, Seat hardware WebSocket — /ws/seat/{seat_id}  Network-hardware modes accept both, Return a legacy message, or None when it belongs to protocol v1. (+5 more)
 
 ### Community 144 - "DisplayAgentClient Module"
-Cohesion: 0.19
-Nodes (9): DisplayAgentClient, Small loopback HTTP client for the SmartDesk Display Agent., Call the local Display Agent without adding a requests dependency., _Response, test_activate_posts_only_allowed_app(), test_connection_error_is_offline(), test_http_409_is_online_failure(), test_malformed_response_is_reported() (+1 more)
+Cohesion: 0.15
+Nodes (10): DisplayAgentClient, Any, Small loopback HTTP client for the SmartDesk Display Agent., Call the local Display Agent without adding a requests dependency., _Response, test_activate_posts_only_allowed_app(), test_connection_error_is_offline(), test_http_409_is_online_failure() (+2 more)
 
 ### Community 145 - "landmarks to hand input()"
 Cohesion: 0.22
@@ -1125,10 +1122,6 @@ Nodes (9): JSONObject, MainActivity, Bundle, Button, com, ComponentActivity, Con
 Cohesion: 0.21
 Nodes (10): _is_crlf(), Path, Windows launcher contract tests -- validates that start.bat and kill.bat meet th, start.bat and kill.bat must contain ONLY ASCII characters (0-127)., Files must use CRLF, no bare LF., start.bat must remain ASCII-only, BOM-free, CRLF, no bare LF., _read_bytes(), TestAsciiOnly (+2 more)
 
-### Community 164 - "FakeDisplayAgent Module"
-Cohesion: 0.11
-Nodes (10): seat_occupied fails if seat is checked_in., seat_occupied on seat_id=99 raises NotFoundError., seat_occupied: vacant → occupied_unchecked., Vacant seat transitions to occupied_unchecked., Publishes seat_occupied event., Publishes checkin_prompt event after seat_occupied., Both seat_occupied and checkin_prompt published., Meeting ID is passed through to events. (+2 more)
-
 ### Community 165 - "app.js Module"
 Cohesion: 0.30
 Nodes (13): checkPageTurn(), connect(), deriveCamera(), deriveHand(), deriveStatus(), isDrawing(), isRecognizing(), render() (+5 more)
@@ -1170,8 +1163,8 @@ Cohesion: 0.14
 Nodes (13): Android Tablet Integration, Backend Responsibilities, Demo Data and Startup, Frontend Architecture, Gesture Controller Integration, Host Services (Screen Stream & Display Agent), Repository Layer, Router Layer (+5 more)
 
 ### Community 176 - "scripts Module"
-Cohesion: 0.25
-Nodes (8): scripts, build, dev, e2e:speech, lint, preview, test, typecheck
+Cohesion: 0.15
+Nodes (12): name, private, scripts, build, dev, e2e:speech, lint, preview (+4 more)
 
 ### Community 177 - "SmartDesk Module"
 Cohesion: 0.13
@@ -1338,8 +1331,8 @@ Cohesion: 0.22
 Nodes (4): defaultMockStream, MockAudioContext, mockGetUserMedia, MockScriptProcessorNode
 
 ### Community 219 - "translation_model_service.py"
-Cohesion: 0.04
-Nodes (45): Tests for hands.gesture_controller intent dispatch.  These tests keep the contro, SolidWorks pan end: key_up("shift") dispatch., SolidWorks rotate/pan move: move_rel dispatch., Model file check passes when hand_landmarker.task exists., Model file check reports missing file when not present., When use_gesture_recognizer=True, gesture_recognizer.task is required., When use_gesture_recognizer=False, gesture_recognizer.task is NOT required., When both model files exist and use_gesture_recognizer=True, no missing. (+37 more)
+Cohesion: 0.03
+Nodes (77): DisplayAgentResult, _controller_with_fake_driver(), _FakeDisplayAgent, Tests for hands.gesture_controller intent dispatch.  These tests keep the contro, #18: release_all 仍然幂等 (通过 controller dispatch)., Mouse left click dispatch., Mouse right click dispatch., Mouse scroll up dispatch. (+69 more)
 
 ### Community 220 - "TestReadinessPollingWaitsBetweenRetries Module"
 Cohesion: 0.28
@@ -1670,8 +1663,8 @@ Cohesion: 0.25
 Nodes (8): 23. 调试图像有助于定位问题，但会增加隐私风险, 24. 代码许可证不等于预训练权重可以商用, 25. 当前方案仍不具备正式安全系统能力, 26. 现场暂时只有一名注册人员, 27. 相册样本顺序与身份标签不能靠文件名推断, 28. 戴眼镜注册后，摘下眼镜的本人分数明显下降, 29. 离线图片诊断无法完全复现 App 的实时检测链路, 五、隐私、许可与当前边界
 
 ### Community 363 - "ensure_translation_record_columns"
-Cohesion: 0.09
-Nodes (19): clear_speech_diagnostics(), Clear only the in-memory trace ring before a controlled reproduction., get_trace(), is_trace_enabled(), Any, Return a copy of all recorded trace events., True when SMART_DESK_ENABLE_SPEECH_TRACE=true., When trace is disabled, trace() does nothing. (+11 more)
+Cohesion: 0.13
+Nodes (13): get_trace(), Any, Return a copy of all recorded trace events., When trace is disabled, trace() does nothing., trace() works without utterance_id (session-level events)., When buffer exceeds MAX_ENTRIES, oldest event is discarded., Core trace helper functionality., trace() appends an event to the buffer. (+5 more)
 
 ### Community 364 - "TestListSeats"
 Cohesion: 0.18
@@ -1692,10 +1685,6 @@ Nodes (7): 10. CameraX 刚绑定时中央测光点尚不可用, 11. ML Kit 异�
 ### Community 369 - "实施问题与解决方案总结"
 Cohesion: 0.29
 Nodes (7): 12. “MobileFaceNet + ArcFace”不能唯一确定部署输出, 13. 源模型使用 mixed-float16，不能直接假定输出为 FP32, 14. 仅成功转换不能证明两个模型输出等价, 15. 模型文件可能被误替换或配置与二进制不一致, 三、模型选择、转换与预处理, 六、最终验证结果, 实施问题与解决方案总结
-
-### Community 370 - "test_gesture_camera_driver.py"
-Cohesion: 0.14
-Nodes (7): POST /api/meetings — create meeting., Create a meeting with title and description., Create a meeting with only title., Get non-existent meeting raises NotFoundError., No active meeting returns None., Active meeting is found after start., TestCreateMeeting
 
 ### Community 371 - "SE-MobileFaceNet embedding model card"
 Cohesion: 0.33
@@ -1794,8 +1783,8 @@ Cohesion: 0.50
 Nodes (3): 人脸模型许可证发布门禁, 当前结论, 解除门禁的必要条件
 
 ### Community 422 - "._get_speech_module"
-Cohesion: 0.15
-Nodes (10): 完整画笔退出序列: mouse_up + hotkey(ctrl,a) 按顺序分发., SolidWorks isometric: hotkey("ctrl","7") dispatch., PPT 进入画笔: hotkey(["ctrl","p"]) 正确分发., PPT 取消画笔: hotkey(["ctrl","a"]) 正确分发., test_dispatch_full_pen_exit_sequence(), test_dispatch_hotkey_ctrl_a_recorded(), test_dispatch_hotkey_ctrl_p_recorded(), test_dispatch_solidworks_hotkey_ctrl_7_recorded() (+2 more)
+Cohesion: 0.13
+Nodes (12): 完整画笔退出序列: mouse_up + hotkey(ctrl,a) 按顺序分发., #17: dry-run / FakeDriver 下 PPT 动作只记录，不真实控制鼠标键盘., SolidWorks isometric: hotkey("ctrl","7") dispatch., PPT 进入画笔: hotkey(["ctrl","p"]) 正确分发., PPT 取消画笔: hotkey(["ctrl","a"]) 正确分发., test_dispatch_full_pen_exit_sequence(), test_dispatch_hotkey_ctrl_a_recorded(), test_dispatch_hotkey_ctrl_p_recorded() (+4 more)
 
 ### Community 424 - ".reset_caption_formatter"
 Cohesion: 0.17
@@ -1816,10 +1805,6 @@ Nodes (9): 1. 发布前门禁, 2. 建立席位清单, 3. 中央主机, 4. 分批
 ### Community 428 - "ConflictingPunctuationModel"
 Cohesion: 0.47
 Nodes (4): ConflictingPunctuationModel, Order-independent punctuation adapter regression tests., test_caption_flow_is_stable_when_punctuation_model_is_loaded(), test_model_conflict_before_existing_terminal_is_normalized()
-
-### Community 429 - "package.json"
-Cohesion: 0.40
-Nodes (4): name, private, type, version
 
 ### Community 430 - "verify_all_software.ps1"
 Cohesion: 0.60
@@ -1866,8 +1851,8 @@ Cohesion: 0.29
 Nodes (7): check_page_turn(), Detect page-turn actions; return ``'next'`` / ``'previous'`` / ``None``., test_check_page_turn_next_via_action(), test_check_page_turn_next_via_next_keyword(), test_check_page_turn_none(), test_check_page_turn_previous_via_action(), test_check_page_turn_previous_via_previous_keyword()
 
 ### Community 442 - ".move"
-Cohesion: 0.29
-Nodes (3): Legacy 'move' type should be treated as move_to by execute()., PPT 画笔移动: move intent 正确分发为 move_to., test_dispatch_move_to_recorded()
+Cohesion: 0.22
+Nodes (5): Legacy 'move' type should be treated as move_to by execute()., PPT 画笔移动: move intent 正确分发为 move_to., Full mouse drag sequence in order., test_dispatch_full_mouse_drag_sequence(), test_dispatch_move_to_recorded()
 
 ### Community 443 - "ESP32 集成协议入口"
 Cohesion: 0.40
@@ -1881,11 +1866,11 @@ Nodes (5): ESP32 集成协议入口, 兼容路径, 实现映射, 正式连接前
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `activate()` connect `win32 windows.py` to `Meeting Module`, `test gesture recognition.py`?**
+- **Why does `activate()` connect `win32 windows.py` to `DisplayAgentClient Module`, `test gesture recognition.py`?**
   _High betweenness centrality (0.229) - this node is a cross-community bridge._
-- **Why does `DisplayAgentResult` connect `Meeting Module` to `DisplayAgentClient Module`, `ControlEvent Module`, `GestureController Module`?**
+- **Why does `DisplayAgentResult` connect `translation_model_service.py` to `DisplayAgentClient Module`, `ControlEvent Module`, `GestureController Module`?**
   _High betweenness centrality (0.116) - this node is a cross-community bridge._
-- **Why does `DisplayAgentClient` connect `DisplayAgentClient Module` to `ControlEvent Module`, `Meeting Module`, `GestureController Module`?**
+- **Why does `DisplayAgentClient` connect `DisplayAgentClient Module` to `ControlEvent Module`, `GestureController Module`?**
   _High betweenness centrality (0.112) - this node is a cross-community bridge._
 - **Are the 40 inferred relationships involving `GestureState` (e.g. with `GestureController` and `GestureFrameRecorder`) actually correct?**
   _`GestureState` has 40 INFERRED edges - model-reasoned connections that need verification._
