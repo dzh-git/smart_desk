@@ -773,7 +773,9 @@ class TestCliRobustness:
             v = s.get(key)
             assert v is None, f"Expected None for {key}, got {v!r}"
 
-    def test_main_does_not_crash_when_ffmpeg_missing(self, monkeypatch) -> None:
+    def test_main_does_not_crash_when_ffmpeg_missing(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
         """main() does not raise ValueError when ffmpeg is unavailable."""
         from backend.scripts.benchmark_real_speech_dataset import main
 
@@ -798,12 +800,14 @@ class TestCliRobustness:
             # Should NOT raise ValueError or any other exception
             main(argv=[
                 "--dataset-dir", REAL_DATASET_DIR,
-                "--output", str(FAKE_DATASET_DIR) + "_test_output.json",
+                "--output", str(tmp_path / "benchmark-output.json"),
             ])
         finally:
             sys.stdout = old_stdout
 
-    def test_main_does_not_crash_with_missing_dataset(self, monkeypatch) -> None:
+    def test_main_does_not_crash_with_missing_dataset(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
         """main() does not crash when dataset directory is missing."""
         from backend.scripts.benchmark_real_speech_dataset import main
 
@@ -814,7 +818,7 @@ class TestCliRobustness:
         try:
             main(argv=[
                 "--dataset-dir", "/nonexistent/path/that/does/not/exist",
-                "--output", str(FAKE_DATASET_DIR) + "_test_missing.json",
+                "--output", str(tmp_path / "benchmark-missing.json"),
             ])
         finally:
             sys.stdout = old_stdout

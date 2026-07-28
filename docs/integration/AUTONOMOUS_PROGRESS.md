@@ -4,10 +4,10 @@
 
 ## 当前阶段
 
-阶段 0–10 已完成软件实现与定向回归。正式 ESP32 会话和平板接口已做独立
+阶段 0–11 已完成软件实现与定向回归。正式 ESP32 会话和平板接口已做独立
 设备认证、席位绑定、版本门禁、基础限流和结构化脱敏日志；身份证据增加时效
 与原子事务保证；当前非商业人脸权重已由脚本和 Android Release 构建双重阻断。
-下一阶段进入 CI 和一键验证。
+CI 和一键验证已落地；下一阶段完成架构、部署、发布和人工验收文档包。
 
 ## 已完成
 
@@ -89,6 +89,22 @@
 - 新增 `MODEL_LICENSE_GATE.md`、机器可读许可状态和发布检查脚本；原型状态检查
   通过，Release 脚本和 Gradle 任务均按预期以
   `MODEL_LICENSE_GATE_BLOCKED` 失败，不影响 Debug 编译。
+- 新增 `scripts/verify_all_software.ps1`，默认 `Full`、CI 和显式 `Fast`
+  三种配置均输出 `REQUIRED/OPTIONAL_ENVIRONMENT/HARDWARE_REQUIRED` 分类、
+  控制台汇总、Transcript 和 JSON 报告；实际执行失败一律使总命令失败。
+- 新增 Windows GitHub Actions，固定 Python 3.12、Node 22、JDK 17 和 Android
+  SDK，安装轻量后端/手势/PlatformIO依赖并执行 CI 配置；报告始终上传。
+- Python 静态检查只编译 Git 跟踪及未忽略的新源码，不扫描 `.venv`、
+  `node_modules` 或工具缓存。
+- PlatformIO core 固定到仓库忽略的 ASCII 路径；没有私有
+  `DeviceConfig.h` 时验证脚本临时使用占位示例，构建后立即移除，避免中文
+  用户目录工具链故障及凭据提交。
+- 一键验证首次运行真实发现并修复了 Tablet 心跳连接状态测试竞态，以及
+  CT-Transformer 已加载后产生 `，。` 的测试顺序污染；完整前端330项和完整
+  非长时后端912项复验通过。
+- 两个语音 stream/WebSocket 长时文件在本机组合运行20分钟仍未结束，未伪装
+  为通过；它们被明确拆为 `OPTIONAL_ENVIRONMENT`，设置
+  `SMARTDESK_RUN_SLOW_SPEECH_TESTS=true` 才执行。
 - Graphify 根级单一快照已更新。
 
 ## 已执行测试
@@ -121,6 +137,11 @@
 | Android安全回归 | JVM + Lint + Debug APK | 通过；JVM 28 项，Release 门禁不参与 Debug |
 | 模型许可原型声明 | `check_model_license_gate.py --mode prototype` | 通过，明确 Release 仍阻断 |
 | 模型许可正式发布 | 脚本与 Gradle `checkModelLicenseGate` | 按预期失败：`MODEL_LICENSE_GATE_BLOCKED` |
+| 一键验证 Fast | `verify_all_software.ps1 -Profile Fast` | 整体通过；所有执行项 PASS，环境/实物项显式 SKIP |
+| Python源码静态检查 | `check_python_sources.py` | 通过，211项 |
+| 后端完整非长时集合 | 排除2个已知长时语音文件的 pytest | 912项通过，4项条件跳过 |
+| 前端全量复验 | `npm test -- --run` | 330项通过 |
+| ESP32固件 ASCII 缓存复验 | 一键脚本 PlatformIO 检查 | 通过；RAM 14.9%，Flash 74.7% |
 
 `test_speech_stream_service.py` 与 `test_speech_websocket_blackbox.py`
 组合运行超过六分钟执行时限，未取得完整汇总；没有把超时描述为通过。
@@ -143,7 +164,6 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 尚未完成的软件任务
 
-- CI 和 `verify_all_software.ps1`。
 - 完整集成文档、部署手册和人工验收包。
 
 ## HARDWARE_VALIDATION_REQUIRED
@@ -167,5 +187,5 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 下一步
 
-1. 完成 CI、`verify_all_software.ps1` 和分类验证结果。
-2. 完成部署文档、发布清单与人工验收包。
+1. 完成部署文档、发布清单与人工验收包。
+2. 扩展文档/链接检查并执行默认 Full 最终验证。

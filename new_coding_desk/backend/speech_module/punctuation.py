@@ -20,6 +20,8 @@ Usage:
 """
 
 from __future__ import annotations
+
+import re
 from pathlib import Path
 
 # ── Boundary character sets (used by caption formatter and sentence merger) ──
@@ -30,6 +32,26 @@ ALL_BOUNDARY: frozenset[str] = SENTENCE_END | COMMA_BOUNDARY
 
 _punc_model = None
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _normalize_punctuation_output(text: str) -> str:
+    """Remove adjacent model punctuation conflicts without changing words."""
+    text = re.sub(
+        r"[，,、；;：:]+\s*([。？！.!?])",
+        r"\1",
+        text,
+    )
+    text = re.sub(
+        r"([。？！.!?])\s*[，,、；;：:]+",
+        r"\1",
+        text,
+    )
+    text = re.sub(
+        r"[。？！.!?]{2,}",
+        lambda match: match.group(0)[-1],
+        text,
+    )
+    return text
 
 
 def is_punctuation_loaded() -> bool:
@@ -103,17 +125,21 @@ def add_punctuation(text: str) -> str:
             if isinstance(result, list) and len(result) > 0:
                 item = result[0]
                 if isinstance(item, dict):
-                    return item.get("text", text)
+                    return _normalize_punctuation_output(
+                        item.get("text", text)
+                    )
                 elif isinstance(item, str):
-                    return item
+                    return _normalize_punctuation_output(item)
             elif isinstance(result, dict):
-                return result.get("text", text)
+                return _normalize_punctuation_output(
+                    result.get("text", text)
+                )
             elif isinstance(result, str):
-                return result
+                return _normalize_punctuation_output(result)
         except Exception:
             pass
 
     # Heuristic fallback: append 。if text doesn't end with any punctuation
     if text and text[-1] not in ALL_BOUNDARY:
-        return text + "。"
-    return text
+        return _normalize_punctuation_output(text + "。")
+    return _normalize_punctuation_output(text)

@@ -594,8 +594,17 @@ describe("SeatTablet - Android identity check-in", () => {
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
-    await waitFor(() => expect(heartbeatCalls).toHaveLength(1));
-    expect(heartbeatCalls[0].body).toMatchObject({
+    await waitFor(() =>
+      expect(
+        heartbeatCalls.some(
+          (call) => call.body.meetingWebsocketStatus === "CONNECTED",
+        ),
+      ).toBe(true),
+    );
+    const connectedHeartbeat = heartbeatCalls.find(
+      (call) => call.body.meetingWebsocketStatus === "CONNECTED",
+    );
+    expect(connectedHeartbeat?.body).toMatchObject({
       seatId: 1,
       appVersion: "0.8.0",
       cameraStatus: "READY",
@@ -606,7 +615,7 @@ describe("SeatTablet - Android identity check-in", () => {
       diagnosticStatus: "READY",
       lastError: null,
     });
-    expect(heartbeatCalls[0].headers).toMatchObject({
+    expect(connectedHeartbeat?.headers).toMatchObject({
       "X-SmartDesk-Device-Token":
         "device-secret-token-00000001",
     });
