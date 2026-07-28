@@ -426,5 +426,11 @@
   "424": ".reset_caption_formatter",
   "425": ".mark_utterance_terminal",
   "426": ".is_utterance_terminal",
-  "427": ".active_session_count"
+  "427": ".active_session_count",
+  "428": "ConflictingPunctuationModel",
+  "429": "package.json",
+  "430": "verify_all_software.ps1",
+  "431": "check_python_sources.py",
+  "432": "autoprefixer",
+  "433": ".reset"
 }

@@ -345,8 +345,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/punctuation.py": {
-    "mtime": 1784537752.2349756,
-    "ast_hash": "14008ba7f2d5df48e669031aaaa4eb31",
+    "mtime": 1785198142.507253,
+    "ast_hash": "cfaa067baf816fe4e28710939851e245",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/sentence_merge.py": {
@@ -525,8 +525,8 @@
     "semantic_hash": "edbc8460e9c7ebd408be894c9e00472c"
   },
   "new_coding_desk/frontend/src/__tests__/seat.test.tsx": {
-    "mtime": 1785191578.2365484,
-    "ast_hash": "be5dd061c0a5ca9cb52edf39d8e5d48f",
+    "mtime": 1785194878.1894536,
+    "ast_hash": "d58ed21249e6374af112d95f87467519",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/speechTrace.test.ts": {
@@ -825,12 +825,12 @@
     "semantic_hash": "d7db8e2e3f49edf2e3b2385ba36d8f25"
   },
   "new_coding_desk/tests/_fake_speech_dataset_test_missing.json": {
-    "mtime": 1785166261.7604053,
+    "mtime": 1785198088.9770782,
     "ast_hash": "3aa93b4ce2fb1cae1ba3aa0cf09522e1",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/_fake_speech_dataset_test_output.json": {
-    "mtime": 1785166261.7604053,
+    "mtime": 1785198088.9770782,
     "ast_hash": "9292b174cd90b9c0e5d57e2ae4a11983",
     "semantic_hash": ""
   },
@@ -935,9 +935,9 @@
     "semantic_hash": "4ab85f02827c40c4d1ba478940c77fd5"
   },
   "new_coding_desk/tests/test_speech_real_dataset_benchmark.py": {
-    "mtime": 1781519092.2197158,
-    "ast_hash": "9077beec35d26e10c81ee8dbe5cede93",
-    "semantic_hash": "9077beec35d26e10c81ee8dbe5cede93"
+    "mtime": 1785198035.1779344,
+    "ast_hash": "0c3830813c581c73101a38f2dea3670f",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_stream_service.py": {
     "mtime": 1784476692.2569582,
@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "docs/integration/AUTONOMOUS_PROGRESS.md": {
-    "mtime": 1785194175.916766,
-    "ast_hash": "a1baca08245c3361b238e226dcec2815",
+    "mtime": 1785198102.1888266,
+    "ast_hash": "55e4b3969f1997ecc62cbe372d42ffb5",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.esp32.example.json": {
@@ -2012,6 +2012,36 @@
   "docs/integration/MODEL_LICENSE_GATE.md": {
     "mtime": 1785193625.2040782,
     "ast_hash": "c8bc3f81dae13d6bf05cd4ea52b33b30",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_punctuation.py": {
+    "mtime": 1785197285.6257083,
+    "ast_hash": "46ff5e4819894e43d0305ab79581fa12",
+    "semantic_hash": ""
+  },
+  "scripts/check_python_sources.py": {
+    "mtime": 1785197810.4712949,
+    "ast_hash": "22b9de360131f4fd4c62a90e00bfd105",
+    "semantic_hash": ""
+  },
+  "scripts/validate_repository_contracts.py": {
+    "mtime": 1785198101.978836,
+    "ast_hash": "e389dfb8158aa6c5417a0270a4cc8b54",
+    "semantic_hash": ""
+  },
+  "scripts/verify_all_software.ps1": {
+    "mtime": 1785196746.1592324,
+    "ast_hash": "bb4e68e3b93209f476ecc1ac9978668a",
+    "semantic_hash": ""
+  },
+  ".github/workflows/software-verification.yml": {
+    "mtime": 1785194447.649088,
+    "ast_hash": "0ca7ae95e58077a26f9f47330813f6dc",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/requirements-ci.txt": {
+    "mtime": 1785194446.662796,
+    "ast_hash": "7f5524a1e9d92327bc4cfdffaa668ed7",
     "semantic_hash": ""
   }
 }
