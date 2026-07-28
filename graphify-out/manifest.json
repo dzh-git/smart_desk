@@ -1130,13 +1130,13 @@
     "semantic_hash": ""
   },
   "DOCUMENTATION_INDEX.md": {
-    "mtime": 1785164474.4526038,
-    "ast_hash": "f44c38d1c1050945296bd87ac18a89bd",
+    "mtime": 1785199108.0667326,
+    "ast_hash": "be1141318769a27d4ee2a1e167c25204",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785073217.944439,
-    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "mtime": 1785198751.2486222,
+    "ast_hash": "f8d3c4a86844021fab93228d97790fd9",
     "semantic_hash": ""
   },
   "arduino_nano_controller/protocol.md": {
@@ -1775,8 +1775,8 @@
     "semantic_hash": ""
   },
   "android_tablet/docs/IMPLEMENTATION_ISSUES.md": {
-    "mtime": 1785077083.81963,
-    "ast_hash": "799f7461b628efbb628d21564d50a907",
+    "mtime": 1785199108.5395513,
+    "ast_hash": "9cde1f901d8448cc90fbe4f9f7567b2d",
     "semantic_hash": ""
   },
   "android_tablet/docs/PROTOTYPE_README.md": {
@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "docs/integration/AUTONOMOUS_PROGRESS.md": {
-    "mtime": 1785198102.1888266,
-    "ast_hash": "55e4b3969f1997ecc62cbe372d42ffb5",
+    "mtime": 1785199108.321457,
+    "ast_hash": "0257a0a617647f497bf1ec149f9bcb41",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.esp32.example.json": {
@@ -2025,8 +2025,8 @@
     "semantic_hash": ""
   },
   "scripts/validate_repository_contracts.py": {
-    "mtime": 1785198101.978836,
-    "ast_hash": "e389dfb8158aa6c5417a0270a4cc8b54",
+    "mtime": 1785199163.8003886,
+    "ast_hash": "72461c0965452dda2f1d1e4a9edadfa8",
     "semantic_hash": ""
   },
   "scripts/verify_all_software.ps1": {
@@ -2042,6 +2042,46 @@
   "new_coding_desk/requirements-ci.txt": {
     "mtime": 1785194446.662796,
     "ast_hash": "7f5524a1e9d92327bc4cfdffaa668ed7",
+    "semantic_hash": ""
+  },
+  "docs/integration/ANDROID_BRIDGE_CONTRACT.md": {
+    "mtime": 1785198751.6710005,
+    "ast_hash": "4b47a150edf782e97e973915a89d4ae0",
+    "semantic_hash": ""
+  },
+  "docs/integration/ARCHITECTURE.md": {
+    "mtime": 1785198751.4649155,
+    "ast_hash": "d371e8ba7be0537c7176aee0975e3ac0",
+    "semantic_hash": ""
+  },
+  "docs/integration/ESP32_PROTOCOL.md": {
+    "mtime": 1785198752.1139903,
+    "ast_hash": "c3fb0b2b8044bf962d827709c150f5b9",
+    "semantic_hash": ""
+  },
+  "docs/integration/HUMAN_VALIDATION_REQUIRED.md": {
+    "mtime": 1785198980.7614093,
+    "ast_hash": "5c45960c35977df0366c4f107430de80",
+    "semantic_hash": ""
+  },
+  "docs/integration/IDENTITY_CHECKIN_CONTRACT.md": {
+    "mtime": 1785198751.8759532,
+    "ast_hash": "096f14d0ef155192b486b31e7b036227",
+    "semantic_hash": ""
+  },
+  "docs/integration/NINE_SEAT_DEPLOYMENT.md": {
+    "mtime": 1785198980.5425797,
+    "ast_hash": "3e30f290b66db7fb18428a2c18e84077",
+    "semantic_hash": ""
+  },
+  "docs/integration/ONE_SEAT_RUNBOOK.md": {
+    "mtime": 1785198980.3064556,
+    "ast_hash": "b9c371aa447e8f74e94d2cfcbe970764",
+    "semantic_hash": ""
+  },
+  "docs/integration/RELEASE_READINESS.md": {
+    "mtime": 1785199107.8516517,
+    "ast_hash": "a58b9c9762ec174c93ad1e083f827a18",
     "semantic_hash": ""
   }
 }
