@@ -123,9 +123,19 @@ try {
         python scripts\check_model_license_gate.py --mode prototype
     }
     Invoke-Check "Release model-license block" "REQUIRED" $repoRoot {
-        $output = & python scripts\check_model_license_gate.py `
-            --mode release 2>&1
-        $releaseCode = $LASTEXITCODE
+        $previousErrorAction = $ErrorActionPreference
+        try {
+            # Windows PowerShell 5 wraps native stderr as NativeCommandError
+            # when the caller uses Stop. This command is expected to write a
+            # blocking reason to stderr, so capture its exit/output explicitly.
+            $ErrorActionPreference = "Continue"
+            $output = & python scripts\check_model_license_gate.py `
+                --mode release 2>&1
+            $releaseCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorAction
+        }
         $output | Write-Host
         if (
             $releaseCode -eq 0 -or
