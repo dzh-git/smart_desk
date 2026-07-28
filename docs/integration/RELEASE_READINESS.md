@@ -33,8 +33,10 @@
 
 ## 自动验证基线
 
-最终默认 Full 报告以 `logs/verification/verify-all-software.json` 为本机证据；该
-目录不提交 Git。当前已取得的独立复验：
+最终默认 Full 报告生成于 2026-07-28 09:05，以
+`logs/verification/verify-all-software.json` 为本机证据；该目录不提交 Git。
+汇总为 16 PASS、7 显式 SKIP、0 FAIL，其中 12 个 `REQUIRED` 全部通过。
+当前已取得的独立复验：
 
 | 项目 | 结果 |
 |---|---|
@@ -89,6 +91,8 @@
 | `6fa475f` | 平板心跳与双通道设备运维状态 |
 | `0db1713` | 设备认证、限流、事务、版本和模型发布门禁 |
 | `ee37e4b` | CI、一键验证和全量回归修复 |
+| `80f8006` | 架构、契约、单席/九席、发布与人工验收文档包 |
+| `594d622` | Windows PowerShell 5 预期 Release 阻断捕获兼容 |
 
 各阶段后另有独立 `chore: refresh ... graph snapshot` 提交维护根级 Graphify
-快照。文档阶段和最终审计提交以本分支后续 `git log` 为准。
+快照。最终证据回填与快照提交以本分支后续 `git log` 为准。

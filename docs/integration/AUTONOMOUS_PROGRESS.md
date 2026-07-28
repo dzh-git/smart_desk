@@ -8,7 +8,8 @@
 设备认证、席位绑定、版本门禁、基础限流和结构化脱敏日志；身份证据增加时效
 与原子事务保证；当前非商业人脸权重已由脚本和 Android Release 构建双重阻断。
 CI、一键验证、架构/契约、单席/九席运行手册、发布报告和 15 项人工验收包均已
-落地。最终默认 Full 验证与快照审计正在执行。
+落地。默认 Full 最终验证已取得 16 项 PASS、7 项显式 SKIP、0 项 FAIL；机器
+可完成部分结束，剩余工作全部进入人工/实物/许可证验收。
 
 ## 已完成
 
@@ -113,6 +114,9 @@ CI、一键验证、架构/契约、单席/九席运行手册、发布报告和 
 - 新增 seat 1、九席部署手册和发布就绪报告；所有真人、真机、传感器、现场网络、
   语音稳定性、供电温升与许可证审批集中在 15 项人工验收清单中。
 - 仓库契约检查覆盖上述当前文档、CI入口和本地 Markdown 链接。
+- 默认 Full 首次执行发现 Windows PowerShell 5 会把“Release 门禁预期写
+  stderr 并退出2”误记为验证失败；已兼容捕获并用同一默认命令完整重跑，
+  `Release model-license block` 正确记为 PASS，实际 Release 仍失败关闭。
 - Graphify 根级单一快照已更新。
 
 ## 已执行测试
@@ -150,6 +154,7 @@ CI、一键验证、架构/契约、单席/九席运行手册、发布报告和 
 | 后端完整非长时集合 | 排除2个已知长时语音文件的 pytest | 912项通过，4项条件跳过 |
 | 前端全量复验 | `npm test -- --run` | 330项通过 |
 | ESP32固件 ASCII 缓存复验 | 一键脚本 PlatformIO 检查 | 通过；RAM 14.9%，Flash 74.7% |
+| 默认 Full 最终验证 | `.\scripts\verify_all_software.ps1` | 16 PASS、7 显式 SKIP、0 FAIL；报告时间 2026-07-28 09:05 |
 
 `test_speech_stream_service.py` 与 `test_speech_websocket_blackbox.py`
 组合运行超过六分钟执行时限，未取得完整汇总；没有把超时描述为通过。
@@ -174,7 +179,7 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 尚未完成的软件任务
 
-无。默认 Full 最终复验属于本阶段收尾；若失败必须修复后才保持此结论。
+无。
 
 ## HARDWARE_VALIDATION_REQUIRED
 
@@ -197,6 +202,6 @@ OpenCV 4.11 兼容线，复验通过。
 
 ## 下一步
 
-1. 完成默认 Full 最终验证、更新最终证据和 Graphify 快照。
-2. 由具备设备、人员和现场网络的团队集中执行
+1. 由具备设备、人员和现场网络的团队集中执行
    `HUMAN_VALIDATION_REQUIRED.md`；模型授权未解除前保持 Release 阻断。
+2. seat 1 实物门禁通过后，才按 `NINE_SEAT_DEPLOYMENT.md` 分批复制到九席。
