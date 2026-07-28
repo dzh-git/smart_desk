@@ -2083,5 +2083,240 @@
     "mtime": 1785200763.0676484,
     "ast_hash": "39586ab6881002513829ac606bfd061e",
     "semantic_hash": ""
+  },
+  ".claude/settings.local.json": {
+    "mtime": 1779884584.7054875,
+    "ast_hash": "a737079f7259ce27f4fe0e7db8e9965a",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/diagnose/scripts/hitl-loop.template.sh": {
+    "mtime": 1779723608.5916295,
+    "ast_hash": "27d758d3557409fbb17bc3cced9367cf",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/git-guardrails-claude-code/scripts/block-dangerous-git.sh": {
+    "mtime": 1779723608.8414743,
+    "ast_hash": "8cdf6c38e301f8c7c60f75e5c45fa023",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/__init__.py": {
+    "mtime": 1785168104.8648138,
+    "ast_hash": "b9e26ec506b55d9c6b505433a4d8315c",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/agenda.py": {
+    "mtime": 1781360502.5582385,
+    "ast_hash": "8e8c75aec3ff0a80a06d858e52b87ea2",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/attendee.py": {
+    "mtime": 1785163796.187921,
+    "ast_hash": "3e2646d1a294743a8a5c545e4d9215ea",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/identity_checkin_event.py": {
+    "mtime": 1785168103.5296018,
+    "ast_hash": "f768e0f7f47ec45607b852373e1bf68d",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/meeting.py": {
+    "mtime": 1780306713.5898983,
+    "ast_hash": "fbfe3d4f6300bca6e3429f5a2edc09b1",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/person.py": {
+    "mtime": 1785163794.3870513,
+    "ast_hash": "17af9524f392e6475615ae462a54e90e",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/seat_state.py": {
+    "mtime": 1780306725.3032684,
+    "ast_hash": "4ee279d87bc025c0e97e8767e2a173ae",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/service_call.py": {
+    "mtime": 1780306746.546132,
+    "ast_hash": "08f54f858c37a472202cea58059418a4",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/speaker_seat.py": {
+    "mtime": 1780285750.175004,
+    "ast_hash": "17db078ee57dfc2474f34d8aa9868302",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/tablet_device.py": {
+    "mtime": 1785191297.6595893,
+    "ast_hash": "1a922885a0735fce77d433ed8b294a13",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/translation_record.py": {
+    "mtime": 1780668681.6027648,
+    "ast_hash": "f309d1ed5925bc4039dd5cc5e419533f",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/vote.py": {
+    "mtime": 1780306739.2446244,
+    "ast_hash": "339bd007f1f8387b71ebb23d3f94b4a2",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/vote_record.py": {
+    "mtime": 1780306765.0745294,
+    "ast_hash": "b7c99294c24f5143e35a9c1334878f13",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/black-box-testing/SKILL.md": {
+    "mtime": 1780399362.8331242,
+    "ast_hash": "ed863ad53f201c53642c717fc6eafc25",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/diagnose/SKILL.md": {
+    "mtime": 1779723608.5820854,
+    "ast_hash": "4bcd9cce196b0aa15fd65efe621f9466",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/fastapi-templates/SKILL.md": {
+    "mtime": 1780366149.5151904,
+    "ast_hash": "e0589ef33f84ced87cc0fcd7b2876831",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/fastapi-templates/references/details.md": {
+    "mtime": 1779765177.909219,
+    "ast_hash": "6d98519d52007946660dd29bea1cf807",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/git-guardrails-claude-code/SKILL.md": {
+    "mtime": 1779723608.8488667,
+    "ast_hash": "5abe0d431d5fb89e54f42503c35ac0ac",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/grill-with-docs/ADR-FORMAT.md": {
+    "mtime": 1779723608.632716,
+    "ast_hash": "3c49999a3715a7b65fe8521d4bf9e188",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/grill-with-docs/CONTEXT-FORMAT.md": {
+    "mtime": 1779723608.615549,
+    "ast_hash": "e540926ffc8338f2c411c1ab60a1f319",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/grill-with-docs/SKILL.md": {
+    "mtime": 1780371929.6929617,
+    "ast_hash": "b0e423ddc59a2e894d5358a92d36e906",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/hands-off-issue-handling/SKILL.md": {
+    "mtime": 1780399362.865646,
+    "ast_hash": "2b1830b21eedbe83cd1379f560c878d5",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/improve-codebase-architecture/DEEPENING.md": {
+    "mtime": 1779723608.537185,
+    "ast_hash": "83611866654c9324426ee35d6fb4295e",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/improve-codebase-architecture/HTML-REPORT.md": {
+    "mtime": 1779723608.5659945,
+    "ast_hash": "6be2b9d4c2c63e5c1671ab0b059ee9a1",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/improve-codebase-architecture/INTERFACE-DESIGN.md": {
+    "mtime": 1779723608.5008793,
+    "ast_hash": "495dddf4d7f1fed0240811bc71c1d9ea",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/improve-codebase-architecture/LANGUAGE.md": {
+    "mtime": 1779723608.52538,
+    "ast_hash": "ba0099d6b60d658b2aff0bba0b41dd3c",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/improve-codebase-architecture/SKILL.md": {
+    "mtime": 1779723608.5764403,
+    "ast_hash": "b75525c48539b4aa9dd4ee0cbd287d28",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/python-performance-optimization/SKILL.md": {
+    "mtime": 1780365989.6159692,
+    "ast_hash": "36f02a9e262a629c2db2b09e96d6defb",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/python-performance-optimization/references/advanced-patterns.md": {
+    "mtime": 1779765209.6947727,
+    "ast_hash": "19b6077d2a33ed92928683aa1ddf6b18",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/python-performance-optimization/references/details.md": {
+    "mtime": 1779765209.6958716,
+    "ast_hash": "8d82ad52ba39fb5997f921f71d28a669",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/python-testing-patterns/SKILL.md": {
+    "mtime": 1780366350.1268775,
+    "ast_hash": "ee8235e36fc58be8a14fdf142b25c888",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/python-testing-patterns/references/advanced-patterns.md": {
+    "mtime": 1779765104.3862946,
+    "ast_hash": "19b1b608977b335ee5163b67dd93d5c8",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/python-testing-patterns/references/details.md": {
+    "mtime": 1779765104.3862946,
+    "ast_hash": "424f217b1feb4f1d82e99e8c002d63b4",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/setup-pre-commit/SKILL.md": {
+    "mtime": 1779723608.8723786,
+    "ast_hash": "9dc09e107a2cc5eb0063648442034fed",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/tdd/SKILL.md": {
+    "mtime": 1779723608.478843,
+    "ast_hash": "06c57edca8db6db8f64c203c60a22de8",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/tdd/deep-modules.md": {
+    "mtime": 1779723608.4464965,
+    "ast_hash": "b5ab090a761366ce3c2c02117b776445",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/tdd/interface-design.md": {
+    "mtime": 1779723608.457958,
+    "ast_hash": "bcd6f09692098ec7a748a7d98e99d3ea",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/tdd/mocking.md": {
+    "mtime": 1779723608.415248,
+    "ast_hash": "d5bba1ea1f387c4809b7dc7c4e75c862",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/tdd/refactoring.md": {
+    "mtime": 1779723608.468179,
+    "ast_hash": "e8a3e0973fa19f267a836fa6edc195ad",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/tdd/tests.md": {
+    "mtime": 1779723608.4247174,
+    "ast_hash": "2927904135046181aae6793038e5f6c7",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/web-design-guidelines/SKILL.md": {
+    "mtime": 1780366664.6743453,
+    "ast_hash": "85028261f12ed9e6a1c6db9b12872e96",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/web-design-reviewer/SKILL.md": {
+    "mtime": 1780366801.572029,
+    "ast_hash": "67b9c3d5d0c3b8cd1f92f9c7a31f4125",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/web-design-reviewer/references/framework-fixes.md": {
+    "mtime": 1779798647.1948018,
+    "ast_hash": "37738be56b0fe3e59fc7264e9285c0e1",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/.claude/skills/web-design-reviewer/references/visual-checklist.md": {
+    "mtime": 1779798647.1948018,
+    "ast_hash": "656a083da56ee831c8e3809ea832bb93",
+    "semantic_hash": ""
   }
 }

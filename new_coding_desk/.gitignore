@@ -1,5 +1,5 @@
 # Model weights and caches
-models/
+/models/
 .hf_cache/
 
 # Python
