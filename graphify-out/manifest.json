@@ -1455,8 +1455,8 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/MainActivity.kt": {
-    "mtime": 1785191435.1534548,
-    "ast_hash": "94c3d7bb01c7720de1db47ac7862f522",
+    "mtime": 1785336553.3082538,
+    "ast_hash": "27cd72ced16896f17083057fe57b4655",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/bridge/AndroidBridge.kt": {
@@ -2317,6 +2317,16 @@
   "new_coding_desk/.claude/skills/web-design-reviewer/references/visual-checklist.md": {
     "mtime": 1779798647.1948018,
     "ast_hash": "656a083da56ee831c8e3809ea832bb93",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/WebViewPageAccessState.kt": {
+    "mtime": 1785335413.5448775,
+    "ast_hash": "d34e17487d3ad8b6e1446e26eee1f279",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/WebViewPageAccessStateTest.kt": {
+    "mtime": 1785335413.8320928,
+    "ast_hash": "5e87e38abf81d4c2977514b8e34b301f",
     "semantic_hash": ""
   }
 }

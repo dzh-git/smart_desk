@@ -432,7 +432,7 @@
   "430": "verify_all_software.ps1",
   "431": "check_python_sources.py",
   "432": "autoprefixer",
-  "433": ".reset",
+  "433": ".prepare_next_utterance",
   "434": "agendaState.ts",
   "435": "test_gesture_recognition.py",
   "436": "Android Native Bridge 契约",
@@ -460,11 +460,6 @@
   "458": "Step 4: Re-verification Phase",
   "459": "Reference Implementation",
   "460": "Troubleshooting",
-  "461": "autoprefixer",
   "462": "__init__.py",
-  "463": "block-dangerous-git.sh",
-  "464": ".activate_from_standby",
-  "465": ".should_release_on_hand_loss",
-  "466": "._update_stable",
-  "467": ".note"
+  "463": "block-dangerous-git.sh"
 }

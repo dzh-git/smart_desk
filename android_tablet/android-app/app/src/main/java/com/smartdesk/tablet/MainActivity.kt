@@ -41,6 +41,7 @@ import com.smartdesk.tablet.recognition.FaceRecognitionManager
 import com.smartdesk.tablet.web.BackendHealthChecker
 import com.smartdesk.tablet.web.SeatPageLoadState
 import com.smartdesk.tablet.web.WebViewAccessPolicy
+import com.smartdesk.tablet.web.WebViewPageAccessState
 import org.json.JSONObject
 import java.util.concurrent.Executors
 
@@ -60,7 +61,7 @@ class MainActivity : ComponentActivity() {
     private var lastFaceStatus: String? = null
     private var lastFaceEventAtMs = 0L
     private var originalScreenBrightness: Float? = null
-    private var showingDiagnosticPage = false
+    private val pageAccessState = WebViewPageAccessState(LOCAL_ASSET_PREFIX)
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallbackRegistered = false
     private var pendingMicrophoneRequest: PermissionRequest? = null
@@ -72,7 +73,7 @@ class MainActivity : ComponentActivity() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             if (
-                showingDiagnosticPage &&
+                pageAccessState.isDiagnosticPage() &&
                 ::deviceConfigStore.isInitialized &&
                 deviceConfigStore.load() != null
             ) {
@@ -531,7 +532,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun retryConfiguredPageIfNeeded() {
-        if (showingDiagnosticPage && deviceConfigStore.load() != null) {
+        if (
+            pageAccessState.isDiagnosticPage() &&
+            deviceConfigStore.load() != null
+        ) {
             pageLoadState.retry()
             loadConfiguredPage()
         }
@@ -566,9 +570,9 @@ class MainActivity : ComponentActivity() {
         pageLoadState.beginHealthCheck()
         val generation = ++healthCheckGeneration
         if (
-            webView.url.isNullOrBlank() ||
-            webView.url == "about:blank" ||
-            showingDiagnosticPage
+            pageAccessState.currentUrl().isNullOrBlank() ||
+            pageAccessState.currentUrl() == "about:blank" ||
+            pageAccessState.isDiagnosticPage()
         ) {
             loadDiagnosticPage("checking")
         }
@@ -600,7 +604,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun beginSeatPageLoad(url: String) {
-        showingDiagnosticPage = false
+        pageAccessState.update(null)
         pageLoadState.beginPageLoad()
         Log.i(TAG, "Loading configured seat page: $url")
         webView.loadUrl(url)
@@ -618,12 +622,13 @@ class MainActivity : ComponentActivity() {
 
     private fun loadDiagnosticPage(mode: String) {
         cancelSeatPageLoadTimeout()
-        showingDiagnosticPage = true
         if (::maintenanceButton.isInitialized) {
             maintenanceButton.visibility = View.GONE
         }
         val url = "$LOCAL_PAGE_URL?mode=${Uri.encode(mode)}"
-        if (webView.url != url) {
+        val previousUrl = pageAccessState.currentUrl()
+        if (previousUrl != url) {
+            pageAccessState.update(null)
             Log.i(TAG, "Loading local diagnostic page: $mode")
             webView.loadUrl(url)
         }
@@ -790,14 +795,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isDiagnosticPage(): Boolean =
-        ::webView.isInitialized &&
-            webView.url?.startsWith(LOCAL_ASSET_PREFIX) == true
+        pageAccessState.isDiagnosticPage()
 
     private fun isTrustedSeatPage(): Boolean {
-        return WebViewAccessPolicy.isTrustedSeatPage(
-            webView.url,
-            deviceConfigStore.load()
-        )
+        return pageAccessState.isTrustedSeatPage(deviceConfigStore.load())
     }
 
     private fun mayGrantMicrophone(
@@ -805,7 +806,7 @@ class MainActivity : ComponentActivity() {
         androidPermissionGranted: Boolean
     ): Boolean = WebViewAccessPolicy.mayGrantMicrophone(
         originUrl = request.origin?.toString(),
-        currentPageUrl = webView.url,
+        currentPageUrl = pageAccessState.currentUrl(),
         requestedResources = request.resources?.toList().orEmpty(),
         config = deviceConfigStore.load(),
         androidPermissionGranted = androidPermissionGranted
@@ -892,13 +893,18 @@ class MainActivity : ComponentActivity() {
 
     private inner class TabletWebViewClient : WebViewClient() {
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            pageAccessState.update(url)
             Log.i(TAG, "WebView loading: $url")
         }
 
         override fun onPageFinished(view: WebView, url: String) {
             Log.i(TAG, "WebView loaded: $url")
-            showingDiagnosticPage = url.startsWith(LOCAL_ASSET_PREFIX)
-            if (showingDiagnosticPage) {
+            if (view.url != url) {
+                Log.i(TAG, "Ignoring stale WebView completion: $url")
+                return
+            }
+            pageAccessState.update(url)
+            if (pageAccessState.isDiagnosticPage()) {
                 maintenanceButton.visibility = View.GONE
             } else if (
                 WebViewAccessPolicy.isTrustedSeatPage(
