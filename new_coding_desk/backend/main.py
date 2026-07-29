@@ -25,7 +25,9 @@ from fastapi import FastAPI, WebSocket, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-from backend.database import engine, Base, SessionLocal
+from backend.database import engine, SessionLocal
+from backend.database_maintenance import apply_schema_with_backup
+from backend.schema import upgrade_database_schema
 from backend.events import event_bus
 from backend.repositories.seat_repository import SeatRepository
 from backend.websocket import ws_service, WebSocketEventHandler
@@ -213,21 +215,12 @@ async def lifespan(app: FastAPI):
     # Phase 8: dependency and model checks
     _run_startup_checks()
 
-    # DB: create all tables declared on Base
-    Base.metadata.create_all(bind=engine)
-
-    # Phase 4: idempotent column additions for translation_records
-    from backend.migrations import (
-        ensure_agenda_columns,
-        ensure_attendee_identity_columns,
-        ensure_tablet_device_status_columns,
-        ensure_translation_record_columns,
+    # File databases are backed up before schema work. A failed upgrade restores
+    # the original file and aborts startup rather than serving a partial schema.
+    apply_schema_with_backup(
+        engine,
+        lambda: upgrade_database_schema(engine),
     )
-    ensure_translation_record_columns(engine)
-    # Phase 1: idempotent column additions for agenda state machine
-    ensure_agenda_columns(engine)
-    ensure_attendee_identity_columns(engine)
-    ensure_tablet_device_status_columns(engine)
 
     # Seed: initialize seat_states (1..9), speaker_seat (id=1), and demo data
     db = SessionLocal()

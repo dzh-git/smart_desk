@@ -1,0 +1,29 @@
+{
+  "deploy_mode": "central",
+  "lighting": {
+    "demo_seat_id": 1
+  },
+  "arduino": {
+    "enabled": true,
+    "baudrate": 115200,
+    "write_timeout_seconds": 1.0,
+    "heartbeat_interval_seconds": 5.0,
+    "reconnect_interval_seconds": 3.0,
+    "seats": {
+      "1": "COM_REPLACE_ME",
+      "2": null,
+      "3": null,
+      "4": null,
+      "5": null,
+      "6": null,
+      "7": null,
+      "8": null,
+      "9": null
+    }
+  },
+  "seats_total": 9,
+  "gesture": {
+    "enabled": true,
+    "status_ws_url": "ws://127.0.0.1:8765"
+  }
+}

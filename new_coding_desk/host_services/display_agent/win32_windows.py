@@ -87,7 +87,7 @@ def find_windows_by_title(
     if not is_win32_available():
         return []
 
-    win32gui, _, _, _ = _get_win32_modules()
+    win32gui, win32process, _, _ = _get_win32_modules()
     matches: list[WindowInfo] = []
 
     def _enum_handler(hwnd, _result):
@@ -107,7 +107,7 @@ def find_windows_by_title(
         # Optionally filter by process name
         if process_names:
             try:
-                _, pid = win32gui.GetWindowThreadProcessId(hwnd)
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
                 proc_name = _get_process_name(pid)
                 proc_lower = proc_name.lower()
                 if not any(p.lower() in proc_lower for p in process_names):
@@ -124,7 +124,7 @@ def find_windows_by_title(
                 pass
         else:
             try:
-                _, pid = win32gui.GetWindowThreadProcessId(hwnd)
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
             except Exception:
                 pid = 0
             matches.append(
@@ -147,15 +147,61 @@ def bring_window_to_foreground(hwnd: int) -> bool:
     if not is_win32_available():
         return False
 
-    win32gui, _, _, win32con = _get_win32_modules()
+    win32gui, win32process, win32api, win32con = _get_win32_modules()
     try:
-        # If minimized, restore
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+            if win32gui.GetForegroundWindow() == hwnd:
+                return True
+        except Exception:
+            pass
 
-        # Bring to foreground
-        win32gui.SetForegroundWindow(hwnd)
-        return True
+        # Windows can reject foreground changes across input queues. Attach
+        # the Agent thread temporarily, then detach in every case.
+        current_thread = win32api.GetCurrentThreadId()
+        foreground = win32gui.GetForegroundWindow()
+        foreground_thread = (
+            win32process.GetWindowThreadProcessId(foreground)[0]
+            if foreground
+            else 0
+        )
+        target_thread = win32process.GetWindowThreadProcessId(hwnd)[0]
+        attached: list[int] = []
+        try:
+            for thread_id in {foreground_thread, target_thread}:
+                if thread_id and thread_id != current_thread:
+                    win32process.AttachThreadInput(
+                        current_thread,
+                        thread_id,
+                        True,
+                    )
+                    attached.append(thread_id)
+            win32gui.BringWindowToTop(hwnd)
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+            win32gui.SetForegroundWindow(hwnd)
+            if win32gui.GetForegroundWindow() == hwnd:
+                return True
+        finally:
+            for thread_id in reversed(attached):
+                try:
+                    win32process.AttachThreadInput(
+                        current_thread,
+                        thread_id,
+                        False,
+                    )
+                except Exception:
+                    pass
+        try:
+            import win32com.client
+
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            return bool(
+                win32com.client.Dispatch("WScript.Shell").AppActivate(pid)
+            )
+        except Exception:
+            return False
     except Exception:
         return False
 

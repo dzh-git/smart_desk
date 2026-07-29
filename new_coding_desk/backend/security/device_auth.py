@@ -5,9 +5,11 @@ import hmac
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 ESP32_DEVICE_TOKENS_ENV = "SMARTDESK_ESP32_DEVICE_TOKENS_JSON"
+ESP32_DEVICE_TOKENS_FILE_ENV = "SMARTDESK_ESP32_DEVICE_TOKENS_FILE"
 MIN_DEVICE_TOKEN_LENGTH = 24
 
 
@@ -45,7 +47,7 @@ def parse_bearer_token(authorization: str | None) -> str | None:
 def load_esp32_credentials(
     raw: str | None = None,
 ) -> dict[str, Esp32Credential]:
-    """Load explicit device-to-seat credentials from an environment JSON map.
+    """Load explicit device-to-seat credentials from JSON or a protected file.
 
     Expected form:
       {"esp32-seat-01": {"seatId": 1, "token": "<24+ chars>"}}
@@ -53,11 +55,22 @@ def load_esp32_credentials(
     Invalid input produces an empty registry so production authentication
     fails closed instead of silently disabling itself.
     """
-    source = (
-        os.environ.get(ESP32_DEVICE_TOKENS_ENV, "")
-        if raw is None
-        else raw
-    )
+    if raw is None:
+        source = os.environ.get(ESP32_DEVICE_TOKENS_ENV, "")
+        if not source:
+            configured_file = os.environ.get(
+                ESP32_DEVICE_TOKENS_FILE_ENV,
+                "",
+            ).strip()
+            if configured_file:
+                try:
+                    source = Path(configured_file).read_text(
+                        encoding="utf-8",
+                    )
+                except OSError:
+                    return {}
+    else:
+        source = raw
     try:
         payload = json.loads(source)
     except (TypeError, json.JSONDecodeError):
@@ -118,6 +131,7 @@ def authenticate_esp32_device(
 
 
 __all__ = [
+    "ESP32_DEVICE_TOKENS_FILE_ENV",
     "ESP32_DEVICE_TOKENS_ENV",
     "DeviceAuthenticationError",
     "Esp32Credential",

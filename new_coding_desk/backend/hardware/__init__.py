@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -40,11 +41,15 @@ logger = logging.getLogger(__name__)
 
 def load_integration_config() -> dict:
     """Locate and parse config/smartdesk.integration.json."""
-    candidates = [
+    configured_path = os.environ.get("SMARTDESK_CONFIG_PATH", "").strip()
+    candidates = []
+    if configured_path:
+        candidates.append(Path(configured_path).expanduser())
+    candidates.extend([
         Path(__file__).resolve().parents[2] / "config" / "smartdesk.integration.json",
         Path(__file__).resolve().parents[3] / "config" / "smartdesk.integration.json",
         Path.cwd() / "config" / "smartdesk.integration.json",
-    ]
+    ])
     for path in candidates:
         if path.exists():
             try:

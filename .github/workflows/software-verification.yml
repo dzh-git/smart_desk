@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/android-tablet-integration
+      - "codex/**"
   pull_request:
 
 permissions:

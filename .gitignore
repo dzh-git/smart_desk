@@ -56,6 +56,9 @@ env/
 !.env.example
 !.env.sample
 !.env.template
+config/smartdesk.integration.json
+config/*device-tokens*.json
+!config/*.example.json
 *.jks
 *.keystore
 *.p12
@@ -83,6 +86,8 @@ lerna-debug.log*
 
 # ---------- Runtime ----------
 .smartdesk-runtime/
+.smartdesk-packaging/
+artifacts/
 logs/
 log/
 *.log

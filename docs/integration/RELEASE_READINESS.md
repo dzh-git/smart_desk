@@ -1,12 +1,13 @@
 # 发布就绪报告
 
-最后更新：2026-07-28
+最后更新：2026-07-30
 
 ## 当前结论
 
 | 范围 | 状态 | 说明 |
 |---|---|---|
-| 机器可完成的软件工程范围 | `COMPLETE` | 阶段 0–12 的实现、测试、模拟、CI、配置和文档已闭合 |
+| 机器可完成的软件工程范围 | `COMPLETE` | Full 验证、九席 30 分钟模拟和便携安装生命周期已闭合 |
+| 内部演示安装包 | `READY_FOR_FIELD_VALIDATION` | 静态前端、后端、APK、固件工具、Display Agent、手势和诊断已打包 |
 | Android/ESP32/现场验收 | `HARDWARE_VALIDATION_REQUIRED` | 不以 JVM、APK、固件编译或模拟器替代实物 |
 | 人脸自动签到安全等级 | `CALIBRATION_PENDING` | 75 次标定后也只能成为内部 `PROVISIONAL/PROTOTYPE` |
 | 正式/商业发布 | `BLOCKED` | 当前权重非商业研究限制且无活体检测；Release 门禁按设计失败 |
@@ -26,33 +27,41 @@
 | 6 | 单席完整软件闭环 | `run_seat1_integration_test.ps1` | 20 轮通过 |
 | 7 | 重复/断线/重连/幂等 | 单席、协议、Bridge 和恢复测试 | 通过 |
 | 8 | 原有核心测试未破坏 | 后端非长时 912、前端 330、手势 526 | 通过 |
-| 9 | 一键验证可运行 | `verify_all_software.ps1` 与 CI workflow | 通过 |
+| 9 | 一键验证可运行 | `RUN_VALIDATION.bat`、脱敏 JSON/HTML/ZIP 与 CI workflow | 通过 |
 | 10 | 文档/配置/人工验收包 | 本目录 8 份集成文档、链接/契约检查 | 通过 |
 | 11 | 未验硬件明确标记 | `HUMAN_VALIDATION_REQUIRED.md` | 通过 |
 | 12 | 原型/许可证限制明确 | 模型卡、机器门禁、Release Gradle 阻断 | 通过 |
 
 ## 自动验证基线
 
-最终默认 Full 报告生成于 2026-07-28 09:05，以
+最终 Full 报告生成于 2026-07-30，以
 `logs/verification/verify-all-software.json` 为本机证据；该目录不提交 Git。
-汇总为 16 PASS、7 显式 SKIP、0 FAIL，其中 12 个 `REQUIRED` 全部通过。
-当前已取得的独立复验：
+汇总为 26 PASS、8 显式 SKIP、0 FAIL，所有 `REQUIRED` 项通过。ZIP artifact
+只包含脱敏的 JSON、HTML 和日志，不包含令牌、人脸、embedding、原始语音或
+数据库。当前已取得的独立复验：
 
 | 项目 | 结果 |
 |---|---|
-| Python 源码静态编译 | 211 个源文件通过 |
+| Python 源码静态编译 | 221 个源文件通过 |
 | 仓库配置/文档契约 | 通过 |
-| 后端完整非长时集合 | 912 通过，4 条件跳过 |
+| 后端完整非长时集合 | 通过 |
 | 前端 | 类型检查、330 单测、生产构建通过 |
 | 手势控制器 | 526 通过，4 条件跳过 |
 | Android | 28 JVM 测试、Lint、Debug APK 通过 |
-| ESP32 | 协议/模拟器通过；固件 RAM 14.9%、Flash 74.7% |
+| Redmi K60 自动复验 | 覆盖安装、版本、Activity、WebView 启动通过 |
+| ESP32 | 协议/模拟器和 PlatformIO 固件编译通过 |
 | seat 1 | 后端/ESP32 18 项、前端 2 项；核心闭环 20 轮 |
+| 九席模拟 | 9 ESP32、9 Tablet、9 客户端及重启/断线恢复，30 分钟通过 |
+| 数据库 | 备份、双次迁移、数据/约束保持、失败回滚通过 |
+| 便携包 | 全新安装、升级、失败回滚、卸载保留数据通过 |
+| 投屏 | MediaMTX/FFmpeg、10 Chromium 客户端、FFmpeg 恢复通过 |
+| Display Agent | PowerPoint 实际窗口切换通过；SolidWorks 待目标机 |
 | 模型门禁 | prototype 声明通过；release 按预期 `MODEL_LICENSE_GATE_BLOCKED` |
 
+PCM 长语音、生命周期和切席路由测试已通过。
 `test_speech_stream_service.py` 与 `test_speech_websocket_blackbox.py` 在本环境组合
-运行超过 20 分钟未完成，明确归类 `OPTIONAL_ENVIRONMENT`，只有设置
-`SMARTDESK_RUN_SLOW_SPEECH_TESTS=true` 才执行。30 分钟真实收音仍是人工项。
+运行超过 20 分钟，继续归类 `OPTIONAL_ENVIRONMENT`，只有设置
+`SMARTDESK_RUN_SLOW_SPEECH_TESTS=true` 才执行。真实麦克风中英文各一句仍是人工项。
 
 ## 主要风险
 
@@ -64,7 +73,8 @@
    授权审查。
 5. 固件虽能编译，真实引脚、阈值、供电、看门狗、Wi-Fi 与温升尚无新版本实物
    证据。
-6. Vite dev server 只用于联调；正式场地需要受控静态托管/反向代理方案。
+6. 现场仍需核对防火墙、固定 IP、AP 供电和九台真实设备；软件包已改用
+   5173 轻量静态服务，不再依赖 Vite 开发服务器。
 
 ## 正式发布退出条件
 

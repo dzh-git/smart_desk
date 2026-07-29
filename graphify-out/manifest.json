@@ -14,11 +14,6 @@
     "ast_hash": "76a0ef553d7f29f662c4a030943a3303",
     "semantic_hash": "76a0ef553d7f29f662c4a030943a3303"
   },
-  "config/smartdesk.integration.json": {
-    "mtime": 1784018587.0124657,
-    "ast_hash": "2128eefae991e8ddad58503987c41ab5",
-    "semantic_hash": "2128eefae991e8ddad58503987c41ab5"
-  },
   "new_coding_desk/backend/__init__.py": {
     "mtime": 1780284072.1609843,
     "ast_hash": "7d0361b0d081c1494fd57f00604267e6",
@@ -85,9 +80,9 @@
     "semantic_hash": "c10d3f16848082b61f6a7a065a446ead"
   },
   "new_coding_desk/backend/database.py": {
-    "mtime": 1780284075.787231,
-    "ast_hash": "91e3a5ead3f40a2dc668567c63db5c18",
-    "semantic_hash": "91e3a5ead3f40a2dc668567c63db5c18"
+    "mtime": 1785340077.7517333,
+    "ast_hash": "f7f1e2a5d54a4f58b14c2f056621bc17",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/events/__init__.py": {
     "mtime": 1784459522.4895945,
@@ -145,8 +140,8 @@
     "semantic_hash": "0dd1ab5bc583eccf039b43a50cb46aa6"
   },
   "new_coding_desk/backend/hardware/__init__.py": {
-    "mtime": 1785171539.5620313,
-    "ast_hash": "ea88131e30c17b31bac28eb96778a3f1",
+    "mtime": 1785340078.0328577,
+    "ast_hash": "a0b8430c4c98019e7697013702f39d26",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/hardware/arduino_manager.py": {
@@ -175,8 +170,8 @@
     "semantic_hash": "cd3fa4a0670c6eecb38bada67fb86fd9"
   },
   "new_coding_desk/backend/main.py": {
-    "mtime": 1785191298.7628155,
-    "ast_hash": "e710f08c190dfe02a407283f5d964a96",
+    "mtime": 1785340968.7479553,
+    "ast_hash": "9d899953d78cccba4f25d144617182a2",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/migrations.py": {
@@ -475,9 +470,9 @@
     "semantic_hash": "142ae85573ac021108e821ba23cecb60"
   },
   "new_coding_desk/frontend/playwright.config.ts": {
-    "mtime": 1781249432.315255,
-    "ast_hash": "cefdd37903762a1380b727a5968f7e11",
-    "semantic_hash": "cefdd37903762a1380b727a5968f7e11"
+    "mtime": 1785342898.2337606,
+    "ast_hash": "238fb3945ce2d9c6478b03d1b7b06cec",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/postcss.config.js": {
     "mtime": 1780576921.914652,
@@ -755,9 +750,9 @@
     "semantic_hash": "957e5419adc65aa5dc565beeb9c64cf1"
   },
   "new_coding_desk/host_services/display_agent/agent.py": {
-    "mtime": 1781785386.7651596,
-    "ast_hash": "938338ec6e20de648de55f6463187c4a",
-    "semantic_hash": "938338ec6e20de648de55f6463187c4a"
+    "mtime": 1785343750.9340782,
+    "ast_hash": "a893a859b20f4622e5aed4106ba2031d",
+    "semantic_hash": ""
   },
   "new_coding_desk/host_services/display_agent/config.json": {
     "mtime": 1781757149.6316144,
@@ -775,9 +770,9 @@
     "semantic_hash": "100c99dd9ada11322307a2a8d0e30f04"
   },
   "new_coding_desk/host_services/display_agent/win32_windows.py": {
-    "mtime": 1781785024.2985852,
-    "ast_hash": "def8f242b3da29fbdc6f0ec895d5c5ca",
-    "semantic_hash": "def8f242b3da29fbdc6f0ec895d5c5ca"
+    "mtime": 1785343840.019577,
+    "ast_hash": "27746dc1423b4d27ff8014fba6b971ae",
+    "semantic_hash": ""
   },
   "new_coding_desk/host_services/screen_stream/config.json": {
     "mtime": 1781842219.4158058,
@@ -860,9 +855,9 @@
     "semantic_hash": "6042f9c35b1a815b116c506cb1ca0c19"
   },
   "new_coding_desk/tests/test_display_agent.py": {
-    "mtime": 1781785582.585642,
-    "ast_hash": "690b524d36c1b8b50fb096b4bf94d4d6",
-    "semantic_hash": "690b524d36c1b8b50fb096b4bf94d4d6"
+    "mtime": 1785344254.0129232,
+    "ast_hash": "094efea97bd645d3c70229f164a76954",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_display_agent_review_contract.py": {
     "mtime": 1781764818.1364877,
@@ -900,9 +895,9 @@
     "semantic_hash": "076d61ce6731d4bb5c4b2116f2e91726"
   },
   "new_coding_desk/tests/test_screen_stream_phase1_contract.py": {
-    "mtime": 1782009934.8544798,
-    "ast_hash": "ab42cc8e2928403589b3417e71675a1b",
-    "semantic_hash": "ab42cc8e2928403589b3417e71675a1b"
+    "mtime": 1785343163.3480644,
+    "ast_hash": "d84c7c43af409bed76ee6f195ec69ab5",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_screen_stream_phase6_contract.py": {
     "mtime": 1784123098.6933172,
@@ -988,11 +983,6 @@
     "mtime": 1784302910.933822,
     "ast_hash": "0af69f43b5da06473b949391830d00d6",
     "semantic_hash": ""
-  },
-  "scripts/repack_deploy.ps1": {
-    "mtime": 1783686482.7552931,
-    "ast_hash": "045d8ba70a1556e2a41360d162c38deb",
-    "semantic_hash": "045d8ba70a1556e2a41360d162c38deb"
   },
   "skills-lock.json": {
     "mtime": 1779765211.270533,
@@ -1085,9 +1075,9 @@
     "semantic_hash": "f2eb04cefdff8f4fc082fa86e5d333aa"
   },
   "smartdesk_gesture_controller/tests/test_gesture_controller.py": {
-    "mtime": 1784122858.4628773,
-    "ast_hash": "4eb40b28cf0280434f06cc96375fa3f4",
-    "semantic_hash": "4eb40b28cf0280434f06cc96375fa3f4"
+    "mtime": 1785340077.3313098,
+    "ast_hash": "9ea3e49b14b1888e81ce37b130090103",
+    "semantic_hash": ""
   },
   "smartdesk_gesture_controller/tests/test_gesture_intent_tracker.py": {
     "mtime": 1782371408.3217444,
@@ -1130,24 +1120,19 @@
     "semantic_hash": ""
   },
   "DOCUMENTATION_INDEX.md": {
-    "mtime": 1785199108.0667326,
-    "ast_hash": "be1141318769a27d4ee2a1e167c25204",
+    "mtime": 1785341612.9533625,
+    "ast_hash": "ef60615f7199e192ababf6b20b2f8117",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785198751.2486222,
-    "ast_hash": "f8d3c4a86844021fab93228d97790fd9",
+    "mtime": 1785341602.015567,
+    "ast_hash": "e7599f7e6cc0729bc63996e2aece8640",
     "semantic_hash": ""
   },
   "arduino_nano_controller/protocol.md": {
     "mtime": 1783668538.4936268,
     "ast_hash": "b59b55a20eaa04f9fe337c00ff57c380",
     "semantic_hash": "b59b55a20eaa04f9fe337c00ff57c380"
-  },
-  "docs/deployment/\u667a\u80fd\u4f1a\u8bae\u684c\u786c\u4ef6\u96c6\u6210-\u90e8\u7f72\u4e0e\u8054\u8c03.md": {
-    "mtime": 1783999924.2070014,
-    "ast_hash": "d874a67ab9901bf0cf1efb523541d48e",
-    "semantic_hash": "d874a67ab9901bf0cf1efb523541d48e"
   },
   "docs/product/project-goals.md": {
     "mtime": 1783999879.3369803,
@@ -1265,18 +1250,18 @@
     "semantic_hash": "2bde812607b1ed817efbe341ed33cfbd"
   },
   "new_coding_desk/host_services/screen_stream/README.md": {
-    "mtime": 1782010824.2434473,
-    "ast_hash": "bd04784eb32bf36b152246c9263ef049",
-    "semantic_hash": "bd04784eb32bf36b152246c9263ef049"
+    "mtime": 1785344785.9296606,
+    "ast_hash": "af11f0ad3b039e8ac1988a73a5ee6eaf",
+    "semantic_hash": ""
   },
   "new_coding_desk/host_services/screen_stream/mediamtx.template.yml": {
-    "mtime": 1781783603.8527007,
-    "ast_hash": "3455fdcb8a01a59e07afa559456e808e",
-    "semantic_hash": "3455fdcb8a01a59e07afa559456e808e"
+    "mtime": 1785343163.0665524,
+    "ast_hash": "582ed8071ba82ee0ab46f17095149f81",
+    "semantic_hash": ""
   },
   "new_coding_desk/requirements.txt": {
-    "mtime": 1784548322.0280907,
-    "ast_hash": "47703727ab1612005d13019a40762acc",
+    "mtime": 1785340076.9593592,
+    "ast_hash": "74a0d6b1aa22e3b739690d59d7e32879",
     "semantic_hash": ""
   },
   "new_coding_desk/seat_agent/README.md": {
@@ -1755,8 +1740,8 @@
     "semantic_hash": ""
   },
   "android_tablet/README.md": {
-    "mtime": 1785170991.182697,
-    "ast_hash": "eca75150d4c04dfd88ebb2106cc9d4fa",
+    "mtime": 1785341624.7990737,
+    "ast_hash": "d83efafd7033823c30c34bde4e7ebfde",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/assets/models/MODEL_CARD.md": {
@@ -1770,28 +1755,8 @@
     "semantic_hash": ""
   },
   "android_tablet/docs/CALIBRATION.md": {
-    "mtime": 1785077083.81963,
-    "ast_hash": "c979123354a6bacafc9071cedd7ba905",
-    "semantic_hash": ""
-  },
-  "android_tablet/docs/IMPLEMENTATION_ISSUES.md": {
-    "mtime": 1785199108.5395513,
-    "ast_hash": "9cde1f901d8448cc90fbe4f9f7567b2d",
-    "semantic_hash": ""
-  },
-  "android_tablet/docs/PROTOTYPE_README.md": {
-    "mtime": 1785162570.2025025,
-    "ast_hash": "4d725ca41ea2451f8ec6bf0df1b87ed6",
-    "semantic_hash": ""
-  },
-  "android_tablet/docs/STATIC_IMAGE_TEST_REPORT.md": {
-    "mtime": 1785077208.503694,
-    "ast_hash": "bb627a86a273592e4863c8c09155d139",
-    "semantic_hash": ""
-  },
-  "android_tablet/docs/VALIDATION.md": {
-    "mtime": 1785164599.773303,
-    "ast_hash": "c83650741e7af166f97228bd7b65a6f1",
+    "mtime": 1785341625.0620298,
+    "ast_hash": "af26ab8d7b1174d439c56760afd1f163",
     "semantic_hash": ""
   },
   "android_tablet/model-tools/README.md": {
@@ -1837,16 +1802,6 @@
   "new_coding_desk/tests/test_tablet_devices.py": {
     "mtime": 1785193214.6547122,
     "ast_hash": "2ce05f3a7ab08c5c4709fc38a9742718",
-    "semantic_hash": ""
-  },
-  "scripts/verify_software_baseline.ps1": {
-    "mtime": 1785167020.1676548,
-    "ast_hash": "946746e1638226300fde59d1bfaaa208",
-    "semantic_hash": ""
-  },
-  "docs/integration/AUTONOMOUS_PROGRESS.md": {
-    "mtime": 1785200762.8025045,
-    "ast_hash": "df535f89a1fdd048e33279b775150b48",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.esp32.example.json": {
@@ -1980,8 +1935,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/security/device_auth.py": {
-    "mtime": 1785192531.2506218,
-    "ast_hash": "640d0f5057ed4dd744c6b47d0fc4c53e",
+    "mtime": 1785340078.41145,
+    "ast_hash": "6e6a30b17115db15b34816b70b272836",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/security/rate_limit.py": {
@@ -2025,23 +1980,23 @@
     "semantic_hash": ""
   },
   "scripts/validate_repository_contracts.py": {
-    "mtime": 1785199163.8003886,
-    "ast_hash": "72461c0965452dda2f1d1e4a9edadfa8",
+    "mtime": 1785341449.4017057,
+    "ast_hash": "651c60b4508c68cc9d3544bebffcbb4f",
     "semantic_hash": ""
   },
   "scripts/verify_all_software.ps1": {
-    "mtime": 1785200017.0681741,
-    "ast_hash": "2ffab3b4a22b2117f9ba4e8a1c18ba99",
+    "mtime": 1785343960.7162735,
+    "ast_hash": "b83f56ad9b10cedf38d3dda75c42e7dc",
     "semantic_hash": ""
   },
   ".github/workflows/software-verification.yml": {
-    "mtime": 1785194447.649088,
-    "ast_hash": "0ca7ae95e58077a26f9f47330813f6dc",
+    "mtime": 1785341284.2552514,
+    "ast_hash": "178785290b868abe8a637e9408d74114",
     "semantic_hash": ""
   },
   "new_coding_desk/requirements-ci.txt": {
-    "mtime": 1785194446.662796,
-    "ast_hash": "7f5524a1e9d92327bc4cfdffaa668ed7",
+    "mtime": 1785340076.6408648,
+    "ast_hash": "acbb582fef53622faa2a523d3ea41c42",
     "semantic_hash": ""
   },
   "docs/integration/ANDROID_BRIDGE_CONTRACT.md": {
@@ -2060,8 +2015,8 @@
     "semantic_hash": ""
   },
   "docs/integration/HUMAN_VALIDATION_REQUIRED.md": {
-    "mtime": 1785198980.7614093,
-    "ast_hash": "5c45960c35977df0366c4f107430de80",
+    "mtime": 1785344786.209198,
+    "ast_hash": "adfc92d58dcd0ea1dc8883fa44b3c0dd",
     "semantic_hash": ""
   },
   "docs/integration/IDENTITY_CHECKIN_CONTRACT.md": {
@@ -2080,23 +2035,13 @@
     "semantic_hash": ""
   },
   "docs/integration/RELEASE_READINESS.md": {
-    "mtime": 1785200763.0676484,
-    "ast_hash": "39586ab6881002513829ac606bfd061e",
+    "mtime": 1785347444.1377027,
+    "ast_hash": "8afb797c6d2161eaf27ba1e055b7dbe7",
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
     "mtime": 1779884584.7054875,
     "ast_hash": "a737079f7259ce27f4fe0e7db8e9965a",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/diagnose/scripts/hitl-loop.template.sh": {
-    "mtime": 1779723608.5916295,
-    "ast_hash": "27d758d3557409fbb17bc3cced9367cf",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/git-guardrails-claude-code/scripts/block-dangerous-git.sh": {
-    "mtime": 1779723608.8414743,
-    "ast_hash": "8cdf6c38e301f8c7c60f75e5c45fa023",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/models/__init__.py": {
@@ -2164,161 +2109,6 @@
     "ast_hash": "b7c99294c24f5143e35a9c1334878f13",
     "semantic_hash": ""
   },
-  "new_coding_desk/.claude/skills/black-box-testing/SKILL.md": {
-    "mtime": 1780399362.8331242,
-    "ast_hash": "ed863ad53f201c53642c717fc6eafc25",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/diagnose/SKILL.md": {
-    "mtime": 1779723608.5820854,
-    "ast_hash": "4bcd9cce196b0aa15fd65efe621f9466",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/fastapi-templates/SKILL.md": {
-    "mtime": 1780366149.5151904,
-    "ast_hash": "e0589ef33f84ced87cc0fcd7b2876831",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/fastapi-templates/references/details.md": {
-    "mtime": 1779765177.909219,
-    "ast_hash": "6d98519d52007946660dd29bea1cf807",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/git-guardrails-claude-code/SKILL.md": {
-    "mtime": 1779723608.8488667,
-    "ast_hash": "5abe0d431d5fb89e54f42503c35ac0ac",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/grill-with-docs/ADR-FORMAT.md": {
-    "mtime": 1779723608.632716,
-    "ast_hash": "3c49999a3715a7b65fe8521d4bf9e188",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/grill-with-docs/CONTEXT-FORMAT.md": {
-    "mtime": 1779723608.615549,
-    "ast_hash": "e540926ffc8338f2c411c1ab60a1f319",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/grill-with-docs/SKILL.md": {
-    "mtime": 1780371929.6929617,
-    "ast_hash": "b0e423ddc59a2e894d5358a92d36e906",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/hands-off-issue-handling/SKILL.md": {
-    "mtime": 1780399362.865646,
-    "ast_hash": "2b1830b21eedbe83cd1379f560c878d5",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/improve-codebase-architecture/DEEPENING.md": {
-    "mtime": 1779723608.537185,
-    "ast_hash": "83611866654c9324426ee35d6fb4295e",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/improve-codebase-architecture/HTML-REPORT.md": {
-    "mtime": 1779723608.5659945,
-    "ast_hash": "6be2b9d4c2c63e5c1671ab0b059ee9a1",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/improve-codebase-architecture/INTERFACE-DESIGN.md": {
-    "mtime": 1779723608.5008793,
-    "ast_hash": "495dddf4d7f1fed0240811bc71c1d9ea",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/improve-codebase-architecture/LANGUAGE.md": {
-    "mtime": 1779723608.52538,
-    "ast_hash": "ba0099d6b60d658b2aff0bba0b41dd3c",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/improve-codebase-architecture/SKILL.md": {
-    "mtime": 1779723608.5764403,
-    "ast_hash": "b75525c48539b4aa9dd4ee0cbd287d28",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/python-performance-optimization/SKILL.md": {
-    "mtime": 1780365989.6159692,
-    "ast_hash": "36f02a9e262a629c2db2b09e96d6defb",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/python-performance-optimization/references/advanced-patterns.md": {
-    "mtime": 1779765209.6947727,
-    "ast_hash": "19b6077d2a33ed92928683aa1ddf6b18",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/python-performance-optimization/references/details.md": {
-    "mtime": 1779765209.6958716,
-    "ast_hash": "8d82ad52ba39fb5997f921f71d28a669",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/python-testing-patterns/SKILL.md": {
-    "mtime": 1780366350.1268775,
-    "ast_hash": "ee8235e36fc58be8a14fdf142b25c888",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/python-testing-patterns/references/advanced-patterns.md": {
-    "mtime": 1779765104.3862946,
-    "ast_hash": "19b1b608977b335ee5163b67dd93d5c8",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/python-testing-patterns/references/details.md": {
-    "mtime": 1779765104.3862946,
-    "ast_hash": "424f217b1feb4f1d82e99e8c002d63b4",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/setup-pre-commit/SKILL.md": {
-    "mtime": 1779723608.8723786,
-    "ast_hash": "9dc09e107a2cc5eb0063648442034fed",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/tdd/SKILL.md": {
-    "mtime": 1779723608.478843,
-    "ast_hash": "06c57edca8db6db8f64c203c60a22de8",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/tdd/deep-modules.md": {
-    "mtime": 1779723608.4464965,
-    "ast_hash": "b5ab090a761366ce3c2c02117b776445",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/tdd/interface-design.md": {
-    "mtime": 1779723608.457958,
-    "ast_hash": "bcd6f09692098ec7a748a7d98e99d3ea",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/tdd/mocking.md": {
-    "mtime": 1779723608.415248,
-    "ast_hash": "d5bba1ea1f387c4809b7dc7c4e75c862",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/tdd/refactoring.md": {
-    "mtime": 1779723608.468179,
-    "ast_hash": "e8a3e0973fa19f267a836fa6edc195ad",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/tdd/tests.md": {
-    "mtime": 1779723608.4247174,
-    "ast_hash": "2927904135046181aae6793038e5f6c7",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/web-design-guidelines/SKILL.md": {
-    "mtime": 1780366664.6743453,
-    "ast_hash": "85028261f12ed9e6a1c6db9b12872e96",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/web-design-reviewer/SKILL.md": {
-    "mtime": 1780366801.572029,
-    "ast_hash": "67b9c3d5d0c3b8cd1f92f9c7a31f4125",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/web-design-reviewer/references/framework-fixes.md": {
-    "mtime": 1779798647.1948018,
-    "ast_hash": "37738be56b0fe3e59fc7264e9285c0e1",
-    "semantic_hash": ""
-  },
-  "new_coding_desk/.claude/skills/web-design-reviewer/references/visual-checklist.md": {
-    "mtime": 1779798647.1948018,
-    "ast_hash": "656a083da56ee831c8e3809ea832bb93",
-    "semantic_hash": ""
-  },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/WebViewPageAccessState.kt": {
     "mtime": 1785335413.5448775,
     "ast_hash": "d34e17487d3ad8b6e1446e26eee1f279",
@@ -2327,6 +2117,141 @@
   "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/WebViewPageAccessStateTest.kt": {
     "mtime": 1785335413.8320928,
     "ast_hash": "5e87e38abf81d4c2977514b8e34b301f",
+    "semantic_hash": ""
+  },
+  "config/smartdesk.integration.arduino.example.json": {
+    "mtime": 1785340571.0907006,
+    "ast_hash": "d576f8ba546094cdd84bd837bf6f9472",
+    "semantic_hash": ""
+  },
+  "deployment/portable/build-portable.ps1": {
+    "mtime": 1785344667.4977572,
+    "ast_hash": "be09dd561a053b65192f3c893432bb50",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/scripts/DOCTOR.ps1": {
+    "mtime": 1785342570.7893982,
+    "ast_hash": "159dd282dbd52cbf7926d6c9fdf7cbb2",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/scripts/INSTALL.ps1": {
+    "mtime": 1785342314.3934186,
+    "ast_hash": "a43c092f443cbf4dece79c9c0a97ec78",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/scripts/START.ps1": {
+    "mtime": 1785344554.1085489,
+    "ast_hash": "1ce4713234a5efe8f6c7268337109208",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/scripts/UNINSTALL.ps1": {
+    "mtime": 1785341120.2744236,
+    "ast_hash": "3e4a80085acf3a80b357dd4c46ddbec5",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/database_maintenance.py": {
+    "mtime": 1785340313.2565167,
+    "ast_hash": "6e942f4143d8db00931a3443dc50d0a0",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/schema.py": {
+    "mtime": 1785342116.0787983,
+    "ast_hash": "36061936f02ed04df333da7f5cdc1ea8",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/e2e/screen-stream-live.spec.ts": {
+    "mtime": 1785343195.3515515,
+    "ast_hash": "04be19590a23caf5e3bf44616569c63d",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/playwright.live.config.ts": {
+    "mtime": 1785342897.3738954,
+    "ast_hash": "21ca4d908f3b632cbc64f31d332be76c",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend_server.py": {
+    "mtime": 1785340173.179564,
+    "ast_hash": "11ed2861f6c8393fc352f00d715e14e4",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/migrate_database.py": {
+    "mtime": 1785340950.6699524,
+    "ast_hash": "b2b0469048d894bcf91914fbd0f1c807",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_database_maintenance.py": {
+    "mtime": 1785340632.0894146,
+    "ast_hash": "e13434d89467eed34176535e8a589407",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_frontend_server.py": {
+    "mtime": 1785340174.1555328,
+    "ast_hash": "bfc45beadde7c8965217d9c287167623",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_nine_seat_integration.py": {
+    "mtime": 1785340747.782817,
+    "ast_hash": "e58bfde33c024f891ac2534c82567761",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_runtime_configuration.py": {
+    "mtime": 1785340173.44718,
+    "ast_hash": "aec7f613bd1e2377e7fbcecbfac7a6d2",
+    "semantic_hash": ""
+  },
+  "scripts/check_repository_hygiene.py": {
+    "mtime": 1785340790.1825075,
+    "ast_hash": "8136010a2a3c8ff7f5a07085364ac02c",
+    "semantic_hash": ""
+  },
+  "scripts/run_nine_seat_simulation.ps1": {
+    "mtime": 1785340710.0845826,
+    "ast_hash": "8c440cee199a92393acf71006ddecad6",
+    "semantic_hash": ""
+  },
+  "scripts/test_portable_lifecycle.ps1": {
+    "mtime": 1785342314.7070863,
+    "ast_hash": "fafd0b65b5fd06d25a981e8bfc0330fe",
+    "semantic_hash": ""
+  },
+  "scripts/validate_portable_package.py": {
+    "mtime": 1785344667.7591403,
+    "ast_hash": "0f87bafbed05bce24993f6928a85c6a4",
+    "semantic_hash": ""
+  },
+  "scripts/verify_android_device.ps1": {
+    "mtime": 1785342746.2926397,
+    "ast_hash": "727bdf5dc6b5c00bb038710a5f95a6e2",
+    "semantic_hash": ""
+  },
+  "scripts/verify_powerpoint_switch.ps1": {
+    "mtime": 1785343924.8920739,
+    "ast_hash": "9d5ec716fe919b1505219ed056e63dc4",
+    "semantic_hash": ""
+  },
+  "scripts/verify_screen_stream_live.ps1": {
+    "mtime": 1785342897.928942,
+    "ast_hash": "312f6048b1fe4b5ea407442279c91653",
+    "semantic_hash": ""
+  },
+  "deployment/portable/README.md": {
+    "mtime": 1785341116.8462644,
+    "ast_hash": "221120c135b181bd2fa8f7fba86ba72a",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/INTERNAL_DEMO.txt": {
+    "mtime": 1785341118.79693,
+    "ast_hash": "41b2c49b1d892d36d58f41a802b9eaf8",
+    "semantic_hash": ""
+  },
+  "docs/integration/COMPATIBILITY.md": {
+    "mtime": 1785341584.682177,
+    "ast_hash": "cd6026b94f12f597c8f1a25066b60561",
+    "semantic_hash": ""
+  },
+  "docs/integration/FIELD_VALIDATION_QUICKSTART.md": {
+    "mtime": 1785341584.9573226,
+    "ast_hash": "c775e346ef0904985194a65563850f99",
     "semantic_hash": ""
   }
 }

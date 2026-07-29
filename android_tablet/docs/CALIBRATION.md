@@ -46,4 +46,5 @@ verificationLevel = PROTOTYPE
 `PROVISIONAL`阈值。
 
 当前单人代理测试方法和结果见
-[STATIC_IMAGE_TEST_REPORT.md](STATIC_IMAGE_TEST_REPORT.md)。
+静态图片原型报告已退出当前验收依据；阈值只能使用本页规定的 75 次现场数据
+重新计算。

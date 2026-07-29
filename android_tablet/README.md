@@ -118,6 +118,7 @@ android-app/app/src/main/assets/models/se_mobilefacenet_emb256_fp32.tflite
 .\build-debug.ps1
 ```
 
-原型冻结基线为原仓库的 `v0.8.0-face-prototype`。标定、验证和已知问题分别见
-`docs/CALIBRATION.md`、`docs/VALIDATION.md` 与
-`docs/IMPLEMENTATION_ISSUES.md`。
+原型冻结基线为原仓库的 `v0.8.0-face-prototype`。当前标定要求见
+`docs/CALIBRATION.md`；设备与现场验收统一使用
+`../docs/integration/FIELD_VALIDATION_QUICKSTART.md` 和
+`../docs/integration/HUMAN_VALIDATION_REQUIRED.md`。

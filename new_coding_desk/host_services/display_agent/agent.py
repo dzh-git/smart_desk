@@ -192,12 +192,16 @@ def _activate_powerpoint() -> tuple[dict, int]:
 
         result = start_slideshow_on_display(CONFIG.target_display_index)
         if not result.get("ok"):
+            foreground = bring_window_to_foreground(editor_hwnd)
             return (
                 {
-                    "ok": False,
+                    "ok": bool(foreground),
                     "app": "powerpoint",
-                    "action": "start_slideshow",
-                    "detail": result.get("error", "COM start failed"),
+                    "action": "activate_editor",
+                    "detail": (
+                        "Slideshow unavailable; editor activated. "
+                        + result.get("error", "COM start failed")
+                    ),
                 },
                 200,
             )

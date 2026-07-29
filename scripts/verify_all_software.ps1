@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [ValidateSet("Full", "CI", "Fast")]
-    [string]$Profile = "Full"
+    [string]$Profile = "Full",
+    [ValidateRange(-1, 1440)]
+    [int]$NineSeatSoakMinutes = -1
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +13,7 @@ $reportRoot = Join-Path $repoRoot "logs\verification"
 New-Item -ItemType Directory -Force -Path $reportRoot | Out-Null
 $transcriptPath = Join-Path $reportRoot "verify-all-software.log"
 $jsonPath = Join-Path $reportRoot "verify-all-software.json"
+$htmlPath = Join-Path $reportRoot "verify-all-software.html"
 
 function Add-Result {
     param(
@@ -116,8 +119,14 @@ try {
     Invoke-Check "Python static compile" "REQUIRED" $repoRoot {
         python scripts\check_python_sources.py
     }
+    Invoke-Check "Tracked secrets/models/build artifacts" "REQUIRED" $repoRoot {
+        python scripts\check_repository_hygiene.py
+    }
     Invoke-Check "Repository config/contracts" "REQUIRED" $repoRoot {
         python scripts\validate_repository_contracts.py
+    }
+    Invoke-Check "Portable internal-demo package contracts" "REQUIRED" $repoRoot {
+        python scripts\validate_portable_package.py
     }
     Invoke-Check "Prototype model-license declaration" "REQUIRED" $repoRoot {
         python scripts\check_model_license_gate.py --mode prototype
@@ -225,6 +234,35 @@ try {
     Invoke-Check "Seat 1 twenty-round core flow" "REQUIRED" $repoRoot {
         & (Join-Path $repoRoot "scripts\run_seat1_integration_test.ps1")
     }
+    $actualSoakMinutes = if ($NineSeatSoakMinutes -ge 0) {
+        $NineSeatSoakMinutes
+    }
+    elseif ($Profile -eq "Full") { 30 }
+    else { 0 }
+    Invoke-Check "Nine-seat burst/restart/recovery simulation" "REQUIRED" $repoRoot {
+        & (Join-Path $repoRoot "scripts\run_nine_seat_simulation.ps1") `
+            -DurationMinutes $actualSoakMinutes
+    }
+    Invoke-Check "Database backup/migration/rollback" "REQUIRED" $deskRoot {
+        python -m pytest -q tests/test_database_maintenance.py
+    }
+    Invoke-Check "Windows/Arduino compatibility and ESP32 rejection" `
+        "REQUIRED" $deskRoot {
+            python -m pytest -q `
+                tests/test_esp32_websocket.py `
+                tests/test_lighting_state_resolver.py `
+                tests/test_display_agent.py `
+                tests/test_display_agent_review_contract.py
+    }
+    if ($Profile -eq "Full") {
+        Invoke-Check "PCM long-speech and seat-routing tests" `
+            "REQUIRED" $deskRoot {
+                python -m pytest -q `
+                    tests/test_long_speech_rollover.py `
+                    tests/test_speech_lifecycle_stability.py `
+                    tests/test_live_asr_routing.py
+        }
+    }
 
     if (
         (Test-Path -LiteralPath $gradle) -and
@@ -249,6 +287,70 @@ try {
             "Android JVM/Lint/APK" `
             "OPTIONAL_ENVIRONMENT" `
             "Gradle wrapper, JAVA_HOME or Android SDK environment is missing."
+    }
+
+    $debugApk = Join-Path $androidRoot (
+        "app\build\outputs\apk\debug\app-debug.apk"
+    )
+    if (Test-Path -LiteralPath $debugApk) {
+        $packageCommit = (& git -C $repoRoot rev-parse --short=12 HEAD).Trim()
+        $portableOutput = Join-Path $repoRoot (
+            "artifacts\SmartDesk-$packageCommit"
+        )
+        Invoke-Check "Portable package build" "REQUIRED" $repoRoot {
+            & (Join-Path $repoRoot (
+                "deployment\portable\build-portable.ps1"
+            )) -SkipBuild
+        }
+        Invoke-Check "Install/upgrade/rollback/uninstall lifecycle" `
+            "REQUIRED" $repoRoot {
+                & (Join-Path $repoRoot (
+                    "scripts\test_portable_lifecycle.ps1"
+                )) -PackageRoot $portableOutput
+        }
+    }
+    else {
+        Add-Skip `
+            "Portable package lifecycle" `
+            "OPTIONAL_ENVIRONMENT" `
+            "Android debug APK is unavailable; build it first."
+    }
+
+    $adbCommand = Get-Command adb -ErrorAction SilentlyContinue
+    $adbExecutable = if ($adbCommand) { $adbCommand.Source } elseif (
+        $env:ANDROID_HOME -and (
+            Test-Path -LiteralPath (
+                Join-Path $env:ANDROID_HOME "platform-tools\adb.exe"
+            )
+        )
+    ) {
+        Join-Path $env:ANDROID_HOME "platform-tools\adb.exe"
+    } else { $null }
+    if ($adbExecutable) {
+        $connectedDevices = @(
+            (& $adbExecutable devices) |
+            Select-String "^\S+\s+device$"
+        )
+        if ($connectedDevices.Count -eq 1) {
+            Invoke-Check "Connected Android install/start smoke" `
+                "OPTIONAL_ENVIRONMENT" $repoRoot {
+                    & (Join-Path $repoRoot (
+                        "scripts\verify_android_device.ps1"
+                    ))
+            }
+        }
+        else {
+            Add-Skip `
+                "Connected Android install/start smoke" `
+                "HARDWARE_REQUIRED" `
+                "Connect exactly one unlocked Android device."
+        }
+    }
+    else {
+        Add-Skip `
+            "Connected Android install/start smoke" `
+            "HARDWARE_REQUIRED" `
+            "ADB is unavailable."
     }
 
     if (Test-Path -LiteralPath $faceModelPath) {
@@ -310,11 +412,49 @@ try {
             "Set SMARTDESK_RUN_SPEECH_E2E=true with backend and Chromium ready."
     }
 
+    $screenFfmpeg = Join-Path $deskRoot "tools\ffmpeg\bin\ffmpeg.exe"
+    $screenMediaMtx = Join-Path $deskRoot "tools\mediamtx\mediamtx.exe"
+    if (
+        $Profile -eq "Full" -and
+        (Test-Path -LiteralPath $screenFfmpeg) -and
+        (Test-Path -LiteralPath $screenMediaMtx) -and
+        (Test-Path -LiteralPath (
+            Join-Path $frontendRoot "node_modules\playwright"
+        ))
+    ) {
+        Invoke-Check "Screen stream 10 clients and FFmpeg recovery" `
+            "OPTIONAL_ENVIRONMENT" $repoRoot {
+                & (Join-Path $repoRoot (
+                    "scripts\verify_screen_stream_live.ps1"
+                ))
+        }
+    }
+    else {
+        Add-Skip `
+            "Screen stream 10 clients and FFmpeg recovery" `
+            "OPTIONAL_ENVIRONMENT" `
+            "Full profile requires local FFmpeg, MediaMTX and Playwright."
+    }
+    if ($env:SMARTDESK_RUN_POWERPOINT_GUI -eq "true") {
+        Invoke-Check "PowerPoint Display Agent switch" `
+            "OPTIONAL_ENVIRONMENT" $repoRoot {
+                & (Join-Path $repoRoot (
+                    "scripts\verify_powerpoint_switch.ps1"
+                )) -AllowVisibleWindow
+        }
+    }
+    else {
+        Add-Skip `
+            "PowerPoint Display Agent switch" `
+            "OPTIONAL_ENVIRONMENT" `
+            "Set SMARTDESK_RUN_POWERPOINT_GUI=true; a window will be visible."
+    }
+
     @(
         "Redmi K60 permissions/camera/microphone/WebView",
         "75-run face calibration and stranger false-accept check",
         "ESP32/PIR/VL53L0X/WS2812B wiring and power",
-        "Real LAN recovery, 30-minute speech, one-seat and nine-seat soak"
+        "Real LAN recovery, real microphone, physical one-seat/nine-seat soak"
     ) | ForEach-Object {
         Add-Skip $_ "HARDWARE_REQUIRED" `
             "See docs/integration/HUMAN_VALIDATION_REQUIRED.md."
@@ -325,19 +465,57 @@ finally {
 }
 
 $summary = [PSCustomObject]@{
-    schemaVersion = 1
+    schemaVersion = 2
     generatedAt = [DateTimeOffset]::Now.ToString("o")
     profile = $Profile
+    commit = (& git -C $repoRoot rev-parse HEAD).Trim()
+    nineSeatSoakMinutes = $actualSoakMinutes
     results = $results
 }
 $summary | ConvertTo-Json -Depth 5 | Set-Content `
     -LiteralPath $jsonPath -Encoding UTF8
+
+$rows = foreach ($result in $results) {
+    $name = [Net.WebUtility]::HtmlEncode($result.name)
+    $category = [Net.WebUtility]::HtmlEncode($result.category)
+    $status = [Net.WebUtility]::HtmlEncode($result.status)
+    $detail = [Net.WebUtility]::HtmlEncode($result.detail)
+    "<tr><td>$name</td><td>$category</td><td>$status</td><td>$detail</td></tr>"
+}
+@"
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>SmartDesk 软件验证</title>
+<style>
+body{font-family:Segoe UI,sans-serif;margin:2rem;color:#17202a}
+table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd1d1;
+padding:.45rem;text-align:left}th{background:#eef2f3}
+</style></head><body>
+<h1>SmartDesk 软件验证</h1>
+<p>Profile: $Profile · Commit: $($summary.commit) · Generated:
+$($summary.generatedAt)</p>
+<table><thead><tr><th>检查</th><th>类别</th><th>结果</th><th>说明</th></tr>
+</thead><tbody>$($rows -join "`n")</tbody></table>
+<p>报告不包含令牌、人脸照片、embedding、原始语音或真实数据库。</p>
+</body></html>
+"@ | Set-Content -LiteralPath $htmlPath -Encoding UTF8
+
+$archivePath = Join-Path $reportRoot (
+    "smartdesk-validation-$($summary.commit.Substring(0, 12)).zip"
+)
+if (Test-Path -LiteralPath $archivePath) {
+    Remove-Item -LiteralPath $archivePath -Force
+}
+Compress-Archive -Path $jsonPath, $htmlPath, $transcriptPath `
+    -DestinationPath $archivePath -CompressionLevel Optimal
 
 Write-Host ""
 Write-Host "SmartDesk software verification summary"
 $results | Format-Table name, category, status, exitCode -AutoSize
 Write-Host "Transcript: $transcriptPath"
 Write-Host "JSON report: $jsonPath"
+Write-Host "HTML report: $htmlPath"
+Write-Host "Artifact: $archivePath"
 
 $failures = @($results | Where-Object { $_.status -eq "FAIL" })
 if ($failures.Count -gt 0) {

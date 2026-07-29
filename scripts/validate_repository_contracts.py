@@ -40,6 +40,15 @@ def validate_integration_config() -> None:
         config.get("arduino", {}).get("enabled") is False,
         "ESP32 example must not open central Arduino ports",
     )
+    arduino = load_object(
+        "config/smartdesk.integration.arduino.example.json"
+    )
+    require(arduino.get("deploy_mode") == "central", "Arduino bench mode")
+    require(
+        arduino.get("arduino", {}).get("seats", {}).get("1")
+        == "COM_REPLACE_ME",
+        "Arduino example must not contain a machine COM port",
+    )
 
 
 def validate_android_config() -> None:
@@ -133,8 +142,9 @@ def validate_required_files() -> None:
         "README.md",
         "docs/integration/ANDROID_BRIDGE_CONTRACT.md",
         "docs/integration/ARCHITECTURE.md",
-        "docs/integration/AUTONOMOUS_PROGRESS.md",
+        "docs/integration/COMPATIBILITY.md",
         "docs/integration/ESP32_PROTOCOL.md",
+        "docs/integration/FIELD_VALIDATION_QUICKSTART.md",
         "docs/integration/HUMAN_VALIDATION_REQUIRED.md",
         "docs/integration/IDENTITY_CHECKIN_CONTRACT.md",
         "docs/integration/MODEL_LICENSE_GATE.md",
@@ -143,6 +153,8 @@ def validate_required_files() -> None:
         "docs/integration/RELEASE_READINESS.md",
         "esp32_seat_controller/protocol.md",
         "new_coding_desk/docs/API_SPEC.md",
+        "deployment/portable/README.md",
+        "RUN_VALIDATION.bat",
         "scripts/verify_all_software.ps1",
     )
     missing = [path for path in required if not (ROOT / path).is_file()]

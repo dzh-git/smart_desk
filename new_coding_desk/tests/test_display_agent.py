@@ -39,7 +39,11 @@ def client():
     import config as agent_config
 
     # Patch config to deterministic state
-    with patch.object(agent, "CONFIG") as mock_cfg:
+    with patch.object(agent, "CONFIG") as mock_cfg, patch.object(
+        agent,
+        "move_window_to_display",
+        return_value=False,
+    ):
         mock_cfg.host = "127.0.0.1"
         mock_cfg.port = 8766
         mock_cfg.allowed_origins = [
@@ -100,6 +104,45 @@ def test_status_detects_running_apps(client):
     assert data["active_app"] == "powerpoint"
 
 
+def test_window_enumeration_uses_win32process_for_pid():
+    """PyWin32 exposes GetWindowThreadProcessId on win32process."""
+    import win32_windows
+
+    fake_gui = MagicMock()
+    fake_gui.IsWindowVisible.return_value = True
+    fake_gui.GetWindowText.return_value = "PowerPoint"
+    fake_gui.EnumWindows.side_effect = lambda callback, value: callback(
+        123,
+        value,
+    )
+    fake_process = MagicMock()
+    fake_process.GetWindowThreadProcessId.return_value = (1, 456)
+
+    with patch.object(
+        win32_windows,
+        "_get_win32_modules",
+        return_value=(fake_gui, fake_process, MagicMock(), MagicMock()),
+    ), patch.object(
+        win32_windows,
+        "_get_process_name",
+        return_value="POWERPNT.EXE",
+    ):
+        windows = win32_windows.find_windows_by_title(
+            ["powerpoint"],
+            ["POWERPNT.EXE"],
+        )
+
+    assert windows == [
+        win32_windows.WindowInfo(
+            hwnd=123,
+            title="PowerPoint",
+            process_name="POWERPNT.EXE",
+            pid=456,
+        )
+    ]
+    fake_process.GetWindowThreadProcessId.assert_called_once_with(123)
+
+
 # ── POST /activate — valid apps ─────────────────────────────────────────────
 
 
@@ -133,6 +176,32 @@ def test_activate_powerpoint_start_slideshow_via_com(client):
     data = resp.json()
     assert data["ok"] is True
     assert data["action"] == "start_slideshow"
+
+
+def test_activate_powerpoint_com_failure_falls_back_to_editor(client):
+    """An empty presentation still allows useful editor activation."""
+    editor_window = WindowInfoStub(2, "PowerPoint")
+    with patch(
+        "agent.find_powerpoint_windows",
+        return_value=[editor_window],
+    ), patch(
+        "agent.is_com_available",
+        return_value=True,
+    ), patch(
+        "agent.start_slideshow_on_display",
+        return_value={"ok": False, "error": "No presentation open"},
+    ), patch(
+        "agent.move_window_to_display",
+        return_value=True,
+    ), patch(
+        "agent.bring_window_to_foreground",
+        return_value=True,
+    ):
+        response = client.post("/activate", json={"app": "powerpoint"})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["action"] == "activate_editor"
 
 
 def test_activate_solidworks_move_and_activate(client):

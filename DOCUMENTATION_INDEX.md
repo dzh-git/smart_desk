@@ -9,7 +9,7 @@
 - 席位终端：`android_tablet/`；正式会议页面仍唯一位于
   `new_coding_desk/frontend/`。
 - 手势控制：`smartdesk_gesture_controller/`，运行在中央 Windows 主机。
-- 灯控固件：`arduino_nano_controller/`。
+- 灯控固件：`esp32_seat_controller/`；Arduino 仅为兼容台架。
 - I Love You 右滑控制 PowerPoint，左滑控制 SolidWorks；应用切换统一通过 Display Agent `127.0.0.1:8766`。
 - 手势状态服务 `ws://127.0.0.1:8765` 仅提供诊断状态，不写入会议业务。
 
@@ -26,12 +26,13 @@
 | 手势配置与状态 | `smartdesk_gesture_controller/docs/CONFIG_AND_STATUS_SPEC.md` |
 | 手势部署与验收 | `smartdesk_gesture_controller/docs/OPERATIONS_AND_ACCEPTANCE.md` |
 | Arduino 串口协议 | `arduino_nano_controller/protocol.md` |
-| 三模块部署联调 | `docs/deployment/智能会议桌硬件集成-部署与联调.md`、`new_coding_desk/docs/DEMO_RUNBOOK.md` |
+| 便携安装与现场最短流程 | `deployment/portable/README.md`、`docs/integration/FIELD_VALIDATION_QUICKSTART.md` |
+| 旧 Windows/Arduino 兼容 | `docs/integration/COMPATIBILITY.md`、`new_coding_desk/docs/DEMO_RUNBOOK.md` |
 | Android 平板、Bridge 与人脸标定 | `android_tablet/README.md`、`docs/integration/ANDROID_BRIDGE_CONTRACT.md`、`android_tablet/docs/CALIBRATION.md` |
 | 稳定身份与签到 | `docs/integration/IDENTITY_CHECKIN_CONTRACT.md` |
 | ESP32 正式协议 | `esp32_seat_controller/protocol.md`；`docs/integration/ESP32_PROTOCOL.md` 仅作接入导航 |
 | 单席/九席部署 | `docs/integration/ONE_SEAT_RUNBOOK.md`、`docs/integration/NINE_SEAT_DEPLOYMENT.md` |
-| 发布与人工验收 | `docs/integration/RELEASE_READINESS.md`、`docs/integration/HUMAN_VALIDATION_REQUIRED.md` |
+| 发布与人工验收 | `docs/integration/RELEASE_READINESS.md`、`docs/integration/HUMAN_VALIDATION_REQUIRED.md`、`docs/integration/FIELD_VALIDATION_QUICKSTART.md` |
 
 ## 维护规则
 

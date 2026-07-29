@@ -1,0 +1,4 @@
+SmartDesk 内部演示版
+
+人脸识别保持 CALIBRATION_PENDING。
+当前模型没有商业发布许可，不得将本包作为正式商业 Release。

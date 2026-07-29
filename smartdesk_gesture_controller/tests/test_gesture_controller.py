@@ -351,10 +351,17 @@ def test_dry_run_solidworks_actions_never_touch_os() -> None:
 def test_check_model_files_returns_empty_when_exists() -> None:
     """Model file check passes when hand_landmarker.task exists."""
     from hands.gesture_controller import check_model_files
-    # The project root has hand_landmarker.task, so check should pass.
-    # use_gesture_recognizer=False to only check hand_landmarker.task.
-    missing = check_model_files(use_gesture_recognizer=False)
-    assert missing == []
+    # Private model binaries are intentionally excluded from Git. Use an
+    # explicit fixture so this contract is reproducible in a clean checkout.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        model_path = os.path.join(tmpdir, "hand_landmarker.task")
+        with open(model_path, "wb") as model_file:
+            model_file.write(b"test-model-placeholder")
+        missing = check_model_files(
+            tmpdir,
+            use_gesture_recognizer=False,
+        )
+        assert missing == []
 
 
 def test_check_model_files_returns_missing_when_absent() -> None:

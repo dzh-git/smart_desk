@@ -38,8 +38,9 @@ ESP32 × 9
 | `esp32_seat_controller/` | ESP32 固件、模拟器、协议权威定义 |
 | `smartdesk_gesture_controller/` | 中央主机手势识别 |
 | `arduino_nano_controller/` | 兼容 Arduino 固件与协议 |
-| `config/` | 当前集成拓扑配置 |
-| `scripts/` | 基线、一键验证和单席闭环入口 |
+| `config/` | ESP32 正式示例与 Arduino 台架示例；实际配置不跟踪 |
+| `deployment/portable/` | 内部演示版便携一键安装包 |
+| `scripts/` | 一键验证、设备检查和单席/九席闭环入口 |
 | `docs/integration/` | 当前平板/ESP32 集成契约与验收包 |
 
 `docs/archive/` 仅供历史追溯，不是当前接口、配置或验收依据。
@@ -63,27 +64,24 @@ python -m pip install -r new_coding_desk/requirements.txt
 
 ## 中央主机启动
 
-本机演示可运行：
+现场使用便携包，不运行 Vite 开发服务器：
 
 ```powershell
-Set-Location new_coding_desk
-.\start.bat
+powershell -ExecutionPolicy Bypass -File deployment\portable\build-portable.ps1
 ```
 
-`start.bat` 会启用演示数据，后端只监听 loopback，不适合平板现场接入。局域网
-联调应在两个终端分别运行：
+解压 `artifacts/` 中生成的内部包后，依次双击 `INSTALL.bat`、`START.bat`、
+`DOCTOR.bat`。前端生产构建由轻量 Python 静态服务监听 5173，后端监听 8000。
+实际硬件、数据和令牌位置分别由以下变量控制：
 
-```powershell
-Set-Location new_coding_desk
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```text
+SMARTDESK_CONFIG_PATH
+SMARTDESK_DATA_DIR
+SMARTDESK_ESP32_DEVICE_TOKENS_FILE
 ```
 
-```powershell
-Set-Location new_coding_desk/frontend
-npm run dev -- --host 0.0.0.0
-```
-
-健康检查为 `http://<中央主机IP>:8000/api/health`，席位页面为
+开发联调仍可使用 `new_coding_desk/start.bat`。健康检查为
+`http://<中央主机IP>:8000/api/health`，席位页面为
 `http://<中央主机IP>:5173/seat/1`。正式 ESP32 拓扑、设备令牌和数据库备份步骤
 见[单席运行手册](docs/integration/ONE_SEAT_RUNBOOK.md)。
 
@@ -120,9 +118,8 @@ pio run -d esp32_seat_controller/firmware
 默认命令运行全部可用软件验证，并把执行项明确分为 `REQUIRED`、
 `OPTIONAL_ENVIRONMENT`、`HARDWARE_REQUIRED`：
 
-```powershell
-.\scripts\verify_all_software.ps1
-```
+双击 `RUN_VALIDATION.bat`，或运行 `.\scripts\verify_all_software.ps1`。Full
+默认包含九席 30 分钟无人值守模拟。
 
 快速回归和单席 20 轮闭环：
 
@@ -131,6 +128,9 @@ pio run -d esp32_seat_controller/firmware
 .\scripts\run_seat1_integration_test.ps1
 ```
 
-报告写入忽略的 `logs/verification/`。完整发布状态、测试证据和阶段提交见
+报告写入忽略的 `logs/verification/`，包含脱敏 JSON、HTML、日志和 zip
+artifact。最少人工步骤见
+[最短现场验证流程](docs/integration/FIELD_VALIDATION_QUICKSTART.md)。完整发布状态、
+测试证据和阶段提交见
 [发布就绪报告](docs/integration/RELEASE_READINESS.md)；九席复制顺序见
 [九席部署手册](docs/integration/NINE_SEAT_DEPLOYMENT.md)。
