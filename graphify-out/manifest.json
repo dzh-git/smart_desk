@@ -1985,8 +1985,8 @@
     "semantic_hash": ""
   },
   "scripts/verify_all_software.ps1": {
-    "mtime": 1785343960.7162735,
-    "ast_hash": "b83f56ad9b10cedf38d3dda75c42e7dc",
+    "mtime": 1785350221.704758,
+    "ast_hash": "7595a031434d16c2fce97211a80f1418",
     "semantic_hash": ""
   },
   ".github/workflows/software-verification.yml": {

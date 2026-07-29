@@ -159,7 +159,10 @@ try {
         Invoke-Check "Backend tests (model-independent)" "REQUIRED" $deskRoot {
             python -m pytest -q `
                 --ignore=tests/test_translation_model_safety.py `
+                --ignore=tests/test_bidirectional_translation.py `
+                --ignore=tests/test_translation_model_service.py `
                 --ignore=tests/test_speech_model_smoke.py `
+                --ignore=tests/test_speech_real_dataset_benchmark.py `
                 --ignore=tests/test_speech_stream_service.py `
                 --ignore=tests/test_speech_websocket_blackbox.py
         }
