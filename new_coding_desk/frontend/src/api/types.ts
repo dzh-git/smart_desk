@@ -219,6 +219,7 @@ export interface SpeechModelStatus {
     minimum_onset_rms: number;
     minimum_continue_rms: number;
     sentence_pause_seconds: number;
+    chinese_finalize_pause_seconds: number;
     clause_pause_seconds: number;
     natural_pause_seconds: number;
     hard_silence_seconds: number;

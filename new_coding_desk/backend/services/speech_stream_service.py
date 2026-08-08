@@ -29,6 +29,7 @@ from typing import Any
 
 from backend.services.speech_inference_runtime import inference_runtime
 from backend.services.speech_debug_capture import (
+    record_speech_debug_decoder_call,
     record_speech_debug_revision,
     save_speech_debug_capture,
 )
@@ -79,6 +80,7 @@ SENSEVOICE_LIVE_WINDOW_FRAMES = round(SENSEVOICE_LIVE_WINDOW_SECONDS * 10)
 
 # Boundary policy: punctuation + pause first, silence fallback last.
 VAD_SENTENCE_PAUSE_S: float = 0.9
+VAD_CHINESE_FINALIZE_PAUSE_S: float = 2.0
 VAD_CLAUSE_PAUSE_S: float = 1.3
 VAD_NATURAL_PAUSE_S: float = 2.0
 VAD_SILENCE_DURATION_S: float = 3.0      # compatibility alias / hard silence
@@ -158,6 +160,7 @@ class SpeechStreamSession:
         self.utterance_audio_seconds = 0.0
         self.last_streaming_text = ""
         self.last_source_text = ""
+        self.speech_debug_decoder_calls: list[dict[str, Any]] = []
         self.speech_debug_revisions: list[dict[str, Any]] = []
         self.last_caption: dict[str, str] = {
             "previous_line": "",
@@ -390,6 +393,7 @@ class SpeechStreamService:
             "noise_start_ratio": VAD_NOISE_START_RATIO,
             "noise_continue_ratio": VAD_NOISE_CONTINUE_RATIO,
             "sentence_pause_seconds": VAD_SENTENCE_PAUSE_S,
+            "chinese_finalize_pause_seconds": VAD_CHINESE_FINALIZE_PAUSE_S,
             "clause_pause_seconds": VAD_CLAUSE_PAUSE_S,
             "natural_pause_seconds": VAD_NATURAL_PAUSE_S,
             "hard_silence_seconds": VAD_SILENCE_DURATION_S,
@@ -616,7 +620,7 @@ class SpeechStreamService:
             if (
                 session.detected_language != "en"
                 and stripped[-1] in "。！？.!?"
-                and silence + 1e-6 >= VAD_SENTENCE_PAUSE_S
+                and silence + 1e-6 >= VAD_CHINESE_FINALIZE_PAUSE_S
             ):
                 return "sentence_pause"
             if (
@@ -1115,6 +1119,7 @@ class SpeechStreamService:
         session.utterance_audio_seconds = 0.0
         session.last_streaming_text = ""
         session.last_source_text = ""
+        session.speech_debug_decoder_calls.clear()
         session.speech_debug_revisions.clear()
         session.last_caption = {
             "previous_line": "",
@@ -1201,6 +1206,7 @@ class SpeechStreamService:
         session.has_speech = False
         session.chinese_streaming_flushed = False
         session.last_streaming_text = ""
+        session.speech_debug_decoder_calls.clear()
         session.speech_debug_revisions.clear()
         session._pre_roll.clear()
         session._rollover_overlap_pcm = b""
@@ -1249,6 +1255,9 @@ class SpeechStreamService:
                     session_key,
                     is_final=True,
                 )
+            self._record_chinese_decoder_call(
+                session, speech_module, session_key, stage="final_flush",
+            )
             session.chinese_streaming_flushed = True
             trace(
                 "chinese_streaming_flush_at",
@@ -1264,6 +1273,26 @@ class SpeechStreamService:
             # not support explicit finalization.
             logger.warning("Chinese streaming flush failed; retaining interim text: %s", exc)
             return ""
+
+    @staticmethod
+    def _record_chinese_decoder_call(
+        session: SpeechStreamSession,
+        speech_module: Any,
+        session_key: str,
+        *,
+        stage: str,
+    ) -> None:
+        getter = getattr(speech_module, "get_interim_debug", None)
+        if not callable(getter):
+            return
+        try:
+            record_speech_debug_decoder_call(
+                session,
+                stage=stage,
+                decoder=getter(session_key),
+            )
+        except Exception as exc:
+            logger.warning("Speech decoder debug capture failed: %s", exc)
 
     def snapshot_auto_finalization(
         self,
@@ -1511,6 +1540,9 @@ class SpeechStreamService:
                     sm.process_interim_array(
                         self.pcm16_to_float32(overlap_pcm), session_key,
                     )
+                    self._record_chinese_decoder_call(
+                        session, sm, session_key, stage="rollover_replay",
+                    )
                     sm.reset_interim(session_key)
                 except Exception as exc:
                     logger.warning(
@@ -1523,6 +1555,9 @@ class SpeechStreamService:
             for frame in frames:
                 text = sm.process_interim_array(
                     self.pcm16_to_float32(frame), session_key,
+                )
+                self._record_chinese_decoder_call(
+                    session, sm, session_key, stage="streaming",
                 )
             return text
 

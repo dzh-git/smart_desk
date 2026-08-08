@@ -785,6 +785,7 @@ class TestVadDetection:
         assert "共青团员们" in result["source_text"]
         assert mock_sm.flush_calls == 1
         assert session.chinese_streaming_flushed is True
+        assert result["vad_should_finalize"] is False
 
         # Further silence must keep the corrected live hypothesis intact.
         for _ in range(6):
@@ -793,6 +794,7 @@ class TestVadDetection:
             )
         assert "共青团员们" in result["source_text"]
         assert mock_sm.flush_calls == 1
+        assert result["vad_should_finalize"] is False
 
         # Resumed speech reopens the stream without losing or duplicating text.
         resumed = stream_service.process_pcm_frame(

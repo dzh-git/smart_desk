@@ -62,6 +62,28 @@ def record_speech_debug_revision(
         del revisions[:-500]
 
 
+def record_speech_debug_decoder_call(
+    session: Any,
+    *,
+    stage: str,
+    decoder: dict[str, Any] | None,
+) -> None:
+    """Record one Paraformer generate/merge result for the active utterance."""
+    if not is_speech_debug_capture_enabled() or not decoder:
+        return
+    calls = session.speech_debug_decoder_calls
+    calls.append({
+        "time_ms": int(time.time() * 1000),
+        "revision": int(session.revision),
+        "stage": stage,
+        "input_rms": round(float(session.last_input_rms), 6),
+        "silence_ms": round(float(session.vad_silence_seconds) * 1000),
+        **decoder,
+    })
+    if len(calls) > 1000:
+        del calls[:-1000]
+
+
 def save_speech_debug_capture(
     session: Any,
     *,
@@ -97,6 +119,7 @@ def save_speech_debug_capture(
         "boundary_reason": boundary_reason,
         "audio_seconds": round(len(pcm_bytes) / 32000.0, 3),
         "final_live_text": session.last_source_text,
+        "decoder_calls": list(session.speech_debug_decoder_calls),
         "revisions": list(session.speech_debug_revisions),
     }
     json_path.write_text(
@@ -105,6 +128,45 @@ def save_speech_debug_capture(
     )
     _prune_old_captures(destination)
     return {"wav": str(wav_path), "json": str(json_path)}
+
+
+def update_speech_debug_final_result(
+    utterance_id: str | None,
+    *,
+    translation_id: int,
+    source_text: str,
+    source_lang: str,
+    source_type: str | None,
+    recognition_status: str,
+) -> str | None:
+    """Attach the persisted final text to the matching capture JSON."""
+    if not is_speech_debug_capture_enabled() or not utterance_id:
+        return None
+    destination = _capture_dir()
+    safe_id = _SAFE_NAME.sub("_", str(utterance_id))
+    candidates = sorted(
+        destination.glob(f"*-{safe_id}.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        return None
+    json_path = candidates[0]
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    payload["database_final"] = {
+        "translation_id": int(translation_id),
+        "source_text": source_text,
+        "source_lang": source_lang,
+        "source_type": source_type,
+        "recognition_status": recognition_status,
+    }
+    temp_path = json_path.with_suffix(".json.tmp")
+    temp_path.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    os.replace(temp_path, json_path)
+    return str(json_path)
 
 
 def _prune_old_captures(destination: Path) -> None:

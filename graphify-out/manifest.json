@@ -295,13 +295,13 @@
     "semantic_hash": "391405b838f8cf2beefe4dd339a63ee5"
   },
   "new_coding_desk/backend/services/speech_finalization_service.py": {
-    "mtime": 1784477098.4530852,
-    "ast_hash": "aac1dc00daf80ec35ba9d41d967ff262",
+    "mtime": 1786167270.0475516,
+    "ast_hash": "594408c00d44bee125f752146a88c5fb",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/speech_stream_service.py": {
-    "mtime": 1786116882.0169792,
-    "ast_hash": "77cbf9ed2de2edcbd0afaf6202919e43",
+    "mtime": 1786168560.900872,
+    "ast_hash": "dd2185146760411e74b2fae7083a619c",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/translation_model_service.py": {
@@ -350,13 +350,13 @@
     "semantic_hash": "4e46a247adfcf11f300a62b95a3a589a"
   },
   "new_coding_desk/backend/speech_module/speech_module.py": {
-    "mtime": 1786116881.6686313,
-    "ast_hash": "352c3a278015b7c57ff41b6173f6d63f",
+    "mtime": 1786167202.0408258,
+    "ast_hash": "2160e20e1f9b3a33dfccfc9f2e2afafd",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/stt_streaming.py": {
-    "mtime": 1784537751.6647007,
-    "ast_hash": "a385bb6a713cd701b75294a56a60edfd",
+    "mtime": 1786167188.2534256,
+    "ast_hash": "dc5c0e80a15e7edd065d3e49d3a3a80c",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/text_utils.py": {
@@ -560,8 +560,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/api/types.ts": {
-    "mtime": 1785191461.9283783,
-    "ast_hash": "acc46f8bac0c43e14e6d76e2e789a2ac",
+    "mtime": 1786168562.4092288,
+    "ast_hash": "c5abccb213ce956a423f2ae8bcbf7856",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/app-config.ts": {
@@ -835,8 +835,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_adaptive_voice_gate.py": {
-    "mtime": 1784477866.2768433,
-    "ast_hash": "b00238026bc901b73c43615f427e6822",
+    "mtime": 1786168593.447374,
+    "ast_hash": "80ec11816c67e345f3c37ed6cec74fcf",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_agenda_state_machine.py": {
@@ -935,8 +935,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_stream_service.py": {
-    "mtime": 1786116911.569942,
-    "ast_hash": "8d128d61482a0ab35e493b3a23c2e37c",
+    "mtime": 1786168377.6611128,
+    "ast_hash": "3c4b3996f6818bda1a485542efcbcaa7",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_trace.py": {
@@ -2255,13 +2255,13 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/speech_debug_capture.py": {
-    "mtime": 1786116882.3693662,
-    "ast_hash": "e661b262e3e2792a39050639352ee1fa",
+    "mtime": 1786167169.5827825,
+    "ast_hash": "be6fbb1f64c0e326fdeb42f60b8a51df",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_debug_capture.py": {
-    "mtime": 1786116882.7041197,
-    "ast_hash": "55469c58dd8fa9be74257c9a8358d38c",
+    "mtime": 1786167122.2605407,
+    "ast_hash": "9333a0e1c916b0f7c714087848a31776",
     "semantic_hash": ""
   }
 }

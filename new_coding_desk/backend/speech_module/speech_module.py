@@ -459,6 +459,13 @@ class SpeechModule:
             return ""
         return state["processor"].accumulated_text
 
+    def get_interim_debug(self, session_key: str = "default") -> dict:
+        """Return the most recent opt-in streaming decoder diagnostic."""
+        state = self._sessions.get(session_key)
+        if state is None:
+            return {}
+        return dict(getattr(state["processor"], "last_debug", {}) or {})
+
     # ── Session Context ────────────────────────────────────────────────────
 
     def set_session_context(
