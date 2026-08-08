@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
-from collections.abc import Callable
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine

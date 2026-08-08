@@ -1,0 +1,126 @@
+"""Opt-in, bounded speech diagnostics for reproducing live ASR defects.
+
+The capture is disabled unless ``SMART_DESK_CAPTURE_SPEECH_DEBUG=true``.
+Files are local-only runtime artifacts: exact server-received PCM as WAV plus
+a compact JSON timeline containing only text changes and decoder state.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import time
+import wave
+from pathlib import Path
+from typing import Any
+
+
+_SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def is_speech_debug_capture_enabled() -> bool:
+    return os.environ.get("SMART_DESK_CAPTURE_SPEECH_DEBUG", "").lower() == "true"
+
+
+def _capture_dir() -> Path:
+    configured = os.environ.get("SMART_DESK_SPEECH_DEBUG_DIR", "").strip()
+    if configured:
+        return Path(configured).resolve()
+    return Path(__file__).resolve().parents[2] / ".smartdesk-runtime" / "speech-debug"
+
+
+def record_speech_debug_revision(
+    session: Any,
+    *,
+    raw_text: str,
+    source_text: str,
+    boundary_reason: str | None,
+) -> None:
+    """Append one compact record only when the visible/raw text changes."""
+    if not is_speech_debug_capture_enabled():
+        return
+    revisions = session.speech_debug_revisions
+    previous = revisions[-1] if revisions else None
+    if (
+        previous
+        and previous.get("raw_text") == raw_text
+        and previous.get("source_text") == source_text
+        and previous.get("boundary_reason") == boundary_reason
+    ):
+        return
+    revisions.append({
+        "revision": int(session.revision),
+        "time_ms": int(time.time() * 1000),
+        "raw_text": raw_text,
+        "source_text": source_text,
+        "input_rms": round(float(session.last_input_rms), 6),
+        "silence_ms": round(float(session.vad_silence_seconds) * 1000),
+        "chinese_flushed": bool(session.chinese_streaming_flushed),
+        "boundary_reason": boundary_reason,
+    })
+    if len(revisions) > 500:
+        del revisions[:-500]
+
+
+def save_speech_debug_capture(
+    session: Any,
+    *,
+    pcm_bytes: bytes,
+    boundary_reason: str,
+) -> dict[str, str] | None:
+    """Persist one WAV+JSON pair and retain only the newest bounded captures."""
+    if not is_speech_debug_capture_enabled() or not pcm_bytes:
+        return None
+    destination = _capture_dir()
+    destination.mkdir(parents=True, exist_ok=True)
+    safe_id = _SAFE_NAME.sub("_", str(session.current_utterance_id or "unknown"))
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    base = destination / f"{stamp}-{safe_id}"
+    wav_path = base.with_suffix(".wav")
+    json_path = base.with_suffix(".json")
+
+    with wave.open(str(wav_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16000)
+        wav_file.writeframes(pcm_bytes)
+
+    payload = {
+        "schema": "smartdesk-speech-debug-v1",
+        "captured_at_ms": int(time.time() * 1000),
+        "utterance_id": session.current_utterance_id,
+        "meeting_id": session.meeting_id,
+        "seat_id": session.seat_id,
+        "requested_language": session.requested_language,
+        "detected_language": session.detected_language,
+        "recognition_engine": session.recognition_engine,
+        "boundary_reason": boundary_reason,
+        "audio_seconds": round(len(pcm_bytes) / 32000.0, 3),
+        "final_live_text": session.last_source_text,
+        "revisions": list(session.speech_debug_revisions),
+    }
+    json_path.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    _prune_old_captures(destination)
+    return {"wav": str(wav_path), "json": str(json_path)}
+
+
+def _prune_old_captures(destination: Path) -> None:
+    try:
+        max_captures = max(
+            1,
+            min(20, int(os.environ.get("SMART_DESK_SPEECH_DEBUG_MAX_CAPTURES", "5"))),
+        )
+    except ValueError:
+        max_captures = 5
+    json_files = sorted(
+        destination.glob("*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for old_json in json_files[max_captures:]:
+        old_wav = old_json.with_suffix(".wav")
+        old_json.unlink(missing_ok=True)
+        old_wav.unlink(missing_ok=True)

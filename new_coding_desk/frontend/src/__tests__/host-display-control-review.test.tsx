@@ -168,7 +168,7 @@ describe("Phase 5 — host display control card in /admin", () => {
   });
 
   it("control card displays stream_state from GET /api/host-display/status", async () => {
-    // Target: the card shows the stream state (e.g., "online") via
+    // The card maps protocol state to a bilingual user-facing label via
     // data-testid="display-stream-state".
     mockAdminActiveMeeting();
 
@@ -180,7 +180,9 @@ describe("Phase 5 — host display control card in /admin", () => {
 
     // Wait for the raw-json status fetch to resolve (async, uses apiGetRaw)
     await waitFor(() => {
-      expect(screen.getByTestId("display-stream-state").textContent?.toLowerCase()).toBe("online");
+      expect(screen.getByTestId("display-stream-state")).toHaveTextContent(
+        /推流正常.*STREAM ONLINE/,
+      );
     });
   });
 

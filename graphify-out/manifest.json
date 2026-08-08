@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/speech_stream_service.py": {
-    "mtime": 1785073218.0895865,
-    "ast_hash": "4539f0cef1e53ae79fff6e66bdef89b5",
+    "mtime": 1786116882.0169792,
+    "ast_hash": "77cbf9ed2de2edcbd0afaf6202919e43",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/translation_model_service.py": {
@@ -350,8 +350,8 @@
     "semantic_hash": "4e46a247adfcf11f300a62b95a3a589a"
   },
   "new_coding_desk/backend/speech_module/speech_module.py": {
-    "mtime": 1785073218.106469,
-    "ast_hash": "a5bb2d3e4e5c0a24099e88a5605c3545",
+    "mtime": 1786116881.6686313,
+    "ast_hash": "352c3a278015b7c57ff41b6173f6d63f",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/stt_streaming.py": {
@@ -390,8 +390,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/websocket/speech_ws.py": {
-    "mtime": 1784687662.3683054,
-    "ast_hash": "099c7f9750241abb911e7712ade51373",
+    "mtime": 1786112919.216997,
+    "ast_hash": "f4404f07a960a34b995aae953f1600df",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/websocket/ws_service.py": {
@@ -455,9 +455,9 @@
     "semantic_hash": "a993a02f3c50a007d7febee0ddcc25fa"
   },
   "new_coding_desk/frontend/e2e/visual-smoke.spec.ts": {
-    "mtime": 1781340773.321283,
-    "ast_hash": "7631c943c753e088e11775cacd20f0e9",
-    "semantic_hash": "7631c943c753e088e11775cacd20f0e9"
+    "mtime": 1785946057.1395576,
+    "ast_hash": "c4cddad0cc46799ab63b84588ce96e20",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/eslint.config.js": {
     "mtime": 1780586002.5433004,
@@ -495,19 +495,19 @@
     "semantic_hash": "db43b361e0db62f0e3bde62d69b11644"
   },
   "new_coding_desk/frontend/src/__tests__/DisplayView.test.tsx": {
-    "mtime": 1781365103.7724326,
-    "ast_hash": "bcf06a54c6dc4a141d7cdf6177d83ca0",
-    "semantic_hash": "bcf06a54c6dc4a141d7cdf6177d83ca0"
+    "mtime": 1785945916.7335832,
+    "ast_hash": "ce79baaadf90e140b41bbf345e885609",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/admin.test.tsx": {
-    "mtime": 1784460482.2557056,
-    "ast_hash": "34c91b8718fc09da13ea214ee6806a46",
+    "mtime": 1785973478.5818267,
+    "ast_hash": "4e7fad5f55893cded89b4b4580cc12ee",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/host-display-control-review.test.tsx": {
-    "mtime": 1781838122.7987113,
-    "ast_hash": "ce03de68e8fb0c5bfa3ea4241554d42b",
-    "semantic_hash": "ce03de68e8fb0c5bfa3ea4241554d42b"
+    "mtime": 1785945602.0755029,
+    "ast_hash": "8bab2824df7e863e1565998c2d690595",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/resources-control.test.ts": {
     "mtime": 1781108052.428771,
@@ -520,8 +520,8 @@
     "semantic_hash": "edbc8460e9c7ebd408be894c9e00472c"
   },
   "new_coding_desk/frontend/src/__tests__/seat.test.tsx": {
-    "mtime": 1785194878.1894536,
-    "ast_hash": "d58ed21249e6374af112d95f87467519",
+    "mtime": 1785945779.3238592,
+    "ast_hash": "d96699e6c14fa839d894ef87ae6543e9",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/speechTrace.test.ts": {
@@ -590,14 +590,14 @@
     "semantic_hash": "ed481375583d9fc714522d23688e19a6"
   },
   "new_coding_desk/frontend/src/components/AdminDashboard.tsx": {
-    "mtime": 1784459849.0216994,
-    "ast_hash": "ce7d1f1e90425236abe3a45edabf3ac8",
+    "mtime": 1785973349.0771396,
+    "ast_hash": "f3e8ffc5be9a67d8a88219bf02309cf8",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AdminHeader.tsx": {
-    "mtime": 1781276220.3220632,
-    "ast_hash": "8b0a51599ab5c29bc6558cc2198dfada",
-    "semantic_hash": "8b0a51599ab5c29bc6558cc2198dfada"
+    "mtime": 1785944714.8453188,
+    "ast_hash": "5f1ffe3130c87e21612953d3d995a561",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AgendaPanel.tsx": {
     "mtime": 1781363214.6363814,
@@ -610,9 +610,9 @@
     "semantic_hash": "b0188fa1d464ea69884f95ffd8c23dd4"
   },
   "new_coding_desk/frontend/src/components/DisplayView.tsx": {
-    "mtime": 1781364675.0013728,
-    "ast_hash": "83d7e8d3f45cc1e507baa82f6a1bec32",
-    "semantic_hash": "83d7e8d3f45cc1e507baa82f6a1bec32"
+    "mtime": 1785945594.6156516,
+    "ast_hash": "fcfe2ab0cc62dcd7c869778190e5830d",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HardwareStatus.tsx": {
     "mtime": 1785191644.6891048,
@@ -620,9 +620,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HostDisplayControl.tsx": {
-    "mtime": 1781837009.78097,
-    "ast_hash": "85e842ef940baa334c1fa9398fb6f7e2",
-    "semantic_hash": "85e842ef940baa334c1fa9398fb6f7e2"
+    "mtime": 1785944808.4664483,
+    "ast_hash": "89f938ed35ab6ad3036c25ce85636e4b",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/MeetingResultPanel.tsx": {
     "mtime": 1781279582.3418465,
@@ -635,8 +635,8 @@
     "semantic_hash": "f1431706b856364588900ed6a296f8a5"
   },
   "new_coding_desk/frontend/src/components/SeatTablet.tsx": {
-    "mtime": 1785191745.8636963,
-    "ast_hash": "17d1db44810e708135e63af8a98d14c4",
+    "mtime": 1785945859.8645394,
+    "ast_hash": "76f8476251cdad71f709e82765175c48",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ServicePanel.tsx": {
@@ -935,8 +935,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_stream_service.py": {
-    "mtime": 1784476692.2569582,
-    "ast_hash": "c6560a9f6177d9ede573a3bc7cb67c4e",
+    "mtime": 1786116911.569942,
+    "ast_hash": "8d128d61482a0ab35e493b3a23c2e37c",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_trace.py": {
@@ -2150,8 +2150,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/database_maintenance.py": {
-    "mtime": 1785340313.2565167,
-    "ast_hash": "6e942f4143d8db00931a3443dc50d0a0",
+    "mtime": 1786157607.5621154,
+    "ast_hash": "cd4fa5cc1f079687d348c7b54b7aa5ce",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/schema.py": {
@@ -2250,8 +2250,18 @@
     "semantic_hash": ""
   },
   "docs/integration/FIELD_VALIDATION_QUICKSTART.md": {
-    "mtime": 1785341584.9573226,
-    "ast_hash": "c775e346ef0904985194a65563850f99",
+    "mtime": 1785421611.0981538,
+    "ast_hash": "df989af7b2f98df38a722810bd66ad15",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/services/speech_debug_capture.py": {
+    "mtime": 1786116882.3693662,
+    "ast_hash": "e661b262e3e2792a39050639352ee1fa",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_speech_debug_capture.py": {
+    "mtime": 1786116882.7041197,
+    "ast_hash": "55469c58dd8fa9be74257c9a8358d38c",
     "semantic_hash": ""
   }
 }

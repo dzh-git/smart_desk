@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, AlertCircle, XCircle } from "lucide-react";
 import { fetchHostDisplayStatus } from "../api/resources";
 import type { HostDisplayStatus } from "../api/types";
-import { SectionCard } from "./shared";
+import { DualLabel, SectionCard } from "./shared";
 
 const APPS = [
   { key: "powerpoint", label: "PowerPoint" },
@@ -22,6 +22,28 @@ const APPS = [
 ] as const;
 
 type ActivateApp = (typeof APPS)[number]["key"];
+
+interface BilingualCopy {
+  cn: string;
+  en: string;
+}
+
+const STREAM_STATE_COPY: Record<"online" | "offline" | "unknown", BilingualCopy> = {
+  online: { cn: "推流正常", en: "STREAM ONLINE" },
+  offline: { cn: "未在推流", en: "STREAM OFFLINE" },
+  unknown: { cn: "状态未知", en: "STATUS UNKNOWN" },
+};
+
+const AGENT_STATE_COPY: Record<"online" | "offline", BilingualCopy> = {
+  online: { cn: "控制服务在线", en: "CONTROL SERVICE ONLINE" },
+  offline: { cn: "控制服务离线", en: "CONTROL SERVICE OFFLINE" },
+};
+
+const APP_NAME_COPY: Record<ActivateApp, BilingualCopy> = {
+  powerpoint: { cn: "PowerPoint", en: "POWERPOINT" },
+  solidworks: { cn: "SolidWorks", en: "SOLIDWORKS" },
+  smartdesk: { cn: "SmartDesk", en: "SMARTDESK" },
+};
 
 /** Minimum shape the loopback Agent /status endpoint returns. */
 interface AgentStatusBody {
@@ -36,6 +58,31 @@ interface ActivateResponseBody {
 }
 
 const PROBE_TIMEOUT_MS = 3_000;
+
+function formatAppState(
+  app: HostDisplayStatus["apps"][string] | undefined,
+): BilingualCopy {
+  if (!app) return { cn: "状态未知", en: "STATUS UNKNOWN" };
+  const running = app.running
+    ? { cn: "运行中", en: "RUNNING" }
+    : { cn: "未运行", en: "STOPPED" };
+  const windowState = app.window_found
+    ? { cn: "已找到窗口", en: "WINDOW FOUND" }
+    : { cn: "未找到窗口", en: "NO WINDOW" };
+  return {
+    cn: `${running.cn} · ${windowState.cn}`,
+    en: `${running.en} · ${windowState.en}`,
+  };
+}
+
+function formatActiveApp(app: string | null): BilingualCopy {
+  if (app && app in APP_NAME_COPY) {
+    return APP_NAME_COPY[app as ActivateApp];
+  }
+  return app
+    ? { cn: `其他应用：${app}`, en: "OTHER APP" }
+    : { cn: "无", en: "NONE" };
+}
 
 export function HostDisplayControl() {
   const [status, setStatus] = useState<HostDisplayStatus | null>(null);
@@ -150,16 +197,9 @@ export function HostDisplayControl() {
 
   const streamState = status?.stream_state ?? "unknown";
   const agentState = status?.agent_state ?? "offline";
-  const activeApp = status?.active_app ?? "—";
-
-  const formatAppState = (key: string): string => {
-    const app = status?.apps?.[key];
-    if (!app) return "Unknown";
-    const parts: string[] = [];
-    parts.push(app.running ? "Running" : "Stopped");
-    parts.push(app.window_found ? "Window OK" : "No Window");
-    return parts.join(" · ");
-  };
+  const streamCopy = STREAM_STATE_COPY[streamState];
+  const agentCopy = AGENT_STATE_COPY[agentState];
+  const activeAppCopy = formatActiveApp(status?.active_app ?? null);
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -172,34 +212,34 @@ export function HostDisplayControl() {
             <p className="text-xs text-techMuted mb-1">
               流状态 / STREAM STATE
             </p>
-            <p
+            <div
               data-testid="display-stream-state"
-              className="text-sm font-semibold text-techText"
+              className="text-sm"
             >
-              {streamState}
-            </p>
+              <DualLabel cn={streamCopy.cn} en={streamCopy.en} />
+            </div>
           </div>
           <div>
             <p className="text-xs text-techMuted mb-1">
               代理状态 / AGENT STATE
             </p>
-            <p
+            <div
               data-testid="display-agent-state"
-              className="text-sm font-semibold text-techText"
+              className="text-sm"
             >
-              {agentState}
-            </p>
+              <DualLabel cn={agentCopy.cn} en={agentCopy.en} />
+            </div>
           </div>
           <div className="col-span-2">
             <p className="text-xs text-techMuted mb-1">
               当前应用 / ACTIVE APP
             </p>
-            <p
+            <div
               data-testid="display-active-app"
-              className="text-sm font-semibold text-techText"
+              className="text-sm"
             >
-              {activeApp}
-            </p>
+              <DualLabel cn={activeAppCopy.cn} en={activeAppCopy.en} />
+            </div>
           </div>
         </div>
 
@@ -208,16 +248,30 @@ export function HostDisplayControl() {
           <p className="text-xs font-medium text-techMuted">
             窗口状态 / WINDOW STATES
           </p>
-          {APPS.map(({ key, label }) => (
+          {APPS.map(({ key }) => {
+            const appCopy = APP_NAME_COPY[key];
+            const stateCopy = formatAppState(status?.apps?.[key]);
+            return (
             <div
               key={key}
               data-testid={`app-${key}`}
               className="flex items-center justify-between text-xs"
             >
-              <span className="text-techText font-medium">{label}</span>
-              <span className="text-techMuted">{formatAppState(key)}</span>
+              <DualLabel
+                cn={appCopy.cn}
+                en={appCopy.en}
+                cnClassName="text-xs"
+                enClassName="text-[0.55rem]"
+              />
+              <DualLabel
+                cn={stateCopy.cn}
+                en={stateCopy.en}
+                cnClassName="text-[0.65rem] font-normal text-techMuted"
+                enClassName="text-[0.5rem]"
+              />
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* ── Unreachable hint ────────────────────────────────────── */}
@@ -226,13 +280,15 @@ export function HostDisplayControl() {
             data-testid="local-agent-unreachable"
             className="text-xs text-techMuted bg-techCardSoft rounded px-2 py-1.5 text-center"
           >
-            仅中央主机本机可用
+            仅可在中央主机操作 / Available on Central Host Only
           </p>
         )}
 
         {/* ── Activate buttons ────────────────────────────────────── */}
         <div className="flex flex-wrap gap-2 pt-2 border-t border-techBorder">
-          {APPS.map(({ key, label }) => (
+          {APPS.map(({ key }) => {
+            const appCopy = APP_NAME_COPY[key];
+            return (
             <button
               key={key}
               data-testid={`activate-${key}`}
@@ -247,9 +303,13 @@ export function HostDisplayControl() {
               {activating === key && (
                 <Loader2 size={12} className="animate-spin" />
               )}
-              {label}
+              <span>切换至 {appCopy.cn}</span>
+              <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-70">
+                Switch to {appCopy.en}
+              </span>
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {/* ── Error display ───────────────────────────────────────── */}
@@ -259,11 +319,11 @@ export function HostDisplayControl() {
             className="flex items-start gap-2 bg-techRose/10 border border-techRose/30 rounded-lg px-3 py-2"
           >
             <AlertCircle size={12} className="text-techRose shrink-0 mt-0.5" />
-            <p className="text-xs text-techRose flex-1">{activateError}</p>
+            <p className="text-xs text-techRose flex-1">操作失败 / Operation Failed：{activateError}</p>
             <button
               onClick={() => setActivateError(null)}
               className="text-techRose/60 hover:text-techRose shrink-0"
-              aria-label="Dismiss error"
+              aria-label="关闭错误 / Dismiss error"
             >
               <XCircle size={12} />
             </button>

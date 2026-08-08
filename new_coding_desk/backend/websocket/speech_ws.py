@@ -566,6 +566,32 @@ async def _handle_text_message(
         utterance_id = str(finalized["utterance_id"])
         fallback_text = str(finalized.get("source_text") or "").strip()
         session = stream_service.get_session(session_key)
+        if finalized.get("live_flush") and fallback_text:
+            # The manual end path has no subsequent PCM frame to publish the
+            # Chinese cache flush. Emit the corrected live text before the
+            # existing finalizing event so clients never wait for offline ASR.
+            event_bus.publish(TranslationInterimEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "utterance_id": utterance_id,
+                    "seat_id": seat_id,
+                    "revision": int(finalized.get("revision") or 0),
+                    "source_lang": "zh",
+                    "target_lang": "en",
+                    "source_text": fallback_text,
+                    "translation_source_text": fallback_text,
+                    "translated_text": "",
+                    "sentence_id": None,
+                    "sentence_sequence": 0,
+                    "sentence_source_text": fallback_text,
+                    "sentence_state": "forming",
+                    "is_final": False,
+                    "requested_language": finalized.get("requested_language", "zh"),
+                    "detected_language": "zh",
+                    "recognition_engine": "paraformer_streaming",
+                    "caption": finalized.get("caption"),
+                },
+            ))
         sentence_result = stream_service.complete_active_sentence(
             session_key,
             fallback_text,

@@ -24,7 +24,6 @@ import { ServicePanel } from "./ServicePanel";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { MeetingResultPanel } from "./MeetingResultPanel";
 import { HostDisplayControl } from "./HostDisplayControl";
-import { HardwareStatus } from "./HardwareStatus";
 import {
   SectionCard,
   ActionButton,
@@ -524,7 +523,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           <div className="text-center space-y-4">
             <Loader2 size={32} className="animate-spin text-techCyan mx-auto" />
             <p className="text-sm font-medium text-techMuted">
-              Loading meeting data...
+              正在加载会议数据 / Loading meeting data...
             </p>
           </div>
         </div>
@@ -549,7 +548,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
               <AlertCircle className="text-techRose" size={24} />
             </div>
             <p className="text-sm font-semibold text-techText">
-              Failed to load data
+              数据加载失败 / <span>Failed to load data</span>
             </p>
             <p className="text-xs text-techMuted">{error}</p>
             <ActionButton
@@ -558,7 +557,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
               icon={<RefreshCw size={14} />}
               onClick={refresh}
             >
-              Retry
+              重试 / Retry
             </ActionButton>
           </div>
         </div>
@@ -584,17 +583,17 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             </div>
             <div className="text-center">
               <p className="text-base font-bold text-techText">
-                No Active Meeting
+                暂无进行中的会议 / <span>No Active Meeting</span>
               </p>
               <p className="text-xs text-techMuted">
-                Create a pending meeting, then start it when the room is ready.
+                请先创建待启动会议，会议室准备好后再开始。 / Create a pending meeting, then start it when the room is ready.
               </p>
             </div>
 
             {adminActionError && (
               <div className="bg-techRose/10 border border-techRose/30 rounded-xl px-4 py-3 flex items-center gap-2">
                 <AlertCircle size={14} className="text-techRose flex-shrink-0" />
-                <p className="text-xs text-techRose">{adminActionError}</p>
+                <p className="text-xs text-techRose">操作失败 / Operation Failed：{adminActionError}</p>
                 <button
                   onClick={() => setAdminActionError(null)}
                   className="ml-auto text-techRose/60 hover:text-techRose"
@@ -610,13 +609,13 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                   type="text"
                   value={meetingTitle}
                   onChange={(e) => setMeetingTitle(e.target.value)}
-                  placeholder="Meeting title"
+                  placeholder="会议标题 / Meeting title"
                   className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                 />
                 <textarea
                   value={meetingDescription}
                   onChange={(e) => setMeetingDescription(e.target.value)}
-                  placeholder="Optional description"
+                  placeholder="可选说明 / Optional description"
                   rows={3}
                   className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                 />
@@ -628,7 +627,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                   className="w-full"
                   icon={meetingActionBusy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                 >
-                  Create Pending Meeting
+                  创建待启动会议 / Create Pending Meeting
                 </ActionButton>
               </div>
             </SectionCard>
@@ -639,7 +638,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                 titleEn="PENDING MEETING"
                 headerRight={
                   <span className="text-xs font-medium text-techAmber">
-                    Ready to start
+                    可以开始 / Ready to Start
                   </span>
                 }
               >
@@ -662,7 +661,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                     className="w-full"
                     icon={meetingActionBusy ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                   >
-                    Start Meeting
+                    开始会议 / Start Meeting
                   </ActionButton>
                 </div>
               </SectionCard>
@@ -675,7 +674,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                 icon={<RefreshCw size={14} />}
                 onClick={refresh}
               >
-                Refresh
+                刷新 / Refresh
               </ActionButton>
             </div>
           </div>
@@ -706,7 +705,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
       {isDemoControlsEnabled() && (
         <div className="bg-techSurface border-t border-techBorder px-4 sm:px-6 py-2 flex flex-wrap items-center gap-3">
           <span className="shrink-0 text-xs text-techMuted font-medium">
-            Preview seat:
+            预览座位 / Preview seat:
           </span>
           <div className="flex flex-wrap gap-1.5">
             {Array.from({ length: 9 }, (_, i) => i + 1).map((n) => (
@@ -728,7 +727,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             size="sm"
             onClick={() => onSwitchToSeat(previewSeat)}
           >
-            Open Seat Tablet View
+            打开席位平板页面 / Open Seat Tablet View
           </ActionButton>
         </div>
       )}
@@ -738,11 +737,11 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         {isEndedMeeting ? (
           <div className="mb-6">
             <div className="rounded-xl border border-techBorder bg-techCard p-4 text-center shadow-card-glow">
-              <p className="text-lg font-bold text-techMuted">Meeting Ended</p>
+              <p className="text-lg font-bold text-techMuted">会议已结束 / <span>Meeting Ended</span></p>
               <p className="text-sm text-techMuted/70 mt-1">{meeting?.title}</p>
               {elapsedMs > 0 && (
                 <p className="text-xs text-techMuted/50 mt-2 font-mono">
-                  Duration: {formatDuration(elapsedMs)}
+                  会议时长 / Duration: {formatDuration(elapsedMs)}
                 </p>
               )}
             </div>
@@ -751,29 +750,35 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           <div className="mb-6 space-y-3">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <MetricCard
-                label="Meeting time"
+                labelCn="会议时长"
+                labelEn="MEETING TIME"
                 value={elapsedMs > 0 ? formatDuration(elapsedMs) : "—"}
-                sub="Elapsed"
                 accent="text-techCyan"
               />
               <MetricCard
-                label="Checked in"
+                labelCn="签到人数"
+                labelEn="CHECKED IN"
                 value={`${checkedIn}/10`}
-                sub="Attendees"
+                detailCn="参会人"
+                detailEn="ATTENDEES"
                 accent={
                   checkedIn >= 9 ? "text-techGreen" : "text-techAmber"
                 }
               />
               <MetricCard
-                label="Speaker"
+                labelCn="当前发言人"
+                labelEn="CURRENT SPEAKER"
                 value={speakerAttendee?.split(" ")[0] ?? "—"}
-                sub={speakerAttendee ?? "No active speaker"}
+                detailCn={speakerSeatId != null ? `座位 ${speakerSeatId}` : "暂无发言人"}
+                detailEn={speakerSeatId != null ? `SEAT ${speakerSeatId}` : "NO ACTIVE SPEAKER"}
                 accent="text-techGreen"
               />
               <MetricCard
-                label="Pending service"
+                labelCn="待处理服务"
+                labelEn="PENDING SERVICES"
                 value={pendingRequests}
-                sub="Requests"
+                detailCn="请求"
+                detailEn="REQUESTS"
                 accent={
                   pendingRequests > 0 ? "text-techRose" : "text-techMuted"
                 }
@@ -827,7 +832,9 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                   会议控制面板 / ACTIVE MEETING CONTROLS
                 </p>
                 <p className="text-xs text-techMuted">
-                  状态: {meeting?.status === "active" ? "进行中" : meeting?.status} / STATUS: {meeting?.status}
+                  {meeting?.status === "active"
+                    ? "状态：进行中 / Status: Active"
+                    : "状态：未知 / Status: Unknown"}
                 </p>
               </div>
               <ActionButton
@@ -893,7 +900,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         {adminActionError && (
           <div className="mb-6 bg-techRose/10 border border-techRose/30 rounded-xl px-4 py-3 flex items-center gap-2">
             <AlertCircle size={14} className="text-techRose flex-shrink-0" />
-            <p className="text-xs text-techRose">{adminActionError}</p>
+            <p className="text-xs text-techRose">操作失败 / Operation Failed：{adminActionError}</p>
             <button
               onClick={() => setAdminActionError(null)}
               className="ml-auto text-techRose/60 hover:text-techRose"
@@ -928,7 +935,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                         <p className="truncate text-xs text-techMuted">
                           {selectedSeat.attendeeName
                             ? `${selectedSeat.attendeeName}${selectedSeat.attendeeTitle ? ` · ${selectedSeat.attendeeTitle}` : ""}`
-                            : "No attendee checked in"}
+                            : "尚未签到 / No Attendee Checked In"}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -958,8 +965,6 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
 
           {/* Right column */}
           <div className={`col-span-12 flex flex-col gap-6 ${isEndedMeeting || workspace !== "overview" ? '' : 'xl:col-span-4'}`}>
-            <HardwareStatus />
-
             {/* Attendees — visible in overview workspace or ended meetings */}
             {(isEndedMeeting || workspace === "overview") && (
               <SectionCard
@@ -979,14 +984,14 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                           type="text"
                           value={attendeeName}
                           onChange={(e) => setAttendeeName(e.target.value)}
-                          placeholder="Attendee name"
+                          placeholder="参会人姓名 / Attendee name"
                           className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                         />
                         <input
                           type="text"
                           value={attendeeTitle}
                           onChange={(e) => setAttendeeTitle(e.target.value)}
-                          placeholder="Title"
+                          placeholder="职务 / Title"
                           className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                         />
                       </div>
@@ -1012,10 +1017,10 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-techText">
                             {attendee.name}
-                            {attendee.seat_id != null ? ` · Seat ${attendee.seat_id}` : ""}
+                            {attendee.seat_id != null ? ` · 座位 ${attendee.seat_id} / Seat ${attendee.seat_id}` : ""}
                           </p>
                           <p className="truncate text-xs text-techMuted">
-                            {attendee.title || "No title"}
+                            {attendee.title || "未填写职务 / No Title"}
                           </p>
                         </div>
                         {canManageAttendees(meetingStatus) && (
@@ -1023,7 +1028,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                             onClick={() => handleDeleteAttendee(attendee.id)}
                             disabled={attendeeBusy}
                             className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-techMuted transition-colors hover:bg-techRose/20 hover:text-techRose disabled:opacity-50 min-h-[32px] min-w-[32px]"
-                            aria-label={`Delete attendee ${attendee.name}`}
+                            aria-label={`删除参会人 ${attendee.name} / Delete attendee ${attendee.name}`}
                           >
                             <Trash2 size={13} />
                           </button>
@@ -1061,7 +1066,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             {/* Lightweight empty state for agenda_vote — no agenda and no vote */}
             {workspace === "agenda_vote" && !isEndedMeeting && agenda.length === 0 && voteState === "none" && (
               <p className="text-xs text-techMuted/70 text-center py-3">
-                暂无议程与投票内容。下方可添加议程或创建投票。
+                暂无议程与投票内容。下方可添加议程或创建投票。 / No agenda or vote yet. Add an agenda or create a vote below.
               </p>
             )}
 
@@ -1086,7 +1091,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                     type="text"
                     value={createVoteTitle}
                     onChange={(e) => setCreateVoteTitle(e.target.value)}
-                    placeholder="Vote title..."
+                  placeholder="投票标题 / Vote title..."
                     className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                   />
                   {createVoteOptions.map((opt, i) => (
@@ -1099,7 +1104,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                         next[i] = e.target.value;
                         setCreateVoteOptions(next);
                       }}
-                      placeholder={`Option ${i + 1}`}
+                      placeholder={`选项 ${i + 1} / Option ${i + 1}`}
                       className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
                     />
                   ))}
@@ -1107,7 +1112,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                     onClick={() => setCreateVoteOptions([...createVoteOptions, ""])}
                     className="text-xs font-medium text-techCyan hover:text-techCyan/80"
                   >
-                    + Add option
+                    + 添加选项 / Add option
                   </button>
                   <label className="flex items-center gap-2 text-xs text-techMuted">
                     <input
@@ -1116,7 +1121,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                       onChange={(e) => setCreateVoteAnonymous(e.target.checked)}
                       className="rounded border-techBorder bg-techSurface text-techCyan focus:ring-techCyan"
                     />
-                    Anonymous vote
+                    匿名投票 / Anonymous vote
                   </label>
                   <ActionButton
                     variant="primary"
@@ -1127,7 +1132,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                     loading={creatingVote}
                     className="w-full"
                   >
-                    {creatingVote ? "Creating..." : "Create Vote"}
+                    {creatingVote ? "正在创建 / Creating..." : "创建投票 / Create Vote"}
                   </ActionButton>
                 </div>
               </SectionCard>
@@ -1141,7 +1146,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             {/* Lightweight empty state for service_records — no service calls and no transcript */}
             {workspace === "service_records" && !isEndedMeeting && serviceCalls.length === 0 && translations.length === 0 && Object.keys(interimMap).length === 0 && Object.keys(pendingFinalMap).length === 0 && (
               <p className="text-xs text-techMuted/70 text-center py-3">
-                暂无服务请求与字幕记录。
+                暂无服务请求与字幕记录。 / No service requests or transcript records.
               </p>
             )}
 
@@ -1152,8 +1157,8 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           </div>
         </div>
 
-        {/* Transcript row — visible in service_records workspace or ended meetings */}
-        {(isEndedMeeting || workspace === "service_records" || meetingStatus === "meeting_active") && (
+        {/* Transcript row — visible only in the service_records workspace */}
+        {workspace === "service_records" && (
           <div className="mt-6">
             <TranscriptPanel
               entries={translations}
@@ -1176,10 +1181,10 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             <WifiOff className="text-techRose" size={24} />
           </div>
           <p className="text-sm font-semibold text-techText mb-1">
-            Connection Lost
+            连接已断开 / Connection Lost
           </p>
           <p className="text-xs text-techMuted mb-4">
-            Attempting to reconnect...
+            正在尝试重新连接… / Attempting to reconnect...
           </p>
           <ActionButton
             variant="secondary"
@@ -1187,7 +1192,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             icon={<RefreshCw size={12} />}
             onClick={refresh}
           >
-            Retry Now
+            立即重试 / Retry Now
           </ActionButton>
         </div>
       )}
@@ -1198,23 +1203,34 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
 // ── Metric Card ─────────────────────────────────────────────────────────────
 
 interface MetricCardProps {
-  label: string;
+  labelCn: string;
+  labelEn: string;
   value: string | number;
-  sub?: string;
+  detailCn?: string;
+  detailEn?: string;
   accent?: string;
 }
 
 function MetricCard({
-  label,
+  labelCn,
+  labelEn,
   value,
-  sub,
+  detailCn,
+  detailEn,
   accent = "text-techCyan",
 }: MetricCardProps) {
   return (
     <div className="min-w-0 bg-techCard border border-techBorder rounded-lg shadow-card-glow px-3 sm:px-4 py-3 text-center">
       <p className={`truncate text-xl sm:text-2xl font-bold leading-none ${accent}`}>{value}</p>
-      <p className="text-xs font-medium text-techMuted mt-1">{label}</p>
-      {sub && <p className="truncate text-[10px] text-techMuted/60 mt-0.5">{sub}</p>}
+      <p className="mt-1 inline-flex items-baseline justify-center gap-1.5 text-xs font-medium text-techMuted">
+        <span>{labelCn}</span>
+        <span className="text-[0.6rem] font-mono uppercase tracking-wider text-techMuted/70">{labelEn}</span>
+      </p>
+      {detailCn && (
+        <p className="mt-0.5 truncate text-[10px] text-techMuted/60">
+          {detailCn}{detailEn ? ` / ${detailEn}` : ""}
+        </p>
+      )}
     </div>
   );
 }

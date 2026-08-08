@@ -206,7 +206,7 @@ describe("SeatTablet - loading state", () => {
   it("shows loading state initially", () => {
     mockFetch.mockImplementation(() => new Promise(() => {}));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
-    expect(screen.getByText("Loading seat data...")).toBeInTheDocument();
+    expect(screen.getByText(/正在加载席位数据.*Loading seat data/)).toBeInTheDocument();
   });
 });
 
@@ -216,7 +216,7 @@ describe("SeatTablet - error state", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Failed to load data")).toBeInTheDocument();
+      expect(screen.getByText(/席位数据加载失败.*Failed to load data/)).toBeInTheDocument();
     });
     expect(screen.getByText("Retry")).toBeInTheDocument();
   });
@@ -235,7 +235,7 @@ describe("SeatTablet - no meeting state", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Waiting for Meeting")).toBeInTheDocument();
+      expect(screen.getByText(/等待会议开始.*Waiting for Meeting/)).toBeInTheDocument();
     });
   });
 });
@@ -248,8 +248,8 @@ describe("SeatTablet - vacant seat state", () => {
     await waitFor(() => {
       expect(screen.getByText(/Vacant/)).toBeInTheDocument();
     });
-    expect(screen.getByText("Waiting for occupant")).toBeInTheDocument();
-    expect(screen.queryByText("Occupy Seat (Demo)")).not.toBeInTheDocument();
+    expect(screen.getByText(/等待入座.*Waiting for occupant/)).toBeInTheDocument();
+    expect(screen.queryByText(/模拟入座.*Occupy Seat \(Demo\)/)).not.toBeInTheDocument();
   });
 
   it("shows occupy button when demo controls are enabled", async () => {
@@ -258,7 +258,7 @@ describe("SeatTablet - vacant seat state", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Occupy Seat (Demo)")).toBeInTheDocument();
+      expect(screen.getByText(/模拟入座.*Occupy Seat \(Demo\)/)).toBeInTheDocument();
     });
   });
 });
@@ -271,7 +271,7 @@ describe("SeatTablet - occupied_unchecked state", () => {
     await waitFor(() => {
       expect(screen.getByText(/Check-in Required/)).toBeInTheDocument();
     });
-    expect(screen.queryByText("Vacate (Demo)")).not.toBeInTheDocument();
+    expect(screen.queryByText(/模拟离座.*Vacate \(Demo\)/)).not.toBeInTheDocument();
   });
 
   it("shows vacate demo button when enabled", async () => {
@@ -280,7 +280,7 @@ describe("SeatTablet - occupied_unchecked state", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Vacate (Demo)")).toBeInTheDocument();
+      expect(screen.getByText(/模拟离座.*Vacate \(Demo\)/)).toBeInTheDocument();
     });
   });
 });
@@ -375,11 +375,11 @@ describe("SeatTablet - check-in action", () => {
     // Wait for the Confirm button to become enabled (WS connection + state update)
     let confirmBtn: HTMLElement;
     await waitFor(() => {
-      confirmBtn = screen.getByText("Confirm Check-in");
+      confirmBtn = screen.getByText(/确认签到.*Confirm Check-in/);
       if (confirmBtn.hasAttribute("disabled")) throw new Error("Button still disabled");
     });
 
-    confirmBtn = screen.getByText("Confirm Check-in");
+    confirmBtn = screen.getByText(/确认签到.*Confirm Check-in/);
     await act(async () => {
       confirmBtn.click();
       await new Promise((r) => setTimeout(r, 100));
@@ -562,7 +562,7 @@ describe("SeatTablet - Android identity check-in", () => {
       );
     });
 
-    await screen.findByText(/VERIFIED · person_001 · 0.820 · PROTOTYPE/);
+    await screen.findByText(/已验证 \/ VERIFIED.*人员编号 person_001.*相似度 0\.820.*原型验证 \/ PROTOTYPE/);
     expect(identityCalls).toHaveLength(0);
     expect(screen.queryByText("提交测试签到")).not.toBeInTheDocument();
   });
@@ -738,11 +738,11 @@ describe("SeatTablet - voting action", () => {
 
     // Wait for submit button to become enabled
     await waitFor(() => {
-      const btn = screen.getByText("Submit Vote");
+      const btn = screen.getByText(/提交投票.*Submit Vote/);
       if (btn.hasAttribute("disabled")) throw new Error("Button still disabled");
     });
 
-    const submitBtn = screen.getByText("Submit Vote");
+    const submitBtn = screen.getByText(/提交投票.*Submit Vote/);
     await act(async () => {
       submitBtn.click();
       await new Promise((r) => setTimeout(r, 100));
@@ -1047,11 +1047,11 @@ describe("SeatTablet - same-name attendee voting (Task 6)", () => {
 
     // Submit vote
     await waitFor(() => {
-      const btn = screen.getByText("Submit Vote");
+      const btn = screen.getByText(/提交投票.*Submit Vote/);
       if (btn.hasAttribute("disabled")) throw new Error("Button still disabled");
     });
 
-    const submitBtn = screen.getByText("Submit Vote");
+    const submitBtn = screen.getByText(/提交投票.*Submit Vote/);
     await act(async () => {
       submitBtn.click();
       await new Promise((r) => setTimeout(r, 100));
@@ -1213,7 +1213,7 @@ describe("SeatTablet - service call actions", () => {
     });
 
     // Click Cancel
-    const cancelBtn = screen.getByText("Cancel");
+    const cancelBtn = screen.getByText(/取消 \/ Cancel/);
     expect(cancelBtn).toBeInTheDocument();
 
     await act(async () => {
@@ -1309,7 +1309,7 @@ describe("SeatTablet - WebSocket disconnect", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Connection Lost")).toBeInTheDocument();
+      expect(screen.getByText(/连接已断开.*Connection Lost/)).toBeInTheDocument();
     });
   });
 
@@ -1319,7 +1319,7 @@ describe("SeatTablet - WebSocket disconnect", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Occupy Seat (Demo)")).toBeInTheDocument();
+      expect(screen.getByText(/模拟入座.*Occupy Seat \(Demo\)/)).toBeInTheDocument();
     });
 
     // Disconnect WS synchronously
@@ -1328,10 +1328,10 @@ describe("SeatTablet - WebSocket disconnect", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Connection Lost")).toBeInTheDocument();
+      expect(screen.getByText(/连接已断开.*Connection Lost/)).toBeInTheDocument();
     });
 
-    const occupyBtn = screen.getByText("Occupy Seat (Demo)");
+    const occupyBtn = screen.getByText(/模拟入座.*Occupy Seat \(Demo\)/);
     expect(occupyBtn).toBeDisabled();
   });
 });
@@ -1440,7 +1440,7 @@ describe("SeatTablet - speech control (non-speaker)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Only speaker seat can stream audio"),
+        screen.getByText(/仅发言席可传输音频.*Only the speaker seat can stream audio/),
       ).toBeInTheDocument();
     });
 
@@ -1454,7 +1454,7 @@ describe("SeatTablet - speech control (non-speaker)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Only speaker seat can stream audio"),
+        screen.getByText(/仅发言席可传输音频.*Only the speaker seat can stream audio/),
       ).toBeInTheDocument();
     });
 
