@@ -164,7 +164,7 @@ def test_authorized_replacement_removes_previous_binding(monkeypatch):
         json={
             "deviceId": "tablet-physical-replacement",
             "seatId": 1,
-            "deviceToken": "replacement-device-secret-token-0001",
+            "deviceToken": "test-replacement-device-token-000001",
         },
     )
     replaced = client.post(
@@ -173,7 +173,7 @@ def test_authorized_replacement_removes_previous_binding(monkeypatch):
         json={
             "deviceId": "tablet-physical-replacement",
             "seatId": 1,
-            "deviceToken": "replacement-device-secret-token-0001",
+            "deviceToken": "test-replacement-device-token-000001",
             "replaceExisting": True,
         },
     )

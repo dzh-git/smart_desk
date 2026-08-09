@@ -23,6 +23,16 @@ $dataDir = Join-Path $testFull "data"
 $packageOne = [IO.Path]::GetFullPath($PackageRoot)
 $packageTwo = Join-Path $testFull "package-upgrade"
 $packageFail = Join-Path $testFull "package-failure"
+$reportRoot = Join-Path $repoRoot "logs\verification"
+New-Item -ItemType Directory -Force -Path $reportRoot | Out-Null
+$repoPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $repoPython)) {
+    throw "Repository Python environment is required for lifecycle testing."
+}
+$hadBasePython = Test-Path Env:SMARTDESK_BASE_PYTHON
+$previousBasePython = $env:SMARTDESK_BASE_PYTHON
+$env:SMARTDESK_BASE_PYTHON = $repoPython
+$currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 function Set-PackageVersion {
     param([string]$Root, [string]$Version)
@@ -105,17 +115,23 @@ try {
         uninstallPreservedData = "PASS"
         backupCount = $backupCount
     } | ConvertTo-Json | Set-Content -LiteralPath (
-        Join-Path $repoRoot "logs\verification\portable-lifecycle.json"
+        Join-Path $reportRoot "portable-lifecycle.json"
     ) -Encoding UTF8
     Write-Host "PORTABLE_LIFECYCLE_PASS"
 }
 finally {
+    if ($hadBasePython) {
+        $env:SMARTDESK_BASE_PYTHON = $previousBasePython
+    }
+    else {
+        Remove-Item Env:SMARTDESK_BASE_PYTHON -ErrorAction SilentlyContinue
+    }
     if (Test-Path -LiteralPath $testFull) {
         $testToken = Join-Path $testFull (
             "data\config\esp32-device-tokens.json"
         )
         if (Test-Path -LiteralPath $testToken) {
-            & icacls $testToken /grant:r "$env:USERNAME`:(F)" | Out-Null
+            & icacls $testToken /grant:r "$currentIdentity`:(F)" | Out-Null
         }
         Remove-Item -LiteralPath $testFull -Recurse -Force
     }

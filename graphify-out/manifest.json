@@ -490,9 +490,9 @@
     "semantic_hash": "99c6d8f4c6d487155941c1f7e3b26a45"
   },
   "new_coding_desk/frontend/src/__tests__/App.test.tsx": {
-    "mtime": 1781364671.2869837,
-    "ast_hash": "db43b361e0db62f0e3bde62d69b11644",
-    "semantic_hash": "db43b361e0db62f0e3bde62d69b11644"
+    "mtime": 1786262201.757436,
+    "ast_hash": "7dcabfc35b95e917376da16994e13ca0",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/DisplayView.test.tsx": {
     "mtime": 1785945916.7335832,
@@ -1795,8 +1795,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_tablet_devices.py": {
-    "mtime": 1786191968.363847,
-    "ast_hash": "f7a0c75c02a1577cbcafa440ffe6a4ea",
+    "mtime": 1786262056.8094883,
+    "ast_hash": "868f010414e0afc5ecdd4be87e71ab8f",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.esp32.example.json": {
@@ -1900,8 +1900,8 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/DeviceConfigStoreTest.kt": {
-    "mtime": 1786191970.059619,
-    "ast_hash": "66d44efae63ea5ab9e7dac7fcfd0b1eb",
+    "mtime": 1786262055.386,
+    "ast_hash": "69e95a5a1f86f2a5218ebd3e0c45ec2a",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/SeatPageLoadStateTest.kt": {
@@ -2205,8 +2205,8 @@
     "semantic_hash": ""
   },
   "scripts/test_portable_lifecycle.ps1": {
-    "mtime": 1785342314.7070863,
-    "ast_hash": "fafd0b65b5fd06d25a981e8bfc0330fe",
+    "mtime": 1786262269.1441412,
+    "ast_hash": "8bb81f23015db8bf175b8319deefe3ca",
     "semantic_hash": ""
   },
   "scripts/validate_portable_package.py": {
@@ -2362,6 +2362,11 @@
   "graphify-out/memory/query_20260809_071350_\u5f53\u524d\u4e2d\u82f1\u6587\u8bc6\u522b\u6a21\u578b\u4e0d\u53ef\u7528.md": {
     "mtime": 1786259630.7361512,
     "ast_hash": "7ce8d05f158380d88420884e421baa9a",
+    "semantic_hash": ""
+  },
+  "graphify-out/memory/query_20260809_073326_\u5e73\u677f\u90e8\u7f72\u80fd\u529b\u7b49\u68c0\u9a8c\u5982\u4f55\u8fdb\u884c.md": {
+    "mtime": 1786260806.5316226,
+    "ast_hash": "1bee750b5e40f24433c375bd4f182a96",
     "semantic_hash": ""
   }
 }

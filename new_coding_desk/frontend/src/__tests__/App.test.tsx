@@ -138,7 +138,7 @@ describe("App - admin mode (default)", () => {
     render(<App />);
 
     // Should show SmartDesk brand
-    expect(screen.getByText("SmartDesk")).toBeInTheDocument();
+    expect(screen.getByText("SmartDesk 主持人控制台")).toBeInTheDocument();
 
     // Should eventually show the conference table and meeting title
     await waitFor(() => {
@@ -149,9 +149,9 @@ describe("App - admin mode (default)", () => {
       expect(screen.getByText(/Conference Room.*Seat Overview/i)).toBeInTheDocument();
     });
 
-    // Should show meeting summary metrics (Elapsed, Attendees)
-    expect(screen.getByText("Elapsed")).toBeInTheDocument();
-    expect(screen.getAllByText("Attendees").length).toBeGreaterThanOrEqual(1);
+    // Should show meeting summary metrics (meeting time, attendees)
+    expect(screen.getByText("MEETING TIME")).toBeInTheDocument();
+    expect(screen.getAllByText("ATTENDEES").length).toBeGreaterThanOrEqual(1);
 
     // Should show 2/10 checked in
     expect(screen.getByText("2/10")).toBeInTheDocument();
@@ -184,7 +184,7 @@ describe("App - admin mode (default)", () => {
       expect(screen.getByText("Failed to load data")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Retry")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Retry/ })).toBeInTheDocument();
   });
 });
 
@@ -225,7 +225,7 @@ describe("App - seat mode via URL (no VITE_ENABLE_DEMO_CONTROLS)", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Seat 1")).toBeInTheDocument();
+      expect(screen.getByText(/Seat 1/)).toBeInTheDocument();
     });
 
     // Back-to-admin is hidden outside demo controls.
@@ -308,6 +308,6 @@ describe("App - display vote results", () => {
 
     expect(screen.getByText("Approve Roadmap")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText(/2 票 \/ 67/)).toBeInTheDocument();
+    expect(screen.getByText(/2 votes · 67%/)).toBeInTheDocument();
   });
 });

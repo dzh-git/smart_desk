@@ -62,7 +62,7 @@ class DeviceConfigStoreTest {
                 {
                   "seatId": 10,
                   "deviceId": "tablet-new-physical-id",
-                  "deviceToken": "replacement-device-secret-token-0001",
+                  "deviceToken": "test-replacement-device-token-0001",
                   "serverBaseUrl": "http://192.168.1.20:8000",
                   "frontendBaseUrl": "http://192.168.1.20:5173"
                 }
