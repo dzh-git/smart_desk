@@ -51,6 +51,8 @@ function installRequiredMethods(
           }),
         ),
       ),
+      beginMaintenanceHold: vi.fn(),
+      cancelMaintenanceHold: vi.fn(),
       startFaceVerification: vi.fn(),
       stopFaceVerification: vi.fn(),
       ...overrides,
@@ -104,6 +106,22 @@ describe("NativeBridge", () => {
 
     expect(nativeEvent).toHaveBeenCalledTimes(1);
     window.removeEventListener(SMARTDESK_NATIVE_EVENT, nativeEvent);
+  });
+
+  it("forwards maintenance hold start and cancellation", async () => {
+    const beginMaintenanceHold = vi.fn();
+    const cancelMaintenanceHold = vi.fn();
+    installRequiredMethods({
+      beginMaintenanceHold,
+      cancelMaintenanceHold,
+    });
+
+    const bridge = getNativeBridge();
+    await bridge.beginMaintenanceHold();
+    await bridge.cancelMaintenanceHold();
+
+    expect(beginMaintenanceHold).toHaveBeenCalledTimes(1);
+    expect(cancelMaintenanceHold).toHaveBeenCalledTimes(1);
   });
 
   it("reads the credential and diagnostic native data", async () => {

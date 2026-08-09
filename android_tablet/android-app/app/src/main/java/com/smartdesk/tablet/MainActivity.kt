@@ -395,6 +395,16 @@ class MainActivity : ComponentActivity() {
                 onReloadSeatPage = {
                     runOnUiThread(::loadConfiguredPage)
                 },
+                onBeginMaintenanceHold = {
+                    runOnUiThread {
+                        if (isTrustedSeatPage()) {
+                            scheduleMaintenanceUnlock()
+                        }
+                    }
+                },
+                onCancelMaintenanceHold = {
+                    runOnUiThread(::cancelMaintenanceUnlock)
+                },
                 onStartFaceDetection = {
                     runOnUiThread(::requestStartCamera)
                 },
@@ -684,16 +694,19 @@ class MainActivity : ComponentActivity() {
     private fun configureMaintenanceGesture() {
         maintenanceButton.setOnTouchListener { _, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    val action = Runnable(::requestMaintenanceAccess)
-                    maintenanceUnlockAction = action
-                    mainHandler.postDelayed(action, MAINTENANCE_HOLD_MS)
-                }
+                MotionEvent.ACTION_DOWN -> scheduleMaintenanceUnlock()
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL -> cancelMaintenanceUnlock()
             }
             true
         }
+    }
+
+    private fun scheduleMaintenanceUnlock() {
+        cancelMaintenanceUnlock()
+        val action = Runnable(::requestMaintenanceAccess)
+        maintenanceUnlockAction = action
+        mainHandler.postDelayed(action, MAINTENANCE_HOLD_MS)
     }
 
     private fun cancelMaintenanceUnlock() {
@@ -703,6 +716,9 @@ class MainActivity : ComponentActivity() {
 
     private fun requestMaintenanceAccess() {
         maintenanceUnlockAction = null
+        if (!isTrustedSeatPage() && !pageAccessState.isDiagnosticPage()) {
+            return
+        }
         if (!maintenancePinStore.hasPin()) {
             maintenanceAuthorized = true
             openMaintenancePage()
@@ -837,6 +853,7 @@ class MainActivity : ComponentActivity() {
 
     private fun beginSeatPageLoad(url: String) {
         maintenanceAuthorized = false
+        maintenanceButton.visibility = View.GONE
         cancelOfflineRetry()
         pageAccessState.update(null)
         pageLoadState.beginPageLoad()
@@ -861,11 +878,9 @@ class MainActivity : ComponentActivity() {
         } else {
             cancelOfflineRetry()
         }
-        if (::maintenanceButton.isInitialized) {
-            maintenanceButton.visibility = if (
-                deviceConfigStore.load() == null
-            ) View.GONE else View.VISIBLE
-        }
+        maintenanceButton.visibility = if (
+            shouldShowEmergencyMaintenanceButton(mode)
+        ) View.VISIBLE else View.GONE
         val url = "$LOCAL_PAGE_URL?mode=${Uri.encode(mode)}"
         val previousUrl = pageAccessState.currentUrl()
         if (previousUrl != url) {
@@ -873,6 +888,14 @@ class MainActivity : ComponentActivity() {
             Log.i(TAG, "Loading local diagnostic page: $mode")
             webView.loadUrl(url)
         }
+    }
+
+    private fun shouldShowEmergencyMaintenanceButton(mode: String?): Boolean {
+        if (deviceConfigStore.load() == null) return false
+        return mode == "offline" ||
+            mode == "server-error" ||
+            mode == "binding-error" ||
+            mode == "timeout"
     }
 
     private fun cancelSeatPageLoadTimeout() {
@@ -1157,9 +1180,10 @@ class MainActivity : ComponentActivity() {
             }
             pageAccessState.update(url)
             if (pageAccessState.isDiagnosticPage()) {
+                val mode = Uri.parse(url).getQueryParameter("mode")
                 maintenanceButton.visibility = if (
-                    deviceConfigStore.load() == null
-                ) View.GONE else View.VISIBLE
+                    shouldShowEmergencyMaintenanceButton(mode)
+                ) View.VISIBLE else View.GONE
             } else if (
                 WebViewAccessPolicy.isTrustedSeatPage(
                     url,
@@ -1168,7 +1192,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 cancelSeatPageLoadTimeout()
                 pageLoadState.ready()
-                maintenanceButton.visibility = View.VISIBLE
+                maintenanceButton.visibility = View.GONE
             }
         }
 

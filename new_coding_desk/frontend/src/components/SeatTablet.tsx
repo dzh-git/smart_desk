@@ -592,6 +592,20 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   const meetingStatus = deriveSeatMeetingStatus(meeting);
   const writesAllowed = wsConnected && !!meeting && meeting?.status === "active";
+  const maintenanceAccessAvailable =
+    nativeDeviceInfo?.maintenanceAccessAvailable === true;
+  const beginMaintenanceHold = useCallback(() => {
+    void nativeBridge.beginMaintenanceHold().catch((error: unknown) => {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to open Android maintenance access",
+      );
+    });
+  }, [nativeBridge]);
+  const cancelMaintenanceHold = useCallback(() => {
+    void nativeBridge.cancelMaintenanceHold().catch(() => undefined);
+  }, [nativeBridge]);
 
   // ── Loading State ──────────────────────────────────────────────────────
 
@@ -602,6 +616,12 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           seatId={seatId}
           connection={connection}
           onBack={onSwitchToAdmin}
+          onMaintenanceHoldStart={
+            maintenanceAccessAvailable ? beginMaintenanceHold : undefined
+          }
+          onMaintenanceHoldEnd={
+            maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
+          }
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
@@ -627,6 +647,12 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           seatId={seatId}
           connection={connection}
           onBack={onSwitchToAdmin}
+          onMaintenanceHoldStart={
+            maintenanceAccessAvailable ? beginMaintenanceHold : undefined
+          }
+          onMaintenanceHoldEnd={
+            maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
+          }
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md">
@@ -661,6 +687,12 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           seatId={seatId}
           connection={connection}
           onBack={onSwitchToAdmin}
+          onMaintenanceHoldStart={
+            maintenanceAccessAvailable ? beginMaintenanceHold : undefined
+          }
+          onMaintenanceHoldEnd={
+            maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
+          }
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md">
@@ -690,16 +722,25 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   // ── Active Meeting ─────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-techBg bg-tech-radial flex flex-col relative">
+    <div
+      data-testid="seat-page-scroll"
+      className="h-screen overflow-y-auto bg-techBg bg-tech-radial relative"
+    >
       <SeatHeader
         seatId={seatId}
         connection={connection}
         onBack={onSwitchToAdmin}
         meetingTitle={meeting?.title ?? undefined}
         elapsedMs={elapsedMs}
+        onMaintenanceHoldStart={
+          maintenanceAccessAvailable ? beginMaintenanceHold : undefined
+        }
+        onMaintenanceHoldEnd={
+          maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
+        }
       />
 
-      <main className="flex-1 overflow-y-auto p-4 space-y-4 max-w-[900px] mx-auto w-full">
+      <main className="p-4 space-y-4 max-w-[900px] mx-auto w-full">
         {/* Action error */}
         {actionError && (
           <div className="bg-techRose/10 border border-techRose/30 rounded-lg px-4 py-3 flex items-center gap-2">
@@ -842,6 +883,8 @@ interface SeatHeaderProps {
   onBack?: () => void;
   meetingTitle?: string;
   elapsedMs?: number;
+  onMaintenanceHoldStart?: () => void;
+  onMaintenanceHoldEnd?: () => void;
 }
 
 function SeatHeader({
@@ -850,6 +893,8 @@ function SeatHeader({
   onBack,
   meetingTitle,
   elapsedMs,
+  onMaintenanceHoldStart,
+  onMaintenanceHoldEnd,
 }: SeatHeaderProps) {
   const now = useClock();
 
@@ -898,6 +943,22 @@ function SeatHeader({
         <span className="text-xs font-mono text-techMuted">
           {formatTime(now)}
         </span>
+        {onMaintenanceHoldStart && onMaintenanceHoldEnd && (
+          <button
+            type="button"
+            data-testid="maintenance-access"
+            aria-label="SmartDesk 调试入口，长按 5 秒"
+            title="SmartDesk 调试入口（长按 5 秒）"
+            onPointerDown={onMaintenanceHoldStart}
+            onPointerUp={onMaintenanceHoldEnd}
+            onPointerCancel={onMaintenanceHoldEnd}
+            onPointerLeave={onMaintenanceHoldEnd}
+            onContextMenu={(event) => event.preventDefault()}
+            className="flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-lg border border-techCyan/30 bg-techCyan/10 text-techCyan transition-colors hover:bg-techCyan/20"
+          >
+            <Cpu size={13} />
+          </button>
+        )}
       </div>
     </header>
   );

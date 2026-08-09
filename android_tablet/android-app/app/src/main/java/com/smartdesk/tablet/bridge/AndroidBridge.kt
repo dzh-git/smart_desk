@@ -15,6 +15,8 @@ class AndroidBridge(
     private val onGetDeviceCredential: () -> String,
     private val onProvisionDeviceConfig: (String) -> String,
     private val onReloadSeatPage: () -> Unit,
+    private val onBeginMaintenanceHold: () -> Unit,
+    private val onCancelMaintenanceHold: () -> Unit,
     private val onStartFaceDetection: () -> Unit,
     private val onStopFaceDetection: () -> Unit,
     private val onStartFaceEnrollment: (String) -> String,
@@ -55,6 +57,7 @@ class AndroidBridge(
             .put("sdkInt", Build.VERSION.SDK_INT)
             .put("appVersion", BuildConfig.VERSION_NAME)
             .put("bridgeReady", true)
+            .put("maintenanceAccessAvailable", true)
             .also { payload ->
                 val runtime = onGetRuntimeStatus()
                 runtime.keys().forEach { key ->
@@ -85,6 +88,16 @@ class AndroidBridge(
     @JavascriptInterface
     fun reloadSeatPage() {
         onReloadSeatPage()
+    }
+
+    @JavascriptInterface
+    fun beginMaintenanceHold() {
+        onBeginMaintenanceHold()
+    }
+
+    @JavascriptInterface
+    fun cancelMaintenanceHold() {
+        onCancelMaintenanceHold()
     }
 
     @JavascriptInterface

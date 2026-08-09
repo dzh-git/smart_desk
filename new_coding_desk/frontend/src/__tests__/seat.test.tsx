@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render as rtlRender, screen, waitFor, act } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { SeatTablet } from "../components/SeatTablet";
 
@@ -396,7 +396,9 @@ describe("SeatTablet - check-in action", () => {
 });
 
 describe("SeatTablet - Android identity check-in", () => {
-  function installNativeBridge() {
+  function installNativeBridge(
+    overrides: Partial<Window["SmartDeskNative"]> = {},
+  ) {
     Object.defineProperty(window, "SmartDeskNative", {
       configurable: true,
       value: {
@@ -412,6 +414,7 @@ describe("SeatTablet - Android identity check-in", () => {
               serverUrl: "http://host:8000",
               frontendUrl: "http://host:5173",
               configured: true,
+              maintenanceAccessAvailable: true,
               appVersion: "0.8.0",
               cameraReady: true,
               faceModelReady: true,
@@ -461,10 +464,36 @@ describe("SeatTablet - Android identity check-in", () => {
             data: { status: "VERIFYING" },
           }),
         ),
+        beginMaintenanceHold: vi.fn(),
+        cancelMaintenanceHold: vi.fn(),
         stopFaceVerification: vi.fn(),
+        ...overrides,
       },
     });
   }
+
+  it("places the maintenance hold control after status and time in the scrolling header", async () => {
+    const beginMaintenanceHold = vi.fn();
+    const cancelMaintenanceHold = vi.fn();
+    installNativeBridge({
+      beginMaintenanceHold,
+      cancelMaintenanceHold,
+    });
+    mockFetch.mockImplementation(createSeatMock("vacant"));
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    const button = await screen.findByTestId("maintenance-access");
+    const scrollContainer = screen.getByTestId("seat-page-scroll");
+    expect(scrollContainer).toContainElement(button);
+    expect(scrollContainer).toHaveClass("overflow-y-auto");
+    expect(button.parentElement?.lastElementChild).toBe(button);
+
+    fireEvent.pointerDown(button);
+    await waitFor(() => expect(beginMaintenanceHold).toHaveBeenCalledTimes(1));
+    fireEvent.pointerUp(button);
+    await waitFor(() => expect(cancelMaintenanceHold).toHaveBeenCalledTimes(1));
+  });
 
   it("automatically submits only a VALIDATED identity result", async () => {
     installNativeBridge();

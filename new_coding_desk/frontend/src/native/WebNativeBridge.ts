@@ -37,6 +37,14 @@ export class WebNativeBridge implements NativeBridge {
     return { personIds: [], count: 0 };
   }
 
+  async beginMaintenanceHold(): Promise<void> {
+    throw new Error("Android maintenance access is unavailable");
+  }
+
+  async cancelMaintenanceHold(): Promise<void> {
+    // Browser debugging has no native maintenance hold to cancel.
+  }
+
   async startFaceVerification(): Promise<void> {
     throw new Error("Android native face verification is unavailable");
   }

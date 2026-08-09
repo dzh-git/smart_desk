@@ -15,6 +15,8 @@ interface SmartDeskNativeJavascriptInterface {
   getDeviceCredential(): string | object;
   getIdentityStatus(): string | object;
   getRegisteredFaces(): string | object;
+  beginMaintenanceHold?(): void;
+  cancelMaintenanceHold?(): void;
   startFaceVerification(): string | object | void;
   stopFaceVerification(): string | object | void;
 }
@@ -111,6 +113,20 @@ export class AndroidNativeBridge implements NativeBridge {
       nativeInterface().getRegisteredFaces(),
       "registered_people",
     );
+  }
+
+  async beginMaintenanceHold(): Promise<void> {
+    const bridge = nativeInterface();
+    if (typeof bridge.beginMaintenanceHold !== "function") {
+      throw new Error("SmartDeskNative maintenance access is unavailable");
+    }
+    bridge.beginMaintenanceHold();
+  }
+
+  async cancelMaintenanceHold(): Promise<void> {
+    const bridge = nativeInterface();
+    if (typeof bridge.cancelMaintenanceHold !== "function") return;
+    bridge.cancelMaintenanceHold();
   }
 
   async startFaceVerification(): Promise<void> {

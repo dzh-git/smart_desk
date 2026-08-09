@@ -42,8 +42,10 @@ App 原生层生成独立设备令牌并调用 `/api/tablet-devices/provision`�
 后续启动会先检查 health，再调用设备绑定校验接口，通过后才加载正式席位页。
 加载失败时回退到本地状态页；离线期间每 5 秒重试，网络恢复时也立即重试。
 
-正式页面右上角只有原生 SmartDesk 标识。长按 5 秒并通过本地 PIN 后才能进入
-维护配置页。Android 系统广播 `BOOT_COMPLETED` 后会自动拉起单实例 Activity；
+正式页面的席位头部在“在线”和时间右侧显示 SmartDesk 标识；它随页面正常滚动，
+长按 5 秒并通过本地 PIN 后才能进入维护配置页。后端离线或绑定错误时，本地状态页
+仍保留原生应急入口，维护页自身不显示该入口。Android 系统广播 `BOOT_COMPLETED`
+后会自动拉起单实例 Activity；
 现场仍需为目标平板启用厂商自启动白名单并关闭阻塞式锁屏。
 主前端会通过 `SmartDeskNative.getDeviceInfo()` 读取 `serverBaseUrl`，并据此连接后端
 HTTP API 和会议/语音 WebSocket。
@@ -56,6 +58,8 @@ HTTP API 和会议/语音 WebSocket。
 window.SmartDeskNative.getDeviceInfo()
 window.SmartDeskNative.getDeviceCredential()
 window.SmartDeskNative.provisionDeviceConfig(configJson)
+window.SmartDeskNative.beginMaintenanceHold()
+window.SmartDeskNative.cancelMaintenanceHold()
 window.SmartDeskNative.getIdentityStatus()
 window.SmartDeskNative.getRegisteredFaces()
 window.SmartDeskNative.startFaceVerification()

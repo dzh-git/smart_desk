@@ -13,6 +13,7 @@ export interface DeviceInfo {
   configured: boolean;
   deviceTokenConfigured?: boolean;
   maintenancePinConfigured?: boolean;
+  maintenanceAccessAvailable?: boolean;
   appVersion?: string;
   manufacturer?: string;
   model?: string;
@@ -36,6 +37,8 @@ export interface NativeBridge {
   getDeviceCredential(): Promise<string>;
   getNativeStatus(): Promise<import("./nativeEvents").NativeIdentityStatus>;
   getRegisteredFaces(): Promise<RegisteredFaces>;
+  beginMaintenanceHold(): Promise<void>;
+  cancelMaintenanceHold(): Promise<void>;
   startFaceVerification(): Promise<void>;
   stopFaceVerification(): Promise<void>;
 }
