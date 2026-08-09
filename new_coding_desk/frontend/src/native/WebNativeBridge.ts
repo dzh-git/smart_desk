@@ -45,6 +45,18 @@ export class WebNativeBridge implements NativeBridge {
     // Browser debugging has no native maintenance hold to cancel.
   }
 
+  supportsMicrophoneCapture(): boolean {
+    return false;
+  }
+
+  async startMicrophoneCapture(): Promise<void> {
+    throw new Error("Android native microphone capture is unavailable");
+  }
+
+  async stopMicrophoneCapture(): Promise<void> {
+    // Browser capture is owned by MicrophoneCapture.
+  }
+
   async startFaceVerification(): Promise<void> {
     throw new Error("Android native face verification is unavailable");
   }

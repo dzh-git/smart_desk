@@ -570,9 +570,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/audio/microphone.ts": {
-    "mtime": 1784018978.0095963,
-    "ast_hash": "90fca9b3092fd8a3a24e1122dfac5809",
-    "semantic_hash": "90fca9b3092fd8a3a24e1122dfac5809"
+    "mtime": 1786277382.8567495,
+    "ast_hash": "3f126ed57d9498ba9f8c68eabaece0bf",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/audio/speechTrace.ts": {
     "mtime": 1784469990.8426633,
@@ -635,8 +635,8 @@
     "semantic_hash": "f1431706b856364588900ed6a296f8a5"
   },
   "new_coding_desk/frontend/src/components/SeatTablet.tsx": {
-    "mtime": 1786270765.398036,
-    "ast_hash": "3472c0afe826ed58186da3b00e9c6951",
+    "mtime": 1786277389.7224379,
+    "ast_hash": "188835e2a4366f69faecf61ffd98122c",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ServicePanel.tsx": {
@@ -900,7 +900,7 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_screen_stream_phase6_contract.py": {
-    "mtime": 1784123098.6933172,
+    "mtime": 1786275371.56261,
     "ast_hash": "70d4d34de0c96f4d07dc0462e9a56885",
     "semantic_hash": "70d4d34de0c96f4d07dc0462e9a56885"
   },
@@ -1435,13 +1435,13 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/MainActivity.kt": {
-    "mtime": 1786270667.0203717,
-    "ast_hash": "65ae142248680d6e387e78906779b96f",
+    "mtime": 1786277701.6866603,
+    "ast_hash": "cc63ea2bf615b97435ca64d642b1f296",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/bridge/AndroidBridge.kt": {
-    "mtime": 1786270633.4714537,
-    "ast_hash": "93964e48999d90d520751ef2b86e0ba4",
+    "mtime": 1786277226.6135485,
+    "ast_hash": "89781f089395e653ba48254a3e4915b0",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/camera/CameraController.kt": {
@@ -1500,13 +1500,13 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/model/AndroidEvent.kt": {
-    "mtime": 1785173972.3460217,
-    "ast_hash": "0fef32866b81e46127ddbee8e1c6afb8",
+    "mtime": 1786277225.1189365,
+    "ast_hash": "50eead92007f3448f559362967617a61",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/model/ErrorCode.kt": {
-    "mtime": 1786189785.468169,
-    "ast_hash": "9bc3a86a1b8b237d9aeaa9959fc859b8",
+    "mtime": 1786277223.5428493,
+    "ast_hash": "0719ccc0ccd7de0563c1fdc10902924e",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/model/FaceDetectionResult.kt": {
@@ -1705,23 +1705,23 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/native/AndroidNativeBridge.ts": {
-    "mtime": 1786270716.5958617,
-    "ast_hash": "d9204474d8afdd1bb9df50a9c07d3b1a",
+    "mtime": 1786277386.189237,
+    "ast_hash": "dae3288e9381e07257911f093f2343f4",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/native/NativeBridge.ts": {
-    "mtime": 1786270715.063254,
-    "ast_hash": "4b7e83aa593cce88d33fda9dcb826461",
+    "mtime": 1786277384.4983878,
+    "ast_hash": "ef6ac04ff94c13c07a8a7c3f67f3a59d",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/native/WebNativeBridge.ts": {
-    "mtime": 1786270718.133009,
-    "ast_hash": "6eb06ec56ec27da8d77da4536e731a81",
+    "mtime": 1786277387.8637693,
+    "ast_hash": "9841fbe97fd538712436f4ca980f4671",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/native/__tests__/NativeBridge.test.ts": {
-    "mtime": 1786270819.813871,
-    "ast_hash": "efe9d14e437c1e1302c4411f85ecdb07",
+    "mtime": 1786277442.1724255,
+    "ast_hash": "ac0dc9048755b8f950e41f24de9223eb",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/native/nativeEvents.ts": {
@@ -2105,13 +2105,13 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/WebViewPageAccessState.kt": {
-    "mtime": 1785335413.5448775,
-    "ast_hash": "d34e17487d3ad8b6e1446e26eee1f279",
+    "mtime": 1786274910.6302216,
+    "ast_hash": "cd84336822533d2506bf111bc1906b5d",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/WebViewPageAccessStateTest.kt": {
-    "mtime": 1785335413.8320928,
-    "ast_hash": "5e87e38abf81d4c2977514b8e34b301f",
+    "mtime": 1786274912.024407,
+    "ast_hash": "213a3ca9ea2484a699c783585ab8c169",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.arduino.example.json": {
@@ -2392,6 +2392,56 @@
   "android_tablet/scripts/verify-maintenance-entry.mjs": {
     "mtime": 1786271547.8016725,
     "ast_hash": "67f705c412e51a00aca44755360a3638",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/verify-diagnostic-retry.mjs": {
+    "mtime": 1786275251.4181871,
+    "ast_hash": "f9e4c01b2eefcfee3cadf04fbb1e79b5",
+    "semantic_hash": ""
+  },
+  "graphify-out/memory/query_20260809_103503_\u4e0d\u8981\u589e\u52a0\u9876\u680f_\u5c06\u8c03\u8bd5\u5165\u53e3\u653e\u5728\u5728\u7ebf\u548c\u65f6\u95f4\u53f3\u4fa7_\u5e76\u5728\u9875\u9762\u4e0b\u6ed1\u540e\u4e0d\u518d\u663e\u793a.md": {
+    "mtime": 1786271703.0558362,
+    "ast_hash": "36e0389faba453145266daf248a74e92",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/audio/NativeMicrophoneCapture.kt": {
+    "mtime": 1786277219.4232366,
+    "ast_hash": "3d971f6f9494b3d6646b02baa3760998",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/audio/Pcm16FrameEncoder.kt": {
+    "mtime": 1786277217.9011343,
+    "ast_hash": "e06d9c903c467a46e3ce7fa9d9b2f5a4",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/audio/Pcm16FrameEncoderTest.kt": {
+    "mtime": 1786277221.9953947,
+    "ast_hash": "75df2e8408031c0fdb620696d79de323",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/inspect-seat-runtime.mjs": {
+    "mtime": 1786278128.927963,
+    "ast_hash": "ab584bb7a3442a21a3a953f6a824e8bd",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/verify-native-microphone.mjs": {
+    "mtime": 1786277556.339841,
+    "ast_hash": "8f8868c6d500d2adbe821ca61b44f88d",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/verify-seat-speech-runtime.mjs": {
+    "mtime": 1786278194.3402553,
+    "ast_hash": "d8b023863aec84ac1a0e1b0908df85b3",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/audio/androidNativeMicrophone.test.ts": {
+    "mtime": 1786277440.7077546,
+    "ast_hash": "c8e9514dc8723dd23be8555cb6430645",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/audio/androidNativeMicrophone.ts": {
+    "mtime": 1786277381.2984462,
+    "ast_hash": "08ddc4a4b88fb66839b4eb0b48147ad1",
     "semantic_hash": ""
   }
 }

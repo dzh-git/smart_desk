@@ -34,6 +34,7 @@ import { useSeatData } from "../hooks/useSeatData";
 import { useClock, formatTime, formatDuration } from "./shared";
 import { isDemoControlsEnabled } from "./shared";
 import { useSpeechStream } from "../hooks/useSpeechStream";
+import { isMicrophoneCaptureSupported } from "../audio/microphone";
 import { TranscriptPanel } from "./TranscriptPanel";
 import {
   checkinSeat,
@@ -285,8 +286,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
                 ? facesResult.value.count
                 : 0,
             microphoneStatus:
-              typeof navigator.mediaDevices?.getUserMedia === "function" &&
-              deviceInfo.microphoneReady !== false
+              isMicrophoneCaptureSupported() && deviceInfo.microphoneReady !== false
                 ? statusFromCapability(deviceInfo.microphoneReady ?? true)
                 : "ERROR",
             meetingWebsocketStatus: connection.toUpperCase() as
@@ -1850,8 +1850,7 @@ function SpeechControl({
   const translationError = unavailableDirections.join("；") || speechStatus?.translation_last_error || null;
 
   const browserSupportsMic =
-    typeof navigator !== "undefined" &&
-    navigator.mediaDevices?.getUserMedia != null;
+    typeof navigator !== "undefined" && isMicrophoneCaptureSupported();
 
   const startDisabled =
     !canStartSpeech(meetingStatus, isSpeaker, isCheckedIn, writesAllowed, modelsReady, browserSupportsMic) ||

@@ -23,6 +23,7 @@ export interface DeviceInfo {
   cameraReady?: boolean;
   faceModelReady?: boolean;
   microphoneReady?: boolean;
+  nativeMicrophoneCaptureAvailable?: boolean;
   nativeLastError?: string | null;
 }
 
@@ -39,6 +40,9 @@ export interface NativeBridge {
   getRegisteredFaces(): Promise<RegisteredFaces>;
   beginMaintenanceHold(): Promise<void>;
   cancelMaintenanceHold(): Promise<void>;
+  supportsMicrophoneCapture(): boolean;
+  startMicrophoneCapture(): Promise<void>;
+  stopMicrophoneCapture(): Promise<void>;
   startFaceVerification(): Promise<void>;
   stopFaceVerification(): Promise<void>;
 }

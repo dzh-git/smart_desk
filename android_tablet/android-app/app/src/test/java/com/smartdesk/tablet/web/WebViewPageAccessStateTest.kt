@@ -21,6 +21,7 @@ class WebViewPageAccessStateTest {
     @Test
     fun startsWithNoPrivilegedPage() {
         assertNull(state.currentUrl())
+        assertTrue(state.needsInitialPage())
         assertFalse(state.isDiagnosticPage())
         assertFalse(state.isTrustedSeatPage(config))
     }
@@ -28,6 +29,7 @@ class WebViewPageAccessStateTest {
     @Test
     fun distinguishesDiagnosticAndConfiguredSeatPages() {
         state.update("file:///android_asset/web/index.html?mode=setup")
+        assertFalse(state.needsInitialPage())
         assertTrue(state.isDiagnosticPage())
         assertFalse(state.isTrustedSeatPage(config))
 
@@ -37,6 +39,18 @@ class WebViewPageAccessStateTest {
 
         state.update("https://meeting.example.test/seat/2")
         assertFalse(state.isTrustedSeatPage(config))
+    }
+
+    @Test
+    fun onlyBlankPagesNeedAnInitialDiagnosticLoad() {
+        state.update("about:blank")
+        assertTrue(state.needsInitialPage())
+
+        state.update("   ")
+        assertTrue(state.needsInitialPage())
+
+        state.update("file:///android_asset/web/index.html?mode=offline")
+        assertFalse(state.needsInitialPage())
     }
 
     @Test

@@ -17,6 +17,8 @@ interface SmartDeskNativeJavascriptInterface {
   getRegisteredFaces(): string | object;
   beginMaintenanceHold?(): void;
   cancelMaintenanceHold?(): void;
+  startMicrophoneCapture?(): void;
+  stopMicrophoneCapture?(): void;
   startFaceVerification(): string | object | void;
   stopFaceVerification(): string | object | void;
 }
@@ -127,6 +129,25 @@ export class AndroidNativeBridge implements NativeBridge {
     const bridge = nativeInterface();
     if (typeof bridge.cancelMaintenanceHold !== "function") return;
     bridge.cancelMaintenanceHold();
+  }
+
+  supportsMicrophoneCapture(): boolean {
+    const bridge = nativeInterface();
+    return typeof bridge.startMicrophoneCapture === "function" &&
+      typeof bridge.stopMicrophoneCapture === "function";
+  }
+
+  async startMicrophoneCapture(): Promise<void> {
+    const bridge = nativeInterface();
+    if (typeof bridge.startMicrophoneCapture !== "function") {
+      throw new Error("SmartDeskNative microphone capture is unavailable");
+    }
+    bridge.startMicrophoneCapture();
+  }
+
+  async stopMicrophoneCapture(): Promise<void> {
+    const bridge = nativeInterface();
+    bridge.stopMicrophoneCapture?.();
   }
 
   async startFaceVerification(): Promise<void> {

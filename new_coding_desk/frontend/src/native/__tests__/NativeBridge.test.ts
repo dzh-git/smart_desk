@@ -124,6 +124,23 @@ describe("NativeBridge", () => {
     expect(cancelMaintenanceHold).toHaveBeenCalledTimes(1);
   });
 
+  it("reports and forwards native microphone capture", async () => {
+    const startMicrophoneCapture = vi.fn();
+    const stopMicrophoneCapture = vi.fn();
+    installRequiredMethods({
+      startMicrophoneCapture,
+      stopMicrophoneCapture,
+    });
+
+    const bridge = getNativeBridge();
+    expect(bridge.supportsMicrophoneCapture()).toBe(true);
+    await bridge.startMicrophoneCapture();
+    await bridge.stopMicrophoneCapture();
+
+    expect(startMicrophoneCapture).toHaveBeenCalledTimes(1);
+    expect(stopMicrophoneCapture).toHaveBeenCalledTimes(1);
+  });
+
   it("reads the credential and diagnostic native data", async () => {
     installRequiredMethods({
       getRegisteredFaces: vi.fn(() =>

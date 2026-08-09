@@ -1,5 +1,6 @@
 package com.smartdesk.tablet.model
 
+import android.util.Base64
 import org.json.JSONObject
 import java.util.UUID
 
@@ -40,6 +41,22 @@ object AndroidEvent {
                         payload.put("reason", reason)
                     }
                 }
+        )
+
+    fun microphoneStatus(status: String): String =
+        event(
+            "microphone_status",
+            JSONObject().put("status", status)
+        )
+
+    fun microphoneAudio(pcm16: ByteArray): String =
+        event(
+            "microphone_audio",
+            JSONObject()
+                .put("encoding", "pcm_s16le")
+                .put("sampleRate", 16_000)
+                .put("channels", 1)
+                .put("pcm16Base64", Base64.encodeToString(pcm16, Base64.NO_WRAP))
         )
 
     fun faceDetectionStatus(result: FaceDetectionResult): String =

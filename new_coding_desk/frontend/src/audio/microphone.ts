@@ -19,11 +19,16 @@
  */
 
 import { trace } from "./speechTrace";
+import {
+  AndroidNativeMicrophoneCapture,
+  isAndroidNativeMicrophoneAvailable,
+} from "./androidNativeMicrophone";
 
 export type AudioFrameCallback = (pcm16: ArrayBufferLike) => void;
 export type MicrophoneErrorCallback = (error: string) => void;
 
 export class MicrophoneCapture {
+  private nativeCapture: AndroidNativeMicrophoneCapture | null = null;
   private stream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
@@ -59,6 +64,13 @@ export class MicrophoneCapture {
     onFrame: AudioFrameCallback,
     onError?: MicrophoneErrorCallback,
   ): Promise<void> {
+    if (isAndroidNativeMicrophoneAvailable()) {
+      this.nativeCapture = new AndroidNativeMicrophoneCapture();
+      await this.nativeCapture.start(onFrame, onError);
+      trace("microphone_started_at", { source: "android_native" });
+      return;
+    }
+
     this.frameCallback = onFrame;
     this.errorCallback = onError ?? null;
     this.partialBuffer = [];
@@ -178,6 +190,10 @@ export class MicrophoneCapture {
    * Safe to call multiple times.
    */
   stop(): void {
+    if (this.nativeCapture) {
+      this.nativeCapture.stop();
+      this.nativeCapture = null;
+    }
     this.frameCallback = null;
     this.errorCallback = null;
     this.partialBuffer = [];
@@ -213,6 +229,12 @@ export class MicrophoneCapture {
 
   /** True when microphone is actively capturing. */
   get isActive(): boolean {
+    if (this.nativeCapture) return this.nativeCapture.isActive;
     return this.stream?.active === true && this.audioContext?.state === "running";
   }
+}
+
+export function isMicrophoneCaptureSupported(): boolean {
+  return isAndroidNativeMicrophoneAvailable() ||
+    typeof navigator.mediaDevices?.getUserMedia === "function";
 }

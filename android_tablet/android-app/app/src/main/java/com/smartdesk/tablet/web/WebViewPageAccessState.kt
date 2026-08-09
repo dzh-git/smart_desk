@@ -21,6 +21,9 @@ class WebViewPageAccessState(
 
     fun currentUrl(): String? = currentPageUrl.get()
 
+    fun needsInitialPage(): Boolean =
+        currentUrl().isNullOrBlank() || currentUrl() == "about:blank"
+
     fun isDiagnosticPage(): Boolean =
         currentUrl()?.startsWith(localAssetPrefix) == true
 

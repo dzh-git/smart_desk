@@ -35,6 +35,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import com.smartdesk.tablet.bridge.AndroidBridge
+import com.smartdesk.tablet.audio.NativeMicrophoneCapture
 import com.smartdesk.tablet.camera.CameraController
 import com.smartdesk.tablet.camera.FillLightOverlayView
 import com.smartdesk.tablet.config.DeviceConfig
@@ -80,6 +81,23 @@ class MainActivity : ComponentActivity() {
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallbackRegistered = false
     private var pendingMicrophoneRequest: PermissionRequest? = null
+    private var pendingNativeMicrophoneStart = false
+    private val nativeMicrophoneCapture by lazy {
+        NativeMicrophoneCapture(
+            onFrame = { pcm16 ->
+                emitToReact(AndroidEvent.microphoneAudio(pcm16))
+            },
+            onError = { error ->
+                lastNativeError = ErrorCode.MICROPHONE_CAPTURE_FAILED
+                emitToReact(
+                    AndroidEvent.error(
+                        ErrorCode.MICROPHONE_CAPTURE_FAILED,
+                        error.message ?: "Android 麦克风采集失败"
+                    )
+                )
+            }
+        )
+    }
     private val pageLoadState = SeatPageLoadState()
     private val backendHealthChecker = BackendHealthChecker()
     private val healthExecutor = Executors.newSingleThreadExecutor()
@@ -405,6 +423,12 @@ class MainActivity : ComponentActivity() {
                 onCancelMaintenanceHold = {
                     runOnUiThread(::cancelMaintenanceUnlock)
                 },
+                onStartMicrophoneCapture = {
+                    runOnUiThread(::requestStartNativeMicrophoneCapture)
+                },
+                onStopMicrophoneCapture = {
+                    runOnUiThread(::stopNativeMicrophoneCapture)
+                },
                 onStartFaceDetection = {
                     runOnUiThread(::requestStartCamera)
                 },
@@ -658,26 +682,101 @@ class MainActivity : ComponentActivity() {
     ) { granted ->
         val request = pendingMicrophoneRequest
         pendingMicrophoneRequest = null
-        if (request == null) {
+        val nativeStartRequested = pendingNativeMicrophoneStart
+        pendingNativeMicrophoneStart = false
+        if (request != null) {
+            if (granted && mayGrantMicrophone(request, true)) {
+                request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                if (recognitionManager != null) {
+                    lastNativeError = null
+                }
+                Log.i(TAG, "WebView microphone permission granted")
+            } else {
+                request.deny()
+                reportMicrophonePermissionDenied()
+            }
             return@registerForActivityResult
         }
-        if (granted && mayGrantMicrophone(request, true)) {
-            request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
-            if (recognitionManager != null) {
-                lastNativeError = null
+        if (nativeStartRequested) {
+            if (granted) {
+                startNativeMicrophoneCapture()
+            } else {
+                reportMicrophonePermissionDenied()
             }
-            Log.i(TAG, "WebView microphone permission granted")
-        } else {
-            request.deny()
-            Log.w(TAG, "WebView microphone permission denied")
-            lastNativeError = ErrorCode.MICROPHONE_PERMISSION_DENIED
+        }
+    }
+
+    private fun requestStartNativeMicrophoneCapture() {
+        if (!isTrustedSeatPage()) {
             emitToReact(
                 AndroidEvent.error(
-                    ErrorCode.MICROPHONE_PERMISSION_DENIED,
-                    "未获得麦克风权限"
+                    ErrorCode.BRIDGE_ACTION_FORBIDDEN,
+                    "原生麦克风只能从已绑定的正式席位页面启动"
+                )
+            )
+            return
+        }
+        if (nativeMicrophoneCapture.isRunning) {
+            emitToReact(AndroidEvent.microphoneStatus("STARTED"))
+            return
+        }
+        if (
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            startNativeMicrophoneCapture()
+            return
+        }
+        pendingNativeMicrophoneStart = true
+        microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    private fun startNativeMicrophoneCapture() {
+        if (
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            reportMicrophonePermissionDenied()
+            return
+        }
+        runCatching {
+            nativeMicrophoneCapture.start()
+        }.onSuccess {
+            lastNativeError = null
+            emitToReact(AndroidEvent.microphoneStatus("STARTED"))
+            Log.i(TAG, "Native microphone capture started")
+        }.onFailure { error ->
+            lastNativeError = ErrorCode.MICROPHONE_CAPTURE_FAILED
+            emitToReact(
+                AndroidEvent.error(
+                    ErrorCode.MICROPHONE_CAPTURE_FAILED,
+                    error.message ?: "Android 麦克风采集启动失败"
                 )
             )
         }
+    }
+
+    private fun stopNativeMicrophoneCapture() {
+        pendingNativeMicrophoneStart = false
+        if (!nativeMicrophoneCapture.isRunning) return
+        nativeMicrophoneCapture.stop()
+        emitToReact(AndroidEvent.microphoneStatus("STOPPED"))
+        Log.i(TAG, "Native microphone capture stopped")
+    }
+
+    private fun reportMicrophonePermissionDenied() {
+        Log.w(TAG, "Microphone permission denied")
+        lastNativeError = ErrorCode.MICROPHONE_PERMISSION_DENIED
+        emitToReact(
+            AndroidEvent.error(
+                ErrorCode.MICROPHONE_PERMISSION_DENIED,
+                "未获得麦克风权限"
+            )
+        )
     }
 
     private fun retryConfiguredPageIfNeeded() {
@@ -779,11 +878,7 @@ class MainActivity : ComponentActivity() {
         cancelSeatPageLoadTimeout()
         pageLoadState.beginHealthCheck()
         val generation = ++healthCheckGeneration
-        if (
-            pageAccessState.currentUrl().isNullOrBlank() ||
-            pageAccessState.currentUrl() == "about:blank" ||
-            pageAccessState.isDiagnosticPage()
-        ) {
+        if (pageAccessState.needsInitialPage()) {
             loadDiagnosticPage("checking")
         }
         runCatching {
@@ -922,6 +1017,7 @@ class MainActivity : ComponentActivity() {
     private fun openMaintenancePage() {
         healthCheckGeneration += 1
         cancelPendingMicrophoneRequest()
+        stopNativeMicrophoneCapture()
         emitToReact(AndroidEvent.appLifecycle("PAUSED", "maintenance"))
         loadDiagnosticPage("maintenance")
     }
@@ -1095,6 +1191,7 @@ class MainActivity : ComponentActivity() {
         cancelOfflineRetry()
         cancelSeatPageLoadTimeout()
         cancelPendingMicrophoneRequest()
+        stopNativeMicrophoneCapture()
         healthExecutor.shutdownNow()
         provisioningExecutor.shutdownNow()
         setFillLightEnabled(false)
@@ -1128,6 +1225,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         cancelPendingMicrophoneRequest()
+        stopNativeMicrophoneCapture()
         if (::webView.isInitialized) {
             emitToReact(AndroidEvent.appLifecycle("PAUSED", "activity"))
             webView.onPause()
