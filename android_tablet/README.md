@@ -31,23 +31,20 @@ android_tablet/
 
 ## 设备配置
 
-首次启动会进入本地配置页。配置通过 Android Keystore 的不可导出 AES-GCM
-密钥加密后保存在 App 私有存储；旧明文配置首次读取时自动迁移。示例见
-`android-app/app/src/main/assets/device-config.example.json`：
+首次启动会进入本地预配页。App 首次安装生成并加密保存稳定的
+`tablet-{UUID}` 物理设备 ID；旧版本已有配置时沿用原设备 ID。管理员只填写
+seat 1–9、中央主机、服务器预配口令和 6–12 位本地维护 PIN。中央主机默认推导
+后端 `:8000` 与前端 `:5173`，高级模式可覆盖完整 URL。
 
-```json
-{
-  "seatId": 1,
-  "deviceId": "tablet-seat-01",
-  "deviceToken": "replace-with-provisioned-token",
-  "serverBaseUrl": "http://192.168.1.10:8000",
-  "frontendBaseUrl": "http://192.168.1.10:5173"
-}
-```
+App 原生层生成独立设备令牌并调用 `/api/tablet-devices/provision`。只有中央主机
+确认物理设备 ID、席位和 `tablet-seat-XX` 别名完全一致后，才把配置与设备令牌
+写入 Keystore 加密的 App 私有存储；预配口令和 PIN 明文均不保存、不回显。
+后续启动会先检查 health，再调用设备绑定校验接口，通过后才加载正式席位页。
+加载失败时回退到本地状态页；离线期间每 5 秒重试，网络恢复时也立即重试。
 
-`deviceToken` 必须是后端为该设备签发的 24–256 位非空白密钥，诊断页不会回显
-已保存密钥。席位范围固定为 1–9。App 只允许 WebView 在已配置前端的同源页面内导航；主页面
-加载失败时回退到本地诊断页，网络恢复后自动重试，也可手动重试。
+正式页面右上角只有原生 SmartDesk 标识。长按 5 秒并通过本地 PIN 后才能进入
+维护配置页。Android 系统广播 `BOOT_COMPLETED` 后会自动拉起单实例 Activity；
+现场仍需为目标平板启用厂商自启动白名单并关闭阻塞式锁屏。
 主前端会通过 `SmartDeskNative.getDeviceInfo()` 读取 `serverBaseUrl`，并据此连接后端
 HTTP API 和会议/语音 WebSocket。
 
@@ -58,6 +55,7 @@ HTTP API 和会议/语音 WebSocket。
 ```javascript
 window.SmartDeskNative.getDeviceInfo()
 window.SmartDeskNative.getDeviceCredential()
+window.SmartDeskNative.provisionDeviceConfig(configJson)
 window.SmartDeskNative.getIdentityStatus()
 window.SmartDeskNative.getRegisteredFaces()
 window.SmartDeskNative.startFaceVerification()

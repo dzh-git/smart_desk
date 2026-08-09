@@ -11,12 +11,22 @@ data class DeviceConfig(
     val frontendUrl: String,
     val deviceToken: String
 ) {
+    val seatAlias: String
+        get() = "tablet-seat-%02d".format(seatId)
+
     fun seatPageUrl(): String = "$frontendUrl/seat/$seatId"
+
+    fun centralHost(): String {
+        val uri = URI(serverUrl)
+        return "${uri.scheme}://${uri.host}"
+    }
 
     fun toJson(includeSecret: Boolean = false): JSONObject =
         JSONObject()
             .put("seatId", seatId)
+            .put("seatAlias", seatAlias)
             .put("deviceId", deviceId)
+            .put("centralHost", centralHost())
             .put("serverBaseUrl", serverUrl)
             .put("frontendBaseUrl", frontendUrl)
             .put("deviceTokenConfigured", deviceToken.isNotBlank())

@@ -16,6 +16,7 @@ from backend.schemas.tablet_device import (
     TabletDeviceProvisionRequest,
     TabletDeviceHeartbeatRequest,
     TabletDeviceResponse,
+    TabletDeviceValidateRequest,
 )
 from backend.services.tablet_device_service import TabletDeviceService
 from backend.security.rate_limit import (
@@ -104,6 +105,7 @@ def provision_tablet(
             seat_id=body.seat_id,
             token=body.device_token,
             enabled=body.enabled,
+            replace_existing=body.replace_existing,
         )
     except ConflictError as error:
         return _error(error, 409)
@@ -115,7 +117,43 @@ def provision_tablet(
         device_id=body.device_id,
         seat_id=body.seat_id,
         result="accepted",
+        replace_existing=body.replace_existing,
     )
+    return ApiResponse.ok(
+        data=TabletDeviceResponse.model_validate(device),
+    )
+
+
+@router.post(
+    "/{device_id}/validate",
+    response_model=ApiResponse[TabletDeviceResponse],
+)
+def validate_tablet_binding(
+    device_id: str,
+    body: TabletDeviceValidateRequest,
+    db: Session = Depends(get_db),
+    device_token: str | None = Header(
+        default=None,
+        alias="X-SmartDesk-Device-Token",
+    ),
+):
+    """Validate a stored tablet binding before loading its seat page."""
+    try:
+        device = TabletDeviceService(db).validate_binding(
+            device_id=device_id,
+            seat_id=body.seat_id,
+            token=device_token,
+            app_version=body.app_version,
+        )
+    except NotFoundError as error:
+        return _error(error, 404)
+    except ValidationError as error:
+        status = {
+            "DEVICE_AUTH_FAILED": 401,
+            "DEVICE_DISABLED": 403,
+            "DEVICE_SEAT_MISMATCH": 409,
+        }.get(error.error_code, 400)
+        return _error(error, status)
     return ApiResponse.ok(
         data=TabletDeviceResponse.model_validate(device),
     )

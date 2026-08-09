@@ -3,10 +3,12 @@ package com.smartdesk.tablet.web
 enum class SeatPageLoadStatus {
     IDLE,
     CHECKING_BACKEND,
+    VALIDATING_BINDING,
     LOADING,
     READY,
     OFFLINE,
     SERVER_ERROR,
+    BINDING_ERROR,
     TIMED_OUT
 }
 
@@ -25,6 +27,10 @@ class SeatPageLoadState {
         status = SeatPageLoadStatus.LOADING
     }
 
+    fun beginBindingValidation() {
+        status = SeatPageLoadStatus.VALIDATING_BINDING
+    }
+
     fun ready() {
         status = SeatPageLoadStatus.READY
     }
@@ -35,6 +41,10 @@ class SeatPageLoadState {
 
     fun serverError() {
         status = SeatPageLoadStatus.SERVER_ERROR
+    }
+
+    fun bindingError() {
+        status = SeatPageLoadStatus.BINDING_ERROR
     }
 
     fun timedOut(): Boolean {

@@ -26,6 +26,8 @@ class DeviceConfigTest {
             config.deviceToken
         )
         assertEquals("http://192.168.1.10:8000", config.serverUrl)
+        assertEquals("http://192.168.1.10", config.centralHost())
+        assertEquals("tablet-seat-01", config.seatAlias)
         assertEquals("http://192.168.1.10:5173/seat/1", config.seatPageUrl())
     }
 

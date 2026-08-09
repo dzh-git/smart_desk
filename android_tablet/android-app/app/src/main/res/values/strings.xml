@@ -18,5 +18,8 @@
     <string name="device_maintenance_title">进入设备维护？</string>
     <string name="device_maintenance_message">会议页面将暂停。设备配置只应由管理员修改。</string>
     <string name="device_maintenance_confirm">进入维护</string>
+    <string name="device_maintenance_pin_hint">输入 6–12 位维护 PIN</string>
+    <string name="device_maintenance_pin_invalid">维护 PIN 不正确</string>
+    <string name="device_maintenance_pin_title">管理员验证</string>
     <string name="cancel">取消</string>
 </resources>

@@ -35,3 +35,7 @@ class TabletDevice(Base):
         default=_utcnow,
         onupdate=_utcnow,
     )
+
+    @property
+    def seat_alias(self) -> str:
+        return f"tablet-seat-{self.seat_id:02d}"

@@ -89,6 +89,37 @@ h1 {
   font-size: 18px;
 }
 
+.configuration-summary {
+  margin: 0 0 18px;
+  color: var(--muted);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.checkbox-field,
+.replacement-confirmation {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox-field input,
+.replacement-confirmation input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.replacement-confirmation {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #d97706;
+  border-radius: 8px;
+  color: #92400e;
+  background: #fffbeb;
+}
+
 .configuration-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -117,6 +148,15 @@ h1 {
 .configuration-actions button.primary {
   border-color: #4778ef;
   background: #2e63e5;
+}
+
+.configuration-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.status-actions {
+  margin-bottom: 18px;
 }
 
 .status-row {

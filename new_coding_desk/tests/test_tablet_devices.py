@@ -5,8 +5,10 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from backend.main import app
+from backend.exceptions import ConflictError
 from backend.migrations import ensure_tablet_device_status_columns
 from backend.models.tablet_device import TabletDevice
 from backend.services.tablet_device_service import (
@@ -92,6 +94,7 @@ def test_authorized_provisioning_stores_only_token_hash(monkeypatch):
 
     assert response.status_code == 201
     assert response.json()["data"]["deviceId"] == "tablet-seat-01"
+    assert response.json()["data"]["seatAlias"] == "tablet-seat-01"
     db = TestSessionLocal()
     try:
         stored = db.get(TabletDevice, "tablet-seat-01")
@@ -128,6 +131,158 @@ def test_one_tablet_per_seat():
         db.close()
 
 
+def test_stable_device_can_move_to_an_unbound_seat():
+    db = TestSessionLocal()
+    try:
+        service = TabletDeviceService(db)
+        service.provision(
+            device_id="tablet-physical-0001",
+            seat_id=1,
+            token=DEVICE_TOKEN,
+        )
+        moved = service.provision(
+            device_id="tablet-physical-0001",
+            seat_id=2,
+            token=DEVICE_TOKEN,
+        )
+
+        assert moved.id == "tablet-physical-0001"
+        assert moved.seat_id == 2
+        assert moved.seat_alias == "tablet-seat-02"
+        assert service.repo.get_by_seat(1) is None
+    finally:
+        db.close()
+
+
+def test_authorized_replacement_removes_previous_binding(monkeypatch):
+    monkeypatch.setenv("SMARTDESK_DEVICE_PROVISIONING_TOKEN", ADMIN_TOKEN)
+    _provision_direct()
+
+    conflict = client.post(
+        "/api/tablet-devices/provision",
+        headers={"X-SmartDesk-Provisioning-Token": ADMIN_TOKEN},
+        json={
+            "deviceId": "tablet-physical-replacement",
+            "seatId": 1,
+            "deviceToken": "replacement-device-secret-token-0001",
+        },
+    )
+    replaced = client.post(
+        "/api/tablet-devices/provision",
+        headers={"X-SmartDesk-Provisioning-Token": ADMIN_TOKEN},
+        json={
+            "deviceId": "tablet-physical-replacement",
+            "seatId": 1,
+            "deviceToken": "replacement-device-secret-token-0001",
+            "replaceExisting": True,
+        },
+    )
+
+    assert conflict.status_code == 409
+    assert conflict.json()["error_code"] == "DEVICE_SEAT_ALREADY_BOUND"
+    assert replaced.status_code == 201
+    assert replaced.json()["data"]["seatAlias"] == "tablet-seat-01"
+    db = TestSessionLocal()
+    try:
+        assert db.get(TabletDevice, "tablet-seat-01") is None
+        assert db.get(TabletDevice, "tablet-physical-replacement") is not None
+    finally:
+        db.close()
+
+
+def test_replacement_rolls_back_when_new_binding_fails(monkeypatch):
+    _provision_direct()
+    db = TestSessionLocal()
+    try:
+        service = TabletDeviceService(db)
+
+        def fail_save(_device):
+            raise IntegrityError("insert", {}, RuntimeError("forced failure"))
+
+        monkeypatch.setattr(service.repo, "save", fail_save)
+        try:
+            service.provision(
+                device_id="tablet-physical-replacement",
+                seat_id=1,
+                token="replacement-device-secret-token-0001",
+                replace_existing=True,
+            )
+        except ConflictError as error:
+            assert error.error_code == "DEVICE_BINDING_CONFLICT"
+        else:
+            raise AssertionError("Forced replacement failure was accepted")
+
+        assert db.get(TabletDevice, "tablet-seat-01") is not None
+        assert db.get(TabletDevice, "tablet-physical-replacement") is None
+    finally:
+        db.close()
+
+
+def test_validate_binding_checks_token_seat_and_version(monkeypatch):
+    _provision_direct()
+    monkeypatch.setenv("SMARTDESK_TABLET_MIN_APP_VERSION", "0.8.0")
+    url = "/api/tablet-devices/tablet-seat-01/validate"
+
+    valid = client.post(
+        url,
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json={"seatId": 1, "appVersion": "0.8.0"},
+    )
+    wrong_token = client.post(
+        url,
+        headers={
+            "X-SmartDesk-Device-Token": "wrong-device-secret-token-000001"
+        },
+        json={"seatId": 1, "appVersion": "0.8.0"},
+    )
+    wrong_seat = client.post(
+        url,
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json={"seatId": 2, "appVersion": "0.8.0"},
+    )
+    old_version = client.post(
+        url,
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json={"seatId": 1, "appVersion": "0.7.9"},
+    )
+
+    assert valid.status_code == 200
+    assert valid.json()["data"]["seatAlias"] == "tablet-seat-01"
+    assert wrong_token.status_code == 401
+    assert wrong_token.json()["error_code"] == "DEVICE_AUTH_FAILED"
+    assert wrong_seat.status_code == 409
+    assert wrong_seat.json()["error_code"] == "DEVICE_SEAT_MISMATCH"
+    assert old_version.status_code == 400
+    assert old_version.json()["error_code"] == "DEVICE_APP_VERSION_UNSUPPORTED"
+
+
+def test_validate_binding_rejects_unknown_and_disabled_devices():
+    unknown = client.post(
+        "/api/tablet-devices/tablet-unknown/validate",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json={"seatId": 1, "appVersion": "0.8.0"},
+    )
+    _provision_direct()
+    db = TestSessionLocal()
+    try:
+        device = db.get(TabletDevice, "tablet-seat-01")
+        assert device is not None
+        device.enabled = False
+        db.commit()
+    finally:
+        db.close()
+    disabled = client.post(
+        "/api/tablet-devices/tablet-seat-01/validate",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json={"seatId": 1, "appVersion": "0.8.0"},
+    )
+
+    assert unknown.status_code == 404
+    assert unknown.json()["error_code"] == "DEVICE_NOT_PROVISIONED"
+    assert disabled.status_code == 403
+    assert disabled.json()["error_code"] == "DEVICE_DISABLED"
+
+
 def test_authenticated_heartbeat_persists_operational_status():
     _provision_direct()
 
@@ -141,6 +296,7 @@ def test_authenticated_heartbeat_persists_operational_status():
     assert response.json()["data"] == {
         "deviceId": "tablet-seat-01",
         "seatId": 1,
+        "seatAlias": "tablet-seat-01",
         "enabled": True,
         "appVersion": "0.8.0",
         "lastSeenAt": response.json()["data"]["lastSeenAt"],
@@ -262,6 +418,8 @@ def test_hardware_status_separates_tablet_and_esp32_state(monkeypatch):
         item for item in data["tablets"] if item["seat_id"] == 1
     )
     assert tablet["online"] is True
+    assert tablet["device_id"] == "tablet-seat-01"
+    assert tablet["seat_alias"] == "tablet-seat-01"
     assert tablet["camera_status"] == "READY"
     assert tablet["registered_templates_count"] == 3
     assert "seats" in data

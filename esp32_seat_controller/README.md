@@ -69,7 +69,7 @@ python -m pytest -q new_coding_desk/tests/test_esp32_protocol.py
 3. 使用 PlatformIO 执行：
 
 ```powershell
-pio run -d esp32_seat_controller/firmware
+.\PIO.bat run -d esp32_seat_controller/firmware
 ```
 
 `DeviceConfig.h` 和 `.pio/` 已排除，不会把令牌提交到仓库。固件采用非阻塞传感

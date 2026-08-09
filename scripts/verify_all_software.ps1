@@ -8,6 +8,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $python)) {
+    throw "SmartDesk .venv is missing. Run SETUP_PYTHON.bat first."
+}
+$env:PYTHONUTF8 = "1"
+& $python (Join-Path $PSScriptRoot "check_python_runtime.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "SmartDesk requires the repository Python 3.11 environment."
+}
+$env:Path = "$(Split-Path -Parent $python);$env:Path"
+$platformioScripts = Join-Path $repoRoot ".tools\platformio-venv\Scripts"
+if (Test-Path -LiteralPath $platformioScripts) {
+    $env:Path = "$(Split-Path -Parent $python);$platformioScripts;$env:Path"
+}
 $results = [System.Collections.Generic.List[object]]::new()
 $reportRoot = Join-Path $repoRoot "logs\verification"
 New-Item -ItemType Directory -Force -Path $reportRoot | Out-Null

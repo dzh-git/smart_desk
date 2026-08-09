@@ -116,9 +116,9 @@ export function getDeviceConfig() {
   return parseBridgePayload(requireAndroidBridge().getDeviceConfig());
 }
 
-export function saveDeviceConfig(config) {
+export function provisionDeviceConfig(config) {
   return parseBridgePayload(
-    requireAndroidBridge().saveDeviceConfig(JSON.stringify(config)),
+    requireAndroidBridge().provisionDeviceConfig(JSON.stringify(config)),
   );
 }
 

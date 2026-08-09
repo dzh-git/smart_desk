@@ -5,15 +5,16 @@
 ## 启动
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+Set-Location ..
+.\SETUP_PYTHON.bat
+Set-Location smartdesk_gesture_controller
 .\start_gesture.bat
 ```
 
 需要提前放置 `hand_landmarker.task` 和 `gesture_recognizer.task`。安全标定可使用：
 
 ```powershell
-.venv\Scripts\python -m hands.gesture_controller --no-mouse
+..\.venv\Scripts\python.exe -m hands.gesture_controller --no-mouse
 ```
 
 常用控制：`Ctrl+Alt+G` 暂停/恢复，`Ctrl+Alt+Q` 紧急退出，调试窗口内可用 `p`/空格和 `q`/Esc。
@@ -34,5 +35,5 @@ python -m venv .venv
 ## 测试
 
 ```powershell
-.venv\Scripts\python -m pytest tests -q
+..\.venv\Scripts\python.exe -m pytest tests -q
 ```

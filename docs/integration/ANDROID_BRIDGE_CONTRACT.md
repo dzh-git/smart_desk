@@ -33,9 +33,15 @@ interface NativeBridge {
 
 ## DeviceInfo
 
-必须字段为 `deviceId`、`seatId`、`serverUrl`、`frontendUrl`、`configured`；
+必须字段为 `deviceId`、`seatId`、`seatAlias`、`serverUrl`、`frontendUrl`、
+`configured`；
 当前实现还返回 `serverBaseUrl`/`frontendBaseUrl` 别名、`appVersion`、
 Android 设备信息及 camera/face-model/microphone/bridge 状态。
+
+本地首次配置或已通过 PIN 解锁的维护页使用异步
+`provisionDeviceConfig(configJson)`；原生层生成设备令牌、调用中央预配接口并在
+成功后发送 `device_config_saved`。接口响应和事件不得包含预配口令、设备令牌或
+PIN。正式席位页无权调用该配置入口。
 
 `getDeviceCredential()` 仅在当前 URL 与配置前端同源、路径严格为
 `/seat/{配置 seatId}` 时返回 `device_credential`。诊断页、错误页、错席 URL

@@ -4,12 +4,15 @@ import { WebNativeBridge } from "./WebNativeBridge";
 export interface DeviceInfo {
   deviceId: string;
   seatId: number | null;
+  seatAlias?: string | null;
+  centralHost?: string | null;
   serverUrl: string | null;
   frontendUrl: string | null;
   serverBaseUrl?: string | null;
   frontendBaseUrl?: string | null;
   configured: boolean;
   deviceTokenConfigured?: boolean;
+  maintenancePinConfigured?: boolean;
   appVersion?: string;
   manufacturer?: string;
   model?: string;

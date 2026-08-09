@@ -187,6 +187,7 @@ async def hardware_status(db: Session = Depends(get_db)):
         tablets.append(
             {
                 "seat_id": seat_id,
+                "seat_alias": f"tablet-seat-{seat_id:02d}",
                 "provisioned": device is not None,
                 "device_id": device.id if device is not None else None,
                 "enabled": device.enabled if device is not None else False,

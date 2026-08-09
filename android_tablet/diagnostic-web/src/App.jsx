@@ -11,7 +11,7 @@ import {
   isIdentityVerificationAvailable,
   removeFaceTemplate,
   reloadSeatPage,
-  saveDeviceConfig,
+  provisionDeviceConfig,
   setFaceDiagnosticsEnabled,
   setVerificationThreshold,
   startFaceEnrollment,
@@ -20,6 +20,12 @@ import {
   stopFaceDetection,
   stopIdentityVerification,
 } from "./androidBridge";
+import {
+  buildProvisioningPayload,
+  isConfigurationVisible,
+  seatAlias,
+  usesAdvancedEndpoints,
+} from "./configWorkflow";
 
 const INITIAL_STATUS = {
   bridgeReady: false,
@@ -51,21 +57,27 @@ export default function App() {
   const [device, setDevice] = useState({
     deviceId: "未配置",
     seatId: null,
+    seatAlias: null,
     serverBaseUrl: null,
     frontendBaseUrl: null,
     deviceTokenConfigured: false,
     manufacturer: "—",
     model: "—",
     androidVersion: "—",
+    maintenancePinConfigured: false,
   });
   const [deviceConfig, setDeviceConfig] = useState({
     seatId: 1,
-    deviceId: "",
-    serverBaseUrl: "http://192.168.1.10:8000",
-    frontendBaseUrl: "http://192.168.1.10:5173",
-    deviceToken: "",
-    deviceTokenConfigured: false,
+    centralHost: "192.168.1.10",
+    serverBaseUrl: "",
+    frontendBaseUrl: "",
+    provisioningToken: "",
+    maintenancePin: "",
+    replaceExisting: false,
   });
+  const [showAdvancedUrls, setShowAdvancedUrls] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+  const [replacementRequired, setReplacementRequired] = useState(false);
   const diagnosticMode =
     new URLSearchParams(window.location.search).get("mode") ?? "diagnostic";
   const diagnosticMessage = {
@@ -73,6 +85,7 @@ export default function App() {
     checking: "正在检查中央后端健康状态，请稍候。",
     offline: "无法连接中央后端，请检查网络或配置后重试。",
     "server-error": "中央后端或会议页面返回错误，请检查服务状态后重试。",
+    "binding-error": "本机设备身份、席位或版本未通过中央主机校验，已阻止加载会议页面。",
     timeout: "会议页面加载超时，请检查网络、前端服务和配置后重试。",
     maintenance: "已进入管理员维护模式；会议页面和录音已暂停。",
     diagnostic: "正式会议界面由中央主机 /seat/{seatId} 提供。",
@@ -126,23 +139,18 @@ export default function App() {
     if (event?.type === "device_info") {
       setDevice(event.data);
       if (event.data.configured) {
+        setShowAdvancedUrls(usesAdvancedEndpoints(event.data));
         setDeviceConfig({
           seatId: event.data.seatId,
-          deviceId: event.data.deviceId,
+          centralHost: event.data.centralHost ?? "",
           serverBaseUrl:
             event.data.serverBaseUrl ?? event.data.serverUrl,
           frontendBaseUrl:
             event.data.frontendBaseUrl ?? event.data.frontendUrl,
-          deviceToken: "",
-          deviceTokenConfigured: Boolean(
-            event.data.deviceTokenConfigured,
-          ),
+          provisioningToken: "",
+          maintenancePin: "",
+          replaceExisting: false,
         });
-      } else {
-        setDeviceConfig((current) => ({
-          ...current,
-          deviceId: event.data.deviceId,
-        }));
       }
       setStatus((current) => ({
         ...current,
@@ -153,10 +161,15 @@ export default function App() {
     }
 
     if (event?.type === "device_config" && event.data) {
+      if (event.data.centralHost) {
+        setShowAdvancedUrls(usesAdvancedEndpoints(event.data));
+      }
       setDeviceConfig((current) => ({
         ...current,
         ...event.data,
-        deviceToken: "",
+        provisioningToken: "",
+        maintenancePin: "",
+        replaceExisting: false,
       }));
       return;
     }
@@ -165,7 +178,9 @@ export default function App() {
       setDeviceConfig((current) => ({
         ...current,
         ...event.data,
-        deviceToken: "",
+        provisioningToken: "",
+        maintenancePin: "",
+        replaceExisting: false,
       }));
       setDevice((current) => ({
         ...current,
@@ -176,6 +191,14 @@ export default function App() {
         ...current,
         error: "无",
       }));
+      setProvisioning(false);
+      setReplacementRequired(false);
+      return;
+    }
+
+    if (event?.type === "device_provisioning_started") {
+      setProvisioning(true);
+      setStatus((current) => ({ ...current, error: "无" }));
       return;
     }
 
@@ -287,6 +310,10 @@ export default function App() {
     }
 
     if (event?.type === "error") {
+      setProvisioning(false);
+      if (event.data.code === "DEVICE_SEAT_ALREADY_BOUND") {
+        setReplacementRequired(true);
+      }
       setStatus((current) => ({
         ...current,
         camera: event.data.cameraStillRunning ? current.camera : "空闲",
@@ -316,11 +343,23 @@ export default function App() {
 
   function persistDeviceConfig(event) {
     event.preventDefault();
+    const seatId = Number(deviceConfig.seatId);
+    const alias = seatAlias(seatId);
+    if (
+      !window.confirm(
+        `确认绑定本机？\n设备：${device.deviceId}\n席位：${seatId}\n别名：${alias}`,
+      )
+    ) {
+      return;
+    }
     try {
-      const result = saveDeviceConfig({
-        ...deviceConfig,
-        seatId: Number(deviceConfig.seatId),
-      });
+      const result = provisionDeviceConfig(
+        buildProvisioningPayload(
+          deviceConfig,
+          device,
+          showAdvancedUrls,
+        ),
+      );
       handleAndroidEvent(result);
     } catch (error) {
       setStatus((current) => ({
@@ -433,6 +472,8 @@ export default function App() {
   const cameraRunning = status.camera !== "空闲";
   const thresholdLabel =
     status.threshold == null ? "待标定" : status.threshold.toFixed(3);
+  const configurationVisible = isConfigurationVisible(diagnosticMode);
+  const selectedSeatAlias = seatAlias(deviceConfig.seatId);
 
   return (
     <main className="app-shell">
@@ -442,12 +483,16 @@ export default function App() {
         <p>{diagnosticMessage}</p>
       </section>
 
-      <form
+      {configurationVisible && <form
         className="configuration"
         aria-label="设备配置"
         onSubmit={persistDeviceConfig}
       >
-        <h2>设备配置</h2>
+        <h2>{diagnosticMode === "setup" ? "首次设备预配" : "管理员设备维护"}</h2>
+        <p className="configuration-summary">
+          物理设备 ID：<strong>{device.deviceId}</strong><br />
+          目标席位别名：<strong>{selectedSeatAlias}</strong>
+        </p>
         <div className="configuration-grid">
           <label>
             <span>席位编号（1–9）</span>
@@ -463,69 +508,111 @@ export default function App() {
             />
           </label>
           <label>
-            <span>设备编号</span>
+            <span>中央主机 IP 或主机名</span>
             <input
               required
-              minLength="3"
-              maxLength="64"
-              pattern="[A-Za-z0-9._-]+"
-              value={deviceConfig.deviceId}
+              value={deviceConfig.centralHost}
               onChange={(event) =>
-                updateDeviceConfig("deviceId", event.target.value)
+                updateDeviceConfig("centralHost", event.target.value)
               }
             />
           </label>
           <label>
-            <span>业务后端地址</span>
-            <input
-              type="url"
-              required
-              value={deviceConfig.serverBaseUrl}
-              onChange={(event) =>
-                updateDeviceConfig("serverBaseUrl", event.target.value)
-              }
-            />
-          </label>
-          <label>
-            <span>会议前端地址</span>
-            <input
-              type="url"
-              required
-              value={deviceConfig.frontendBaseUrl}
-              onChange={(event) =>
-                updateDeviceConfig("frontendBaseUrl", event.target.value)
-              }
-            />
-          </label>
-          <label>
-            <span>
-              设备密钥
-              {deviceConfig.deviceTokenConfigured
-                ? "（留空保留现有密钥）"
-                : ""}
-            </span>
+            <span>服务器预配口令</span>
             <input
               type="password"
+              required
               minLength="24"
               maxLength="256"
-              required={!deviceConfig.deviceTokenConfigured}
               autoComplete="new-password"
-              value={deviceConfig.deviceToken}
+              value={deviceConfig.provisioningToken}
               onChange={(event) =>
-                updateDeviceConfig("deviceToken", event.target.value)
+                updateDeviceConfig("provisioningToken", event.target.value)
               }
             />
           </label>
+          {!device.maintenancePinConfigured && <label>
+            <span>本地维护 PIN（6–12 位数字）</span>
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]{6,12}"
+              required
+              minLength="6"
+              maxLength="12"
+              autoComplete="new-password"
+              value={deviceConfig.maintenancePin}
+              onChange={(event) =>
+                updateDeviceConfig("maintenancePin", event.target.value)
+              }
+            />
+          </label>}
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={showAdvancedUrls}
+              onChange={(event) =>
+                setShowAdvancedUrls(event.target.checked)
+              }
+            />
+            <span>高级：覆盖后端与前端 URL</span>
+          </label>
+          {showAdvancedUrls && <>
+            <label>
+              <span>业务后端地址</span>
+              <input
+                type="url"
+                required
+                placeholder="http://192.168.1.10:8000"
+                value={deviceConfig.serverBaseUrl}
+                onChange={(event) =>
+                  updateDeviceConfig("serverBaseUrl", event.target.value)
+                }
+              />
+            </label>
+            <label>
+              <span>会议前端地址</span>
+              <input
+                type="url"
+                required
+                placeholder="http://192.168.1.10:5173"
+                value={deviceConfig.frontendBaseUrl}
+                onChange={(event) =>
+                  updateDeviceConfig("frontendBaseUrl", event.target.value)
+                }
+              />
+            </label>
+          </>}
         </div>
+        {replacementRequired && <label className="replacement-confirmation">
+          <input
+            type="checkbox"
+            checked={deviceConfig.replaceExisting}
+            onChange={(event) =>
+              updateDeviceConfig("replaceExisting", event.target.checked)
+            }
+          />
+          <span>目标席位已绑定其他平板；确认解除旧绑定并由本机替换</span>
+        </label>}
         <div className="configuration-actions">
-          <button type="submit" className="primary">
-            保存并打开正式席位页面
+          <button
+            type="submit"
+            className="primary"
+            disabled={provisioning || (replacementRequired && !deviceConfig.replaceExisting)}
+          >
+            {provisioning ? "正在绑定中央主机…" : "绑定并打开正式席位页面"}
           </button>
           <button type="button" onClick={openSeatPage}>
             使用已保存配置重试
           </button>
         </div>
-      </form>
+      </form>}
+
+      {!configurationVisible && <div className="configuration-actions status-actions">
+        <button type="button" onClick={openSeatPage}>
+          重新检查并打开席位页面
+        </button>
+      </div>}
 
       <section className="panel" aria-label="设备和检测状态">
         <div className="status-row">
@@ -534,7 +621,11 @@ export default function App() {
         </div>
         <div className="status-row">
           <span>绑定席位</span>
-          <strong>{device.seatId ?? "未配置"}</strong>
+          <strong>
+            {device.seatId == null
+              ? "未配置"
+              : `${device.seatId} · ${device.seatAlias ?? seatAlias(device.seatId)}`}
+          </strong>
         </div>
         <div className="status-row">
           <span>设备型号</span>

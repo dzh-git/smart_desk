@@ -47,7 +47,9 @@ ESP32 × 9
 
 ## 环境
 
-- 中央主机：Windows 10/11、Python 3.12、Node.js 22。
+- 中央主机：Windows 10/11、Python 3.11（唯一受支持版本）、Node.js 22。
+- 仓库统一使用根目录 `.venv`；不要依赖系统 PATH 中的裸 `python`，也不要
+  为各模块分别创建虚拟环境。
 - Android 构建：JDK 17、Android SDK、Gradle Wrapper。
 - ESP32 构建：PlatformIO CLI。
 - 完整语音能力另需 `new_coding_desk/requirements.txt` 中的大型模型依赖和本地
@@ -57,10 +59,16 @@ ESP32 × 9
 安装前端依赖：
 
 ```powershell
+.\SETUP_PYTHON.bat
 npm ci --prefix new_coding_desk/frontend
 npm ci --prefix android_tablet/diagnostic-web
-python -m pip install -r new_coding_desk/requirements.txt
 ```
+
+`SETUP_PYTHON.bat` 会查找 Python 3.11、创建 `.venv`、安装全部 Python
+依赖并执行版本与依赖检查。固定解释器为
+`.venv\Scripts\python.exe`；CI 可使用 `SETUP_PYTHON.bat -Profile CI`。
+由于 PlatformIO 6.x 与语音栈依赖的 Click 版本互斥，固件 CLI 隔离在
+`.tools\platformio-venv`，但同样强制使用 Python 3.11。
 
 ## 中央主机启动
 
@@ -107,7 +115,7 @@ Set-Location android_tablet
 `DeviceConfig.h`，为每席填写不同的席位、设备号和令牌：
 
 ```powershell
-pio run -d esp32_seat_controller/firmware
+.\PIO.bat run -d esp32_seat_controller/firmware
 ```
 
 当前协议唯一权威来源是

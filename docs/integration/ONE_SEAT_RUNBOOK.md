@@ -28,9 +28,11 @@ ACK、重复/乱序事件、刷新、断线、后端/控制器恢复，并连续
 2. 给中央主机配置固定局域网 IP；开放可信局域网到 TCP 8000、5173。
 3. 将 `config/smartdesk.integration.esp32.example.json` 的内容部署为
    `config/smartdesk.integration.json`；保存原配置以便回滚。
-4. 生成三个不同的强随机值：管理预配令牌、平板令牌、ESP32 令牌。不得提交。
-5. 确保席位 1 的平板、URL、后端登记、ESP32 配置均使用 seat 1，但设备 ID
-   分别为 `tablet-seat-01` 和 `esp32-seat-01`。
+4. 生成两个不同的强随机值：管理预配令牌、ESP32 令牌。不得提交；平板设备
+   令牌由 App 在预配时自行生成并加密保存。
+5. 确保席位 1 的平板、URL、后端登记、ESP32 配置均使用 seat 1；平板物理
+   deviceId 为 App 生成的 `tablet-{UUID}`，席位别名为 `tablet-seat-01`，ESP32
+   deviceId 为 `esp32-seat-01`。
 6. Debug APK 需要本地研究权重；Release 当前必须被许可证门禁阻断。
 
 示例会话环境：
@@ -83,23 +85,13 @@ http://<host-ip>:5173/seat/1
 
 ## 4. 预配平板与会议数据
 
-预配平板：
+平板预配由同一 APK 的首次配置页完成；后端只需启用管理预配口令：
 
 ```powershell
 $base = "http://<host-ip>:8000"
-$headers = @{
-  "X-SmartDesk-Provisioning-Token" =
-    $env:SMARTDESK_DEVICE_PROVISIONING_TOKEN
+if ($env:SMARTDESK_DEVICE_PROVISIONING_TOKEN.Length -lt 24) {
+  throw "SMARTDESK_DEVICE_PROVISIONING_TOKEN must contain 24+ characters"
 }
-$body = @{
-  deviceId = "tablet-seat-01"
-  seatId = 1
-  deviceToken = "<tablet-token-24+-chars>"
-  enabled = $true
-} | ConvertTo-Json
-Invoke-RestMethod -Method Post `
-  -Uri "$base/api/tablet-devices/provision" `
-  -Headers $headers -ContentType "application/json" -Body $body
 ```
 
 在测试数据库创建稳定人员、会议和参会关系：
@@ -132,17 +124,10 @@ Invoke-RestMethod -Method Post `
 
 ## 5. 配置设备
 
-Android 首次配置：
-
-```json
-{
-  "seatId": 1,
-  "deviceId": "tablet-seat-01",
-  "deviceToken": "<tablet-token-24+-chars>",
-  "serverBaseUrl": "http://<host-ip>:8000",
-  "frontendBaseUrl": "http://<host-ip>:5173"
-}
-```
+Android 首次配置页填写 seat 1、`<host-ip>`、管理预配口令和 6–12 位本地维护
+PIN。App 自动生成稳定的 `tablet-{UUID}` 与独立设备令牌，中央主机确认后显示
+别名 `tablet-seat-01` 并进入 `/seat/1`。不要在文档、截图或普通文件中记录设备
+令牌。
 
 固件将 `DeviceConfig.example.h` 复制为忽略的 `DeviceConfig.h`，填写同一 Wi-Fi、
 中央地址、seat 1、`esp32-seat-01` 和 ESP32 独立令牌：

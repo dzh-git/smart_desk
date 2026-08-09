@@ -23,7 +23,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
           cache: pip
           cache-dependency-path: |
             new_coding_desk/requirements-ci.txt
@@ -52,11 +52,13 @@ jobs:
       - name: Install Python test dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r new_coding_desk/requirements-ci.txt
-          python -m pip install -r smartdesk_gesture_controller/requirements.txt
-          python -m pip install -r esp32_seat_controller/simulator/requirements.txt
-          python -m pip install platformio
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r new_coding_desk/requirements-ci.txt
+          .\.venv\Scripts\python.exe -m pip install -r smartdesk_gesture_controller/requirements.txt
+          .\.venv\Scripts\python.exe -m pip install -r esp32_seat_controller/simulator/requirements.txt
+          .\.venv\Scripts\python.exe -m venv .tools/platformio-venv
+          .\.tools\platformio-venv\Scripts\python.exe -m pip install platformio
 
       - name: Install web dependencies
         shell: pwsh

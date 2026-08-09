@@ -50,6 +50,35 @@ class DeviceConfigStoreTest {
         )
     }
 
+    @Test
+    fun invalidReconfigurationDoesNotOverwriteStoredConfiguration() {
+        val local = MemoryStringStore()
+        val store = DeviceConfigStore(local)
+        store.save(validPayload("original-device-secret-token-0001"))
+
+        runCatching {
+            store.save(
+                """
+                {
+                  "seatId": 10,
+                  "deviceId": "tablet-new-physical-id",
+                  "deviceToken": "replacement-device-secret-token-0001",
+                  "serverBaseUrl": "http://192.168.1.20:8000",
+                  "frontendBaseUrl": "http://192.168.1.20:5173"
+                }
+                """.trimIndent()
+            )
+        }
+
+        val loaded = DeviceConfigStore(local).load()
+        assertEquals(1, loaded?.seatId)
+        assertEquals("tablet-seat-01", loaded?.deviceId)
+        assertEquals(
+            "original-device-secret-token-0001",
+            loaded?.deviceToken
+        )
+    }
+
     private fun validPayload(token: String): String =
         """
         {

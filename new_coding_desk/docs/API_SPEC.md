@@ -284,7 +284,7 @@ bindings, and broadcasts `check_in`.
   "eventId": "6fe8e135-15f5-4a3f-946c-8800d7519937",
   "eventTimestamp": 1785168000000,
   "personCode": "person_001",
-  "deviceId": "tablet-seat-01",
+  "deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201",
   "deviceSeatId": 1,
   "status": "VERIFIED",
   "similarity": 0.82,
@@ -335,20 +335,35 @@ Content-Type: application/json
 
 ```json
 {
-  "deviceId": "tablet-seat-01",
+  "deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201",
   "seatId": 1,
   "deviceToken": "unique-device-token-at-least-24-chars",
-  "enabled": true
+  "enabled": true,
+  "replaceExisting": false
 }
 ```
 
-Provisioning the same device rotates its token. A seat may have only one
-registered tablet.
+Provisioning the same physical device rotates its token and may move it to an
+unbound seat. A seat may have only one registered tablet. Replacing a different
+tablet requires the admin-authorized request to set `replaceExisting=true`.
+
+Before loading a formal seat page, Android validates its stored binding:
+
+```http
+POST /api/tablet-devices/{deviceId}/validate
+X-SmartDesk-Device-Token: <per-device token>
+Content-Type: application/json
+
+{"seatId": 1, "appVersion": "0.8.0"}
+```
+
+The response includes the stable physical `deviceId` and derived human-readable
+`seatAlias` such as `tablet-seat-01`.
 
 The formal Android seat page sends authenticated operational heartbeats:
 
 ```http
-POST /api/tablet-devices/tablet-seat-01/heartbeat
+POST /api/tablet-devices/tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201/heartbeat
 X-SmartDesk-Device-Token: <per-device token>
 Content-Type: application/json
 ```

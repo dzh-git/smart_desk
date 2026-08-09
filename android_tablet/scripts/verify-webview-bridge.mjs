@@ -33,14 +33,22 @@ socket.send(
     params: {
       expression: `(() => {
         const nativeResult = window.SmartDeskNative.getDeviceInfo();
-        document.querySelector("button.primary").click();
-        return new Promise((resolve) => {
-          setTimeout(() => {
-            const values = [...document.querySelectorAll(".status-row strong")]
-              .map((item) => item.textContent.trim());
-            resolve({ nativeResult, values });
-          }, 100);
-        });
+        const labels = [...document.querySelectorAll(".configuration label span")]
+          .map((item) => item.textContent.trim());
+        if (labels.some((label) => label.includes("设备密钥"))) {
+          throw new Error("Diagnostic page must not expose a device-token field");
+        }
+        const values = [...document.querySelectorAll(".status-row strong")]
+          .map((item) => item.textContent.trim());
+        return {
+          nativeResult,
+          values,
+          configurationVisible: Boolean(
+            document.querySelector('form[aria-label="设备配置"]'),
+          ),
+          provisioningAvailable:
+            typeof window.SmartDeskNative.provisionDeviceConfig === "function",
+        };
       })()`,
       returnByValue: true,
       awaitPromise: true,
@@ -55,4 +63,8 @@ if (response.error || response.result?.exceptionDetails) {
   throw new Error(JSON.stringify(response, null, 2));
 }
 
-console.log(JSON.stringify(response.result.result.value, null, 2));
+const value = response.result.result.value;
+if (!value?.provisioningAvailable) {
+  throw new Error("SmartDeskNative.provisionDeviceConfig is unavailable");
+}
+console.log(JSON.stringify(value, null, 2));

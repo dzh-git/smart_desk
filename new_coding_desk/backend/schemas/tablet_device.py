@@ -23,6 +23,7 @@ class TabletDeviceProvisionRequest(BaseModel):
         alias="deviceToken",
     )
     enabled: bool = True
+    replace_existing: bool = Field(False, alias="replaceExisting")
 
     model_config = {"populate_by_name": True}
 
@@ -30,6 +31,7 @@ class TabletDeviceProvisionRequest(BaseModel):
 class TabletDeviceResponse(BaseModel):
     device_id: str = Field(validation_alias="id", serialization_alias="deviceId")
     seat_id: int = Field(serialization_alias="seatId")
+    seat_alias: str = Field(serialization_alias="seatAlias")
     enabled: bool
     app_version: str | None = Field(
         default=None,
@@ -110,6 +112,18 @@ class TabletDeviceHeartbeatRequest(BaseModel):
         default=None,
         max_length=300,
         alias="lastError",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class TabletDeviceValidateRequest(BaseModel):
+    seat_id: int = Field(..., ge=1, le=9, alias="seatId")
+    app_version: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        alias="appVersion",
     )
 
     model_config = {"populate_by_name": True}

@@ -6,6 +6,13 @@ if (-not $AllowVisibleWindow) {
     throw "Pass -AllowVisibleWindow because PowerPoint will briefly be visible."
 }
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $python)) {
+    throw "SmartDesk .venv is missing. Run SETUP_PYTHON.bat first."
+}
+$env:PYTHONUTF8 = "1"
+& $python (Join-Path $PSScriptRoot "check_python_runtime.py")
+if ($LASTEXITCODE -ne 0) { throw "SmartDesk requires Python 3.11." }
 $agentRoot = Join-Path $repoRoot (
     "new_coding_desk\host_services\display_agent"
 )
@@ -24,7 +31,7 @@ $existingPowerPoint = @(Get-Process POWERPNT -ErrorAction SilentlyContinue)
 $existingPowerPointIds = @($existingPowerPoint | ForEach-Object Id)
 $powerPointCom = $null
 $testPresentation = $null
-$agent = Start-Process -FilePath python -ArgumentList @("agent.py") `
+$agent = Start-Process -FilePath $python -ArgumentList @("agent.py") `
     -WorkingDirectory $agentRoot -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $reportRoot "display-agent.out.log") `
     -RedirectStandardError (Join-Path $reportRoot "display-agent.err.log")

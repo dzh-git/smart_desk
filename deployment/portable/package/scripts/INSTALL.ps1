@@ -31,6 +31,42 @@ $currentFile = Join-Path $installFull "current.txt"
 $previous = if (Test-Path -LiteralPath $currentFile) {
     Get-Content -LiteralPath $currentFile -Encoding UTF8 -Raw
 } else { "" }
+$env:PYTHONUTF8 = "1"
+
+function Get-Python311 {
+    param([string]$RuntimeGate)
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ($env:SMARTDESK_BASE_PYTHON) {
+        $candidates.Add($env:SMARTDESK_BASE_PYTHON)
+    }
+    $condaPython = Join-Path $env:USERPROFILE "miniconda3\python.exe"
+    if (Test-Path -LiteralPath $condaPython) {
+        $candidates.Add($condaPython)
+    }
+    $launcher = Get-Command py.exe -ErrorAction SilentlyContinue
+    if ($launcher) {
+        try {
+            $resolved = & $launcher.Source -3.11 -c (
+                "import sys; print(sys.executable)"
+            ) 2>$null
+            if ($LASTEXITCODE -eq 0 -and $resolved) {
+                $candidates.Add($resolved.Trim())
+            }
+        }
+        catch {}
+    }
+    $pathPython = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($pathPython) { $candidates.Add($pathPython.Source) }
+
+    foreach ($candidate in $candidates) {
+        try {
+            & $candidate $RuntimeGate | Out-Host
+            if ($LASTEXITCODE -eq 0) { return $candidate }
+        }
+        catch {}
+    }
+    throw "Python 3.11 is required for SmartDesk."
+}
 
 try {
     New-Item -ItemType Directory -Force -Path $versions, $dataFull | Out-Null
@@ -53,9 +89,11 @@ try {
 
     $runtime = Join-Path $installFull "runtime"
     $venvPython = Join-Path $runtime ".venv\Scripts\python.exe"
+    $runtimeGate = Join-Path $target "validation\check_python_runtime.py"
+    $basePython = Get-Python311 -RuntimeGate $runtimeGate
     if (-not $SkipDependencies -and -not (Test-Path -LiteralPath $venvPython)) {
         New-Item -ItemType Directory -Force -Path $runtime | Out-Null
-        python -m venv (Join-Path $runtime ".venv")
+        & $basePython -m venv (Join-Path $runtime ".venv")
         if ($LASTEXITCODE -ne 0) { throw "Python virtual environment failed." }
     }
     if (-not $SkipDependencies) {
@@ -73,8 +111,10 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed." }
     }
     elseif (-not (Test-Path -LiteralPath $venvPython)) {
-        $venvPython = (Get-Command python -ErrorAction Stop).Source
+        $venvPython = $basePython
     }
+    & $venvPython $runtimeGate
+    if ($LASTEXITCODE -ne 0) { throw "Python 3.11 runtime check failed." }
 
     $configDir = Join-Path $dataFull "config"
     New-Item -ItemType Directory -Force -Path (

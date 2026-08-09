@@ -52,29 +52,25 @@ def validate_integration_config() -> None:
 
 
 def validate_android_config() -> None:
-    config = load_object(
-        "android_tablet/android-app/app/src/main/assets/"
+    legacy_config = (
+        ROOT
+        / "android_tablet/android-app/app/src/main/assets/"
         "device-config.example.json"
     )
-    require(config.get("seatId") == 1, "Android example seatId")
     require(
-        config.get("deviceId") == "tablet-seat-01",
-        "Android example deviceId",
+        not legacy_config.exists(),
+        "Android must not package a manually editable device config",
     )
-    token = config.get("deviceToken")
+    bridge = (
+        ROOT
+        / "android_tablet/android-app/app/src/main/java/com/smartdesk/"
+        "tablet/bridge/AndroidBridge.kt"
+    ).read_text(encoding="utf-8")
     require(
-        isinstance(token, str)
-        and token.startswith("replace-")
-        and len(token) >= 24,
-        "Android example must contain a non-secret placeholder token",
+        "provisionDeviceConfig" in bridge
+        and "saveDeviceConfig" not in bridge,
+        "Android Bridge must provision through the central host",
     )
-    for name in ("serverBaseUrl", "frontendBaseUrl"):
-        value = config.get(name)
-        require(
-            isinstance(value, str)
-            and value.startswith(("http://", "https://")),
-            f"Android example {name}",
-        )
 
 
 def validate_model_contract() -> None:
@@ -114,6 +110,12 @@ def validate_android_security_metadata() -> None:
         "data_extraction_rules.xml"
     ).read_text(encoding="utf-8")
     require('android:allowBackup="false"' in manifest, "Android backup flag")
+    require(
+        "android.permission.RECEIVE_BOOT_COMPLETED" in manifest
+        and "android.intent.action.BOOT_COMPLETED" in manifest
+        and 'android:launchMode="singleTask"' in manifest,
+        "Android tablet must auto-launch through a single task after boot",
+    )
     require(
         'domain="sharedpref"' in backup
         and 'domain="sharedpref"' in extraction,
@@ -155,6 +157,11 @@ def validate_required_files() -> None:
         "new_coding_desk/docs/API_SPEC.md",
         "deployment/portable/README.md",
         "RUN_VALIDATION.bat",
+        "SETUP_PYTHON.bat",
+        "PIO.bat",
+        ".python-version",
+        "scripts/check_python_runtime.py",
+        "scripts/setup_python.ps1",
         "scripts/verify_all_software.ps1",
     )
     missing = [path for path in required if not (ROOT / path).is_file()]
@@ -269,12 +276,64 @@ def validate_ci_entrypoints() -> None:
         )
 
 
+def validate_python_environment_contract() -> None:
+    version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+    require(version == "3.11", "SmartDesk Python version must be 3.11")
+
+    gate = (ROOT / "scripts/check_python_runtime.py").read_text(
+        encoding="utf-8"
+    )
+    setup = (ROOT / "scripts/setup_python.ps1").read_text(encoding="utf-8")
+    workflow = (
+        ROOT / ".github/workflows/software-verification.yml"
+    ).read_text(encoding="utf-8")
+    launcher = (ROOT / "new_coding_desk/start.bat").read_text(
+        encoding="utf-8"
+    )
+    verification = (ROOT / "scripts/verify_all_software.ps1").read_text(
+        encoding="utf-8"
+    )
+    require(
+        "REQUIRED_VERSION = (3, 11)" in gate,
+        "Python runtime gate must require 3.11",
+    )
+    require(
+        'Join-Path $repoRoot ".venv"' in setup
+        and '$env:PYTHONUTF8 = "1"' in setup
+        and '".tools\\platformio-venv"' in setup,
+        "Python setup must create the UTF-8 repository environment",
+    )
+    require(
+        'python-version: "3.11"' in workflow
+        and ".\\.venv\\Scripts\\python.exe" in workflow,
+        "CI must use Python 3.11 through the repository environment",
+    )
+    for name, content in (
+        ("central launcher", launcher),
+        ("verification", verification),
+    ):
+        require(
+            ".venv\\Scripts\\python.exe" in content
+            and "check_python_runtime.py" in content,
+            f"{name} must use the repository Python gate",
+        )
+
+    for script in (ROOT / "smartdesk_gesture_controller").glob("start*.bat"):
+        content = script.read_text(encoding="utf-8")
+        require(
+            "REPO_ROOT%\\.venv\\Scripts\\python.exe" in content
+            and "check_python_runtime.py" in content,
+            f"{script.name} must use the repository Python gate",
+        )
+
+
 def main() -> int:
     checks = (
         validate_required_files,
         validate_markdown_links,
         validate_integration_document_contracts,
         validate_ci_entrypoints,
+        validate_python_environment_contract,
         validate_integration_config,
         validate_android_config,
         validate_model_contract,

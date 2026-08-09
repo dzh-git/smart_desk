@@ -76,6 +76,7 @@ class TabletDeviceService:
         seat_id: int,
         token: str,
         enabled: bool = True,
+        replace_existing: bool = False,
     ) -> TabletDevice:
         if not 1 <= seat_id <= 9:
             raise ValidationError(
@@ -90,10 +91,13 @@ class TabletDeviceService:
 
         seat_owner = self.repo.get_by_seat(seat_id)
         if seat_owner is not None and seat_owner.id != device_id:
-            raise ConflictError(
-                f"Seat {seat_id} is already bound to {seat_owner.id}",
-                "DEVICE_SEAT_ALREADY_BOUND",
-            )
+            if not replace_existing:
+                raise ConflictError(
+                    f"Seat {seat_id} is already bound to {seat_owner.id}",
+                    "DEVICE_SEAT_ALREADY_BOUND",
+                )
+            self.db.delete(seat_owner)
+            self.db.flush()
 
         device = self.repo.get_by_id(device_id)
         if device is None:
@@ -143,6 +147,22 @@ class TabletDeviceService:
             )
         return device
 
+    def validate_binding(
+        self,
+        *,
+        device_id: str,
+        seat_id: int,
+        token: str | None,
+        app_version: str,
+    ) -> TabletDevice:
+        device = self.authenticate(
+            device_id=device_id,
+            seat_id=seat_id,
+            token=token,
+        )
+        self._validate_app_version(app_version)
+        return device
+
     def record_heartbeat(
         self,
         *,
@@ -163,6 +183,20 @@ class TabletDeviceService:
             seat_id=seat_id,
             token=token,
         )
+        self._validate_app_version(app_version)
+        device.app_version = app_version
+        device.last_seen_at = datetime.now(timezone.utc)
+        device.camera_status = camera_status
+        device.face_model_status = face_model_status
+        device.registered_templates_count = registered_templates_count
+        device.microphone_status = microphone_status
+        device.meeting_websocket_status = meeting_websocket_status
+        device.diagnostic_status = diagnostic_status
+        device.last_error = last_error
+        return self.repo.save(device)
+
+    @staticmethod
+    def _validate_app_version(app_version: str) -> None:
         minimum_version = os.environ.get(
             "SMARTDESK_TABLET_MIN_APP_VERSION",
             "0.8.0",
@@ -180,13 +214,3 @@ class TabletDeviceService:
                 ),
                 "DEVICE_APP_VERSION_UNSUPPORTED",
             )
-        device.app_version = app_version
-        device.last_seen_at = datetime.now(timezone.utc)
-        device.camera_status = camera_status
-        device.face_model_status = face_model_status
-        device.registered_templates_count = registered_templates_count
-        device.microphone_status = microphone_status
-        device.meeting_websocket_status = meeting_websocket_status
-        device.diagnostic_status = diagnostic_status
-        device.last_error = last_error
-        return self.repo.save(device)

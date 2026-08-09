@@ -13,7 +13,7 @@ class AndroidBridge(
     private val onGetDeviceConfig: () -> DeviceConfig?,
     private val onGetRuntimeStatus: () -> JSONObject,
     private val onGetDeviceCredential: () -> String,
-    private val onSaveDeviceConfig: (String) -> String,
+    private val onProvisionDeviceConfig: (String) -> String,
     private val onReloadSeatPage: () -> Unit,
     private val onStartFaceDetection: () -> Unit,
     private val onStopFaceDetection: () -> Unit,
@@ -38,6 +38,8 @@ class AndroidBridge(
         val data = JSONObject()
             .put("deviceId", config?.deviceId ?: defaultDeviceId)
             .put("seatId", config?.seatId ?: JSONObject.NULL)
+            .put("seatAlias", config?.seatAlias ?: JSONObject.NULL)
+            .put("centralHost", config?.centralHost() ?: JSONObject.NULL)
             .put("serverUrl", config?.serverUrl ?: JSONObject.NULL)
             .put("serverBaseUrl", config?.serverUrl ?: JSONObject.NULL)
             .put("frontendUrl", config?.frontendUrl ?: JSONObject.NULL)
@@ -77,8 +79,8 @@ class AndroidBridge(
     fun getDeviceCredential(): String = onGetDeviceCredential()
 
     @JavascriptInterface
-    fun saveDeviceConfig(configJson: String): String =
-        onSaveDeviceConfig(configJson)
+    fun provisionDeviceConfig(configJson: String): String =
+        onProvisionDeviceConfig(configJson)
 
     @JavascriptInterface
     fun reloadSeatPage() {

@@ -28,6 +28,7 @@ interface SeatStatus {
 
 interface TabletStatus {
   seat_id: number;
+  seat_alias?: string;
   provisioned: boolean;
   device_id: string | null;
   enabled: boolean;
@@ -193,7 +194,7 @@ export function HardwareStatus() {
             >
               <div className="flex items-center gap-1.5 text-xs font-semibold text-techText">
                 <Armchair size={13} className="text-techMuted" />
-                席位 {seatId}
+                席位 {seatId} · {tablet?.seat_alias ?? `tablet-seat-${String(seatId).padStart(2, "0")}`}
               </div>
 
               <div className="text-[11px] space-y-1">

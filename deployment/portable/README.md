@@ -8,6 +8,8 @@ powershell -ExecutionPolicy Bypass -File deployment\portable\build-portable.ps1
 
 生成物位于被 Git 忽略的 `artifacts/`。包内四个双击入口为
 `INSTALL.bat`、`START.bat`、`DOCTOR.bat` 和 `UNINSTALL.bat`。
+安装器只接受 Python 3.11，并为便携部署创建独立运行环境；仓库开发和测试仍
+统一使用根目录 `.venv`。
 
 默认包不含语音、人脸或手势模型。只有使用显式的受控目录参数时，
 构建脚本才会把本地模型加入内部包；模型不会进入 Git 或 CI artifact。

@@ -10,6 +10,22 @@ setlocal enabledelayedexpansion
 :: -- Project root (resolve from batch file location) ----------------------
 set "SD_ROOT=%~dp0"
 if "%SD_ROOT:~-1%"=="\" set "SD_ROOT=%SD_ROOT:~0,-1%"
+for %%I in ("%SD_ROOT%\..") do set "REPO_ROOT=%%~fI"
+set "VENV_PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
+set "PYTHONUTF8=1"
+
+if not exist "%VENV_PYTHON%" (
+    echo   [ERROR] SmartDesk Python environment not found: %VENV_PYTHON%
+    echo   Run: "%REPO_ROOT%\SETUP_PYTHON.bat"
+    pause
+    exit /b 1
+)
+"%VENV_PYTHON%" "%REPO_ROOT%\scripts\check_python_runtime.py"
+if %ERRORLEVEL% NEQ 0 (
+    pause
+    exit /b 1
+)
+set "PATH=%REPO_ROOT%\.venv\Scripts;%PATH%"
 
 echo ========================================
 echo   SmartDesk - Smart Conference Table
@@ -74,7 +90,7 @@ echo.
 :: Python
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo   [ERROR] Python not found in PATH.
+    echo   [ERROR] SmartDesk Python 3.11 was not added to PATH.
     pause
     exit /b 1
 )

@@ -6,7 +6,7 @@ Task 级计划已移除，本文只保留当前项目可执行的事实。
 ## 1. 环境要求
 
 - Windows 10/11。
-- Python 3.12+。
+- Python 3.11（唯一受支持版本）。
 - Node.js 20+。
 - Chrome 或 Edge。
 - 语音演示需要浏览器麦克风权限。
@@ -15,11 +15,13 @@ Task 级计划已移除，本文只保留当前项目可执行的事实。
 安装依赖：
 
 ```powershell
-pip install -r requirements.txt
-cd frontend
-npm install
-cd ..
+Set-Location ..
+.\SETUP_PYTHON.bat
+npm install --prefix new_coding_desk/frontend
 ```
+
+所有后端、测试和辅助服务统一使用仓库根目录
+`.venv\Scripts\python.exe`；启动脚本会拒绝其他 Python 版本。
 
 ## 2. 启动与停止
 

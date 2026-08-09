@@ -7,18 +7,21 @@ title SmartDesk Gesture Controller (OpenCV camera)
 rem Resolve the project root from this batch file's location.
 set "SD_ROOT=%~dp0"
 if "%SD_ROOT:~-1%"=="\" set "SD_ROOT=%SD_ROOT:~0,-1%"
-set "VENV_PYTHON=%SD_ROOT%\.venv\Scripts\python.exe"
+for %%I in ("%SD_ROOT%\..") do set "REPO_ROOT=%%~fI"
+set "VENV_PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
+set "PYTHONUTF8=1"
 
 if not exist "%VENV_PYTHON%" (
     echo   [ERROR] Virtual env not found: %VENV_PYTHON%
-    echo   Create it with:  python -m venv "%SD_ROOT%\.venv"
-    echo   Then install:    "%SD_ROOT%\.venv\Scripts\pip.exe" install -r "%SD_ROOT%\requirements.txt"
+    echo   Run: "%REPO_ROOT%\SETUP_PYTHON.bat"
     echo   For details, see README.md in %SD_ROOT%
     echo.
     echo   Press any key to exit...
     pause >nul
     exit /b 1
 )
+"%VENV_PYTHON%" "%REPO_ROOT%\scripts\check_python_runtime.py" >nul
+if errorlevel 1 exit /b 1
 
 rem Check model file exists (spec section 5: no network at demo site).
 if not exist "%SD_ROOT%\hand_landmarker.task" (

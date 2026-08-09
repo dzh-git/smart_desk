@@ -3,12 +3,19 @@ param()
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $python)) {
+    throw "SmartDesk .venv is missing. Run SETUP_PYTHON.bat first."
+}
+$env:PYTHONUTF8 = "1"
+& $python (Join-Path $PSScriptRoot "check_python_runtime.py")
+if ($LASTEXITCODE -ne 0) { throw "SmartDesk requires Python 3.11." }
 $deskRoot = Join-Path $repoRoot "new_coding_desk"
 $streamRoot = Join-Path $deskRoot "host_services\screen_stream"
 $runtimeRoot = Join-Path $deskRoot ".smartdesk-runtime\screen-stream"
 $reportRoot = Join-Path $repoRoot "logs\verification"
 New-Item -ItemType Directory -Force -Path $reportRoot | Out-Null
-$supervisor = Start-Process -FilePath python `
+$supervisor = Start-Process -FilePath $python `
     -ArgumentList @("supervisor.py") -WorkingDirectory $streamRoot `
     -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $reportRoot "screen-stream.out.log") `

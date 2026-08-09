@@ -1,7 +1,0 @@
-{
-  "seatId": 1,
-  "deviceId": "tablet-seat-01",
-  "deviceToken": "replace-with-provisioned-token",
-  "serverBaseUrl": "http://192.168.1.10:8000",
-  "frontendBaseUrl": "http://192.168.1.10:5173"
-}

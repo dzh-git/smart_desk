@@ -34,6 +34,38 @@ class SeatPageLoadStateTest {
     }
 
     @Test
+    fun blocksSeatLoadingWhenBindingValidationFails() {
+        val state = SeatPageLoadState()
+        state.beginHealthCheck()
+        state.beginBindingValidation()
+        assertEquals(
+            SeatPageLoadStatus.VALIDATING_BINDING,
+            state.status
+        )
+        state.bindingError()
+        assertEquals(SeatPageLoadStatus.BINDING_ERROR, state.status)
+    }
+
+    @Test
+    fun representsBackendAndPageFailureBranches() {
+        val state = SeatPageLoadState()
+        state.beginHealthCheck()
+        state.serverError()
+        assertEquals(SeatPageLoadStatus.SERVER_ERROR, state.status)
+
+        state.retry()
+        state.beginBindingValidation()
+        state.offline()
+        assertEquals(SeatPageLoadStatus.OFFLINE, state.status)
+
+        state.retry()
+        state.beginBindingValidation()
+        state.beginPageLoad()
+        assertTrue(state.timedOut())
+        assertEquals(SeatPageLoadStatus.TIMED_OUT, state.status)
+    }
+
+    @Test
     fun validatesBackendHealthResponseContract() {
         assertTrue(
             BackendHealthChecker.isHealthyResponse(

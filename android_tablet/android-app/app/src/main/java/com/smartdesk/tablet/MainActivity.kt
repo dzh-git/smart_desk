@@ -11,13 +11,18 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
 import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.util.Log
+import android.text.InputType
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.TextView
+import android.widget.Toast
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -32,12 +37,19 @@ import androidx.core.content.ContextCompat
 import com.smartdesk.tablet.bridge.AndroidBridge
 import com.smartdesk.tablet.camera.CameraController
 import com.smartdesk.tablet.camera.FillLightOverlayView
+import com.smartdesk.tablet.config.DeviceConfig
 import com.smartdesk.tablet.config.DeviceConfigStore
+import com.smartdesk.tablet.config.DeviceIdentityStore
+import com.smartdesk.tablet.config.MaintenancePinStore
+import com.smartdesk.tablet.config.ProvisioningRequest
 import com.smartdesk.tablet.model.AndroidEvent
 import com.smartdesk.tablet.model.ErrorCode
 import com.smartdesk.tablet.model.FaceDetectionResult
 import com.smartdesk.tablet.model.IdentityStatus
 import com.smartdesk.tablet.recognition.FaceRecognitionManager
+import com.smartdesk.tablet.provisioning.DeviceTokenGenerator
+import com.smartdesk.tablet.provisioning.TabletApiResult
+import com.smartdesk.tablet.provisioning.TabletDeviceClient
 import com.smartdesk.tablet.web.BackendHealthChecker
 import com.smartdesk.tablet.web.SeatPageLoadState
 import com.smartdesk.tablet.web.WebViewAccessPolicy
@@ -47,13 +59,16 @@ import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
-    private lateinit var maintenanceButton: Button
+    private lateinit var maintenanceButton: ImageButton
     private lateinit var cameraOverlay: FrameLayout
     private lateinit var faceDetectionStatusText: TextView
     private lateinit var faceGuideView: com.smartdesk.tablet.camera.FaceGuideView
     private lateinit var fillLightOverlay: FillLightOverlayView
     private lateinit var cameraController: CameraController
     private lateinit var deviceConfigStore: DeviceConfigStore
+    private lateinit var deviceIdentityStore: DeviceIdentityStore
+    private lateinit var maintenancePinStore: MaintenancePinStore
+    private lateinit var stableDeviceId: String
     private var recognitionManager: FaceRecognitionManager? = null
     private var recognitionInitError: Throwable? = null
     private var lastNativeError: String? = null
@@ -68,7 +83,15 @@ class MainActivity : ComponentActivity() {
     private val pageLoadState = SeatPageLoadState()
     private val backendHealthChecker = BackendHealthChecker()
     private val healthExecutor = Executors.newSingleThreadExecutor()
+    private val provisioningExecutor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val tabletDeviceClient = TabletDeviceClient()
+    private val deviceTokenGenerator = DeviceTokenGenerator()
     private var healthCheckGeneration = 0
+    private var provisioningInProgress = false
+    private var maintenanceAuthorized = false
+    private var maintenanceUnlockAction: Runnable? = null
+    private var offlineRetryAction: Runnable? = null
     private var pageLoadTimeoutAction: Runnable? = null
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -114,6 +137,11 @@ class MainActivity : ComponentActivity() {
         Log.i(TAG, "App started")
         setContentView(R.layout.activity_main)
         deviceConfigStore = DeviceConfigStore(applicationContext)
+        deviceIdentityStore = DeviceIdentityStore(applicationContext)
+        stableDeviceId = deviceIdentityStore.getOrCreate(
+            deviceConfigStore.load()?.deviceId
+        )
+        maintenancePinStore = MaintenancePinStore(applicationContext)
         configureIdentityRecognition()
         configureCamera()
         configureWebView()
@@ -346,18 +374,7 @@ class MainActivity : ComponentActivity() {
     private fun configureWebView() {
         webView = findViewById(R.id.webView)
         maintenanceButton = findViewById(R.id.maintenanceButton)
-        maintenanceButton.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle(R.string.device_maintenance_title)
-                .setMessage(R.string.device_maintenance_message)
-                .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(
-                    R.string.device_maintenance_confirm
-                ) { _, _ ->
-                    openMaintenancePage()
-                }
-                .show()
-        }
+        configureMaintenanceGesture()
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -370,11 +387,11 @@ class MainActivity : ComponentActivity() {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         webView.addJavascriptInterface(
             AndroidBridge(
-                defaultDeviceId = defaultDeviceId(),
+                defaultDeviceId = stableDeviceId,
                 onGetDeviceConfig = deviceConfigStore::load,
                 onGetRuntimeStatus = ::nativeRuntimeStatus,
                 onGetDeviceCredential = ::getDeviceCredential,
-                onSaveDeviceConfig = ::saveDeviceConfiguration,
+                onProvisionDeviceConfig = ::provisionDeviceConfiguration,
                 onReloadSeatPage = {
                     runOnUiThread(::loadConfiguredPage)
                 },
@@ -482,25 +499,147 @@ class MainActivity : ComponentActivity() {
         loadConfiguredPage()
     }
 
-    private fun saveDeviceConfiguration(payload: String): String {
-        if (!isDiagnosticPage()) {
+    private fun provisionDeviceConfiguration(payload: String): String {
+        val existingConfig = deviceConfigStore.load()
+        if (
+            !isDiagnosticPage() ||
+            (existingConfig != null && !maintenanceAuthorized)
+        ) {
             return AndroidEvent.error(
                 ErrorCode.BRIDGE_ACTION_FORBIDDEN,
-                "设备配置只能从本地诊断页面修改"
+                "设备配置只能在管理员验证后的本地页面修改"
             )
         }
-        return runCatching {
-            val config = deviceConfigStore.save(payload)
-            webView.postDelayed(::loadConfiguredPage, CONFIG_RELOAD_DELAY_MS)
-            AndroidEvent.event(
-                "device_config_saved",
-                config.toJson()
+        if (provisioningInProgress) {
+            return AndroidEvent.error(
+                ErrorCode.DEVICE_PROVISIONING_IN_PROGRESS,
+                "设备预配正在进行，请勿重复提交"
+            )
+        }
+        val request = runCatching {
+            ProvisioningRequest.parse(
+                payload,
+                requireMaintenancePin = !maintenancePinStore.hasPin()
             )
         }.getOrElse { error ->
             Log.w(TAG, "Rejected device configuration", error)
-            AndroidEvent.error(
+            return AndroidEvent.error(
                 ErrorCode.DEVICE_CONFIG_INVALID,
                 error.message ?: "设备配置无效"
+            )
+        }
+        val deviceToken = deviceTokenGenerator.generate()
+        val candidate = runCatching {
+            DeviceConfig.parse(
+                JSONObject()
+                    .put("seatId", request.seatId)
+                    .put("deviceId", stableDeviceId)
+                    .put("deviceToken", deviceToken)
+                    .put("serverBaseUrl", request.endpoints.serverUrl)
+                    .put("frontendBaseUrl", request.endpoints.frontendUrl)
+                    .toString()
+            )
+        }.getOrElse { error ->
+            return AndroidEvent.error(
+                ErrorCode.DEVICE_CONFIG_INVALID,
+                error.message ?: "设备配置无效"
+            )
+        }
+
+        provisioningInProgress = true
+        provisioningExecutor.execute {
+            val result = tabletDeviceClient.provision(
+                serverBaseUrl = candidate.serverUrl,
+                deviceId = stableDeviceId,
+                seatId = candidate.seatId,
+                deviceToken = deviceToken,
+                provisioningToken = request.provisioningToken,
+                replaceExisting = request.replaceExisting
+            )
+            webView.post {
+                provisioningInProgress = false
+                handleProvisioningResult(result, candidate, request)
+            }
+        }
+        return AndroidEvent.event(
+            "device_provisioning_started",
+            JSONObject()
+                .put("deviceId", stableDeviceId)
+                .put("seatId", candidate.seatId)
+                .put("seatAlias", candidate.seatAlias)
+        )
+    }
+
+    private fun handleProvisioningResult(
+        result: TabletApiResult,
+        candidate: DeviceConfig,
+        request: ProvisioningRequest
+    ) {
+        when (result) {
+            is TabletApiResult.Success -> {
+                val binding = result.binding
+                if (
+                    binding.deviceId != candidate.deviceId ||
+                    binding.seatId != candidate.seatId ||
+                    binding.seatAlias != candidate.seatAlias ||
+                    !binding.enabled
+                ) {
+                    emitToReact(
+                        AndroidEvent.error(
+                            ErrorCode.DEVICE_BINDING_INVALID,
+                            "中央主机返回的设备绑定与本机配置不一致"
+                        )
+                    )
+                    return
+                }
+                runCatching {
+                    if (!maintenancePinStore.hasPin()) {
+                        maintenancePinStore.set(
+                            requireNotNull(request.maintenancePin)
+                        )
+                    }
+                    deviceConfigStore.save(
+                        candidate.toJson(includeSecret = true).toString()
+                    )
+                }.onSuccess { config ->
+                    maintenanceAuthorized = false
+                    emitToReact(
+                        AndroidEvent.event(
+                            "device_config_saved",
+                            config.toJson()
+                        )
+                    )
+                    webView.postDelayed(
+                        ::loadConfiguredPage,
+                        CONFIG_RELOAD_DELAY_MS
+                    )
+                }.onFailure { error ->
+                    Log.e(TAG, "Unable to persist provisioned device", error)
+                    emitToReact(
+                        AndroidEvent.error(
+                            ErrorCode.DEVICE_CONFIG_INVALID,
+                            "绑定已完成，但本地配置保存失败，请重试"
+                        )
+                    )
+                }
+            }
+            is TabletApiResult.Conflict -> emitToReact(
+                AndroidEvent.error(result.code, result.message)
+            )
+            is TabletApiResult.Rejected -> emitToReact(
+                AndroidEvent.error(result.code, result.message)
+            )
+            is TabletApiResult.ServerError -> emitToReact(
+                AndroidEvent.error(
+                    ErrorCode.DEVICE_PROVISIONING_FAILED,
+                    result.message
+                )
+            )
+            TabletApiResult.Offline -> emitToReact(
+                AndroidEvent.error(
+                    ErrorCode.DEVICE_PROVISIONING_FAILED,
+                    "无法连接中央主机，请检查地址和网络"
+                )
             )
         }
     }
@@ -541,6 +680,60 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
+    private fun configureMaintenanceGesture() {
+        maintenanceButton.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val action = Runnable(::requestMaintenanceAccess)
+                    maintenanceUnlockAction = action
+                    mainHandler.postDelayed(action, MAINTENANCE_HOLD_MS)
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> cancelMaintenanceUnlock()
+            }
+            true
+        }
+    }
+
+    private fun cancelMaintenanceUnlock() {
+        maintenanceUnlockAction?.let(mainHandler::removeCallbacks)
+        maintenanceUnlockAction = null
+    }
+
+    private fun requestMaintenanceAccess() {
+        maintenanceUnlockAction = null
+        if (!maintenancePinStore.hasPin()) {
+            maintenanceAuthorized = true
+            openMaintenancePage()
+            return
+        }
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or
+                InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = getString(R.string.device_maintenance_pin_hint)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.device_maintenance_pin_title)
+            .setView(input)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(
+                R.string.device_maintenance_confirm
+            ) { _, _ ->
+                if (maintenancePinStore.verify(input.text.toString())) {
+                    maintenanceAuthorized = true
+                    openMaintenancePage()
+                } else {
+                    Toast.makeText(
+                        this,
+                        R.string.device_maintenance_pin_invalid,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            .show()
+    }
+
     private fun getDeviceCredential(): String {
         if (!isTrustedSeatPage()) {
             return AndroidEvent.error(
@@ -560,6 +753,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadConfiguredPage() {
+        cancelOfflineRetry()
         val config = deviceConfigStore.load()
         if (config == null) {
             loadDiagnosticPage("setup")
@@ -578,14 +772,52 @@ class MainActivity : ComponentActivity() {
         }
         runCatching {
             healthExecutor.execute {
-                val result = backendHealthChecker.check(config.serverUrl)
+                val healthResult = backendHealthChecker.check(config.serverUrl)
+                val bindingResult = if (
+                    healthResult == BackendHealthChecker.Result.HEALTHY
+                ) {
+                    pageLoadState.beginBindingValidation()
+                    tabletDeviceClient.validate(config, BuildConfig.VERSION_NAME)
+                } else {
+                    null
+                }
                 webView.post {
                     if (generation != healthCheckGeneration || isFinishing) {
                         return@post
                     }
-                    when (result) {
-                        BackendHealthChecker.Result.HEALTHY ->
-                            beginSeatPageLoad(config.seatPageUrl())
+                    when (healthResult) {
+                        BackendHealthChecker.Result.HEALTHY -> {
+                            when (bindingResult) {
+                                is TabletApiResult.Success -> {
+                                    val binding = bindingResult.binding
+                                    if (
+                                        binding.deviceId == config.deviceId &&
+                                        binding.seatId == config.seatId &&
+                                        binding.seatAlias == config.seatAlias &&
+                                        binding.enabled
+                                    ) {
+                                        beginSeatPageLoad(config.seatPageUrl())
+                                    } else {
+                                        pageLoadState.bindingError()
+                                        loadDiagnosticPage("binding-error")
+                                    }
+                                }
+                                TabletApiResult.Offline -> {
+                                    pageLoadState.offline()
+                                    loadDiagnosticPage("offline")
+                                }
+                                is TabletApiResult.Conflict,
+                                is TabletApiResult.Rejected -> {
+                                    pageLoadState.bindingError()
+                                    loadDiagnosticPage("binding-error")
+                                }
+                                is TabletApiResult.ServerError,
+                                null -> {
+                                    pageLoadState.serverError()
+                                    loadDiagnosticPage("server-error")
+                                }
+                            }
+                        }
                         BackendHealthChecker.Result.OFFLINE -> {
                             pageLoadState.offline()
                             loadDiagnosticPage("offline")
@@ -604,6 +836,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun beginSeatPageLoad(url: String) {
+        maintenanceAuthorized = false
+        cancelOfflineRetry()
         pageAccessState.update(null)
         pageLoadState.beginPageLoad()
         Log.i(TAG, "Loading configured seat page: $url")
@@ -622,8 +856,15 @@ class MainActivity : ComponentActivity() {
 
     private fun loadDiagnosticPage(mode: String) {
         cancelSeatPageLoadTimeout()
+        if (mode == "offline") {
+            scheduleOfflineRetry()
+        } else {
+            cancelOfflineRetry()
+        }
         if (::maintenanceButton.isInitialized) {
-            maintenanceButton.visibility = View.GONE
+            maintenanceButton.visibility = if (
+                deviceConfigStore.load() == null
+            ) View.GONE else View.VISIBLE
         }
         val url = "$LOCAL_PAGE_URL?mode=${Uri.encode(mode)}"
         val previousUrl = pageAccessState.currentUrl()
@@ -639,20 +880,27 @@ class MainActivity : ComponentActivity() {
         pageLoadTimeoutAction = null
     }
 
+    private fun scheduleOfflineRetry() {
+        cancelOfflineRetry()
+        if (deviceConfigStore.load() == null) return
+        val action = Runnable {
+            offlineRetryAction = null
+            retryConfiguredPageIfNeeded()
+        }
+        offlineRetryAction = action
+        mainHandler.postDelayed(action, OFFLINE_RETRY_INTERVAL_MS)
+    }
+
+    private fun cancelOfflineRetry() {
+        offlineRetryAction?.let(mainHandler::removeCallbacks)
+        offlineRetryAction = null
+    }
+
     private fun openMaintenancePage() {
         healthCheckGeneration += 1
         cancelPendingMicrophoneRequest()
         emitToReact(AndroidEvent.appLifecycle("PAUSED", "maintenance"))
         loadDiagnosticPage("maintenance")
-    }
-
-    private fun defaultDeviceId(): String {
-        val androidId = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ANDROID_ID
-        ).orEmpty()
-        val suffix = androidId.takeLast(8).ifBlank { "unconfigured" }
-        return "tablet-$suffix"
     }
 
     private fun nativeRuntimeStatus(): JSONObject =
@@ -664,6 +912,7 @@ class MainActivity : ComponentActivity() {
                 )
             )
             .put("faceModelReady", recognitionManager != null)
+            .put("maintenancePinConfigured", maintenancePinStore.hasPin())
             .put(
                 "microphoneReady",
                 packageManager.hasSystemFeature(
@@ -819,9 +1068,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         healthCheckGeneration += 1
+        cancelMaintenanceUnlock()
+        cancelOfflineRetry()
         cancelSeatPageLoadTimeout()
         cancelPendingMicrophoneRequest()
         healthExecutor.shutdownNow()
+        provisioningExecutor.shutdownNow()
         setFillLightEnabled(false)
         if (::cameraController.isInitialized) {
             cameraController.release()
@@ -905,7 +1157,9 @@ class MainActivity : ComponentActivity() {
             }
             pageAccessState.update(url)
             if (pageAccessState.isDiagnosticPage()) {
-                maintenanceButton.visibility = View.GONE
+                maintenanceButton.visibility = if (
+                    deviceConfigStore.load() == null
+                ) View.GONE else View.VISIBLE
             } else if (
                 WebViewAccessPolicy.isTrustedSeatPage(
                     url,
@@ -1048,7 +1302,9 @@ class MainActivity : ComponentActivity() {
         const val LOCAL_PAGE_URL = "${LOCAL_ASSET_PREFIX}index.html"
         const val FACE_EVENT_HEARTBEAT_MS = 1_000L
         const val CONFIG_RELOAD_DELAY_MS = 250L
+        const val MAINTENANCE_HOLD_MS = 5_000L
         const val NETWORK_RETRY_DELAY_MS = 1_000L
+        const val OFFLINE_RETRY_INTERVAL_MS = 5_000L
         const val PAGE_LOAD_TIMEOUT_MS = 15_000L
     }
 

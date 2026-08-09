@@ -11,6 +11,11 @@ $settings = Get-Content -LiteralPath $settingsPath -Encoding UTF8 |
     ConvertFrom-Json
 $app = $settings.currentVersionPath
 $python = $settings.python
+$env:SMARTDESK_PYTHON = $python
+$env:SMARTDESK_PYTHON_GATE = Join-Path $app (
+    "validation\check_python_runtime.py"
+)
+$env:PYTHONUTF8 = "1"
 $env:SMARTDESK_CONFIG_PATH = $settings.configPath
 $env:SMARTDESK_DATA_DIR = $settings.dataDir
 $env:SMARTDESK_ESP32_DEVICE_TOKENS_FILE = $settings.tokensPath

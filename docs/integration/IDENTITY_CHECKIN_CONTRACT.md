@@ -26,15 +26,30 @@ Content-Type: application/json
 
 ```json
 {
-  "deviceId": "tablet-seat-01",
+  "deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201",
   "seatId": 1,
   "deviceToken": "unique-random-token-at-least-24-chars",
-  "enabled": true
+  "enabled": true,
+  "replaceExisting": false
 }
 ```
 
-后端只保存 PBKDF2 加盐哈希。重复预配同一设备会轮换令牌；一个席位只能绑定一
-台平板。设备令牌随后由 Android 安全存储保存。
+后端只保存 PBKDF2 加盐哈希。重复预配同一物理设备会轮换令牌并允许移动到空闲
+席位；一个席位只能绑定一台平板。目标席位已有其他设备时默认返回
+`DEVICE_SEAT_ALREADY_BOUND`，只有管理员在平板确认替换后发送
+`replaceExisting=true` 才解除旧绑定。设备令牌由 Android 生成并仅保存在安全存储。
+
+App 每次加载正式页面前执行：
+
+```http
+POST /api/tablet-devices/{deviceId}/validate
+X-SmartDesk-Device-Token: <device-token>
+Content-Type: application/json
+
+{"seatId": 1, "appVersion": "0.8.0"}
+```
+
+设备不存在、禁用、Token 错误、错席或 App 版本不兼容时不得加载 `/seat/{seatId}`。
 
 ## 签到请求
 
@@ -49,7 +64,7 @@ Content-Type: application/json
   "eventId": "6fe8e135-15f5-4a3f-946c-8800d7519937",
   "eventTimestamp": 1785168000000,
   "personCode": "person_001",
-  "deviceId": "tablet-seat-01",
+  "deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201",
   "deviceSeatId": 1,
   "status": "VERIFIED",
   "similarity": 0.82,
