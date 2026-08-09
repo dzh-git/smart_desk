@@ -70,9 +70,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/translations.py": {
-    "mtime": 1780303160.5251591,
-    "ast_hash": "003f9755d4322aa15dbcacf52c00de61",
-    "semantic_hash": "003f9755d4322aa15dbcacf52c00de61"
+    "mtime": 1786259203.0671072,
+    "ast_hash": "86a1342006b920bec1553717a6887199",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/api/votes.py": {
     "mtime": 1781107609.7912784,
@@ -2347,6 +2347,21 @@
   "graphify-out/memory/query_20260809_053442_\u4fdd\u5b58\u9996\u6b21\u9884\u914d\u540e_\u5982\u4f55\u9a8c\u8bc1\u7ed1\u5b9a_\u542f\u52a8\u6821\u9a8c\u548c_webview_\u76f4\u8fbe_seat_1_\u94fe\u8def.md": {
     "mtime": 1786253682.7422028,
     "ast_hash": "c8295588e499a67f75baf06dc765cfba",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_translation_api_serialization.py": {
+    "mtime": 1786259204.4617107,
+    "ast_hash": "20096eb824aaea93889f233cb891cfda",
+    "semantic_hash": ""
+  },
+  "graphify-out/memory/query_20260809_064530_\u663e\u8bed\u97f3\u529f\u80fd\u663e\u793a_microphone_access_denied__permission_denie.md": {
+    "mtime": 1786257930.2627301,
+    "ast_hash": "ca7229036ac46299216bc25a24235e9f",
+    "semantic_hash": ""
+  },
+  "graphify-out/memory/query_20260809_071350_\u5f53\u524d\u4e2d\u82f1\u6587\u8bc6\u522b\u6a21\u578b\u4e0d\u53ef\u7528.md": {
+    "mtime": 1786259630.7361512,
+    "ast_hash": "7ce8d05f158380d88420884e421baa9a",
     "semantic_hash": ""
   }
 }
