@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:android": "npm run build && node scripts/copy-to-android.mjs",
-    "test": "node --test src/configWorkflow.test.js",
+    "test": "node --test src/*.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

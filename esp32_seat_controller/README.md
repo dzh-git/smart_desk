@@ -1,8 +1,9 @@
 # ESP32 席位控制器
 
 本模块是正式的席位硬件路径。每个 ESP32 通过 Wi-Fi 直接连接中央后端
-`/ws/seat/{seatId}`，负责 PIR、VL53L0X、WS2812B 和本席协议状态；它不保存或
-判断会议业务。Windows Seat Agent 与 Arduino 中央串口模式仍保留为兼容台架。
+`/ws/seat/{seatId}`，作为纯 Wi-Fi WS2812B 灯光控制器接收本席灯光命令；它不
+采集入座传感器，也不保存或判断会议业务。Windows Seat Agent 与 Arduino 中央
+串口模式仍保留为兼容台架。
 
 ## 目录
 
@@ -58,8 +59,9 @@ python -m pytest -q esp32_seat_controller/simulator/tests
 python -m pytest -q new_coding_desk/tests/test_esp32_protocol.py
 ```
 
-模拟器覆盖连接、心跳、入座/离座、重启、重复/乱序事件、丢失 ACK、传感器异常
-和九席独立绑定。模拟结果不是实物验证。
+模拟器仍覆盖连接、心跳、旧版入座/离座与传感器异常协议、重启、重复/乱序事件、
+丢失 ACK 和九席独立绑定，用于验证后端对 v1 旧固件的兼容性。0.3.0 实物固件
+不再发送入座或传感器事件。模拟结果不是实物验证。
 
 ## 固件构建
 
@@ -72,12 +74,27 @@ python -m pytest -q new_coding_desk/tests/test_esp32_protocol.py
 .\PIO.bat run -d esp32_seat_controller/firmware
 ```
 
-`DeviceConfig.h` 和 `.pio/` 已排除，不会把令牌提交到仓库。固件采用非阻塞传感
-采样与灯效、Wi-Fi/WebSocket 指数退避、应用心跳、命令 ID 去重、ACK、看门狗
-和断网 `ERROR` 安全灯态。
+`DeviceConfig.h` 和 `.pio/` 已排除，不会把令牌提交到仓库。固件采用非阻塞灯效、
+Wi-Fi/WebSocket 指数退避、应用心跳、命令 ID 去重、ACK、看门狗和断网
+`ERROR` 安全灯态。入座状态由专用平板的人脸验证经后端事件驱动。
+
+## ESP32-WROOM-32E 接线
+
+默认 `esp32dev` 配置使用以下引脚；如实物布线不同，只修改各设备忽略的
+`DeviceConfig.h`：
+
+| 设备 | ESP32-WROOM-32E | 说明 |
+|---|---:|---|
+| WS2812B DIN | GPIO13 | 默认 60 颗，实际亮度硬上限 80 |
+
+WS2812B 使用独立、容量足够的 5V 电源，不从 ESP32 的 3.3V 引脚给灯带供电；
+灯带电源地、ESP32 地必须共地。ESP32 数据输出是 3.3V，正式布线建议使用
+`74AHCT125` 或 `74HCT14` 转为 5V，并在灯带输入端配置串联数据电阻和大容量
+电容。`MAX_LED_BRIGHTNESS=80` 只是软件保护，不能替代电源、线径、保险和温升
+验收。
 
 ## HARDWARE_VALIDATION_REQUIRED
 
-以下只能在实物完成：实际板型/引脚、PIR 误触发、VL53L0X 距离阈值、WS2812B
-供电和电平、看门狗复位、真实 Wi-Fi 重连及长时间温升。统一步骤最终记录在
+以下只能在实物完成：实际板型/引脚、WS2812B 供电和电平、看门狗复位、真实
+Wi-Fi 重连、平板人脸入座联动及长时间温升。统一步骤最终记录在
 `docs/integration/HUMAN_VALIDATION_REQUIRED.md`。

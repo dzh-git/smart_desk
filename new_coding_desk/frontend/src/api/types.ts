@@ -91,6 +91,11 @@ export interface IdentityCheckInPayload {
   modelVersion: string | null;
 }
 
+export interface TabletVacatePayload {
+  deviceId: string;
+  deviceSeatId: number;
+}
+
 export interface TabletHeartbeatPayload {
   seatId: number;
   appVersion: string;

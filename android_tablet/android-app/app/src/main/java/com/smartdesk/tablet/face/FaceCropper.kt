@@ -19,18 +19,6 @@ object FaceCropper {
         face: Face
     ): FaceCropResult {
         val startedAtMs = SystemClock.elapsedRealtime()
-        FaceQualityEvaluator.requireAcceptablePose(face)
-        val sourcePoints = listOf(
-            requireLandmark(face, FaceLandmark.LEFT_EYE, "左眼"),
-            requireLandmark(face, FaceLandmark.RIGHT_EYE, "右眼"),
-            requireLandmark(face, FaceLandmark.NOSE_BASE, "鼻尖"),
-            requireLandmark(face, FaceLandmark.MOUTH_LEFT, "左嘴角"),
-            requireLandmark(face, FaceLandmark.MOUTH_RIGHT, "右嘴角")
-        )
-        val transform = similarityTransform(
-            sourcePoints,
-            CANONICAL_POINTS
-        )
         val rawBitmap = imageProxy.toBitmap()
         val uprightBitmap = rotateBitmap(
             rawBitmap,
@@ -41,40 +29,57 @@ object FaceCropper {
         }
 
         return try {
-            val output = Bitmap.createBitmap(
-                OUTPUT_SIZE,
-                OUTPUT_SIZE,
-                Bitmap.Config.ARGB_8888
-            )
-            try {
-                Canvas(output).apply {
-                    drawColor(Color.BLACK)
-                    drawBitmap(
-                        uprightBitmap,
-                        transform,
-                        Paint(
-                            Paint.ANTI_ALIAS_FLAG or
-                                Paint.FILTER_BITMAP_FLAG
-                        )
-                    )
-                }
-                val quality = FaceQualityEvaluator.evaluateAlignedFace(output)
-                if (!quality.accepted) {
-                    throw FaceQualityException(quality.message)
-                }
-                FaceCropResult(
-                    bitmap = output,
-                    processingTimeMs =
-                        SystemClock.elapsedRealtime() - startedAtMs,
-                    brightness = quality.brightness,
-                    sharpness = quality.sharpness
-                )
-            } catch (error: Throwable) {
-                output.recycle()
-                throw error
-            }
+            cropAndAlign(uprightBitmap, face, startedAtMs)
         } finally {
             uprightBitmap.recycle()
+        }
+    }
+
+    fun cropAndAlign(bitmap: Bitmap, face: Face): FaceCropResult =
+        cropAndAlign(bitmap, face, SystemClock.elapsedRealtime())
+
+    private fun cropAndAlign(
+        bitmap: Bitmap,
+        face: Face,
+        startedAtMs: Long
+    ): FaceCropResult {
+        FaceQualityEvaluator.requireAcceptablePose(face)
+        val sourcePoints = listOf(
+            requireLandmark(face, FaceLandmark.LEFT_EYE, "左眼"),
+            requireLandmark(face, FaceLandmark.RIGHT_EYE, "右眼"),
+            requireLandmark(face, FaceLandmark.NOSE_BASE, "鼻尖"),
+            requireLandmark(face, FaceLandmark.MOUTH_LEFT, "左嘴角"),
+            requireLandmark(face, FaceLandmark.MOUTH_RIGHT, "右嘴角")
+        )
+        val transform = similarityTransform(sourcePoints, CANONICAL_POINTS)
+        val output = Bitmap.createBitmap(
+            OUTPUT_SIZE,
+            OUTPUT_SIZE,
+            Bitmap.Config.ARGB_8888
+        )
+        try {
+            Canvas(output).apply {
+                drawColor(Color.BLACK)
+                drawBitmap(
+                    bitmap,
+                    transform,
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                )
+            }
+            val quality = FaceQualityEvaluator.evaluateAlignedFace(output)
+            if (!quality.accepted) {
+                throw FaceQualityException(quality.message)
+            }
+            return FaceCropResult(
+                bitmap = output,
+                processingTimeMs =
+                    SystemClock.elapsedRealtime() - startedAtMs,
+                brightness = quality.brightness,
+                sharpness = quality.sharpness
+            )
+        } catch (error: Throwable) {
+            output.recycle()
+            throw error
         }
     }
 

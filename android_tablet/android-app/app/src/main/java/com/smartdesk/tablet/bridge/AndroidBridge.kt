@@ -26,6 +26,7 @@ class AndroidBridge(
     private val onStopIdentityVerification: () -> String,
     private val onClearFaceTemplate: () -> String,
     private val onRemoveFaceTemplate: (String) -> String,
+    private val onImportFacePhotos: (String, String) -> String,
     private val onGetRegisteredFaces: () -> String,
     private val onSetVerificationThreshold: (Float) -> String,
     private val onSetDiagnosticsEnabled: (Boolean) -> String,
@@ -153,6 +154,10 @@ class AndroidBridge(
     @JavascriptInterface
     fun removeFaceTemplate(personId: String): String =
         onRemoveFaceTemplate(personId)
+
+    @JavascriptInterface
+    fun importFacePhotos(personId: String, photosJson: String): String =
+        onImportFacePhotos(personId, photosJson)
 
     @JavascriptInterface
     fun getRegisteredFaces(): String = onGetRegisteredFaces()

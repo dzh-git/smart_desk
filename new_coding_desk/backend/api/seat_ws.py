@@ -217,6 +217,7 @@ async def seat_agent_ws(ws: WebSocket, seat_id: int):
                         device_id=msg["device_id"],
                         firmware_version=msg["firmware_version"],
                         boot_id=msg["boot_id"],
+                        capabilities=msg["capabilities"],
                     )
                     esp32_ready = True
                     log_security_event(

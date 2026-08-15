@@ -10,21 +10,30 @@ import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.face.FaceLandmark
 import java.io.Closeable
 
-class FaceDetectorManager : Closeable {
+class FaceDetectorManager(
+    minFaceSize: Float = DEFAULT_MIN_FACE_SIZE,
+    performanceMode: Int = FaceDetectorOptions.PERFORMANCE_MODE_FAST,
+    trackingEnabled: Boolean = true
+) : Closeable {
     private val detector: FaceDetector
 
     init {
         val options = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .setPerformanceMode(performanceMode)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-            .setMinFaceSize(MIN_FACE_SIZE)
-            .enableTracking()
+            .setMinFaceSize(minFaceSize)
+            .also { builder ->
+                if (trackingEnabled) {
+                    builder.enableTracking()
+                }
+            }
             .build()
         detector = FaceDetection.getClient(options)
         Log.i(
             TAG,
             "Bundled ML Kit face detector initialized: " +
-                "FAST + landmarks + tracking + minFaceSize=$MIN_FACE_SIZE"
+                "landmarks + tracking=$trackingEnabled + " +
+                "minFaceSize=$minFaceSize"
         )
     }
 
@@ -44,6 +53,6 @@ class FaceDetectorManager : Closeable {
 
     private companion object {
         const val TAG = "SmartDeskTablet"
-        const val MIN_FACE_SIZE = 0.3F
+        const val DEFAULT_MIN_FACE_SIZE = 0.3F
     }
 }

@@ -9,6 +9,7 @@ import {
   isAndroidBridgeAvailable,
   isFaceDetectionAvailable,
   isIdentityVerificationAvailable,
+  importFacePhotos,
   removeFaceTemplate,
   reloadSeatPage,
   provisionDeviceConfig,
@@ -26,6 +27,10 @@ import {
   seatAlias,
   usesAdvancedEndpoints,
 } from "./configWorkflow";
+import {
+  buildFacePhotoPayload,
+  validateFacePhotoFiles,
+} from "./facePhotoImport";
 
 const INITIAL_STATUS = {
   bridgeReady: false,
@@ -78,6 +83,9 @@ export default function App() {
   const [showAdvancedUrls, setShowAdvancedUrls] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
   const [replacementRequired, setReplacementRequired] = useState(false);
+  const [selectedFacePhotos, setSelectedFacePhotos] = useState([]);
+  const [photoImporting, setPhotoImporting] = useState(false);
+  const [photoImportResult, setPhotoImportResult] = useState(null);
   const diagnosticMode =
     new URLSearchParams(window.location.search).get("mode") ?? "diagnostic";
   const diagnosticMessage = {
@@ -309,6 +317,19 @@ export default function App() {
       return;
     }
 
+    if (event?.type === "face_photo_import_result") {
+      setPhotoImportResult(event.data);
+      setStatus((current) => ({
+        ...current,
+        identity: event.data.saved ? "已注册" : current.identity,
+        identityPerson: event.data.personId ?? current.identityPerson,
+        registeredPeople: event.data.registeredPeople ?? [],
+        registeredCount: Number(event.data.registeredPeople?.length ?? 0),
+        error: event.data.saved ? "无" : event.data.message,
+      }));
+      return;
+    }
+
     if (event?.type === "error") {
       setProvisioning(false);
       if (event.data.code === "DEVICE_SEAT_ALREADY_BOUND") {
@@ -352,6 +373,7 @@ export default function App() {
     ) {
       return;
     }
+
     try {
       const result = provisionDeviceConfig(
         buildProvisioningPayload(
@@ -440,6 +462,42 @@ export default function App() {
 
   function removeTemplate() {
     runIdentityAction(() => removeFaceTemplate(personId));
+  }
+
+  function selectFacePhotos(event) {
+    try {
+      const files = validateFacePhotoFiles(event.target.files);
+      setSelectedFacePhotos(files);
+      setPhotoImportResult(null);
+      setStatus((current) => ({ ...current, error: "无" }));
+    } catch (error) {
+      setSelectedFacePhotos([]);
+      setPhotoImportResult(null);
+      event.target.value = "";
+      setStatus((current) => ({
+        ...current,
+        error: `FACE_PHOTO_SELECTION_INVALID：${error.message}`,
+      }));
+    }
+  }
+
+  async function importSelectedFacePhotos() {
+    setPhotoImporting(true);
+    setPhotoImportResult(null);
+    setStatus((current) => ({ ...current, error: "无" }));
+    try {
+      const photos = await buildFacePhotoPayload(selectedFacePhotos);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const event = importFacePhotos(personId, photos);
+      handleAndroidEvent(event);
+    } catch (error) {
+      setStatus((current) => ({
+        ...current,
+        error: `FACE_PHOTO_IMPORT_FAILED：${error.message}`,
+      }));
+    } finally {
+      setPhotoImporting(false);
+    }
   }
 
   function applyThreshold() {
@@ -735,6 +793,65 @@ export default function App() {
           停止检测
         </button>
       </section>
+
+      {diagnosticMode === "maintenance" && <section
+        className="photo-import"
+        aria-label="上传参会者照片"
+      >
+        <h2>上传参会者照片</h2>
+        <p>
+          填写人员编号后选择 5–20 张清晰的 JPG/PNG 正脸照片。
+          原图不会保存，只保留加密人脸特征。
+        </p>
+        <label>
+          <span>参会者编号</span>
+          <input
+            value={personId}
+            maxLength={64}
+            onChange={(event) => setPersonId(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>选择照片（可多选）</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png"
+            multiple
+            disabled={photoImporting || cameraRunning}
+            onChange={selectFacePhotos}
+          />
+        </label>
+        <div className="photo-import-summary">
+          已选择：<strong>{selectedFacePhotos.length}</strong> 张
+        </div>
+        <button
+          type="button"
+          className="primary"
+          disabled={
+            !identityImplemented ||
+            photoImporting ||
+            cameraRunning ||
+            selectedFacePhotos.length < 5
+          }
+          onClick={importSelectedFacePhotos}
+        >
+          {photoImporting ? "正在检查并生成模板…" : "导入为当前人员模板"}
+        </button>
+        {photoImportResult && <div
+          className={photoImportResult.saved ? "import-result ok" : "import-result error"}
+        >
+          <strong>{photoImportResult.message}</strong>
+          <span>
+            合格 {photoImportResult.acceptedCount} / 已选 {photoImportResult.selectedCount}；
+            用于模板 {photoImportResult.usedCount} 张
+          </span>
+          {photoImportResult.rejected?.length > 0 && <ul>
+            {photoImportResult.rejected.map((item) => <li key={item.name}>
+              {item.name}：{item.reason}
+            </li>)}
+          </ul>}
+        </div>}
+      </section>}
 
       <section className="identity-controls" aria-label="人脸身份验证">
         <label>

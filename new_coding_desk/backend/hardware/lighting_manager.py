@@ -194,7 +194,7 @@ class LightingManager:
     def _play_welcome(self, seat_id: int) -> None:
         if not self._is_active_seat(seat_id):
             return
-        if self._effective_mode(seat_id) != "IDLE" or seat_id in self._welcomed_seats:
+        if seat_id in self._welcomed_seats:
             return
         self._welcomed_seats.add(seat_id)
         self._set_overlay(seat_id, "welcome", "WELCOME", WELCOME_DURATION)
@@ -207,6 +207,7 @@ class LightingManager:
         seat_id = self._seat_of(event)
         if seat_id is None or not self._is_active_seat(seat_id):
             return
+        self._welcomed_seats.discard(seat_id)
         self._clear_seat_transients(seat_id)
         self.base_mode[seat_id] = "IDLE"
         self._render(seat_id)

@@ -471,12 +471,20 @@ class SeatService(BaseService):
             )
 
         current_seat = self._get_seat(seat_id)
+        occupied_by_identity = current_seat.status == "vacant"
         performed_checkin = not (
             current_seat.status == "checked_in"
             and current_seat.attendee_id == attendee.id
         )
         try:
             if performed_checkin:
+                if occupied_by_identity:
+                    current_seat.status = "occupied_unchecked"
+                    current_seat.attendee_id = None
+                    self.seat_repo.save_seat(
+                        current_seat,
+                        commit=False,
+                    )
                 checked_in_seat = self.check_in(
                     seat_id=seat_id,
                     attendee_id=attendee.id,
@@ -508,6 +516,11 @@ class SeatService(BaseService):
             self.db.rollback()
             raise
 
+        if occupied_by_identity:
+            self._publish(
+                SeatOccupiedEvent(payload={"seat_id": seat_id}),
+                meeting_id=active.id,
+            )
         if performed_checkin:
             self._publish_checkin_success(
                 seat_id=seat_id,
@@ -515,6 +528,39 @@ class SeatService(BaseService):
                 meeting_id=active.id,
             )
         return checked_in_seat
+
+    def tablet_vacate(
+        self,
+        *,
+        seat_id: int,
+        device_seat_id: int,
+        device_id: str,
+        device_token: str | None,
+    ) -> SeatState:
+        """Release a seat after authenticating its bound Android tablet."""
+        if device_seat_id != seat_id:
+            raise ValidationError(
+                (
+                    f"Device is bound to seat {device_seat_id}, "
+                    f"not requested seat {seat_id}"
+                ),
+                "DEVICE_SEAT_MISMATCH",
+            )
+        self.tablet_device_service.authenticate(
+            device_id=device_id,
+            seat_id=seat_id,
+            token=device_token,
+        )
+        active = self._active_meeting()
+        if active is None:
+            raise ValidationError(
+                "There is no active meeting",
+                "NO_ACTIVE_MEETING",
+            )
+        return self.seat_vacant(
+            seat_id=seat_id,
+            meeting_id=active.id,
+        )
 
     def _publish_checkin_success(
         self,

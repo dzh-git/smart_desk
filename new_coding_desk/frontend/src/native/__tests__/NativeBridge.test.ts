@@ -108,6 +108,27 @@ describe("NativeBridge", () => {
     window.removeEventListener(SMARTDESK_NATIVE_EVENT, nativeEvent);
   });
 
+  it("rejects an immediate native verification error after forwarding it", async () => {
+    const nativeEvent = vi.fn<(event: Event) => void>();
+    window.addEventListener(SMARTDESK_NATIVE_EVENT, nativeEvent);
+    installRequiredMethods({
+      startFaceVerification: vi.fn(() =>
+        JSON.stringify(
+          envelope("error", {
+            code: "FACE_TEMPLATE_NOT_FOUND",
+            message: "At least two people must be registered",
+          }),
+        ),
+      ),
+    });
+
+    await expect(getNativeBridge().startFaceVerification()).rejects.toThrow(
+      "FACE_TEMPLATE_NOT_FOUND: At least two people must be registered",
+    );
+    expect(nativeEvent).toHaveBeenCalledTimes(1);
+    window.removeEventListener(SMARTDESK_NATIVE_EVENT, nativeEvent);
+  });
+
   it("forwards maintenance hold start and cancellation", async () => {
     const beginMaintenanceHold = vi.fn();
     const cancelMaintenanceHold = vi.fn();

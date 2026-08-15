@@ -68,8 +68,8 @@ Content-Type: application/json
   "deviceSeatId": 1,
   "status": "VERIFIED",
   "similarity": 0.82,
-  "thresholdStatus": "PROVISIONAL",
-  "verificationLevel": "PROTOTYPE",
+  "thresholdStatus": "VALIDATED",
+  "verificationLevel": "VALIDATED",
   "modelVersion": "se-mobilefacenet-ms1mv3-arcface-emb256-v1"
 }
 ```
@@ -86,10 +86,11 @@ Content-Type: application/json
 5. `PROTOTYPE` 默认拒绝；仅显式开发开关可配 `PROVISIONAL`。
 6. 存在活动会议，Person 存在且启用。
 7. 活动会议中恰有一个 `Attendee.person_id` 指向该 Person。
-8. 席位为 `occupied_unchecked`，人员未在其他席位签到，席位未绑定他人。
-9. 调用现有 `SeatService.check_in`，不在路由中复制状态机。
-10. Seat、Attendee、IdentityCheckInEvent 单事务提交；提交后才广播一次
-    `check_in`。
+8. 席位为 `vacant` 或 `occupied_unchecked`，人员未在其他席位签到，席位未绑定他人。
+9. 空座先在同一事务内迁移为 `occupied_unchecked`，再调用现有
+   `SeatService.check_in`，不在路由中复制状态机。
+10. Seat、Attendee、IdentityCheckInEvent 单事务提交；空座成功后依次广播
+    `seat_occupied`、`check_in`，不广播 `checkin_prompt`。
 
 成功返回标准 `ApiResponse<SeatStateResponse>`，席位状态为 `checked_in`。
 相同事件和相同证据重试返回相同状态且不重复广播；相同 `eventId` 搭配不同
@@ -110,12 +111,22 @@ Content-Type: application/json
 | `NO_ACTIVE_MEETING` | 当前无活动会议 |
 | `PERSON_NOT_FOUND`、`PERSON_INACTIVE` | 稳定人员无效 |
 | `PERSON_NOT_IN_ACTIVE_MEETING` | 人员不属于当前会议 |
-| `SEAT_NOT_OCCUPIED` | 传感器尚未使席位进入待签到 |
 | `ATTENDEE_ALREADY_CHECKED_IN`、`SEAT_ALREADY_BOUND` | 人员/席位冲突 |
 | `RATE_LIMITED` | 设备/席位每分钟请求超限，按 `Retry-After` 重试 |
 
 Pydantic 请求格式错误为 HTTP 422。业务拒绝不会部分写入 Seat、Attendee 或
 幂等事件。
+
+## 平板确认离席
+
+已签到页面调用 `POST /api/seats/{seatId}/tablet-vacate`，携带相同设备 Token：
+
+```json
+{"deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201", "deviceSeatId": 1}
+```
+
+后端必须校验设备、Token、URL 席位、设备绑定席位和活动会议。成功后解除参会人
+与席位绑定，发布 `seat_vacant`；错 Token、错席或无活动会议均拒绝。
 
 ## 运行门禁
 

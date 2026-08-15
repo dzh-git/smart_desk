@@ -134,6 +134,7 @@ beforeEach(() => {
 afterEach(() => {
   Reflect.deleteProperty(window, "SmartDeskNative");
   mockDemoControls = false;
+  vi.restoreAllMocks();
 });
 
 // ── Mock fetch ──────────────────────────────────────────────────────────────
@@ -495,6 +496,105 @@ describe("SeatTablet - Android identity check-in", () => {
     await waitFor(() => expect(cancelMaintenanceHold).toHaveBeenCalledTimes(1));
   });
 
+  it("automatically starts face verification while an active seat is vacant", async () => {
+    const startFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification });
+    mockFetch.mockImplementation(createSeatMock("vacant"));
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await screen.findByText("自动人脸入座");
+    expect(screen.getByText("AUTOMATIC FACE CHECK-IN")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  it("restarts face verification three seconds after a retryable result", async () => {
+    const startFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification });
+    mockFetch.mockImplementation(createSeatMock("vacant"));
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "unknown-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_100,
+            data: { status: "UNKNOWN", message: "No registered match" },
+          },
+        }),
+      );
+    });
+
+    await waitFor(
+      () => expect(startFaceVerification).toHaveBeenCalledTimes(2),
+      { timeout: 4_000 },
+    );
+  });
+
+  it("does not retry a calibration configuration error", async () => {
+    const startFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification });
+    mockFetch.mockImplementation(createSeatMock("vacant"));
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "calibration-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_200,
+            data: {
+              status: "CALIBRATION_PENDING",
+              message: "Face threshold calibration is incomplete",
+            },
+          },
+        }),
+      );
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 3_200));
+    });
+    expect(startFaceVerification).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops face verification when the seat is no longer vacant", async () => {
+    const startFaceVerification = vi.fn();
+    const stopFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification, stopFaceVerification });
+    let seatStatus: "vacant" | "occupied_unchecked" = "vacant";
+    mockFetch.mockImplementation((url: string) =>
+      createSeatMock(seatStatus)(url),
+    );
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+
+    seatStatus = "occupied_unchecked";
+    await triggerWsEvent("seat_occupied", 1, { seat_id: 1 });
+
+    await waitFor(() =>
+      expect(stopFaceVerification).toHaveBeenCalledTimes(1),
+    );
+  });
+
   it("automatically submits only a VALIDATED identity result", async () => {
     installNativeBridge();
     const identityCalls: Array<{
@@ -594,6 +694,120 @@ describe("SeatTablet - Android identity check-in", () => {
     await screen.findByText(/已验证 \/ VERIFIED.*人员编号 person_001.*相似度 0\.820.*原型验证 \/ PROTOTYPE/);
     expect(identityCalls).toHaveLength(0);
     expect(screen.queryByText("提交测试签到")).not.toBeInTheDocument();
+  });
+
+  it("retries a server failure with the same identity event id", async () => {
+    installNativeBridge();
+    const eventIds: string[] = [];
+    let attempts = 0;
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/seats/1/identity-checkin") {
+        attempts += 1;
+        eventIds.push(JSON.parse(String(opts?.body)).eventId);
+        if (attempts === 1) {
+          return {
+            ok: false,
+            status: 500,
+            json: async () => ({
+              success: false,
+              message: "temporary failure",
+              error_code: "TEMPORARY_FAILURE",
+            }),
+          };
+        }
+        return okResponse({
+          seat_id: 1,
+          status: "checked_in",
+          attendee_id: 42,
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      return createSeatMock("occupied_unchecked")(url);
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await screen.findByTestId("native-identity-panel");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "retry-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_789,
+            data: {
+              status: "VERIFIED",
+              personId: "person_001",
+              similarity: 0.82,
+              thresholdStatus: "VALIDATED",
+              verificationLevel: "VALIDATED",
+              modelVersion: "validated-model-v1",
+            },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => expect(eventIds).toHaveLength(2), { timeout: 2_500 });
+    expect(eventIds).toEqual(["retry-event-0001", "retry-event-0001"]);
+  });
+
+  it("vacates a checked-in seat only after tablet confirmation", async () => {
+    installNativeBridge();
+    const vacateCalls: Array<{
+      body: Record<string, unknown>;
+      headers?: HeadersInit;
+    }> = [];
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/seats/1/tablet-vacate") {
+        vacateCalls.push({
+          body: JSON.parse(String(opts?.body)),
+          headers: opts?.headers,
+        });
+        return okResponse({
+          seat_id: 1,
+          status: "vacant",
+          attendee_id: null,
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      return createSeatMock("checked_in")(url);
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    fireEvent.click(
+      await screen.findByText(/确认离席.*Confirm Vacate/),
+    );
+
+    await waitFor(() => expect(vacateCalls).toHaveLength(1));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(vacateCalls[0].body).toEqual({
+      deviceId: "tablet-seat-01",
+      deviceSeatId: 1,
+    });
+    expect(vacateCalls[0].headers).toMatchObject({
+      "X-SmartDesk-Device-Token": "device-secret-token-00000001",
+    });
+  });
+
+  it("does not vacate when tablet confirmation is cancelled", async () => {
+    installNativeBridge();
+    const vacateCalls: string[] = [];
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/seats/1/tablet-vacate") {
+        vacateCalls.push(url);
+      }
+      return createSeatMock("checked_in")(url);
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    fireEvent.click(
+      await screen.findByText(/确认离席.*Confirm Vacate/),
+    );
+
+    expect(vacateCalls).toHaveLength(0);
   });
 
   it("reports authenticated tablet operational heartbeat", async () => {

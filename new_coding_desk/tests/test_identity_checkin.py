@@ -118,6 +118,21 @@ def _identity_post(
     )
 
 
+def _tablet_vacate_post(
+    seat_id: int,
+    payload: dict,
+    headers: dict | None,
+):
+    return client.post(
+        f"/api/seats/{seat_id}/tablet-vacate",
+        json={
+            "deviceId": payload["deviceId"],
+            "deviceSeatId": payload["deviceSeatId"],
+        },
+        headers=headers or {},
+    )
+
+
 def test_people_endpoint_rejects_duplicate_stable_id():
     payload = {"id": "person_001", "name": "Alice"}
     assert client.post("/api/people", json=payload).status_code == 201
@@ -183,7 +198,9 @@ def test_identity_rate_limit_has_stable_error_and_retry_header(
 def test_identity_checkin_rolls_back_all_state_when_event_write_fails(
     monkeypatch,
 ):
-    _, attendee_id, payload, _ = _prepare_active_attendee()
+    _, attendee_id, payload, _ = _prepare_active_attendee(
+        occupy_seat=False,
+    )
     db = TestSessionLocal()
     try:
         service = SeatService(db, event_bus)
@@ -220,7 +237,7 @@ def test_identity_checkin_rolls_back_all_state_when_event_write_fails(
         seat = db.get(SeatState, 1)
         attendee = db.get(Attendee, attendee_id)
         event = db.get(IdentityCheckInEvent, payload["eventId"])
-        assert seat is not None and seat.status == "occupied_unchecked"
+        assert seat is not None and seat.status == "vacant"
         assert seat.attendee_id is None
         assert attendee is not None and attendee.checked_in is False
         assert attendee.seat_id is None
@@ -347,13 +364,88 @@ def test_identity_person_must_belong_to_active_meeting():
     assert response.json()["error_code"] == "PERSON_NOT_IN_ACTIVE_MEETING"
 
 
-def test_vacant_seat_does_not_allow_identity_checkin():
+def test_validated_identity_atomically_occupies_and_checks_in_vacant_seat():
     _, _, payload, headers = _prepare_active_attendee(occupy_seat=False)
+    received = []
 
-    response = _identity_post(1, payload, headers)
+    def capture(event):
+        received.append(event.event_name)
+
+    event_bus.subscribe("seat_occupied", capture)
+    event_bus.subscribe("checkin_prompt", capture)
+    event_bus.subscribe("check_in", capture)
+    try:
+        response = _identity_post(1, payload, headers)
+    finally:
+        event_bus.unsubscribe("seat_occupied", capture)
+        event_bus.unsubscribe("checkin_prompt", capture)
+        event_bus.unsubscribe("check_in", capture)
+
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "checked_in"
+    assert response.json()["data"]["attendee_id"] is not None
+    assert received == ["seat_occupied", "check_in"]
+
+
+def test_tablet_vacate_unbinds_attendee_and_publishes_vacant():
+    _, attendee_id, payload, headers = _prepare_active_attendee(
+        occupy_seat=False,
+    )
+    assert _identity_post(1, payload, headers).status_code == 200
+    received = []
+
+    def capture(event):
+        received.append(event.event_name)
+
+    event_bus.subscribe("seat_vacant", capture)
+    try:
+        response = _tablet_vacate_post(1, payload, headers)
+    finally:
+        event_bus.unsubscribe("seat_vacant", capture)
+
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "vacant"
+    assert received == ["seat_vacant"]
+    db = TestSessionLocal()
+    try:
+        attendee = db.get(Attendee, attendee_id)
+        assert attendee is not None
+        assert attendee.checked_in is False
+        assert attendee.seat_id is None
+    finally:
+        db.close()
+
+
+def test_tablet_vacate_requires_matching_bound_device():
+    _, _, payload, headers = _prepare_active_attendee()
+
+    missing_token = _tablet_vacate_post(1, payload, None)
+    wrong_token = _tablet_vacate_post(
+        1,
+        payload,
+        {"X-SmartDesk-Device-Token": "wrong-device-token-000000001"},
+    )
+    payload["deviceSeatId"] = 2
+    wrong_seat = _tablet_vacate_post(1, payload, headers)
+
+    assert missing_token.status_code == 400
+    assert missing_token.json()["error_code"] == "DEVICE_AUTH_FAILED"
+    assert wrong_token.status_code == 400
+    assert wrong_token.json()["error_code"] == "DEVICE_AUTH_FAILED"
+    assert wrong_seat.status_code == 400
+    assert wrong_seat.json()["error_code"] == "DEVICE_SEAT_MISMATCH"
+
+
+def test_tablet_vacate_requires_active_meeting():
+    _, _, payload, headers = _prepare_active_attendee(
+        start_meeting=False,
+        occupy_seat=False,
+    )
+
+    response = _tablet_vacate_post(1, payload, headers)
 
     assert response.status_code == 400
-    assert response.json()["error_code"] == "SEAT_NOT_OCCUPIED"
+    assert response.json()["error_code"] == "NO_ACTIVE_MEETING"
 
 
 def test_person_already_checked_into_other_seat_is_rejected():

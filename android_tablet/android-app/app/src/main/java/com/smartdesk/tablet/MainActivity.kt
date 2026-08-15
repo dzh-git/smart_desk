@@ -24,6 +24,7 @@ import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -47,6 +48,7 @@ import com.smartdesk.tablet.model.AndroidEvent
 import com.smartdesk.tablet.model.ErrorCode
 import com.smartdesk.tablet.model.FaceDetectionResult
 import com.smartdesk.tablet.model.IdentityStatus
+import com.smartdesk.tablet.recognition.FacePhotoImportRequest
 import com.smartdesk.tablet.recognition.FaceRecognitionManager
 import com.smartdesk.tablet.provisioning.DeviceTokenGenerator
 import com.smartdesk.tablet.provisioning.TabletApiResult
@@ -81,6 +83,7 @@ class MainActivity : ComponentActivity() {
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallbackRegistered = false
     private var pendingMicrophoneRequest: PermissionRequest? = null
+    private var pendingFileChooser: ValueCallback<Array<Uri>>? = null
     private var pendingNativeMicrophoneStart = false
     private val nativeMicrophoneCapture by lazy {
         NativeMicrophoneCapture(
@@ -148,6 +151,14 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
+    }
+
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        val callback = pendingFileChooser
+        pendingFileChooser = null
+        callback?.onReceiveValue(uris.toTypedArray())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -476,6 +487,19 @@ class MainActivity : ComponentActivity() {
                         AndroidEvent.identityStatus(
                             requireRecognitionManager()
                                 .removeTemplate(personId)
+                        )
+                    }
+                },
+                onImportFacePhotos = { personId, photosJson ->
+                    performMaintenanceIdentityAction(
+                        ErrorCode.FACE_PHOTO_IMPORT_FAILED
+                    ) {
+                        val photos = FacePhotoImportRequest.parse(photosJson)
+                        AndroidEvent.facePhotoImportResult(
+                            requireRecognitionManager().importFacePhotos(
+                                personId,
+                                photos
+                            )
                         )
                     }
                 },
@@ -1162,6 +1186,19 @@ class MainActivity : ComponentActivity() {
         return performIdentityAction(errorCode, action)
     }
 
+    private inline fun performMaintenanceIdentityAction(
+        errorCode: String,
+        action: () -> String
+    ): String {
+        if (!isDiagnosticPage() || !maintenanceAuthorized) {
+            return AndroidEvent.error(
+                ErrorCode.BRIDGE_ACTION_FORBIDDEN,
+                "照片模板只能在管理员验证后的维护页面导入"
+            )
+        }
+        return performIdentityAction(errorCode, action)
+    }
+
     private fun isDiagnosticPage(): Boolean =
         pageAccessState.isDiagnosticPage()
 
@@ -1191,6 +1228,8 @@ class MainActivity : ComponentActivity() {
         cancelOfflineRetry()
         cancelSeatPageLoadTimeout()
         cancelPendingMicrophoneRequest()
+        pendingFileChooser?.onReceiveValue(null)
+        pendingFileChooser = null
         stopNativeMicrophoneCapture()
         healthExecutor.shutdownNow()
         provisioningExecutor.shutdownNow()
@@ -1377,6 +1416,30 @@ class MainActivity : ComponentActivity() {
     }
 
     private inner class TabletWebChromeClient : WebChromeClient() {
+        override fun onShowFileChooser(
+            webView: WebView,
+            filePathCallback: ValueCallback<Array<Uri>>,
+            fileChooserParams: FileChooserParams
+        ): Boolean {
+            if (!isDiagnosticPage() || !maintenanceAuthorized) {
+                filePathCallback.onReceiveValue(null)
+                return true
+            }
+            pendingFileChooser?.onReceiveValue(null)
+            pendingFileChooser = filePathCallback
+            return runCatching {
+                fileChooserLauncher.launch(
+                    arrayOf("image/jpeg", "image/png")
+                )
+                true
+            }.getOrElse { error ->
+                Log.e(TAG, "Unable to open photo picker", error)
+                pendingFileChooser = null
+                filePathCallback.onReceiveValue(null)
+                true
+            }
+        }
+
         override fun onPermissionRequest(request: PermissionRequest) {
             runOnUiThread {
                 if (!mayGrantMicrophone(request, true)) {

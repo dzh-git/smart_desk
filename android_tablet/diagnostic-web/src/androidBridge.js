@@ -112,6 +112,16 @@ export function clearFaceDiagnostics() {
   );
 }
 
+export function importFacePhotos(personId, photos) {
+  const bridge = requireAndroidBridge();
+  if (!bridge.importFacePhotos) {
+    throw new Error("当前 APK 不支持照片模板导入");
+  }
+  return parseBridgePayload(
+    bridge.importFacePhotos(personId, JSON.stringify(photos)),
+  );
+}
+
 export function getDeviceConfig() {
   return parseBridgePayload(requireAndroidBridge().getDeviceConfig());
 }

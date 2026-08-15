@@ -8,7 +8,7 @@
 
 | 组件 | 路径 | 责任 |
 |---|---|---|
-| 固件 | `../../esp32_seat_controller/firmware/` | 传感器、非阻塞灯效、重连、心跳、ACK |
+| 固件 | `../../esp32_seat_controller/firmware/` | 非阻塞灯效、重连、心跳、ACK |
 | 模拟器 | `../../esp32_seat_controller/simulator/` | 无实物协议故障与 1–9 席回放 |
 | 后端 codec | `../../new_coding_desk/backend/hardware/esp32_protocol.py` | v1 报文校验 |
 | WebSocket | `../../new_coding_desk/backend/api/seat_ws.py` | 认证、席位绑定、版本门禁、网关注册 |
@@ -51,8 +51,9 @@ python -m pytest -q esp32_seat_controller/simulator/tests
 ```
 
 这些测试覆盖认证、版本、非法席位、重复/乱序事件、断线重连、后端恢复、丢失
-ACK、传感器异常、命令去重和九席并发模拟。它们不证明真实 PIR、VL53L0X、
-WS2812B、供电、Wi-Fi 或温升。
+ACK、旧版传感器协议兼容、命令去重和九席并发模拟。0.3.0 固件能力仅为
+`ws2812b`，不采集或上报入座传感器。软件测试不证明真实 WS2812B、供电、
+Wi-Fi 或温升。
 
 ## 兼容路径
 

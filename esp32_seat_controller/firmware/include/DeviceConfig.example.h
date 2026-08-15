@@ -11,8 +11,6 @@ constexpr uint8_t SEAT_ID = 1;
 constexpr char DEVICE_ID[] = "esp32-seat-01";
 constexpr char DEVICE_TOKEN[] = "replace-with-provisioned-device-token";
 
-constexpr uint8_t PIR_PIN = 27;
 constexpr uint8_t LED_PIN = 13;
-constexpr uint16_t LED_COUNT = 30;
-constexpr uint16_t OCCUPIED_DISTANCE_MM = 900;
-constexpr uint16_t DISTANCE_HYSTERESIS_MM = 120;
+constexpr uint16_t LED_COUNT = 60;
+constexpr uint8_t MAX_LED_BRIGHTNESS = 80;

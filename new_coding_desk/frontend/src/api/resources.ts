@@ -22,6 +22,7 @@ import type {
   Attendee,
   Person,
   IdentityCheckInPayload,
+  TabletVacatePayload,
   TabletDeviceStatus,
   TabletHeartbeatPayload,
   TranslationHistoryResponse,
@@ -248,6 +249,20 @@ export function identityCheckinSeat(
   deviceToken: string,
 ): Promise<SeatState> {
   return apiRequest<SeatState>(`/seats/${seatId}/identity-checkin`, {
+    method: "POST",
+    headers: {
+      "X-SmartDesk-Device-Token": deviceToken,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function tabletVacateSeat(
+  seatId: number,
+  payload: TabletVacatePayload,
+  deviceToken: string,
+): Promise<SeatState> {
+  return apiRequest<SeatState>(`/seats/${seatId}/tablet-vacate`, {
     method: "POST",
     headers: {
       "X-SmartDesk-Device-Token": deviceToken,

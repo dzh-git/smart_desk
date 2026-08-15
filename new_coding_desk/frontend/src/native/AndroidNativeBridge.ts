@@ -44,9 +44,17 @@ function parsePayload<T>(payload: string | object): T {
 
 function dispatchImmediateResult(payload: string | object | void): void {
   if (payload == null) return;
-  dispatchNativeEvent(
-    normalizeNativeEvent(parsePayload<SmartDeskNativeEvent>(payload)),
+  const envelope = normalizeNativeEvent(
+    parsePayload<SmartDeskNativeEvent>(payload),
   );
+  dispatchNativeEvent(envelope);
+  if (envelope.type === "error") {
+    const error = envelope.data as { code?: string; message?: string };
+    throw new Error(
+      [error.code, error.message].filter(Boolean).join(": ") ||
+        "SmartDeskNative operation failed",
+    );
+  }
 }
 
 function parseEnvelope<T>(

@@ -259,6 +259,29 @@ def test_heartbeat_timeout_only_applies_to_esp32():
     assert gateway.heartbeat_expired(1, now=last + 60) is False
 
 
+def test_lighting_only_firmware_clears_legacy_sensor_diagnostics():
+    gateway = SeatGateway(None, [1])
+    gateway.record_occupancy_evidence(
+        1,
+        pir=True,
+        distance_mm=72,
+        sensor_ok=True,
+    )
+
+    gateway.configure_esp32_session(
+        1,
+        device_id="esp32-seat-01",
+        firmware_version="0.3.0",
+        boot_id="boot-0002",
+        capabilities=["ws2812b"],
+    )
+
+    diagnostics = gateway.diagnostics(1)
+    assert diagnostics["pir"] is None
+    assert diagnostics["distance_mm"] is None
+    assert diagnostics["sensor_ok"] is None
+
+
 def test_endpoint_handler_acknowledges_duplicate_without_second_transition(
     monkeypatch,
 ):

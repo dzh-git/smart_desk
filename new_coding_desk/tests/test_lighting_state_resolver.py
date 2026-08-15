@@ -1,6 +1,6 @@
 from backend.events import BaseEvent
 from backend.hardware.arduino_manager import ArduinoManager
-from backend.hardware.lighting_manager import LightingManager
+from backend.hardware.lighting_manager import LightingManager, WELCOME_DURATION
 
 
 class FakeGateway:
@@ -46,6 +46,43 @@ def test_agenda_create_without_current_keeps_meeting_mode(monkeypatch):
     manager._on_meeting_started(event("meeting_started"))
     manager._on_agenda_updated(event("agenda_updated", action="create", current_agenda_id=None))
     assert set(manager.seat_mode.values()) == {"MEETING_ACTIVE"}
+
+
+def test_verified_occupancy_welcomes_during_meeting_and_can_repeat_after_vacate(
+    monkeypatch,
+):
+    manager = LightingManager(FakeGateway())
+    scheduled = []
+    monkeypatch.setattr(
+        manager,
+        "_schedule",
+        lambda seat_id, key, duration, _callback: scheduled.append(
+            (seat_id, key, duration)
+        ),
+    )
+    manager._on_meeting_started(event("meeting_started"))
+
+    manager._on_seat_occupied(event("seat_occupied", seat_id=1))
+    assert manager.seat_mode[1] == "WELCOME"
+    assert scheduled[-1] == (1, "welcome", WELCOME_DURATION)
+    assert WELCOME_DURATION == 5.0
+
+    manager._clear_overlay(1, "welcome")
+    assert manager.seat_mode[1] == "MEETING_ACTIVE"
+    manager._on_seat_vacant(event("seat_vacant", seat_id=1))
+    manager._on_seat_occupied(event("seat_occupied", seat_id=1))
+    assert manager.seat_mode[1] == "WELCOME"
+
+
+def test_welcome_does_not_override_higher_priority_overlay(monkeypatch):
+    manager = LightingManager(FakeGateway())
+    monkeypatch.setattr(manager, "_schedule", lambda *args, **kwargs: None)
+    manager._on_meeting_started(event("meeting_started"))
+    manager._on_vote_started(event("vote_started"))
+
+    manager._on_seat_occupied(event("seat_occupied", seat_id=1))
+
+    assert manager.seat_mode[1] == "VOTE_OPEN"
 
 
 def test_reconnect_resends_intended_mode(monkeypatch):

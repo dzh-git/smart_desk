@@ -144,6 +144,35 @@ class FaceRecognitionManager(
         templateStore.loadAll().map(PersonFaceTemplate::personId)
 
     @Synchronized
+    fun importFacePhotos(
+        requestedPersonId: String,
+        photos: List<FacePhotoInput>
+    ): FacePhotoImportResult {
+        require(mode == Mode.IDLE) {
+            "采集或验证过程中不能导入照片"
+        }
+        val normalizedId = requestedPersonId.trim()
+        require(normalizedId.isNotEmpty()) { "人员编号不能为空" }
+        require(normalizedId.length <= MAX_PERSON_ID_LENGTH) {
+            "人员编号不能超过${MAX_PERSON_ID_LENGTH}个字符"
+        }
+        val templates = templateStore.loadAll()
+        require(
+            templates.any { it.personId == normalizedId } ||
+                templates.size < FaceTemplateStore.MAX_PERSON_COUNT
+        ) {
+            "最多只能注册${FaceTemplateStore.MAX_PERSON_COUNT}名人员"
+        }
+        val result = FacePhotoImporter(engine, templateStore).import(
+            normalizedId,
+            photos
+        )
+        latestStatus = initialStatus().copy(message = result.message)
+        emit(latestStatus)
+        return result
+    }
+
+    @Synchronized
     fun currentStatus(): IdentityStatus = latestStatus
 
     @Synchronized

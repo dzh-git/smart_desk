@@ -167,11 +167,11 @@ echo   node_modules: OK
 echo.
 
 :: -- Step 2: Start Backend -----------------------------------------------
-echo [2/4] Starting backend FastAPI on http://127.0.0.1:8000 ...
+echo [2/4] Starting backend FastAPI on http://0.0.0.0:8000 ...
 echo.
 
 powershell -NoProfile -Command ^
-  "$p = Start-Process python.exe -ArgumentList '-m','uvicorn','backend.main:app','--host','127.0.0.1','--port','8000','--log-level','info' -WorkingDirectory '%SD_ROOT%' -WindowStyle Normal -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\backend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\backend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\backend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\backend.pid' -ErrorAction SilentlyContinue }"
+  "$p = Start-Process python.exe -ArgumentList '-m','uvicorn','backend.main:app','--host','0.0.0.0','--port','8000','--log-level','info' -WorkingDirectory '%SD_ROOT%' -WindowStyle Normal -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\backend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\backend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\backend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\backend.pid' -ErrorAction SilentlyContinue }"
 
 if not exist "%SD_ROOT%\.smartdesk-runtime\backend.pid" (
     echo   [ERROR] Backend failed to start. Check:

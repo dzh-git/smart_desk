@@ -3,6 +3,7 @@ package com.smartdesk.tablet.model
 import android.util.Base64
 import org.json.JSONObject
 import java.util.UUID
+import com.smartdesk.tablet.recognition.FacePhotoImportResult
 
 object AndroidEvent {
     fun event(type: String, data: JSONObject): String =
@@ -22,6 +23,31 @@ object AndroidEvent {
             JSONObject()
                 .put("personIds", people)
                 .put("count", personIds.size)
+        )
+    }
+
+    fun facePhotoImportResult(result: FacePhotoImportResult): String {
+        val rejected = org.json.JSONArray()
+        result.rejected.forEach { item ->
+            rejected.put(
+                JSONObject()
+                    .put("name", item.name)
+                    .put("reason", item.reason)
+            )
+        }
+        val people = org.json.JSONArray()
+        result.registeredPeople.forEach(people::put)
+        return event(
+            "face_photo_import_result",
+            JSONObject()
+                .put("personId", result.personId)
+                .put("selectedCount", result.selectedCount)
+                .put("acceptedCount", result.acceptedCount)
+                .put("usedCount", result.usedCount)
+                .put("saved", result.saved)
+                .put("message", result.message)
+                .put("rejected", rejected)
+                .put("registeredPeople", people)
         )
     }
 

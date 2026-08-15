@@ -17,7 +17,7 @@
 6. ESP32 每 5 秒发送心跳；18 秒无协议活动判定离线并关闭连接。
 7. ESP32 上行消息使用每次启动单调递增的 `sequence`。新 `boot_id` 才允许
    sequence 从零重新开始。
-8. 入座事件以 `event_id` 幂等；服务端缓存每席最近 256 个事件。
+8. 旧固件入座事件以 `event_id` 幂等；服务端缓存每席最近 256 个事件。
 9. 灯光命令以 `command_id` 幂等。2 秒无 ACK 使用相同 ID 重试，最多 3 次。
 10. 重连后重新 `hello` 并同步灯态；不得依赖断线前未确认的临时状态。
 11. 固件不得打印 Wi-Fi 密码或设备令牌。
@@ -45,9 +45,9 @@ JSON 缺失、格式错误、设备未知、令牌错误、跨席位绑定或版
   "type": "hello",
   "seat_id": 1,
   "device_id": "esp32-seat-01",
-  "firmware_version": "0.1.0",
+  "firmware_version": "0.3.0",
   "boot_id": "a1b2c3d4-0123",
-  "capabilities": ["pir", "vl53l0x", "ws2812b"]
+  "capabilities": ["ws2812b"]
 }
 ```
 
@@ -61,12 +61,14 @@ JSON 缺失、格式错误、设备未知、令牌错误、跨席位绑定或版
   "sequence": 10,
   "uptime_ms": 10000,
   "current_mode": "IDLE",
-  "wifi_rssi": -45,
-  "sensor_ok": true
+  "wifi_rssi": -45
 }
 ```
 
 ### occupancy
+
+仅旧版传感器固件发送。中央后端为兼容 v1 继续接受；0.3.0 及之后的纯灯光
+固件不发送该消息，正式入座由平板身份接口产生。
 
 ```json
 {
@@ -103,6 +105,8 @@ JSON 缺失、格式错误、设备未知、令牌错误、跨席位绑定或版
 重复命令必须重新 ACK，但不得重新启动会产生副作用的灯效状态机。
 
 ### sensor_error
+
+仅旧版传感器固件发送。中央后端为兼容 v1 继续接受。
 
 ```json
 {

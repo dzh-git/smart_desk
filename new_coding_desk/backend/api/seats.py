@@ -26,6 +26,7 @@ from backend.schemas.seat import (
     SeatStateResponse,
     CheckInRequest,
     IdentityCheckInRequest,
+    TabletVacateRequest,
     SpeakerSeatResponse,
     SetSpeakerRequest,
 )
@@ -191,6 +192,60 @@ def identity_check_in(
         )
     _log_identity_result(body, seat_id, "OK")
     return ApiResponse.ok(data=SeatStateResponse.model_validate(seat))
+
+
+@router.post(
+    "/{seat_id}/tablet-vacate",
+    response_model=ApiResponse[SeatStateResponse],
+)
+def tablet_vacate(
+    seat_id: int,
+    body: TabletVacateRequest,
+    db: Session = Depends(get_db),
+    device_token: str | None = Header(
+        default=None,
+        alias="X-SmartDesk-Device-Token",
+    ),
+):
+    """Release a seat using the bound Android tablet's credential."""
+    try:
+        seat = _service(db).tablet_vacate(
+            seat_id=seat_id,
+            device_seat_id=body.device_seat_id,
+            device_id=body.device_id,
+            device_token=device_token,
+        )
+    except ConflictError as error:
+        status_code = 409
+        failure = error
+    except NotFoundError as error:
+        status_code = 404
+        failure = error
+    except ValidationError as error:
+        status_code = 400
+        failure = error
+    else:
+        log_security_event(
+            logger,
+            event="tablet_vacate",
+            device_id=body.device_id,
+            seat_id=seat_id,
+            result="OK",
+        )
+        return ApiResponse.ok(data=SeatStateResponse.model_validate(seat))
+
+    log_security_event(
+        logger,
+        event="tablet_vacate",
+        level=logging.WARNING,
+        device_id=body.device_id,
+        seat_id=seat_id,
+        result=failure.error_code,
+    )
+    return _to_json(
+        ApiResponse.fail(failure.message, failure.error_code),
+        status_code,
+    )
 
 
 def _log_identity_result(

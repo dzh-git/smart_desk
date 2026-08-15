@@ -168,6 +168,7 @@ class SeatGateway:
         device_id: str,
         firmware_version: str,
         boot_id: str,
+        capabilities: list[str] | None = None,
     ) -> None:
         if self._boot_id.get(seat_id) != boot_id:
             self._last_sequence[seat_id] = -1
@@ -178,6 +179,13 @@ class SeatGateway:
         self._last_heartbeat_at[seat_id] = time.time()
         self._connected[seat_id] = True
         self._last_error[seat_id] = None
+        if capabilities is not None and not {
+            "pir",
+            "vl53l0x",
+        }.intersection(capabilities):
+            self._sensor_ok[seat_id] = None
+            self._pir[seat_id] = None
+            self._distance_mm[seat_id] = None
 
     def accept_sequence(self, seat_id: int, sequence: int) -> bool:
         if sequence <= self._last_sequence.get(seat_id, -1):

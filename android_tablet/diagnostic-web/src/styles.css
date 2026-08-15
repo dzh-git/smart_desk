@@ -293,3 +293,58 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+.photo-import {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid rgba(98, 223, 160, 0.32);
+  border-radius: 18px;
+  background: rgba(18, 29, 51, 0.82);
+}
+
+.photo-import h2,
+.photo-import p {
+  margin: 0;
+}
+
+.photo-import p,
+.photo-import-summary,
+.import-result span {
+  color: #99a8c4;
+  line-height: 1.55;
+}
+
+.photo-import label span {
+  color: #93a2bd;
+  font-size: 14px;
+}
+
+.photo-import button {
+  min-height: 48px;
+  border: 1px solid #4778ef;
+  border-radius: 10px;
+  color: #eaf0ff;
+  background: #2e63e5;
+}
+
+.photo-import button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.import-result {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+}
+
+.import-result ul {
+  max-height: 180px;
+  margin: 0;
+  padding-left: 22px;
+  overflow: auto;
+}

@@ -61,22 +61,24 @@ flowchart LR
 | 席位状态与签到绑定 | `SeatService` | 路由、Android 直接写表 |
 | 稳定人员与参会人关系 | `Person`、`Attendee.person_id` | 用临时 `attendee_id` 作为人脸键 |
 | 人脸模板、照片、embedding | Android App 私有存储 | 上传中央数据库或状态页 |
-| 本席占用与灯态诊断 | ESP32 + 后端聚合 | ESP32 决定会议业务 |
+| 本席身份与占用 | Android + `SeatService` | ESP32 传感器决定入座 |
+| 本席灯态与硬件诊断 | ESP32 + 后端聚合 | ESP32 决定会议业务 |
 | Windows 应用激活 | Display Agent | 手势模块复制窗口控制 |
 
 ## 关键流程
 
 ### 入座与签到
 
-1. ESP32 经认证的 `/ws/seat/{seatId}` 上报 `occupancy`。
-2. 后端把席位迁移为 `occupied_unchecked` 并广播会议事件。
-3. 席位前端调用 `NativeBridge.startFaceVerification()`。
-4. Android 本地识别并派发带唯一 `eventId` 的 `identity_status`。
-5. 前端携设备令牌调用 `POST /api/seats/{seatId}/identity-checkin`。
-6. 后端认证设备、校验时效和等级，将 `Person` 映射到活动会议的
+1. 活动会议中的空座页面自动调用 `NativeBridge.startFaceVerification()`。
+2. Android 本地识别并派发带唯一 `eventId` 的 `identity_status`。
+3. 仅 `VERIFIED + VALIDATED` 由前端携设备令牌调用
+   `POST /api/seats/{seatId}/identity-checkin`。
+4. 后端认证设备、校验时效和等级，将 `Person` 映射到活动会议的
    `Attendee`，再调用同一 `SeatService.check_in`。
-7. Seat、Attendee、幂等事件在一个事务中提交，之后才广播 `check_in`。
-8. LightingManager 下发命令；ESP32 以 `command_id` ACK。
+5. 空座入座、Seat、Attendee、幂等事件在一个事务中提交，之后依次广播
+   `seat_occupied`、`check_in`。
+6. LightingManager 下发 `WELCOME`；ESP32 以 `command_id` ACK，5 秒后恢复
+   原基础灯态。
 
 ### 语音
 

@@ -243,6 +243,7 @@ Frontend clients must still be able to refresh the source of truth through
 | `GET` | `/api/seats` | Return all 9 seat states. |
 | `POST` | `/api/seats/{seat_id}/checkin` | Check an attendee into an occupied unchecked seat. |
 | `POST` | `/api/seats/{seat_id}/identity-checkin` | Validate Android identity evidence, map stable Person to the active meeting attendee, then reuse normal check-in. |
+| `POST` | `/api/seats/{seat_id}/tablet-vacate` | Authenticate the bound tablet, release the attendee and return the seat to `vacant`. |
 | `GET` | `/api/seats/speaker` | Return the current speaker seat. |
 | `POST` | `/api/seats/speaker` | Set speaker seat. See request body below. |
 | `DELETE` | `/api/seats/speaker` | Clear speaker seat. |
@@ -312,12 +313,25 @@ The endpoint never trusts face evidence as a direct attendee ID. It:
 5. rejects `PROTOTYPE` by default; the explicit development environment flag
    may allow `PROTOTYPE` only with `thresholdStatus=PROVISIONAL`;
 6. resolves `Person.id` to exactly one attendee in the active meeting;
-7. delegates occupancy, duplicate-seat, and attendee-binding checks to the
-   existing `SeatService.check_in`;
-8. atomically commits Seat, Attendee and the durable identity event;
+7. accepts either `vacant` or `occupied_unchecked`; a vacant seat is occupied
+   inside the same transaction before delegating duplicate-seat and
+   attendee-binding checks to `SeatService.check_in`;
+8. atomically commits Seat, Attendee and the durable identity event, then emits
+   `seat_occupied` followed by `check_in` for a newly occupied seat;
 9. persists `eventId`; an identical retry returns the existing checked-in
    state without broadcasting a second `check_in`, while conflicting evidence
    using the same ID returns HTTP 409.
+
+`POST /api/seats/{seat_id}/tablet-vacate` requires
+`X-SmartDesk-Device-Token` and this body:
+
+```json
+{"deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201", "deviceSeatId": 1}
+```
+
+The device registry seat, URL seat and `deviceSeatId` must match, and an active
+meeting must exist. Success clears both seat and attendee bindings, emits
+`seat_vacant`, and returns the standard `SeatStateResponse`.
 
 Identity submissions use a bounded per-device/seat sliding-window limiter
 (default 60/minute). HTTP 429 returns stable `RATE_LIMITED` plus

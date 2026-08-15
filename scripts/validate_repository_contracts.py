@@ -111,10 +111,15 @@ def validate_android_security_metadata() -> None:
     ).read_text(encoding="utf-8")
     require('android:allowBackup="false"' in manifest, "Android backup flag")
     require(
-        "android.permission.RECEIVE_BOOT_COMPLETED" in manifest
-        and "android.intent.action.BOOT_COMPLETED" in manifest
+        "android.intent.category.HOME" in manifest
+        and "android.intent.category.DEFAULT" in manifest
         and 'android:launchMode="singleTask"' in manifest,
-        "Android tablet must auto-launch through a single task after boot",
+        "Android tablet must launch as a single-task HOME activity",
+    )
+    require(
+        "android.permission.RECEIVE_BOOT_COMPLETED" not in manifest
+        and "android.intent.action.BOOT_COMPLETED" not in manifest,
+        "Android HOME launcher must not use a boot-start receiver",
     )
     require(
         'domain="sharedpref"' in backup
