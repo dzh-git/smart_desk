@@ -469,31 +469,23 @@ class SeatService(BaseService):
                 f"Person {person_id} is not in the active meeting",
                 "PERSON_NOT_IN_ACTIVE_MEETING",
             )
+        if attendee.assigned_seat_id != seat_id:
+            raise ConflictError(
+                (
+                    f"Person {person_id} is assigned to seat "
+                    f"{attendee.assigned_seat_id}, not seat {seat_id}"
+                ),
+                "PERSON_SEAT_ASSIGNMENT_MISMATCH",
+            )
 
-        current_seat = self._get_seat(seat_id)
-        occupied_by_identity = current_seat.status == "vacant"
-        performed_checkin = not (
-            current_seat.status == "checked_in"
-            and current_seat.attendee_id == attendee.id
-        )
         try:
-            if performed_checkin:
-                if occupied_by_identity:
-                    current_seat.status = "occupied_unchecked"
-                    current_seat.attendee_id = None
-                    self.seat_repo.save_seat(
-                        current_seat,
-                        commit=False,
-                    )
-                checked_in_seat = self.check_in(
+            checked_in_seat, occupied_by_identity, performed_checkin = (
+                self._stage_assigned_check_in(
                     seat_id=seat_id,
-                    attendee_id=attendee.id,
+                    attendee=attendee,
                     meeting_id=active.id,
-                    commit=False,
-                    publish=False,
                 )
-            else:
-                checked_in_seat = current_seat
+            )
 
             identity_event = IdentityCheckInEvent(
                 event_id=event_id,
@@ -528,6 +520,107 @@ class SeatService(BaseService):
                 meeting_id=active.id,
             )
         return checked_in_seat
+
+    def get_assigned_attendee(
+        self,
+        seat_id: int,
+        meeting_id: int | None = None,
+    ) -> Attendee | None:
+        """Return the active meeting's default attendee for a seat."""
+        active = self._active_meeting()
+        effective_meeting_id = meeting_id or (active.id if active else None)
+        if effective_meeting_id is None:
+            return None
+        return self.attendee_repo.get_by_assigned_seat(
+            effective_meeting_id,
+            seat_id,
+        )
+
+    def manual_admit(self, seat_id: int) -> SeatState:
+        """Admit only the active meeting attendee assigned to this seat."""
+        active = self._active_meeting()
+        if active is None:
+            raise ValidationError(
+                "There is no active meeting",
+                "NO_ACTIVE_MEETING",
+            )
+        attendee = self.get_assigned_attendee(seat_id, active.id)
+        if attendee is None:
+            raise ValidationError(
+                f"Seat {seat_id} has no assigned attendee",
+                "SEAT_ASSIGNMENT_REQUIRED",
+            )
+        try:
+            seat, occupied, performed_checkin = self._stage_assigned_check_in(
+                seat_id=seat_id,
+                attendee=attendee,
+                meeting_id=active.id,
+            )
+            self.db.commit()
+            self.db.refresh(seat)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        if occupied:
+            self._publish(
+                SeatOccupiedEvent(payload={"seat_id": seat_id}),
+                meeting_id=active.id,
+            )
+        if performed_checkin:
+            self._publish_checkin_success(
+                seat_id=seat_id,
+                attendee_id=attendee.id,
+                meeting_id=active.id,
+            )
+        return seat
+
+    def _stage_assigned_check_in(
+        self,
+        *,
+        seat_id: int,
+        attendee: Attendee,
+        meeting_id: int,
+    ) -> tuple[SeatState, bool, bool]:
+        """Stage the shared face/manual admission state transition."""
+        if attendee.meeting_id != meeting_id or attendee.assigned_seat_id != seat_id:
+            raise ConflictError(
+                "Attendee is not assigned to the requested seat",
+                "PERSON_SEAT_ASSIGNMENT_MISMATCH",
+            )
+
+        seat = self._get_seat(seat_id)
+        if seat.status == "checked_in":
+            if seat.attendee_id == attendee.id:
+                return seat, False, False
+            raise ConflictError(
+                f"Seat {seat_id} is checked in by another attendee",
+                "SEAT_ALREADY_CHECKED_IN",
+            )
+        if attendee.checked_in and attendee.seat_id != seat_id:
+            raise ConflictError(
+                f"Attendee {attendee.id} is checked in at another seat",
+                "ATTENDEE_ALREADY_CHECKED_IN",
+            )
+        if seat.attendee_id is not None and seat.attendee_id != attendee.id:
+            raise ConflictError(
+                f"Seat {seat_id} is occupied by another attendee",
+                "SEAT_ALREADY_BOUND",
+            )
+
+        occupied = seat.status == "vacant"
+        if occupied:
+            seat.status = "occupied_unchecked"
+            seat.attendee_id = None
+            self.seat_repo.save_seat(seat, commit=False)
+        checked_in_seat = self.check_in(
+            seat_id=seat_id,
+            attendee_id=attendee.id,
+            meeting_id=meeting_id,
+            commit=False,
+            publish=False,
+        )
+        return checked_in_seat, occupied, True
 
     def tablet_vacate(
         self,

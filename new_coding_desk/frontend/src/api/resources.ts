@@ -9,6 +9,7 @@ import {
   apiGet,
   apiGetRaw,
   apiPost,
+  apiPut,
   apiRequest,
 } from "./client";
 import type {
@@ -150,6 +151,33 @@ export function deleteAttendee(
   attendeeId: number,
 ): Promise<void> {
   return apiDelete<void>(`/meetings/${meetingId}/attendees/${attendeeId}`);
+}
+
+/** Assign the meeting's default attendee to a physical seat. */
+export function setSeatAssignment(
+  meetingId: number,
+  seatId: number,
+  attendeeId: number,
+): Promise<Attendee> {
+  return apiPut<Attendee>(
+    `/meetings/${meetingId}/seat-assignments/${seatId}`,
+    { attendeeId },
+  );
+}
+
+/** Clear a seat's default attendee assignment. */
+export function clearSeatAssignment(
+  meetingId: number,
+  seatId: number,
+): Promise<void> {
+  return apiDelete<void>(
+    `/meetings/${meetingId}/seat-assignments/${seatId}`,
+  );
+}
+
+/** Host fallback admission for the attendee assigned to the seat. */
+export function manualAdmitSeat(seatId: number): Promise<SeatState> {
+  return apiPost<SeatState>(`/seats/${seatId}/manual-admit`);
 }
 
 /** Add an agenda item to a meeting. */

@@ -41,3 +41,17 @@ class AttendeeRepository(BaseRepository[Attendee]):
             )
             .first()
         )
+
+    def get_by_assigned_seat(
+        self,
+        meeting_id: int,
+        seat_id: int,
+    ) -> Attendee | None:
+        return (
+            self.db.query(Attendee)
+            .filter(
+                Attendee.meeting_id == meeting_id,
+                Attendee.assigned_seat_id == seat_id,
+            )
+            .first()
+        )

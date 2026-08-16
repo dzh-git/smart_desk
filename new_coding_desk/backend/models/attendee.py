@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from backend.database import Base
 
@@ -25,16 +26,25 @@ class Attendee(Base):
     person_id = Column(String(64), ForeignKey("people.id"), nullable=True)
     name = Column(String(100), nullable=False)
     title = Column(String(100), default="")
+    assigned_seat_id = Column(Integer, nullable=True)
     seat_id = Column(Integer, nullable=True)
     checked_in = Column(Boolean, default=False)
 
     __table_args__ = (
         Index("ix_attendees_meeting_id", "meeting_id"),
         Index("ix_attendees_seat_id", "seat_id"),
+        Index("ix_attendees_assigned_seat_id", "assigned_seat_id"),
         Index("ix_attendees_person_id", "person_id"),
         UniqueConstraint(
             "meeting_id",
             "person_id",
             name="uq_attendees_meeting_person",
+        ),
+        Index(
+            "ix_attendees_meeting_assigned_seat_id",
+            "meeting_id",
+            "assigned_seat_id",
+            unique=True,
+            sqlite_where=text("assigned_seat_id IS NOT NULL"),
         ),
     )

@@ -45,8 +45,8 @@
     "semantic_hash": "73c11efdc9ddecab311180043b90b144"
   },
   "new_coding_desk/backend/api/meetings.py": {
-    "mtime": 1785163857.5578146,
-    "ast_hash": "537ffb24e68986ce6c3062ac349dc6cd",
+    "mtime": 1786887218.1312685,
+    "ast_hash": "72227229bcc215f7825ed35f9e46a9d2",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/seat_ws.py": {
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/seats.py": {
-    "mtime": 1786780167.9988334,
-    "ast_hash": "59849994b94595bfbdb0013d11796adc",
+    "mtime": 1786887274.8739977,
+    "ast_hash": "1c40dee2a24d28851e23fd61a44e1e33",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/service_calls.py": {
@@ -175,8 +175,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/migrations.py": {
-    "mtime": 1785191298.5297246,
-    "ast_hash": "080c3c19c140b4b3d5a9c535915c2373",
+    "mtime": 1786887214.3276954,
+    "ast_hash": "6152679dd4bbc27511b6c18b424b900b",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/__init__.py": {
@@ -185,8 +185,8 @@
     "semantic_hash": "bccb8912c7085c9b346635800ccd8eb5"
   },
   "new_coding_desk/backend/repositories/attendee_repository.py": {
-    "mtime": 1785163796.9239814,
-    "ast_hash": "b716b6756336f29977a69fe5224a710e",
+    "mtime": 1786887215.5730574,
+    "ast_hash": "bf3c36072952974677b33bd2bcab14fd",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/base.py": {
@@ -225,8 +225,8 @@
     "semantic_hash": "84f28324f236083053817839e78737f3"
   },
   "new_coding_desk/backend/schemas/meeting.py": {
-    "mtime": 1785163856.8817296,
-    "ast_hash": "08560b27a83cb3166da300a0d6c03f85",
+    "mtime": 1786887213.0755377,
+    "ast_hash": "2be0711ecdad98bcacb6b024b9d08ece",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/schemas/seat.py": {
@@ -280,13 +280,13 @@
     "semantic_hash": "76b0de41a896a292836b198289058136"
   },
   "new_coding_desk/backend/services/meeting_service.py": {
-    "mtime": 1785163857.2000334,
-    "ast_hash": "7cd4cd3b8f13f4f5f0004e460352a551",
+    "mtime": 1786888508.7800825,
+    "ast_hash": "1cea3b19cdb27839e419fca071f9e58a",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/seat_service.py": {
-    "mtime": 1786780025.3640125,
-    "ast_hash": "51acc4a46b9683ffdfe1623fb80075c2",
+    "mtime": 1786887273.6125543,
+    "ast_hash": "2d056934eabb6dd707db047065a2141a",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/service_call_service.py": {
@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/admin.test.tsx": {
-    "mtime": 1785973478.5818267,
-    "ast_hash": "4e7fad5f55893cded89b4b4580cc12ee",
+    "mtime": 1786888561.9681919,
+    "ast_hash": "36a04cf71516ab854ae8602b7b1440a7",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/host-display-control-review.test.tsx": {
@@ -520,8 +520,8 @@
     "semantic_hash": "edbc8460e9c7ebd408be894c9e00472c"
   },
   "new_coding_desk/frontend/src/__tests__/seat.test.tsx": {
-    "mtime": 1786783437.9961529,
-    "ast_hash": "a442c2c768cddca0a08a69238594d6bb",
+    "mtime": 1786889108.9728506,
+    "ast_hash": "5306cb0d178b03efaa5d3de38fca606f",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/speechTrace.test.ts": {
@@ -530,9 +530,9 @@
     "semantic_hash": "b316e91176e8cc9d4dc4c88e5267d100"
   },
   "new_coding_desk/frontend/src/api/__tests__/adapters.test.ts": {
-    "mtime": 1784019721.7390306,
-    "ast_hash": "0a103977261628aa514ad673a509714b",
-    "semantic_hash": "0a103977261628aa514ad673a509714b"
+    "mtime": 1786889158.2989223,
+    "ast_hash": "df13686e026e45e35fdeeb5319e08542",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/api/__tests__/client.test.ts": {
     "mtime": 1780583790.987857,
@@ -550,18 +550,18 @@
     "semantic_hash": "c1be3b5f73c2673b35b80fb05636d7c0"
   },
   "new_coding_desk/frontend/src/api/client.ts": {
-    "mtime": 1783677519.3366845,
-    "ast_hash": "8489b7202b7d897006c4c51264e130c0",
-    "semantic_hash": "8489b7202b7d897006c4c51264e130c0"
+    "mtime": 1786887485.6127694,
+    "ast_hash": "ba042305a182b3729f18191a4e7049ec",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/api/resources.ts": {
-    "mtime": 1786780352.0701182,
-    "ast_hash": "f5f3f63723dc57885368b2f4dea98e47",
+    "mtime": 1786887486.9441218,
+    "ast_hash": "7227d0febe0e1d20e6e0dcf8ea41e01b",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/api/types.ts": {
-    "mtime": 1786780318.4844704,
-    "ast_hash": "7a6d29d70ac53415c040940c9b8e56e3",
+    "mtime": 1786889106.424304,
+    "ast_hash": "207b87e0e7478bbba66edaad79868f0d",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/app-config.ts": {
@@ -590,8 +590,8 @@
     "semantic_hash": "ed481375583d9fc714522d23688e19a6"
   },
   "new_coding_desk/frontend/src/components/AdminDashboard.tsx": {
-    "mtime": 1785973349.0771396,
-    "ast_hash": "f3e8ffc5be9a67d8a88219bf02309cf8",
+    "mtime": 1786887661.359896,
+    "ast_hash": "41a07b4e06e5491b2614a186cba7137f",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AdminHeader.tsx": {
@@ -605,9 +605,9 @@
     "semantic_hash": "02e0d14233b60a4dbab19f977b5e21a3"
   },
   "new_coding_desk/frontend/src/components/ConferenceTable.tsx": {
-    "mtime": 1781277558.878495,
-    "ast_hash": "b0188fa1d464ea69884f95ffd8c23dd4",
-    "semantic_hash": "b0188fa1d464ea69884f95ffd8c23dd4"
+    "mtime": 1786888560.6229525,
+    "ast_hash": "000eeb3dd0079361100a8a828bd2ebd8",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/DisplayView.tsx": {
     "mtime": 1785945594.6156516,
@@ -635,8 +635,8 @@
     "semantic_hash": "f1431706b856364588900ed6a296f8a5"
   },
   "new_coding_desk/frontend/src/components/SeatTablet.tsx": {
-    "mtime": 1786783216.6545284,
-    "ast_hash": "8ce0a825100eb303e96b81a5863af77c",
+    "mtime": 1786889107.719762,
+    "ast_hash": "2c32cdc2b8c60c85ed6117db5d0dc63e",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ServicePanel.tsx": {
@@ -1730,8 +1730,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_identity_checkin.py": {
-    "mtime": 1786783200.2922232,
-    "ast_hash": "b18fa3b794b490e3e0da7f45f63a3887",
+    "mtime": 1786888525.2048385,
+    "ast_hash": "d97f1dc2831a061e147c9ed9ede7da32",
     "semantic_hash": ""
   },
   "android_tablet/README.md": {
@@ -2050,8 +2050,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/models/attendee.py": {
-    "mtime": 1785163796.187921,
-    "ast_hash": "3e2646d1a294743a8a5c545e4d9215ea",
+    "mtime": 1786889378.8867638,
+    "ast_hash": "a684e806090f3654db21a2ce62378660",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/models/identity_checkin_event.py": {
@@ -2572,6 +2572,11 @@
   "my_photos/f8fb5f1d448107435f748438d5ae1278.jpg": {
     "mtime": 1786800186.012546,
     "ast_hash": "e270dc2be9e6d414bc3c6fe4bd879b23",
+    "semantic_hash": ""
+  },
+  "graphify-out/memory/query_20260816_111912_\u5982\u4f55\u914d\u5408_camerax_\u751f\u547d\u5468\u671f_\u964c\u751f\u4eba\u548c\u7ffb\u62cd\u6d4b\u8bd5_\u6b63\u5f0f\u4eba\u8138\u6a21\u578b\u4e0e\u9608\u503c\u6807\u5b9a.md": {
+    "mtime": 1786879152.650739,
+    "ast_hash": "383df0f3737b3abb855a7745f6e41352",
     "semantic_hash": ""
   }
 }

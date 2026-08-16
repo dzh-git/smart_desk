@@ -85,6 +85,7 @@ function SeatVisualNode({
   return (
     <button
       type="button"
+      data-testid={`conference-seat-${seatId}`}
       onClick={onClick}
       className={`
         flex flex-col items-center justify-center gap-1

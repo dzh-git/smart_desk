@@ -75,6 +75,16 @@ def _prepare_active_attendee(
     attendee_id = attendee_response.json()["data"]["id"]
     assert attendee_response.json()["data"]["person_id"] == person_id
 
+    assignment_response = client.put(
+        f"/api/meetings/{meeting_id}/seat-assignments/{seat_id}",
+        json={"attendeeId": attendee_id},
+    )
+    assert assignment_response.status_code == 200
+    assert (
+        assignment_response.json()["data"]["assigned_seat_id"]
+        == seat_id
+    )
+
     if start_meeting:
         start_response = client.post(f"/api/meetings/{meeting_id}/start")
         assert start_response.status_code == 200
@@ -364,6 +374,107 @@ def test_identity_person_must_belong_to_active_meeting():
     assert response.json()["error_code"] == "PERSON_NOT_IN_ACTIVE_MEETING"
 
 
+def test_identity_person_must_match_the_assigned_seat():
+    meeting_id, attendee_id, payload, headers = _prepare_active_attendee()
+    db = TestSessionLocal()
+    try:
+        attendee = db.get(Attendee, attendee_id)
+        assert attendee is not None
+        attendee.assigned_seat_id = 2
+        db.commit()
+    finally:
+        db.close()
+
+    response = _identity_post(1, payload, headers)
+
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "PERSON_SEAT_ASSIGNMENT_MISMATCH"
+    seats = client.get("/api/seats").json()["data"]
+    assert seats[0]["status"] == "occupied_unchecked"
+
+
+def test_seat_assignments_are_unique_replaceable_and_can_be_cleared():
+    person = client.post(
+        "/api/people",
+        json={"id": "person_001", "name": "Alice"},
+    )
+    assert person.status_code == 201
+    meeting_id = client.post(
+        "/api/meetings",
+        json={"title": "Assignments"},
+    ).json()["data"]["id"]
+    first = client.post(
+        f"/api/meetings/{meeting_id}/attendees",
+        json={"name": "Alice", "personId": "person_001"},
+    ).json()["data"]
+    second = client.post(
+        f"/api/meetings/{meeting_id}/attendees",
+        json={"name": "Bob"},
+    ).json()["data"]
+
+    assigned = client.put(
+        f"/api/meetings/{meeting_id}/seat-assignments/1",
+        json={"attendeeId": first["id"]},
+    )
+    replacement = client.put(
+        f"/api/meetings/{meeting_id}/seat-assignments/1",
+        json={"attendeeId": second["id"]},
+    )
+    duplicate_attendee = client.put(
+        f"/api/meetings/{meeting_id}/seat-assignments/2",
+        json={"attendeeId": second["id"]},
+    )
+    cleared = client.delete(
+        f"/api/meetings/{meeting_id}/seat-assignments/1",
+    )
+
+    assert assigned.status_code == 200
+    assert replacement.status_code == 200
+    assert replacement.json()["data"]["id"] == second["id"]
+    assert duplicate_attendee.status_code == 409
+    assert duplicate_attendee.json()["error_code"] == "ATTENDEE_ASSIGNMENT_CONFLICT"
+    assert cleared.status_code == 200
+    returned = client.get(
+        f"/api/meetings/{meeting_id}/attendees",
+    ).json()["data"]
+    assert all(attendee["assigned_seat_id"] is None for attendee in returned)
+
+
+def test_manual_admit_is_atomic_and_idempotent():
+    _, attendee_id, _, _ = _prepare_active_attendee(occupy_seat=False)
+    received: list[str] = []
+
+    def capture(event):
+        received.append(event.event_name)
+
+    event_bus.subscribe("seat_occupied", capture)
+    event_bus.subscribe("check_in", capture)
+    try:
+        first = client.post("/api/seats/1/manual-admit")
+        second = client.post("/api/seats/1/manual-admit")
+    finally:
+        event_bus.unsubscribe("seat_occupied", capture)
+        event_bus.unsubscribe("check_in", capture)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["data"]["attendee_id"] == attendee_id
+    assert received == ["seat_occupied", "check_in"]
+
+
+def test_manual_admit_requires_an_assignment():
+    meeting_id = client.post(
+        "/api/meetings",
+        json={"title": "No assignment"},
+    ).json()["data"]["id"]
+    assert client.post(f"/api/meetings/{meeting_id}/start").status_code == 200
+
+    response = client.post("/api/seats/1/manual-admit")
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "SEAT_ASSIGNMENT_REQUIRED"
+
+
 def test_validated_identity_atomically_occupies_and_checks_in_vacant_seat():
     _, _, payload, headers = _prepare_active_attendee(occupy_seat=False)
     received = []
@@ -465,7 +576,7 @@ def test_person_already_checked_into_other_seat_is_rejected():
 
     response = _identity_post(1, payload, headers)
 
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert response.json()["error_code"] == "ATTENDEE_ALREADY_CHECKED_IN"
 
 
@@ -498,7 +609,7 @@ def test_seat_with_other_attendee_is_rejected():
 
     response = _identity_post(1, payload, headers)
 
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert response.json()["error_code"] in {
         "SEAT_NOT_OCCUPIED",
         "SEAT_ALREADY_CHECKED_IN",
@@ -582,7 +693,7 @@ def test_prototype_identity_can_be_enabled_for_explicit_development(
     assert response.json()["data"]["status"] == "checked_in"
 
 
-def test_existing_sqlite_attendees_table_receives_identity_column_and_index():
+def test_existing_sqlite_attendees_table_receives_identity_assignment_columns_and_indexes():
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as connection:
         connection.execute(
@@ -601,13 +712,17 @@ def test_existing_sqlite_attendees_table_receives_identity_column_and_index():
         )
 
     ensure_attendee_identity_columns(engine)
+    ensure_attendee_identity_columns(engine)
     inspector = inspect(engine)
 
-    assert "person_id" in {
+    columns = {
         column["name"]
         for column in inspector.get_columns("attendees")
     }
-    assert "ix_attendees_meeting_person_id" in {
+    indexes = {
         index["name"]
         for index in inspector.get_indexes("attendees")
     }
+    assert {"person_id", "assigned_seat_id"} <= columns
+    assert "ix_attendees_meeting_person_id" in indexes
+    assert "ix_attendees_meeting_assigned_seat_id" in indexes

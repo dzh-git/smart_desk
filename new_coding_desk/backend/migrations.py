@@ -78,6 +78,7 @@ def ensure_agenda_columns(engine) -> None:
 
 _ATTENDEE_IDENTITY_COLUMNS_TO_ADD: dict[str, str] = {
     "person_id": "VARCHAR(64)",
+    "assigned_seat_id": "INTEGER",
 }
 
 
@@ -119,10 +120,24 @@ def ensure_attendee_identity_columns(engine) -> None:
         )
         conn.execute(
             text(
+                "CREATE INDEX IF NOT EXISTS ix_attendees_assigned_seat_id "
+                "ON attendees(assigned_seat_id)"
+            )
+        )
+        conn.execute(
+            text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS "
                 "ix_attendees_meeting_person_id "
                 "ON attendees(meeting_id, person_id) "
                 "WHERE person_id IS NOT NULL"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "ix_attendees_meeting_assigned_seat_id "
+                "ON attendees(meeting_id, assigned_seat_id) "
+                "WHERE assigned_seat_id IS NOT NULL"
             )
         )
         conn.commit()

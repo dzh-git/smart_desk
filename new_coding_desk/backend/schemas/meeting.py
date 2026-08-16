@@ -87,7 +87,16 @@ class AttendeeResponse(BaseModel):
     person_id: str | None
     name: str
     title: str
+    assigned_seat_id: int | None
     seat_id: int | None
     checked_in: bool
 
     model_config = {"from_attributes": True}
+
+
+class SeatAssignmentRequest(BaseModel):
+    """Assign one attendee as the default person for a meeting seat."""
+
+    attendee_id: int = Field(..., gt=0, alias="attendeeId")
+
+    model_config = {"populate_by_name": True}

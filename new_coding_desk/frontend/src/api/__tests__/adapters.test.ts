@@ -25,7 +25,7 @@ describe("buildSeatDisplays", () => {
       },
     ];
     const attendees: Attendee[] = [
-      { id: 5, meeting_id: 1, name: "Alice", title: "CEO", seat_id: 1, checked_in: true },
+      { id: 5, meeting_id: 1, name: "Alice", title: "CEO", assigned_seat_id: 1, seat_id: 1, checked_in: true },
     ];
 
     const result = buildSeatDisplays(states, attendees, null);
@@ -45,7 +45,7 @@ describe("buildSeatDisplays", () => {
       },
     ];
     const attendees: Attendee[] = [
-      { id: 7, meeting_id: 1, name: "Bob", title: "CFO", seat_id: 3, checked_in: true },
+      { id: 7, meeting_id: 1, name: "Bob", title: "CFO", assigned_seat_id: 3, seat_id: 3, checked_in: true },
     ];
     const speaker: SpeakerSeat = { seat_id: 3 };
 
@@ -89,6 +89,7 @@ describe("buildSeatDisplays", () => {
       meeting_id: 1,
       name: `Person ${i + 1}`,
       title: "Member",
+      assigned_seat_id: i + 1,
       seat_id: i + 1,
       checked_in: true,
     }));
@@ -112,7 +113,7 @@ describe("buildSeatDisplays", () => {
       },
     ];
     const attendees: Attendee[] = [
-      { id: 7, meeting_id: 1, name: "Bob", title: "CFO", seat_id: 5, checked_in: true },
+      { id: 7, meeting_id: 1, name: "Bob", title: "CFO", assigned_seat_id: 5, seat_id: 5, checked_in: true },
     ];
     const speaker: SpeakerSeat = { seat_id: null };
 

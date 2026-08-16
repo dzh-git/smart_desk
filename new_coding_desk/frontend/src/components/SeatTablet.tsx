@@ -14,7 +14,6 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
-  User,
   UserCheck,
   Mic,
   MicOff,
@@ -37,10 +36,8 @@ import { useSpeechStream } from "../hooks/useSpeechStream";
 import { isMicrophoneCaptureSupported } from "../audio/microphone";
 import { TranscriptPanel } from "./TranscriptPanel";
 import {
-  checkinSeat,
   identityCheckinSeat,
   tabletVacateSeat,
-  devOccupySeat,
   devVacateSeat,
   submitVote,
   createServiceCall,
@@ -52,8 +49,6 @@ import { ApiError, NetworkError } from "../api/client";
 import type { ServiceType, SpeechModelStatus, VoteStatistics } from "../api/types";
 import {
   deriveSeatMeetingStatus,
-  canCheckIn,
-  canOccupySeat,
   canVacateSeat,
   canSubmitVote,
   canSelectVoteOption,
@@ -87,22 +82,12 @@ function cx(...classes: (string | boolean | undefined | null)[]): string {
   return classes.filter(Boolean).join(" ");
 }
 
-const AUTO_RECOGNITION_RETRY_MS = 3_000;
 const IDENTITY_SUBMIT_RETRY_MS = [1_000, 2_000, 5_000] as const;
 const ACTIVE_IDENTITY_STATUSES = new Set([
   "VERIFYING",
   "WAITING_FOR_FACE",
   "MULTIPLE_FACES",
 ]);
-const RETRYABLE_IDENTITY_STATUSES = new Set([
-  "IDLE",
-  "ENROLLED",
-  "UNKNOWN",
-  "UNRECOGNIZED",
-  "FAILED",
-  "RETRY_REQUIRED",
-]);
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -125,7 +110,6 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     seats,
     speakerSeatId,
     attendees,
-    unboundAttendees,
     agenda,
     activeVote,
     voteStats,
@@ -144,9 +128,6 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   } = useSeatData(seatId);
 
   // Local UI state
-  const [checkinAttendeeId, setCheckinAttendeeId] = useState<number | null>(
-    null,
-  );
   const [selectedVoteOption, setSelectedVoteOption] = useState<string | null>(
     null,
   );
@@ -174,6 +155,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   );
   const submittedIdentityKey = useRef<string | null>(null);
   const identitySubmitRun = useRef(0);
+  const automaticFaceAttemptKey = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -248,8 +230,13 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   // Derived state
   const mySeat = seats.find((s) => s.seatId === seatId) ?? null;
-  const isVacant = mySeat?.isVacant ?? true;
   const isCheckedIn = mySeat?.isCheckedIn ?? false;
+  const assignedAttendee =
+    attendees.find((attendee) => attendee.assigned_seat_id === seatId) ?? null;
+  const meetingAccessGranted =
+    isCheckedIn &&
+    assignedAttendee != null &&
+    mySeat?.attendeeId === assignedAttendee.id;
   const isSpeaker = speakerSeatId === seatId;
   const wsConnected = connection === "connected";
 
@@ -363,9 +350,6 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       : null);
 
   const agendaState = deriveAgendaState(agenda);
-  const isOccupiedUnchecked =
-    !isVacant && !isCheckedIn;
-
   // Elapsed time
   const now = useClock();
   const elapsedMs =
@@ -402,20 +386,6 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   }, [displayVoteStats, myAttendeeId]);
 
   // ── Actions ─────────────────────────────────────────────────────────────
-
-  async function handleCheckin() {
-    if (!checkinAttendeeId) return;
-    setActionError(null);
-    try {
-      await checkinSeat(seatId, checkinAttendeeId);
-      setCheckinAttendeeId(null);
-      refresh();
-    } catch (err: unknown) {
-      setActionError(
-        err instanceof Error ? err.message : "Check-in failed",
-      );
-    }
-  }
 
   const handleFaceVerification = useCallback(async () => {
     setActionError(null);
@@ -562,10 +532,6 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       }
       return;
     }
-    if (nativeIdentityStatus.verificationLevel !== "VALIDATED") {
-      return;
-    }
-
     const identityKey = nativeIdentityEvent.current?.eventId;
     if (!identityKey) return;
     if (submittedIdentityKey.current === identityKey) return;
@@ -611,18 +577,6 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       );
     } finally {
       setTabletVacateSubmitting(false);
-    }
-  }
-
-  async function handleOccupy() {
-    setActionError(null);
-    try {
-      await devOccupySeat(seatId);
-      refresh();
-    } catch (err: unknown) {
-      setActionError(
-        err instanceof Error ? err.message : "Occupy failed",
-      );
     }
   }
 
@@ -703,7 +657,8 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   useEffect(() => {
     const eligible =
-      isVacant &&
+      !meetingAccessGranted &&
+      assignedAttendee?.person_id != null &&
       writesAllowed &&
       nativeBridge.isAvailable() &&
       nativeCredentialReady &&
@@ -716,37 +671,49 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       return;
     }
 
+    const attemptKey = `${meeting?.id}:${seatId}:${assignedAttendee.id}`;
+    if (automaticFaceAttemptKey.current === attemptKey) {
+      return;
+    }
     const status = nativeIdentityStatus?.status;
     if (status && ACTIVE_IDENTITY_STATUSES.has(status)) {
       return;
     }
-    if (
-      status === "VERIFIED" ||
-      status === "ERROR" ||
-      status === "UNAVAILABLE" ||
-      status === "CALIBRATION_PENDING" ||
-      (status != null && !RETRYABLE_IDENTITY_STATUSES.has(status))
-    ) {
+    if (status === "VERIFIED") {
       return;
     }
 
-    const timeout = window.setTimeout(
-      () => void handleFaceVerification(),
-      status == null || status === "ENROLLED"
-        ? 0
-        : AUTO_RECOGNITION_RETRY_MS,
-    );
-    return () => window.clearTimeout(timeout);
+    automaticFaceAttemptKey.current = attemptKey;
+    void handleFaceVerification();
   }, [
+    assignedAttendee,
     handleFaceVerification,
     handleStopFaceVerification,
-    isVacant,
+    meeting?.id,
+    meetingAccessGranted,
     nativeBridge,
     nativeCredentialReady,
     nativeDeviceInfo,
     nativeIdentityStatus?.status,
     seatId,
     writesAllowed,
+  ]);
+
+  const retryFaceVerification = useCallback(async () => {
+    automaticFaceAttemptKey.current = null;
+    submittedIdentityKey.current = null;
+    nativeIdentityEvent.current = null;
+    setNativeIdentityStatus(null);
+    setActionError(null);
+    await handleStopFaceVerification();
+    await handleFaceVerification();
+    automaticFaceAttemptKey.current = `${meeting?.id}:${seatId}:${assignedAttendee?.id}`;
+  }, [
+    assignedAttendee?.id,
+    handleFaceVerification,
+    handleStopFaceVerification,
+    meeting?.id,
+    seatId,
   ]);
 
   const maintenanceAccessAvailable =
@@ -876,6 +843,96 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     );
   }
 
+  if (!meetingAccessGranted) {
+    const hasAssignment = assignedAttendee != null;
+    const canRecognize = assignedAttendee?.person_id != null;
+    const verificationActive = ACTIVE_IDENTITY_STATUSES.has(
+      nativeIdentityStatus?.status ?? "",
+    );
+    return (
+      <div
+        data-testid="seat-page-scroll"
+        className="h-screen overflow-y-auto bg-techBg bg-tech-radial flex flex-col"
+      >
+        <SeatHeader
+          seatId={seatId}
+          connection={connection}
+          onBack={onSwitchToAdmin}
+          meetingTitle={meeting?.title ?? undefined}
+          elapsedMs={elapsedMs}
+          onMaintenanceHoldStart={
+            maintenanceAccessAvailable ? beginMaintenanceHold : undefined
+          }
+          onMaintenanceHoldEnd={
+            maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
+          }
+        />
+        <main
+          data-testid="face-access-gate"
+          className="flex-1 flex items-center justify-center p-6"
+        >
+          <div className="w-full max-w-xl rounded-2xl border border-techCyan/30 bg-techCard p-8 text-center shadow-cyan-glow">
+            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border-2 border-techCyan/40 bg-techCyan/10">
+              <UserCheck size={36} className="text-techCyan" />
+            </div>
+            <h1 className="text-xl font-bold text-techText">
+              人脸验证门禁 / Face Access
+            </h1>
+            {!hasAssignment ? (
+              <p className="mt-4 text-sm text-techAmber">
+                等待主持人分配席位人员 / Waiting for host seat assignment
+              </p>
+            ) : !canRecognize ? (
+              <div className="mt-4 space-y-2">
+                <p className="text-base font-semibold text-techText">
+                  {assignedAttendee.name}
+                </p>
+                <p className="text-sm text-techAmber">
+                  默认人员尚未绑定人脸，只能由主持人人工放行。
+                </p>
+              </div>
+            ) : (
+              <div className="mt-5 space-y-4 text-left">
+                <p className="text-center text-sm text-techMuted">
+                  默认人员：{assignedAttendee.name}
+                </p>
+                <NativeIdentityPanel
+                  automatic
+                  status={nativeIdentityStatus}
+                  onFaceVerification={handleFaceVerification}
+                  onStopFaceVerification={handleStopFaceVerification}
+                />
+                {!verificationActive && (
+                  <div className="flex justify-center">
+                    <ActionButton
+                      variant="primary"
+                      size="md"
+                      icon={<RefreshCw size={14} />}
+                      onClick={() => void retryFaceVerification()}
+                      disabled={identityCheckinSubmitting}
+                    >
+                      重新识别 / Retry Recognition
+                    </ActionButton>
+                  </div>
+                )}
+              </div>
+            )}
+            {actionError && (
+              <p className="mt-5 rounded-lg border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
+                验证失败：{actionError}
+              </p>
+            )}
+            {!wsConnected && (
+              <p className="mt-4 text-xs text-techAmber">
+                后端连接已断开，恢复连接前不会解锁会议页面。
+              </p>
+            )}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   // ── Active Meeting ─────────────────────────────────────────────────────
 
   return (
@@ -925,29 +982,12 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         {/* Seat Status Card */}
         <SeatStatusCard
           seatId={seatId}
-          isVacant={isVacant}
-          isOccupiedUnchecked={isOccupiedUnchecked}
           isSpeaker={isSpeaker}
           myAttendee={myAttendeeName ? { name: myAttendeeName, title: myAttendeeTitle } : null}
-          unboundAttendees={unboundAttendees}
-          checkinAttendeeId={checkinAttendeeId}
-          onSelectAttendee={setCheckinAttendeeId}
-          onCheckin={handleCheckin}
           demoControlsEnabled={isDemoControlsEnabled()}
-          onOccupy={handleOccupy}
           onVacate={handleVacate}
           writesAllowed={writesAllowed}
           meetingStatus={meetingStatus}
-          nativeAvailable={nativeBridge.isAvailable()}
-          nativeIdentityStatus={nativeIdentityStatus}
-          onFaceVerification={handleFaceVerification}
-          onStopFaceVerification={handleStopFaceVerification}
-          onIdentityCheckin={() => {
-            if (nativeIdentityStatus) {
-              void submitIdentityCheckin(nativeIdentityStatus);
-            }
-          }}
-          identityCheckinSubmitting={identityCheckinSubmitting}
           tabletVacateAvailable={tabletVacateAvailable}
           onTabletVacate={handleTabletVacate}
           tabletVacateSubmitting={tabletVacateSubmitting}
@@ -1286,25 +1326,12 @@ function verificationLevelCopy(level: string | undefined): BilingualCopy | null 
 
 interface SeatStatusCardProps {
   seatId: number;
-  isVacant: boolean;
-  isOccupiedUnchecked: boolean;
   isSpeaker: boolean;
   myAttendee: { name: string | null; title: string | null } | null;
-  unboundAttendees: { id: number; name: string; title: string }[];
-  checkinAttendeeId: number | null;
-  onSelectAttendee: (id: number | null) => void;
-  onCheckin: () => void;
   demoControlsEnabled: boolean;
-  onOccupy: () => void;
   onVacate: () => void;
   writesAllowed: boolean;
   meetingStatus: "no_meeting" | "meeting_active";
-  nativeAvailable: boolean;
-  nativeIdentityStatus: NativeIdentityStatus | null;
-  onFaceVerification: () => void;
-  onStopFaceVerification: () => void;
-  onIdentityCheckin: () => void;
-  identityCheckinSubmitting: boolean;
   tabletVacateAvailable: boolean;
   onTabletVacate: () => void;
   tabletVacateSubmitting: boolean;
@@ -1313,21 +1340,15 @@ interface SeatStatusCardProps {
 interface NativeIdentityPanelProps {
   automatic: boolean;
   status: NativeIdentityStatus | null;
-  demoControlsEnabled: boolean;
   onFaceVerification: () => void;
   onStopFaceVerification: () => void;
-  onIdentityCheckin: () => void;
-  identityCheckinSubmitting: boolean;
 }
 
 function NativeIdentityPanel({
   automatic,
   status,
-  demoControlsEnabled,
   onFaceVerification,
   onStopFaceVerification,
-  onIdentityCheckin,
-  identityCheckinSubmitting,
 }: NativeIdentityPanelProps) {
   const verificationActive = ACTIVE_IDENTITY_STATUSES.has(
     status?.status ?? "",
@@ -1397,26 +1418,10 @@ function NativeIdentityPanel({
             )}
           </div>
         )}
-        {status?.status === "VERIFIED" &&
-          status.verificationLevel === "PROTOTYPE" &&
-          demoControlsEnabled && (
-            <ActionButton
-              variant="secondary"
-              size="sm"
-              touch
-              onClick={onIdentityCheckin}
-              loading={identityCheckinSubmitting}
-              disabled={identityCheckinSubmitting}
-            >
-              提交测试签到 / Submit Test Check-in
-            </ActionButton>
-          )}
       </div>
       {status?.status === "VERIFIED" && (
         <p className="mt-2 text-[0.65rem] text-techMuted">
-          {status.verificationLevel === "VALIDATED"
-            ? "正式验证结果正在由后端完成入座和签到。 / Validated identity is being checked in."
-            : "原型结果不会自动入座，仅可在显式开发模式中手动提交。 / Prototype results never check in automatically."}
+          后端正在校验席位分配并完成入座和签到。 / The server is validating the seat assignment and check-in.
         </p>
       )}
     </div>
@@ -1425,198 +1430,16 @@ function NativeIdentityPanel({
 
 function SeatStatusCard({
   seatId,
-  isVacant,
-  isOccupiedUnchecked,
   isSpeaker,
   myAttendee,
-  unboundAttendees,
-  checkinAttendeeId,
-  onSelectAttendee,
-  onCheckin,
   demoControlsEnabled,
-  onOccupy,
   onVacate,
   writesAllowed,
   meetingStatus,
-  nativeAvailable,
-  nativeIdentityStatus,
-  onFaceVerification,
-  onStopFaceVerification,
-  onIdentityCheckin,
-  identityCheckinSubmitting,
   tabletVacateAvailable,
   onTabletVacate,
   tabletVacateSubmitting,
 }: SeatStatusCardProps) {
-  // ── Vacant ────────────────────────────────────────────────────────────
-  if (isVacant) {
-    return (
-      <div className="bg-techCard border border-dashed border-techBorder rounded-lg p-6 text-center shadow-card-glow">
-        <div className="w-16 h-16 rounded-full bg-techCardSoft flex items-center justify-center mx-auto mb-4">
-          <User size={28} className="text-techMuted" />
-        </div>
-        <div className="mb-1">
-          <DualLabel
-            cn={`座位 ${seatId} · 空座`}
-            en="Vacant"
-            className="justify-center"
-            cnClassName="text-base font-semibold text-techMuted"
-            enClassName="text-xs"
-          />
-        </div>
-        <p className="text-xs text-techMuted/70 mb-4">
-          等待入座 / Waiting for occupant
-        </p>
-        {nativeAvailable && (
-          <div className="mb-4">
-            <NativeIdentityPanel
-              automatic
-              status={nativeIdentityStatus}
-              demoControlsEnabled={demoControlsEnabled}
-              onFaceVerification={onFaceVerification}
-              onStopFaceVerification={onStopFaceVerification}
-              onIdentityCheckin={onIdentityCheckin}
-              identityCheckinSubmitting={identityCheckinSubmitting}
-            />
-          </div>
-        )}
-        {demoControlsEnabled && (
-          <ActionButton
-            variant="primary"
-            size="lg"
-            touch
-            icon={<User size={16} />}
-            onClick={onOccupy}
-            disabled={!canOccupySeat(meetingStatus, isVacant, writesAllowed)}
-          >
-            模拟入座 / Occupy Seat (Demo)
-          </ActionButton>
-        )}
-      </div>
-    );
-  }
-
-  // ── Occupied Unchecked (needs check-in) ──────────────────────────────
-  if (isOccupiedUnchecked) {
-    return (
-      <PanelCard variant="warning" className="shadow-card-glow">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-full bg-techAmber/10 border-2 border-techAmber/30 flex items-center justify-center">
-            <User size={20} className="text-techAmber" />
-          </div>
-          <div>
-            <DualLabel
-              cn={`座位 ${seatId} · 待签到`}
-              en="Check-in Required"
-              cnClassName="text-sm font-bold text-techText"
-              enClassName="text-xs"
-            />
-            <p className="text-xs text-techMuted mt-0.5">
-              请选择参会人并绑定到此席位。 / Select an attendee to bind to this seat.
-            </p>
-          </div>
-        </div>
-
-        {nativeAvailable && (
-          <div className="mb-4">
-            <NativeIdentityPanel
-              automatic={false}
-              status={nativeIdentityStatus}
-              demoControlsEnabled={demoControlsEnabled}
-              onFaceVerification={onFaceVerification}
-              onStopFaceVerification={onStopFaceVerification}
-              onIdentityCheckin={onIdentityCheckin}
-              identityCheckinSubmitting={identityCheckinSubmitting}
-            />
-          </div>
-        )}
-
-        {/* Attendee selection */}
-        {unboundAttendees.length > 0 ? (
-          <div className="mb-4">
-            <p className="text-xs font-medium text-techMuted mb-2">
-              选择参会人 / Select attendee:
-            </p>
-            <div className="space-y-1.5">
-              {unboundAttendees.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() =>
-                    onSelectAttendee(
-                      checkinAttendeeId === a.id ? null : a.id,
-                    )
-                  }
-                  className={cx(
-                    "w-full flex items-center gap-3 rounded-lg border px-4 py-3 min-h-[48px] text-left transition-colors",
-                    checkinAttendeeId === a.id
-                      ? "border-techCyan bg-techCyan/10"
-                      : "border-techBorder bg-techCard hover:bg-techCardSoft",
-                  )}
-                >
-                  <div
-                    className={cx(
-                      "w-8 h-8 rounded-full flex items-center justify-center text-techBg text-xs font-bold",
-                      checkinAttendeeId === a.id
-                        ? "bg-techCyan"
-                        : "bg-techMuted",
-                    )}
-                  >
-                    {a.name
-                      .split(" ")
-                      .slice(0, 2)
-                      .map((n) => n[0])
-                      .join("")}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-techText">
-                      {a.name}
-                    </p>
-                    <p className="text-xs text-techMuted">{a.title}</p>
-                  </div>
-                  {checkinAttendeeId === a.id && (
-                    <CheckCircle2
-                      size={16}
-                      className="text-techCyan flex-shrink-0"
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-techAmber mb-4">
-            没有可用于签到的未绑定参会人。 / No unbound attendees are available for check-in.
-          </p>
-        )}
-
-        <div className="flex items-center gap-2">
-          <ActionButton
-            variant="primary"
-            size="md"
-            touch
-            icon={<UserCheck size={14} />}
-            onClick={onCheckin}
-            disabled={!canCheckIn(meetingStatus, isOccupiedUnchecked, !!checkinAttendeeId, writesAllowed)}
-          >
-            确认签到 / Confirm Check-in
-          </ActionButton>
-          {demoControlsEnabled && (
-            <ActionButton
-              variant="secondary"
-              size="md"
-              touch
-              onClick={onVacate}
-              disabled={!canVacateSeat(meetingStatus, !isVacant, writesAllowed)}
-            >
-              模拟离座 / Vacate (Demo)
-            </ActionButton>
-          )}
-        </div>
-      </PanelCard>
-    );
-  }
-
-  // ── Checked In ───────────────────────────────────────────────────────
   return (
     <div
       className={cx(
@@ -1689,7 +1512,7 @@ function SeatStatusCard({
                 variant="secondary"
                 size="sm"
                 onClick={onVacate}
-                disabled={!canVacateSeat(meetingStatus, !isVacant, writesAllowed)}
+                disabled={!canVacateSeat(meetingStatus, true, writesAllowed)}
               >
                 模拟离座 / Vacate Seat (Demo)
               </ActionButton>

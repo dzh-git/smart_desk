@@ -13,6 +13,7 @@ import {
   Mic,
   MicOff,
   WifiOff,
+  UserCheck,
 } from "lucide-react";
 import { useAdminData } from "../hooks/useAdminData";
 
@@ -47,6 +48,9 @@ import {
   completeAgenda,
   skipAgenda,
   triggerSpeechPreload,
+  setSeatAssignment,
+  clearSeatAssignment,
+  manualAdmitSeat,
 } from "../api/resources";
 import type { Meeting, Attendee } from "../api/types";
 import {
@@ -111,6 +115,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
   const [attendeeName, setAttendeeName] = useState("");
   const [attendeeTitle, setAttendeeTitle] = useState("");
   const [attendeeBusy, setAttendeeBusy] = useState(false);
+  const [seatAccessBusy, setSeatAccessBusy] = useState(false);
   const [agendaBusy, setAgendaBusy] = useState(false);
 
   // ── Derived meeting lifecycle & vote state (Task 4) ─────────────────────
@@ -471,6 +476,55 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
   const selectedSeat = activeSeatId != null
     ? seats.find((s) => s.seatId === activeSeatId)
     : undefined;
+  const selectedAssignedAttendee = selectedSeat
+    ? attendees.find(
+        (attendee) => attendee.assigned_seat_id === selectedSeat.seatId,
+      ) ?? null
+    : null;
+
+  const handleSeatAssignment = useCallback(
+    async (seatId: number, attendeeId: number | null) => {
+      if (!meeting?.id) return;
+      setSeatAccessBusy(true);
+      setAdminActionError(null);
+      try {
+        if (attendeeId == null) {
+          await clearSeatAssignment(meeting.id, seatId);
+        } else {
+          await setSeatAssignment(meeting.id, seatId, attendeeId);
+        }
+        refresh();
+      } catch (error: unknown) {
+        setAdminActionError(
+          error instanceof Error ? error.message : "席位默认人员配置失败",
+        );
+      } finally {
+        setSeatAccessBusy(false);
+      }
+    },
+    [meeting?.id, refresh],
+  );
+
+  const handleManualAdmit = useCallback(
+    async (seatId: number, attendee: Attendee) => {
+      if (!window.confirm(`允许 ${attendee.name} 入座席位 ${seatId}？`)) {
+        return;
+      }
+      setSeatAccessBusy(true);
+      setAdminActionError(null);
+      try {
+        await manualAdmitSeat(seatId);
+        refresh();
+      } catch (error: unknown) {
+        setAdminActionError(
+          error instanceof Error ? error.message : "人工放行失败",
+        );
+      } finally {
+        setSeatAccessBusy(false);
+      }
+    },
+    [refresh],
+  );
   // ── Dynamic elapsed time ────────────────────────────────────────
   // Re-computed every second via useClock so the elapsed display ticks.
   // For ended meetings, use the static duration (started_at → ended_at)
@@ -927,7 +981,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                 />
                 {selectedSeat && (
                   <div className="mt-5 rounded-lg border border-techBorder bg-techCardSoft p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-techText">
                           座位 {selectedSeat.seatId} / Seat {selectedSeat.seatId}
@@ -937,8 +991,64 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                             ? `${selectedSeat.attendeeName}${selectedSeat.attendeeTitle ? ` · ${selectedSeat.attendeeTitle}` : ""}`
                             : "尚未签到 / No Attendee Checked In"}
                         </p>
+                        <label className="mt-3 block text-xs text-techMuted">
+                          默认人员 / Assigned Attendee
+                          <select
+                            data-testid="seat-assignment-select"
+                            className="mt-1 block min-w-64 rounded-lg border border-techBorder bg-techCard px-3 py-2 text-sm text-techText disabled:opacity-50"
+                            value={selectedAssignedAttendee?.id ?? ""}
+                            onChange={(event) =>
+                              void handleSeatAssignment(
+                                selectedSeat.seatId,
+                                event.target.value
+                                  ? Number(event.target.value)
+                                  : null,
+                              )
+                            }
+                            disabled={selectedSeat.isCheckedIn || seatAccessBusy}
+                          >
+                            <option value="">未分配 / Unassigned</option>
+                            {attendees.map((attendee) => {
+                              const assignedElsewhere =
+                                attendee.assigned_seat_id != null &&
+                                attendee.assigned_seat_id !== selectedSeat.seatId;
+                              return (
+                                <option
+                                  key={attendee.id}
+                                  value={attendee.id}
+                                  disabled={assignedElsewhere || attendee.checked_in}
+                                >
+                                  {attendee.name} · {attendee.person_id ? "已绑定人脸" : "未绑定人脸"}
+                                  {assignedElsewhere
+                                    ? ` · 已分配席位 ${attendee.assigned_seat_id}`
+                                    : ""}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </label>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        <button
+                          data-testid="manual-admit-button"
+                          onClick={() => {
+                            if (selectedAssignedAttendee) {
+                              void handleManualAdmit(
+                                selectedSeat.seatId,
+                                selectedAssignedAttendee,
+                              );
+                            }
+                          }}
+                          disabled={
+                            seatAccessBusy ||
+                            selectedSeat.isCheckedIn ||
+                            selectedAssignedAttendee == null
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-techGreen/20 border border-techGreen/40 px-3 py-1.5 text-xs font-medium text-techGreen transition-colors hover:bg-techGreen/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {seatAccessBusy ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={13} />}
+                          人脸识别通过
+                        </button>
                         <button
                           onClick={() => handleSetSpeaker(selectedSeat.seatId)}
                           disabled={!canControlSpeaker(meetingStatus) || speakerBusy || speakerSeatId === selectedSeat.seatId}

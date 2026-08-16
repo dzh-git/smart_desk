@@ -26,6 +26,7 @@ from backend.models.vote import Vote
 from backend.repositories.meeting_repository import MeetingRepository
 from backend.repositories.attendee_repository import AttendeeRepository
 from backend.repositories.person_repository import PersonRepository
+from backend.repositories.seat_repository import SEAT_COUNT
 from backend.services.base import BaseService
 
 logger = logging.getLogger(__name__)
@@ -541,6 +542,78 @@ class MeetingService(BaseService):
         """List all attendees for a meeting."""
         self.get_meeting(meeting_id)  # ensure meeting exists
         return self.attendee_repo.list_by_meeting(meeting_id)
+
+    def assign_attendee_to_seat(
+        self,
+        meeting_id: int,
+        seat_id: int,
+        attendee_id: int,
+    ) -> Attendee:
+        """Set the meeting's default attendee for one physical seat."""
+        meeting = self.get_meeting(meeting_id)
+        if meeting.status == "finished":
+            raise ValidationError(
+                "Seat assignments cannot be changed after the meeting ends",
+                "MEETING_FINISHED",
+            )
+        if seat_id < 1 or seat_id > SEAT_COUNT:
+            raise NotFoundError(f"Seat {seat_id} not found", "SEAT_NOT_FOUND")
+
+        attendee = self.attendee_repo.get_by_id(attendee_id)
+        if attendee is None or attendee.meeting_id != meeting_id:
+            raise NotFoundError(
+                f"Attendee {attendee_id} not found in meeting {meeting_id}",
+                "ATTENDEE_NOT_FOUND",
+            )
+        if attendee.checked_in:
+            raise ConflictError(
+                "A checked-in attendee cannot be reassigned",
+                "ATTENDEE_ALREADY_CHECKED_IN",
+            )
+
+        if (
+            attendee.assigned_seat_id is not None
+            and attendee.assigned_seat_id != seat_id
+        ):
+            raise ConflictError(
+                f"Attendee {attendee_id} is already assigned to seat "
+                f"{attendee.assigned_seat_id}",
+                "ATTENDEE_ASSIGNMENT_CONFLICT",
+            )
+
+        current = self.attendee_repo.get_by_assigned_seat(meeting_id, seat_id)
+        if current is not None and current.id != attendee.id:
+            if current.checked_in:
+                raise ConflictError(
+                    "The seat is already checked in",
+                    "SEAT_ALREADY_CHECKED_IN",
+                )
+            current.assigned_seat_id = None
+            self.attendee_repo.save(current, commit=False)
+
+        attendee.assigned_seat_id = seat_id
+        return self.attendee_repo.save(attendee)
+
+    def clear_seat_assignment(self, meeting_id: int, seat_id: int) -> None:
+        """Remove the default attendee assignment from a meeting seat."""
+        meeting = self.get_meeting(meeting_id)
+        if meeting.status == "finished":
+            raise ValidationError(
+                "Seat assignments cannot be changed after the meeting ends",
+                "MEETING_FINISHED",
+            )
+        if seat_id < 1 or seat_id > SEAT_COUNT:
+            raise NotFoundError(f"Seat {seat_id} not found", "SEAT_NOT_FOUND")
+        attendee = self.attendee_repo.get_by_assigned_seat(meeting_id, seat_id)
+        if attendee is None:
+            return
+        if attendee.checked_in:
+            raise ConflictError(
+                "A checked-in seat assignment cannot be removed",
+                "SEAT_ALREADY_CHECKED_IN",
+            )
+        attendee.assigned_seat_id = None
+        self.attendee_repo.save(attendee)
 
     def delete_attendee(self, meeting_id: int, attendee_id: int) -> None:
         """Remove an attendee. Must belong to the given meeting."""

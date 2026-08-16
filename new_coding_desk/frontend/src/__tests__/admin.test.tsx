@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { AdminDashboard } from "../components/AdminDashboard";
 import { parseBackendDate, formatTranscriptTime, formatDuration } from "../components/shared";
 
@@ -2455,6 +2455,78 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
       expect(screen.queryByTestId("live-caption")).not.toBeInTheDocument();
       expect(screen.getByTestId("live-final-target")).toHaveTextContent("Final old admin segment.");
     });
+  });
+});
+
+describe("AdminDashboard - seat access control", () => {
+  it("shows the assigned attendee and calls manual-admit after confirmation", async () => {
+    const requested: Array<{ url: string; method?: string }> = [];
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockFetch.mockImplementation((url: string, options?: RequestInit) => {
+      requested.push({ url, method: options?.method });
+      if (url === "/api/meetings/active") {
+        return okResponse({
+          id: 1,
+          title: "Access Test",
+          status: "active",
+          started_at: "2026-01-01T10:00:00Z",
+        });
+      }
+      if (url === "/api/seats") {
+        return okResponse(Array.from({ length: 10 }, (_, index) => ({
+          seat_id: index + 1,
+          status: "vacant",
+          attendee_id: null,
+          updated_at: "2026-01-01T00:00:00Z",
+        })));
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{
+          id: 7,
+          meeting_id: 1,
+          person_id: "person_007",
+          name: "测试人员",
+          title: "",
+          assigned_seat_id: 1,
+          seat_id: null,
+          checked_in: false,
+        }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url.startsWith("/api/votes?")) return okResponse([]);
+      if (url.startsWith("/api/service-calls")) return okResponse([]);
+      if (url.startsWith("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      if (url === "/api/seats/1/manual-admit") {
+        return okResponse({
+          seat_id: 1,
+          status: "checked_in",
+          attendee_id: 7,
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("conference-seat-1"));
+
+    const selector = await screen.findByTestId("seat-assignment-select");
+    expect(selector).toHaveValue("7");
+    const admit = screen.getByTestId("manual-admit-button");
+    expect(admit).toBeEnabled();
+    fireEvent.click(admit);
+
+    await waitFor(() => {
+      expect(requested).toContainEqual({
+        url: "/api/seats/1/manual-admit",
+        method: "POST",
+      });
+    });
+    expect(window.confirm).toHaveBeenCalledWith("允许 测试人员 入座席位 1？");
   });
 });
 

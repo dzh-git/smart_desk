@@ -54,6 +54,7 @@ export interface Attendee {
   person_id?: string | null;
   name: string;
   title: string;
+  assigned_seat_id: number | null;
   seat_id: number | null;
   checked_in: boolean;
 }

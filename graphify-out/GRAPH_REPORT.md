@@ -1,16 +1,16 @@
 # Graph Report - smart_desktop  (2026-08-16)
 
 ## Corpus Check
-- 487 files · ~515,820 words
+- 488 files · ~516,976 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 8509 nodes · 16014 edges · 498 communities (418 shown, 80 thin omitted)
-- Extraction: 84% EXTRACTED · 16% INFERRED · 0% AMBIGUOUS · INFERRED: 2583 edges (avg confidence: 0.65)
+- 8539 nodes · 16097 edges · 489 communities (410 shown, 79 thin omitted)
+- Extraction: 84% EXTRACTED · 16% INFERRED · 0% AMBIGUOUS · INFERRED: 2595 edges (avg confidence: 0.65)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0f89734a`
+- Built from commit: `f490450c`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -449,11 +449,10 @@
 - TestMigrationIdempotency
 - tablet_device.py
 - eslint-plugin-react-hooks
-- app-config.ts
+- ._smooth_palm
 - Q: 这三个问题存在于哪一个分支，如果不存在于当前最新的分支，则不修复。否则修复
 - Q: 服务器预配口令是什么，维护页不回显是否正常，哪些验证无需用户参与？
 - Q: 在维护页面如何退回会议页面？
-- speechTrace.ts
 - test_semantic_sentence_tracking.py
 - Pcm16FrameEncoderTest
 - inspect-seat-runtime.mjs
@@ -462,19 +461,11 @@
 - .vector
 - .template
 - autoprefixer
-- SeatState
 - TestInterp
-- test_gesture_camera_driver.py
 - Q: 当前平板已连接，可以启动调试
-- __init__.py
 - AppEventRouting.test.js
 - globals
-- .cancel
-- .activate_from_standby
-- .should_release_on_hand_loss
-- ._update_stable
 - SmartDeskLighting::modeFromName
-- .note
 - @eslint/js
 
 ## God Nodes (most connected - your core abstractions)
@@ -482,10 +473,10 @@
 2. `GestureIntentTracker` - 160 edges
 3. `GestureConfig` - 133 edges
 4. `ActionIntent` - 120 edges
-5. `ValidationError` - 101 edges
+5. `ValidationError` - 104 edges
 6. `_cfg()` - 100 edges
 7. `ControlEvent` - 99 edges
-8. `MeetingService` - 89 edges
+8. `MeetingService` - 91 edges
 9. `ActionLayer` - 89 edges
 10. `FakeDriver` - 86 edges
 
@@ -498,8 +489,8 @@
   new_coding_desk/tests/test_nine_seat_integration.py → esp32_seat_controller/simulator/esp32_simulator.py
 - `test_seat1_twenty_round_full_software_closure()` --calls--> `Esp32SeatSimulator`  [EXTRACTED]
   new_coding_desk/tests/test_one_seat_integration.py → esp32_seat_controller/simulator/esp32_simulator.py
-- `test_sliding_window_limit_and_key_memory_bound()` --calls--> `SlidingWindowRateLimiter`  [INFERRED]
-  new_coding_desk/tests/test_security_controls.py → new_coding_desk/backend/security/rate_limit.py
+- `test_duplicate_and_out_of_order_occupancy_are_distinguished()` --calls--> `SeatGateway`  [INFERRED]
+  new_coding_desk/tests/test_esp32_protocol.py → new_coding_desk/backend/hardware/seat_gateway.py
 
 ## Import Cycles
 - 3-file cycle: `smartdesk_gesture_controller/hands/__init__.py -> smartdesk_gesture_controller/hands/gesture_controller.py -> smartdesk_gesture_controller/hands/gesture_actions.py -> smartdesk_gesture_controller/hands/__init__.py`
@@ -509,94 +500,94 @@
 - **Speech Utterance Lifecycle** — new_coding_desk_docs_adr_0001_ws_audio_streaming_dual_websocket_architecture, new_coding_desk_docs_adr_0001_ws_audio_streaming_server_vad_finalization, new_coding_desk_docs_adr_0002_final_audio_source_offline_asr_rescore, new_coding_desk_docs_adr_0003_utterance_id_backend_backend_generated_utterance_id, new_coding_desk_docs_adr_0004_speaker_seat_switch_hard_speaker_seat_switch, new_coding_desk_docs_system_architecture_speech_utterance_flow [EXTRACTED 1.00]
 - **Radar Visual Composition** — smartdesk_gesture_controller_hands_frontend_radar_central_target_point, smartdesk_gesture_controller_hands_frontend_radar_concentric_range_rings, smartdesk_gesture_controller_hands_frontend_radar_cardinal_direction_ticks [EXTRACTED 1.00]
 
-## Communities (498 total, 80 thin omitted)
+## Communities (489 total, 79 thin omitted)
 
 ### Community 0 - "GestureState Module"
 Cohesion: 0.04
-Nodes (69): ControlSession, GestureAttempt, GestureIntentTracker, Tracks a short-lived atomic action (mode switch, page turn, zoom).      Once com, Tracks a continuous action that holds mouse buttons / keys.      Only used for S, Stabilises gesture candidates and outputs control events.      The tracker is pu, Cancel any active attempt/session and return to idle.          Called by the sta, _cfg() (+61 more)
+Nodes (67): ControlSession, GestureAttempt, GestureIntentTracker, Tracks a short-lived atomic action (mode switch, page turn, zoom).      Once com, Tracks a continuous action that holds mouse buttons / keys.      Only used for S, Stabilises gesture candidates and outputs control events.      The tracker is pu, Cancel any active attempt/session and return to idle.          Called by the sta, _cfg() (+59 more)
 
 ### Community 1 - "ControlEvent Module"
 Cohesion: 0.03
 Nodes (62): GestureConfig, Legacy alias for ``min_hand_detection_confidence`` (controller compat)., Status-contract alias for ``hand_loss_timeout``.          The state machine inte, Return (x_start, x_end, y_start, y_end) of the screen-mapping box., All knobs for one gesture-control process instance.      Fields are grouped by c, advance_time(), feed_stable(), make_frame() (+54 more)
 
 ### Community 2 - "GestureIntentTracker Module"
-Cohesion: 0.07
-Nodes (23): AgendaUpdatedEvent, Agenda events — published by MeetingService.  Per EVENT_BUS_SPEC §7, §Agenda Eve, MeetingEndedEvent, MeetingStartedEvent, Meeting events — published by MeetingService.  Per EVENT_BUS_SPEC §7., Agenda, Attendee, Meeting (+15 more)
+Cohesion: 0.05
+Nodes (48): AgendaUpdatedEvent, Agenda events — published by MeetingService.  Per EVENT_BUS_SPEC §7, §Agenda Eve, MeetingEndedEvent, MeetingStartedEvent, Meeting events — published by MeetingService.  Per EVENT_BUS_SPEC §7., Business validation failure (e.g., invalid state transition)., ValidationError, MeetingService (+40 more)
 
 ### Community 3 - "start meeting()"
-Cohesion: 0.15
-Nodes (6): Test §11 acceptance points 1–9: GestureRecognizer output → HandInput.gesture., Acceptance #8: low confidence result falls back to old rule logic., Acceptance #9: low confidence with fallback off → None., Closed_Fist safety: even with fallback off, rule fist is preserved., PINCH is still computed from landmarks, not from GestureRecognizer., TestToHandInputGestureRecognizer
+Cohesion: 0.04
+Nodes (52): default_config(), Factory used by tests and the CLI entry point., Reconstruct a GestureFrame from a flat JSONL record dict., _record_to_gesture_frame(), use_gesture_recognizer defaults to True., use_gesture_recognizer can be set to False., fallback_to_rule_gestures defaults to True., gesture_recognizer_model_path defaults to gesture_recognizer.task. (+44 more)
 
 ### Community 4 - "create pending()"
-Cohesion: 0.04
-Nodes (32): Session, Ensure seat_states 1..9 and speaker_seat (id=1, NULL) exist.          Idempotent, _create_pending(), Start a pending meeting → active., Starting an already-active meeting is idempotent., start_meeting publishes meeting_started., Starting the same meeting again does not conflict., After first meeting ends, second can start. (+24 more)
+Cohesion: 0.03
+Nodes (81): VoteClosedEvent, NotFoundError, SeatState, SpeakerSeat, Vote, SeatState, Session, SpeakerSeat (+73 more)
 
 ### Community 5 - "ActionIntent Module"
-Cohesion: 0.04
-Nodes (89): DisplayAgentResult, check_model_files(), Check that required model files exist in the project root.      Returns a list, _controller_with_fake_driver(), _FakeDisplayAgent, Tests for hands.gesture_controller intent dispatch.  These tests keep the contro, PPT 画笔画线: mouse_down("left") + mouse_up("left") 正确分发., PPT 画笔移动: move intent 正确分发为 move_to. (+81 more)
+Cohesion: 0.03
+Nodes (98): DisplayAgentResult, Begin rotate: mouse_down("middle") once (spec §10.3)., Begin pan: key_down("shift") + mouse_down("middle") (spec §10.3)., Compute move_rel for SolidWorks rotate/pan (spec §10.3).          Uses ``solidwo, Handle PINCH zoom with hysteresis + deadzone + min step (spec §10.3, §5)., Release held state after hand-loss timeout (spec §14).          Short None: no a, Release every held button and reset continuous state.          Public so the con, Update PINCH state with hysteresis, appending mouse_down/mouse_up.          Uses (+90 more)
 
 ### Community 6 - "GestureConfig Module"
-Cohesion: 0.09
-Nodes (12): get_db(), SQLAlchemy engine, session, and declarative Base.  Usage:     from backend.datab, FastAPI dependency: yields a DB session per request., Agenda ORM model — per DATABASE_SCHEMA.md §4.  Phase 1 extensions:     - status, Attendee ORM model — per DATABASE_SCHEMA.md §5.  Repository: AttendeeRepository., Meeting ORM model — per DATABASE_SCHEMA.md §3.  Repository: MeetingRepository., Stable person identity shared across meetings., SeatState ORM model — per DATABASE_SCHEMA.md §6.  Repository: SeatRepository. (+4 more)
+Cohesion: 0.03
+Nodes (50): DeclarativeBase, Base, get_db(), SQLAlchemy engine, session, and declarative Base.  Usage:     from backend.datab, Declarative base for all ORM models., FastAPI dependency: yields a DB session per request., Attendee ORM model — per DATABASE_SCHEMA.md §5.  Repository: AttendeeRepository., IdentityCheckInEvent (+42 more)
 
 ### Community 7 - "ValidationError Module"
-Cohesion: 0.03
-Nodes (75): Exception, cancel_call(), create_service_call(), get_current_call(), list_service_calls(), BaseModel, Session, Service call API — tea/coffee/water/other requests.  Per API_SPEC §9:     POST (+67 more)
+Cohesion: 0.06
+Nodes (40): cancel_call(), create_service_call(), get_current_call(), list_service_calls(), BaseModel, Session, Service call API — tea/coffee/water/other requests.  Per API_SPEC §9:     POST, POST /api/service-calls/{call_id}/cancel — cancel a pending call.      Publishes (+32 more)
 
 ### Community 8 - "active meeting with attendee()"
-Cohesion: 0.16
-Nodes (15): agendaStatusCopy(), clearStoredEndedId(), DisplayAgendaProgress(), DisplayView(), EMPTY_STATE, getEffectiveMeetingId(), getIsEndedMeeting(), persistEndedId() (+7 more)
+Cohesion: 0.29
+Nodes (9): AgendaCommandCenter(), agendaStatusCopy(), DisplayAgendaProgress(), AgendaDerivedState, AgendaProgress, deriveAgendaState(), getAgendaProgress(), getCurrentAgenda() (+1 more)
 
 ### Community 9 - "GestureController Module"
-Cohesion: 0.40
-Nodes (5): _clean_tables(), MonkeyPatch, Drop and recreate all tables, init seat states., Clean DB and isolate WS tests from adaptive-gate warm-up latency., _reset_db()
+Cohesion: 0.07
+Nodes (27): Largest active per-utterance audio buffer duration., Return unified model readiness state.          If SpeechModule has been create, is_punctuation_loaded(), CT-Transformer punctuation restoration for streaming ASR.  Wraps FunASR real-tim, Check whether the CT-Transformer punctuation model is loaded.      Returns True, Load CT-Transformer punctuation model. Idempotent.      Searches local cache fir, warmup_punc(), Load all models + warmup. Idempotent and thread-safe.          Load order: (+19 more)
 
 ### Community 10 - "HandInput Module"
 Cohesion: 0.03
-Nodes (66): ndarray, Recognize one 16 kHz mono sentence, optionally forcing zh or en., Normalized sentence-final recognition result., recognize_bilingual(), SpeechRecognitionResult, get_default_vad(), speech_module — production speech recognition and translation.  Provides SpeechM, is_punctuation_loaded() (+58 more)
+Nodes (60): main(), Warm-model latency smoke test for bilingual final ASR plus translation., apply_highpass_filter(), apply_preprocessing(), load_audio(), _load_via_pydub(), ndarray, Audio loading utilities with m4a/AAC fallback via pydub. (+52 more)
 
 ### Community 11 - "SpeechStreamService Module"
 Cohesion: 0.03
-Nodes (66): ActionIntent, HandInput, SolidWorks view-mode handler (spec §10).          Phase 4 migration: rotate (Ope, Begin rotate: mouse_down("middle") once (spec §10.3)., Begin pan: key_down("shift") + mouse_down("middle") (spec §10.3)., End any active SolidWorks continuous action (spec §10.5, §10.6).          Releas, Compute move_rel for SolidWorks rotate/pan (spec §10.3).          Uses ``solidwo, Handle EVT_ROTATE_BEGIN from tracker.          Releases any active pan/zoom firs (+58 more)
+Nodes (77): ActionIntent, Gesture, HandInput, Enum, str, SolidWorks view-mode handler (spec §10).          Phase 4 migration: rotate (Ope, End any active SolidWorks continuous action (spec §10.5, §10.6).          Releas, Handle EVT_ROTATE_BEGIN from tracker.          Releases any active pan/zoom firs (+69 more)
 
 ### Community 12 - "TranslationService Module"
 Cohesion: 0.13
 Nodes (17): Esp32SeatSimulator, main(), parse_device_tokens(), Any, Async ESP32 protocol simulator for development and integration tests., One deterministic ESP32 seat controller without hardware dependencies., Validate the same per-device credential map used by the backend., run_scenario() (+9 more)
 
 ### Community 13 - "Meeting Module"
-Cohesion: 0.08
-Nodes (17): GestureController, Any, Request a graceful stop from another thread., Activate the app for an ILoveYou mode swipe, rolling back on failure., Execute all intents via the ActionLayer's unified ``execute`` entry., Execute a single intent (kept for backward compat / tests)., Release mouse via both the state machine and the action layer., Single exit path: release everything, close resources. (+9 more)
+Cohesion: 0.05
+Nodes (32): GestureController, main(), Any, Entry point: configure logging to file and console, then start controller., Open resources and enter the frame loop. Returns process exit code., Request a graceful stop from another thread., Activate the app for an ILoveYou mode swipe, rolling back on failure., Execute all intents via the ActionLayer's unified ``execute`` entry. (+24 more)
 
 ### Community 14 - "create meeting()"
-Cohesion: 0.08
-Nodes (41): _create_meeting(), _load_pcm16_frames(), _make_silence_frames(), TestClient, SmartDesk Speech Phase 2/3/4 — Voice WebSocket Black-Box Tests.  Spec: WEBSOCK, After speaker seat switch, old WS messages do not produce records.          Pe, Duplicate WS does not corrupt sessions — new WS finalizes correctly., Create and start a meeting, return meeting_id. (+33 more)
+Cohesion: 0.07
+Nodes (47): TranslationRecord, _clean_tables(), _create_meeting(), _load_pcm16_frames(), _make_silence_frames(), MonkeyPatch, TestClient, SmartDesk Speech Phase 2/3/4 — Voice WebSocket Black-Box Tests.  Spec: WEBSOCK (+39 more)
 
 ### Community 15 - "useSeatData.ts Module"
-Cohesion: 0.10
-Nodes (56): buildSeatDisplays(), apiGet(), fetchActiveMeeting(), fetchActiveVote(), fetchAgendas(), fetchAttendees(), fetchCurrentServiceCall(), fetchPeople() (+48 more)
+Cohesion: 0.09
+Nodes (61): buildSeatDisplays(), apiGet(), fetchActiveMeeting(), fetchActiveVote(), fetchAgendas(), fetchAttendees(), fetchCurrentServiceCall(), fetchPeople() (+53 more)
 
 ### Community 16 - "AdminDashboard.tsx Module"
-Cohesion: 0.09
-Nodes (48): apiDelete(), apiPost(), advanceAgenda(), cancelServiceCall(), checkinSeat(), clearSpeakerSeat(), closeVote(), completeAgenda() (+40 more)
+Cohesion: 0.08
+Nodes (57): apiDelete(), ApiError, apiGetRaw(), apiPatch(), apiPost(), apiPut(), NetworkError, request() (+49 more)
 
 ### Community 17 - "trace() Module"
-Cohesion: 0.17
-Nodes (4): MicrophoneCapture, trace(), SpeechWsClient, useSpeechStream()
+Cohesion: 0.05
+Nodes (30): apiBase(), AppConfig, cfg(), NativeDeviceEnvelope, nativeServerUrl(), wsBase(), MicrophoneCapture, downloadTraceFile() (+22 more)
 
 ### Community 18 - "shared.tsx Module"
 Cohesion: 0.06
-Nodes (42): ServiceType, AdminHeader(), ConnectionBadgeConfig, getConnectionBadge(), getMeetingBadge(), MeetingBadgeConfig, AgendaCommandCenter(), AgendaCommandCenterProps (+34 more)
+Nodes (43): ServiceType, AdminHeader(), AdminHeaderProps, ConnectionBadgeConfig, getConnectionBadge(), getMeetingBadge(), MeetingBadgeConfig, AgendaCommandCenterProps (+35 more)
 
 ### Community 19 - "ConflictError Module"
 Cohesion: 0.24
 Nodes (15): addEnvelope(), applyLightingCommand(), String, enterErrorMode(), handleServerMessage(), loop(), maintainNetwork(), onWebSocketEvent() (+7 more)
 
 ### Community 20 - "VoteService Module"
-Cohesion: 0.07
-Nodes (40): cast_vote(), close_vote(), create_vote(), get_active_vote(), get_vote(), get_vote_statistics(), list_votes(), BaseModel (+32 more)
+Cohesion: 0.06
+Nodes (42): cast_vote(), close_vote(), create_vote(), get_active_vote(), get_vote(), get_vote_statistics(), list_votes(), BaseModel (+34 more)
 
 ### Community 21 - "SpeechModule Module"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (19): Finalized translation record — persisted, then broadcast.      Published by Tran, TranslationFinalEvent, _get_speech(), _is_narrowband_tone(), _normalize_punctuation(), ndarray, TranslationRecord, Sentence-final bilingual ASR, translation, persistence and event pipeline. (+11 more)
 
 ### Community 22 - "SmartDeskLighting Module"
@@ -604,8 +595,8 @@ Cohesion: 0.10
 Nodes (45): CRGB, LightMode, String, CRGB, LightMode, SmartDeskLighting, animationProgress, begin (+37 more)
 
 ### Community 23 - ".ok() Module"
-Cohesion: 0.12
-Nodes (44): advance_agenda(), complete_agenda(), create_agenda(), create_attendee(), create_meeting(), delete_agenda(), delete_attendee(), end_meeting() (+36 more)
+Cohesion: 0.11
+Nodes (48): advance_agenda(), clear_seat_assignment(), complete_agenda(), create_agenda(), create_attendee(), create_meeting(), delete_agenda(), delete_attendee() (+40 more)
 
 ### Community 24 - "layer() Module"
 Cohesion: 0.17
@@ -616,40 +607,40 @@ Cohesion: 0.16
 Nodes (7): _FakeRecognizer, _FakeStream, _prepare_fake_model(), ndarray, test_english_stream_failure_uses_named_sensevoice_fallback(), test_processor_accepts_each_pcm_chunk_once_and_keeps_word_spaces(), test_speech_module_uses_isolated_english_processors()
 
 ### Community 26 - "GestureStatusServer Module"
-Cohesion: 0.05
-Nodes (31): HTTPStatus, DisplayAgentClient, Any, Small loopback HTTP client for the SmartDesk Display Agent., Call the local Display Agent without adding a requests dependency., GestureStatusServer, Any, Local status broadcast server for the gesture controller.  Runs an async ``webso (+23 more)
+Cohesion: 0.08
+Nodes (21): HTTPStatus, GestureStatusServer, Any, Local status broadcast server for the gesture controller.  Runs an async ``webso, Merge partial state. Safe to call from the controller thread., Spawn the server thread. Returns False if it could not start., Signal the server thread to stop. Safe to call multiple times., Load the status card page and its static assets into memory.          The return (+13 more)
 
 ### Community 27 - "BaseEvent Module"
 Cohesion: 0.13
 Nodes (7): BaseEvent, BaseEvent — unified event envelope.  Per EVENT_BUS_SPEC §3:     All events share, Base class for all SmartDesk events.      Subclass and set `event_name` as a cla, LightingManager, Business-event to per-seat lighting state resolver.  The manager keeps a durable, Resolve business state to an intended lighting mode for every seat., Release EventBus handlers and timers for tests/app replacement.
 
 ### Community 28 - "TestSpeakerSeat Module"
-Cohesion: 0.13
-Nodes (14): Bounded single-worker queue for automatic speech finalization., Serializes translation model access without blocking audio reception., Queue a translated final, falling back to a fast source-only save., SpeechFinalizationJob, SpeechFinalizationQueue, MonkeyPatch, test_auto_final_starts_next_utterance_before_background_translation(), test_end_hint_queues_bilingual_final_audio() (+6 more)
+Cohesion: 0.07
+Nodes (36): Translation events — published by TranslationService and SpeechStreamService.  P, Streaming ASR interim result — ephemeral, not persisted.      Published by Speec, Indicates a pending interim utterance was discarded.      Published by SpeechStr, Moves a completed realtime segment into pending history immediately., TranslationFinalizingEvent, TranslationInterimCancelledEvent, TranslationInterimEvent, Bounded single-worker queue for automatic speech finalization. (+28 more)
 
 ### Community 29 - "test display agent.py"
 Cohesion: 0.05
 Nodes (39): client(), Tests for the Display Agent — uses FastAPI TestClient with all Win32/COM/ subpro, PyWin32 exposes GetWindowThreadProcessId on win32process., Activate PowerPoint when slideshow window exists → activate_slideshow., No slideshow → start via COM., An empty presentation still allows useful editor activation., SmartDesk display window exists → activate., No existing window → launch Edge with FIXED argv (no shell). (+31 more)
 
 ### Community 30 - "HandRecognizer Module"
-Cohesion: 0.02
-Nodes (80): Attendee, Person, SeatState, AttendeeRepository, Attendee, AttendeeRepository — CRUD for attendees.  Per DATABASE_SCHEMA.md §5, §15:     Ow, Data access for attendees.      Extends BaseRepository[Attendee] with:         -, List all attendees for a meeting. (+72 more)
+Cohesion: 0.03
+Nodes (43): _active_meeting_with_attendee(), Tests for SeatService — state machine, check-in, speaker seat.  Coverage:     -, seat_occupied fails if seat is checked_in., seat_occupied clears any previous attendee_id., seat_occupied on seat_id=99 raises NotFoundError., seat_vacant: any → vacant., occupied_unchecked → vacant., Calling seat_vacant on already-vacant is a no-op. (+35 more)
 
 ### Community 31 - "ActionLayer Module"
 Cohesion: 0.03
-Nodes (81): _add_agenda(), _create_pending(), Agenda, Tests for Agenda State Machine — Phase 1.  Covers:     1.  create agenda default, Requirement 2: GET agendas returns top-level array, each with status/time., list_agendas returns a top-level list., Each agenda item has status, started_at, completed_at, skipped_at., GET agendas for ended meeting still returns data. (+73 more)
+Nodes (88): ConflictError, Business rule conflict (e.g., duplicate active meeting)., Agenda, Agenda ORM model — per DATABASE_SCHEMA.md §4.  Phase 1 extensions:     - status, PersonService, Person, _add_agenda(), _create_pending() (+80 more)
 
 ### Community 32 - "replay record()"
-Cohesion: 0.12
-Nodes (12): DeclarativeBase, Base, Declarative base for all ORM models., Tests for dev API endpoints and demo seed data (Phase 03)., When ENABLE_DEMO_SEED is not set, no demo data is created., No demo meeting exists when seed is disabled., No open vote when seed is disabled., When ENABLE_DEMO_SEAT_API is not set, endpoints return 404. (+4 more)
+Cohesion: 0.11
+Nodes (14): MeetingRepository, Agenda, Meeting, MeetingRepository — CRUD for meetings + agendas.  Per DATABASE_SCHEMA.md §3-4, §, Data access for meetings and agendas.      Extends BaseRepository[Meeting] with:, Return the meeting with status='active', or None., List meetings filtered by status., Create an agenda item. Auto-commits. (+6 more)
 
 ### Community 33 - "test gesture controller.py"
-Cohesion: 0.07
+Cohesion: 0.06
 Nodes (17): _layer(), Tests for hands.gesture_actions — ActionLayer, FakeDriver, execute().  Tests use, Legacy 'move' type should be treated as move_to by execute()., release_all must release left/middle/right + shift/ctrl/alt., Calling release_all twice must not crash., release_all with nothing held must not crash and must still fire 6 releases., status must not produce any mouse or keyboard events., FakeDriver must never touch the real OS. (+9 more)
 
 ### Community 34 - "SeatService Module"
-Cohesion: 0.08
-Nodes (21): clear_trace(), export_trace_to_file(), load_trace_from_file(), SpeechTrace — temporary diagnostic instrumentation for Task 125 audit.  This is, Export the current trace buffer to a JSON file.      The exported file contains, Load a previously exported trace file.      Compatible with files written by exp, Clear all recorded trace events. Safe to call multiple times., _MockSpeechModuleWithTrace (+13 more)
+Cohesion: 0.06
+Nodes (32): clear_trace(), export_trace_to_file(), load_trace_from_file(), SpeechTrace — temporary diagnostic instrumentation for Task 125 audit.  This is, Export the current trace buffer to a JSON file.      The exported file contains, Load a previously exported trace file.      Compatible with files written by exp, Clear all recorded trace events. Safe to call multiple times., _clear_trace_before() (+24 more)
 
 ### Community 35 - "patch httpx()"
 Cohesion: 0.08
@@ -660,24 +651,24 @@ Cohesion: 0.06
 Nodes (35): Tests for the screen stream service — config validation, command generation, enc, NVENC command uses correct encoder and args., libx264 software fallback uses the shared D3D11_TO_NV12_FILTER., QSV command uses shared D3D11_TO_NV12_FILTER + QuickSync encoder., FFmpeg command is built as argv list, no shell concatenation., D3D11_TO_NV12_FILTER has the correct value verified on Intel Graphics., NVENC command must NOT have -vf hwdownload — keeps hardware frames., No production source file contains the old broken 'hwdownload,format=nv12'. (+27 more)
 
 ### Community 37 - "FakeDriver Module"
-Cohesion: 0.11
-Nodes (21): Path, Return the writable runtime data directory.      Development keeps the historica, resolve_data_dir(), load_integration_config(), Locate and parse config/smartdesk.integration.json., authenticate_esp32_device(), DeviceAuthenticationError, Esp32Credential (+13 more)
+Cohesion: 0.13
+Nodes (18): Path, Return the writable runtime data directory.      Development keeps the historica, resolve_data_dir(), authenticate_esp32_device(), DeviceAuthenticationError, Esp32Credential, load_esp32_credentials(), parse_bearer_token() (+10 more)
 
 ### Community 38 - "make frame result()"
-Cohesion: 0.18
-Nodes (10): _fake_raw_hand_full(), _make_frame_result(), _open_palm(), Build a _FrameResult for testing to_hand_input without a camera., Build a fake raw hand-landmark list with configurable key points.      Returns `, Test to_gesture_frame construction from _FrameResult., When gesture is 'None' string, raw_gesture should be None (not 'None')., hand_present=True with raw_gesture=None must be distinguishable from         han (+2 more)
+Cohesion: 0.12
+Nodes (17): _fake_raw_hand_full(), _make_frame_result(), _open_palm(), Build a _FrameResult for testing to_hand_input without a camera., Test §11 acceptance points 1–9: GestureRecognizer output → HandInput.gesture., Acceptance #8: low confidence result falls back to old rule logic., Acceptance #9: low confidence with fallback off → None., Closed_Fist safety: even with fallback off, rule fist is preserved. (+9 more)
 
 ### Community 39 - "EventBus Module"
-Cohesion: 0.21
+Cohesion: 0.23
 Nodes (15): _boolean(), decode_uplink(), event_ack_message(), hello_ack_message(), _identifier(), _integer(), lighting_message(), protocol_error_message() (+7 more)
 
 ### Community 40 - "stt streaming.py"
 Cohesion: 0.08
-Nodes (14): Return the most recent opt-in streaming decoder diagnostic., ndarray, Per-segment state for true streaming ASR.      Manages encoder/decoder cache lif, Reset state for new VAD segment. Clears cache and accumulated text., Reset accumulated text for a new utterance. Preserves CIF cache.          Used b, Feed one audio chunk to streaming Paraformer.          Args:             audio:, Merge incremental chunk text with previous accumulated text.          Delegates, Lightweight RMS-based silence counter for is_final triggering.      Not a full V (+6 more)
+Nodes (13): Return the most recent opt-in streaming decoder diagnostic., ndarray, Per-segment state for true streaming ASR.      Manages encoder/decoder cache lif, Reset state for new VAD segment. Clears cache and accumulated text., Reset accumulated text for a new utterance. Preserves CIF cache.          Used b, Feed one audio chunk to streaming Paraformer.          Args:             audio:, Merge incremental chunk text with previous accumulated text.          Delegates, Lightweight RMS-based silence counter for is_final triggering.      Not a full V (+5 more)
 
 ### Community 41 - "types.ts Module"
-Cohesion: 0.06
-Nodes (42): fetchHostDisplayStatus(), AgendaStatus, AgentState, AppWindowState, CaptionPayload, DetailedModelStatus, HostDisplayStatus, IdentityCheckInPayload (+34 more)
+Cohesion: 0.09
+Nodes (26): AgendaStatus, AgentState, AppWindowState, CaptionPayload, DetailedModelStatus, IdentityCheckInPayload, MeetingStatus, ModelComponentStatus (+18 more)
 
 ### Community 42 - "controller with fake driver()"
 Cohesion: 0.11
@@ -688,8 +679,8 @@ Cohesion: 0.11
 Nodes (32): assess_bottleneck(), compute_cer(), decode_audio(), _find_ffmpeg(), generate_report(), _get_preset_chunk(), _get_presets(), main() (+24 more)
 
 ### Community 44 - "SeatTablet.tsx Module"
-Cohesion: 0.09
-Nodes (36): fetchSpeechStatus(), identityCheckinSeat(), reportTabletHeartbeat(), tabletVacateSeat(), ACTIVE_IDENTITY_STATUSES, BilingualCopy, CurrentTopicCard(), cx() (+28 more)
+Cohesion: 0.08
+Nodes (35): fetchSpeechStatus(), identityCheckinSeat(), reportTabletHeartbeat(), tabletVacateSeat(), ACTIVE_IDENTITY_STATUSES, BilingualCopy, CurrentTopicCard(), cx() (+27 more)
 
 ### Community 45 - "test votes router.py"
 Cohesion: 0.08
@@ -712,8 +703,8 @@ Cohesion: 0.11
 Nodes (32): _button_flag(), click(), hotkey(), _INPUT, _INPUT_I, _key_to_vk(), _KEYBDINPUT, keyDown() (+24 more)
 
 ### Community 50 - "test speech model smoke.py"
-Cohesion: 0.07
-Nodes (28): CaptureFixture, _any_snapshot(), _find_model_absolute(), _model_dir(), Path, Real model smoke test for SpeechModule.  Validates that:   1. Python speech depe, Verify model files exist (snapshot directories are non-empty)., Paraformer Streaming — snapshot directory must exist and have files. (+20 more)
+Cohesion: 0.09
+Nodes (22): CaptureFixture, _any_snapshot(), _model_dir(), Path, Real model smoke test for SpeechModule.  Validates that:   1. Python speech depe, Verify model files exist (snapshot directories are non-empty)., Paraformer Streaming — snapshot directory must exist and have files., Paraformer-large — snapshot directory must exist and have files. (+14 more)
 
 ### Community 51 - "WindowInfo Module"
 Cohesion: 0.10
@@ -724,8 +715,8 @@ Cohesion: 0.07
 Nodes (16): Task 129-lite: Speech stability stress tests.  These tests simulate continuous u, 10 consecutive start → interim → cancel lifecycles., 10 cycles alternating final and cancel., Each utterance_id appears exactly once in terminal set.          Calls mark_utte, Exception during finalize does not leave terminal set in bad state.          Sim, Different sessions have independent terminal sets., Per-utterance state machine transitions.      Verifies the expected flow:, A new utterance is not terminal until finalized or cancelled. (+8 more)
 
 ### Community 53 - "NotFoundError Module"
-Cohesion: 0.16
-Nodes (18): apply_schema_with_backup(), create_database_backup(), Engine, Path, SQLite startup backup, integrity checking, and rollback helpers., Return the on-disk SQLite path, or None for non-file databases., Create a consistent SQLite backup without copying a live WAL blindly., Restore one verified backup over the failed working database. (+10 more)
+Cohesion: 0.08
+Nodes (34): apply_schema_with_backup(), create_database_backup(), Engine, Path, SQLite startup backup, integrity checking, and rollback helpers., Return the on-disk SQLite path, or None for non-file databases., Create a consistent SQLite backup without copying a live WAL blindly., Restore one verified backup over the failed working database. (+26 more)
 
 ### Community 54 - "CaptionFormatter Module"
 Cohesion: 0.15
@@ -733,35 +724,35 @@ Nodes (14): EnglishStreamingProcessor, get_english_streaming_model_path(), get_e
 
 ### Community 55 - "agent.py Module"
 Cohesion: 0.03
-Nodes (106): Thin wrapper around Windows SendInput system control actions.  Why a wrapper ins, Camera abstraction: selects between the OpenCV USB webcam driver and the industr, default_config(), Configuration for the standalone gesture-control process.  All tunable parameter, # NOTE: the external status contract spells this "hand_lost_timeout"; existing c, Factory used by tests and the CLI entry point., Main controller facade — wires recognition → state → actions, runs the loop., ControlEvent (+98 more)
+Nodes (81): Thin wrapper around Windows SendInput system control actions.  Why a wrapper ins, Return the Windows SendInput driver module.      ``sendinput_utils`` implements, _real_driver(), Camera abstraction: selects between the OpenCV USB webcam driver and the industr, Configuration for the standalone gesture-control process.  All tunable parameter, # NOTE: the external status contract spells this "hand_lost_timeout"; existing c, Populate ``screen_size`` from the SendInput helper if available.      Kept separ, resolve_screen_size() (+73 more)
 
 ### Community 56 - "test host display api.py"
 Cohesion: 0.09
 Nodes (29): _mock_httpx_response(), _patch_httpx(), Tests for GET /api/host-display/status — read-only aggregation.  All upstream HT, Agent offline → agent_state=offline, apps all false., MediaMTX offline → stream_state=unknown., Timeout on upstream → no 500., Malformed JSON from upstream → no 500., viewer_count is null when metrics endpoint fails. (+21 more)
 
 ### Community 57 - "TestNormalizeGestureName Module"
-Cohesion: 0.11
-Nodes (6): _gesture_to_canonical_string(), normalize_gesture_name(), Normalise any gesture representation to a spec-canonical name string.      Accep, Return the spec-canonical display string for a Gesture enum member., Test spec §5.1 gesture name compatibility mapping., TestNormalizeGestureName
+Cohesion: 0.13
+Nodes (4): normalize_gesture_name(), Normalise any gesture representation to a spec-canonical name string.      Accep, Test spec §5.1 gesture name compatibility mapping., TestNormalizeGestureName
 
 ### Community 58 - "ArduinoManager Module"
-Cohesion: 0.07
-Nodes (25): ArduinoManager, ArduinoManager — serial bridge to the SmartDesk lighting controller.  Reads the, Send a line to the Arduino. Fire-and-forget; returns True if written.          D, Owns the serial connection to the lighting controller (Arduino Nano)., Spawn the reader thread. No-op (safe) when disabled or already running., Signal the reader thread to stop and close the port., build_seat_managers(), seat_hardware — per-seat Arduino manager construction.  The final hardware is 9 (+17 more)
+Cohesion: 0.06
+Nodes (26): ArduinoManager, ArduinoManager — serial bridge to the SmartDesk lighting controller.  Reads the, Send a line to the Arduino. Fire-and-forget; returns True if written.          D, Owns the serial connection to the lighting controller (Arduino Nano)., Spawn the reader thread. No-op (safe) when disabled or already running., Signal the reader thread to stop and close the port., build_seat_managers(), seat_hardware — per-seat Arduino manager construction.  The final hardware is 9 (+18 more)
 
 ### Community 59 - "lifespan() Module"
-Cohesion: 0.06
-Nodes (47): add_english_punctuation(), get_english_punctuation_model_path(), get_english_punctuation_status(), has_trusted_terminal_boundary(), Path, Low-latency English punctuation and casing for Zipformer hypotheses.  The sher, Return whether a short pause may safely freeze the current sentence., Hide the model's end-of-window punctuation until a boundary is trusted. (+39 more)
+Cohesion: 0.07
+Nodes (33): benchmark(), _latency(), main(), _percentile(), Any, Path, Evaluate final bilingual ASR and translation on the prepared FLEURS subset., common_prefix_len() (+25 more)
 
 ### Community 60 - "speech module.py"
-Cohesion: 0.11
-Nodes (15): TranslationModelService with mocked model pipeline., translate() calls model.generate and returns decoded text., When model.generate raises, source text remains usable., Calling translate() twice reuses the same model instance., TranslationModelService singleton management., get_instance() returns the same object., reset_instance() clears the singleton., unload() sets loaded=False and clears error. (+7 more)
+Cohesion: 0.06
+Nodes (32): _clear_env(), _make_svc(), Unit tests for TranslationModelService — Task 123.  Covers:     - Disabled-by, TranslationModelService when ENABLE_TRANSLATION_MODEL is not set., translate() returns NOT_AVAILABLE when disabled., loaded is False when disabled., translate('') returns '' when disabled., provider == 'disabled' when not enabled. (+24 more)
 
 ### Community 61 - "test service calls router.py"
-Cohesion: 0.09
-Nodes (29): _create_meeting(), Integration tests for service call router endpoints., GET /api/service-calls/current returns null when no pending call., POST /api/service-calls/{id}/resolve resolves a pending call., POST /api/service-calls/999/resolve returns 404., POST /api/service-calls/{id}/resolve on already resolved returns 400., Create and start a meeting, return meeting_id., POST /api/service-calls/{id}/cancel cancels a pending call. (+21 more)
+Cohesion: 0.05
+Nodes (46): _create_meeting(), Integration tests for service call router endpoints., GET /api/service-calls/current returns null when no pending call., POST /api/service-calls/{id}/resolve resolves a pending call., POST /api/service-calls/999/resolve returns 404., POST /api/service-calls/{id}/resolve on already resolved returns 400., Create and start a meeting, return meeting_id., POST /api/service-calls/{id}/cancel cancels a pending call. (+38 more)
 
 ### Community 62 - ".get instance()"
 Cohesion: 0.03
-Nodes (110): Gesture, GestureState, str, Returned by ``GestureState.step`` each frame.      Phase 2 adds ``status_text``, Tracks modes, stabilization timers and edge-triggered gestures.      Phase 2 imp, Discrete gesture classification.      Two naming families coexist:     * **Legac, StepResult, _cfg() (+102 more)
+Nodes (84): GestureState, True when the hand has been gone past the timeout AND we hold state., Track a stabilization window. Returns True once held >= cooldown., Tracks modes, stabilization timers and edge-triggered gestures.      Phase 2 imp, Leave standby/pause into the configured active mode., _cfg(), _evt(), _hand() (+76 more)
 
 ### Community 63 - "win32 windows.py"
 Cohesion: 0.10
@@ -776,8 +767,8 @@ Cohesion: 0.08
 Nodes (16): Streaming fake whose final Chinese character exists only after flush., VAD silence detection — RMS-based auto-final trigger.      Uses mock SpeechModul, Create a fresh session and save SpeechModule state., Clean up session and restore SpeechModule state., Generate a PCM16 sine wave frame (non-silent speech)., Speech frames (non-zero RMS) do not trigger vad_should_finalize., A 0.9 s pause flushes Chinese CIF tail before final ASR starts., end_hint uses the same Chinese flush path as automatic silence. (+8 more)
 
 ### Community 66 - "IndustrialCamera Module"
-Cohesion: 0.13
-Nodes (12): create_camera(), _IndustrialCamera, _OpenCvCamera, Any, Import the SDK module configured by the user.          On Windows, if the module, Enumerate available cameras and return the device list object., Return the device info for the configured camera index., Best-effort set of a camera parameter, logging a warning on failure. (+4 more)
+Cohesion: 0.17
+Nodes (8): _IndustrialCamera, Any, Import the SDK module configured by the user.          On Windows, if the module, Enumerate available cameras and return the device list object., Return the device info for the configured camera index., Best-effort set of a camera parameter, logging a warning on failure., Best-effort set of an enum node by string value., Industrial MV camera wrapper using the vendor SDK (Hikrobot/MV style).      Buil
 
 ### Community 67 - "host display.py"
 Cohesion: 0.12
@@ -805,7 +796,7 @@ Nodes (12): SentenceMerger: merge ASR segment texts into readable display lines.
 
 ### Community 73 - "WebSocketService Module"
 Cohesion: 0.12
-Nodes (13): Connection, MeetingRoom, WebSocket, WebSocketService — per-meeting room and connection management.  Per WEBSOCKET_PR, Remove connection from its room.          Per §4: disconnect sends no business e, Broadcast to all connections in a meeting room.          Per §5: message format, Coroutine: accepts WS connection, yields incoming client messages.          Per, A single WebSocket client connection. (+5 more)
+Nodes (11): MeetingRoom, WebSocket, WebSocketService — per-meeting room and connection management.  Per WEBSOCKET_PR, Remove connection from its room.          Per §4: disconnect sends no business e, Broadcast to all connections in a meeting room.          Per §5: message format, Coroutine: accepts WS connection, yields incoming client messages.          Per, All connections for one meeting., Send message to all connections in this room.          Silently removes dead con (+3 more)
 
 ### Community 74 - "SmartDesk Host Display and"
 Cohesion: 0.08
@@ -832,16 +823,16 @@ Cohesion: 0.08
 Nodes (14): The generated mediamtx.yml must enforce network security boundaries., RTSP publish address explicitly binds 127.0.0.1., Control API (apiAddress) explicitly binds 127.0.0.1., Metrics address explicitly binds 127.0.0.1., WebRTC HTTP address is LAN-accessible (not restricted to 127.0.0.1)., WebRTC UDP is configured to use the port from config.json (8189)., RTMP protocol is explicitly disabled (non-comment config line)., HLS protocol is explicitly disabled (non-comment config line). (+6 more)
 
 ### Community 80 - "test gesture overlay.py"
-Cohesion: 0.07
-Nodes (44): check_page_turn(), derive_camera(), derive_hand(), derive_status(), _is_drawing(), _is_recognizing(), Any, Native desktop floating overlay window for gesture status display.  This module (+36 more)
+Cohesion: 0.14
+Nodes (21): derive_status(), Return (text, colour, glow) for the Status row.      13-level priority chain — m, Tests for hands.gesture_overlay.  Status derivation logic is tested as pure func, test_overlay_config_defaults(), test_status_camera_offline_when_not_paused(), test_status_cooling_down(), test_status_display_switch_failed(), test_status_display_switching() (+13 more)
 
 ### Community 81 - "dev occupy()"
-Cohesion: 0.23
-Nodes (15): _active_meeting_id(), dev_occupy(), dev_vacate(), ApiResponse, JSONResponse, Session, Dev API — demo/development-only endpoints.  Per Phase 03:     POST /api/dev/seat, Serialize ApiResponse to JSONResponse. (+7 more)
+Cohesion: 0.26
+Nodes (13): _active_meeting_id(), dev_occupy(), dev_vacate(), ApiResponse, JSONResponse, Session, Dev API — demo/development-only endpoints.  Per Phase 03:     POST /api/dev/seat, Serialize ApiResponse to JSONResponse. (+5 more)
 
 ### Community 82 - "get trace()"
-Cohesion: 0.05
-Nodes (21): Return the gesture name expected for the given intent type., Begin a HOLD-to-commit attempt.          Unlike swipe attempts, HOLD attempts do, Update a HOLD attempt: track classification stability, check commit.          Th, Begin a rotate or pan session candidate.          The session starts in SESSION_, Update an active session: motion tracking, begin/update events., End the active session and return end events., Begin a zoom attempt based on normalised pinch distance., Update zoom: emit zoom_update events based on normalised pinch distance delta. (+13 more)
+Cohesion: 0.15
+Nodes (10): DisplayAgentClient, Any, Small loopback HTTP client for the SmartDesk Display Agent., Call the local Display Agent without adding a requests dependency., _Response, test_activate_posts_only_allowed_app(), test_connection_error_is_offline(), test_http_409_is_online_failure() (+2 more)
 
 ### Community 83 - "supervisor.py Module"
 Cohesion: 0.15
@@ -856,24 +847,24 @@ Cohesion: 0.10
 Nodes (13): Tests for Task 128B — real speech dataset benchmark.  Covers:     - Dataset s, run_streaming_benchmark accepts chunk_preset and returns preset info., run_streaming_benchmark result includes preset_name and preset_chunk_size., Passing ultra_low_latency changes the preset_chunk_size in result., generate_report accepts streaming_preset parameter., When streaming_preset is provided, report includes preset info., Report summary does not change structure with preset param., When streaming_preset is None, report uses 'balanced' as default. (+5 more)
 
 ### Community 86 - "test websocket integration.py"
-Cohesion: 0.13
-Nodes (17): _clean_tables(), _create_meeting(), dev_enabled(), TestClient, WebSocket integration tests — verifies that HTTP-synchronous routes trigger real, POST /api/dev/seats/9/occupy → seat_occupied WebSocket event., Occupy then vacate → seat_vacant WebSocket event., POST /api/service-calls → service_call_created WebSocket event. (+9 more)
+Cohesion: 0.10
+Nodes (11): Speaker seat: set, clear, auto-overwrite., After seed, speaker seat_id is None., Set speaker to a valid seat., Publishes speaker_seat_set event., Setting new speaker automatically replaces old., Clear speaker seat sets seat_id to None., Publishes speaker_seat_clear event., Clearing when already None works (no-op). (+3 more)
 
 ### Community 87 - "seats.py Module"
 Cohesion: 0.10
-Nodes (36): _active_meeting_id(), check_in(), clear_speaker_seat(), get_speaker_seat(), identity_check_in(), list_seats(), _log_identity_result(), ApiResponse (+28 more)
+Nodes (40): _active_meeting_id(), check_in(), clear_speaker_seat(), get_speaker_seat(), identity_check_in(), list_seats(), _log_identity_result(), manual_admit() (+32 more)
 
 ### Community 88 - "database.py Module"
-Cohesion: 0.11
-Nodes (19): LanguageCode, Largest active per-utterance audio buffer duration., Return unified model readiness state.          If SpeechModule has been create, get_bilingual_asr_model_path(), get_bilingual_asr_status(), _has_model_weights(), normalize_language(), parse_sensevoice_result() (+11 more)
+Cohesion: 0.15
+Nodes (15): LanguageCode, get_bilingual_asr_model_path(), get_bilingual_asr_status(), _has_model_weights(), normalize_language(), parse_sensevoice_result(), Sentence-final bilingual ASR powered by a local SenseVoiceSmall model., Return the explicit or project-local SenseVoiceSmall directory. (+7 more)
 
 ### Community 89 - "handle binary message()"
-Cohesion: 0.08
-Nodes (25): CheckInEvent, CheckinPromptEvent, Seat events — published by SeatService.  Per EVENT_BUS_SPEC §6., SeatOccupiedEvent, SeatVacantEvent, SpeakerSeatClearEvent, SpeakerSeatSetEvent, _bounded_identity_time_setting() (+17 more)
+Cohesion: 0.09
+Nodes (31): CheckInEvent, CheckinPromptEvent, Seat events — published by SeatService.  Per EVENT_BUS_SPEC §6., SeatOccupiedEvent, SeatVacantEvent, SpeakerSeatClearEvent, SpeakerSeatSetEvent, _bounded_identity_time_setting() (+23 more)
 
 ### Community 90 - "client.ts Module"
-Cohesion: 0.13
-Nodes (12): _create_meeting(), After dev occupy, seat state visible via /api/seats., Dev vacate also clears attendee seat_id and checked_in., After dev vacate, same attendee can check in again., Create and start a meeting, return meeting_id., When ENABLE_DEMO_SEAT_API=true, dev seat endpoints work., Enable the dev API for this test class., POST /api/dev/seats/1/occupy transitions seat to occupied_unchecked. (+4 more)
+Cohesion: 0.18
+Nodes (9): Bitmap, Boolean, Uri, TabletWebViewClient, Array, FileChooserParams, ValueCallback, WebView (+1 more)
 
 ### Community 91 - "TestFindSplit Module"
 Cohesion: 0.11
@@ -892,8 +883,8 @@ Cohesion: 0.10
 Nodes (13): _has_non_comment_line(), Backend continues to listen on 127.0.0.1:8000.          The backend must NOT lis, ENABLE_SCREEN_STREAM is an opt-in variable guarded by a conditional.          Th, Display Agent and screen supervisor use independent feature flags., Agent and supervisor run as current login user (not SYSTEM/service).          Th, start.bat records PIDs for started processes.          At minimum, backend.pid a, start.bat must not use shell=True patterns or dangerous variable expansion., When ENABLE_SCREEN_STREAM=true, display_agent.pid and         screen_supervisor. (+5 more)
 
 ### Community 95 - "finger bent status()"
-Cohesion: 0.19
-Nodes (9): FaceFrameAnalyzer, Closeable, Face, ImageAnalysis, ImageProxy, Int, List, Long (+1 more)
+Cohesion: 0.14
+Nodes (11): FaceFrameAnalyzer, Closeable, Face, ImageAnalysis, ImageProxy, Int, List, Long (+3 more)
 
 ### Community 96 - "TestEdgeCases Module"
 Cohesion: 0.10
@@ -905,19 +896,19 @@ Nodes (11): finalize_utterance skips already-terminal utterance.          After 
 
 ### Community 98 - "main.py Module"
 Cohesion: 0.07
-Nodes (28): get_lighting_manager(), Hardware integration package.  Deployment topology (historical proposal: docs/ar, Determine the seat ids from config (seats map or seats_total)., _resolve_seat_ids(), set_lighting_manager(), set_seat_gateway(), _check_models(), _check_optional_deps() (+20 more)
+Nodes (32): set_lighting_manager(), set_seat_gateway(), _check_models(), _check_optional_deps(), _check_required_deps(), lifespan(), FastAPI, Request (+24 more)
 
 ### Community 99 - "Agenda Module"
 Cohesion: 0.16
 Nodes (10): CaptionConfig, Parameters         ----------         config:             Tunable sentence-split, Tunable parameters for sentence splitting decisions.      All lengths count **ch, _embed_period_punc(), Punctuation NOT at the very end of text triggers a split., A visual clause comma remains in the forming semantic sentence., Long text is retained; browser layout owns visual wrapping., Insert 。 after the 6th character (mid-text) + 。 at end. (+2 more)
 
 ### Community 100 - "fsmn vad.py"
-Cohesion: 0.14
-Nodes (13): _find_local_fsmn_vad(), FSMNVAD, merge_short_segments(), ndarray, ML-based VAD: FunASR FSMN-VAD with thread safety.  Phase 1 optimization: replace, Post-process VAD segments: merge adjacent segments that are too short.      Phas, Find local HuggingFace cache for FSMN-VAD model., Keep FSMN-confirmed voice regions, returning None for noise-only audio. (+5 more)
+Cohesion: 0.15
+Nodes (14): _find_local_fsmn_vad(), FSMNVAD, get_default_vad(), merge_short_segments(), ndarray, ML-based VAD: FunASR FSMN-VAD with thread safety.  Phase 1 optimization: replace, Post-process VAD segments: merge adjacent segments that are too short.      Phas, Find local HuggingFace cache for FSMN-VAD model. (+6 more)
 
 ### Community 101 - "clear trace()"
 Cohesion: 0.07
-Nodes (26): Translation events — published by TranslationService and SpeechStreamService.  P, Streaming ASR interim result — ephemeral, not persisted.      Published by Speec, Ephemeral sentence-level lyric translation.      A ``pending`` event is publishe, TranslationInterimEvent, TranslationSentenceEvent, caption_window_text(), EnglishSentenceCorrectionJob, EnglishSentenceCorrectionService (+18 more)
+Nodes (25): Ephemeral sentence-level lyric translation.      A ``pending`` event is publishe, TranslationSentenceEvent, caption_window_text(), EnglishSentenceCorrectionJob, EnglishSentenceCorrectionService, InterimTranslationJob, InterimTranslationService, Latest-wins background translation for streaming ASR partials. (+17 more)
 
 ### Community 102 - "SmartDesk Technical Overview"
 Cohesion: 0.10
@@ -928,8 +919,8 @@ Cohesion: 0.10
 Nodes (8): __dirname, DomCaptionSample, DomSample, __filename, LatencyRecord, PCM_FIXTURE, Report, WsCaptionSample
 
 ### Community 104 - "TestDevAPIEnabled Module"
-Cohesion: 0.17
-Nodes (11): _log_broadcast_error(), AbstractEventLoop, Task, WebSocketEventHandler — bridges EventBus → WebSocket broadcast.  Per EVENT_BUS_S, Handle an event: convert to WS format + schedule async broadcast.          Synch, Create an async task on *loop* to broadcast., Inner callback for call_soon_threadsafe — same as _schedule., Convert a BaseEvent to the WS message format per §5. (+3 more)
+Cohesion: 0.13
+Nodes (13): _log_broadcast_error(), AbstractEventLoop, Task, WebSocketEventHandler — bridges EventBus → WebSocket broadcast.  Per EVENT_BUS_S, Handle an event: convert to WS format + schedule async broadcast.          Synch, Create an async task on *loop* to broadcast., Inner callback for call_soon_threadsafe — same as _schedule., Convert a BaseEvent to the WS message format per §5. (+5 more)
 
 ### Community 105 - ". write config()"
 Cohesion: 0.14
@@ -964,8 +955,8 @@ Cohesion: 0.12
 Nodes (17): FixtureRequest, anyio_backend(), db(), event_bus(), _override_get_db(), Session, pytest_sessionfinish(), Shared test fixtures — replaces the production database with an in-memory SQLite (+9 more)
 
 ### Community 113 - "SpeechFinalizationQueue Module"
-Cohesion: 0.14
-Nodes (11): IdentityStatus, FaceRecognitionManager, AutoCloseable, Bitmap, Boolean, Float, FloatArray, Int (+3 more)
+Cohesion: 0.15
+Nodes (10): IdentityStatus, FaceRecognitionManager, AutoCloseable, Bitmap, Boolean, Float, FloatArray, Int (+2 more)
 
 ### Community 114 - "CaptionResult Module"
 Cohesion: 0.15
@@ -976,16 +967,16 @@ Cohesion: 0.16
 Nodes (12): mockActiveMeetingScenario(), mockCaptionScenario(), mockEndedMeeting(), mockEndedMeetingScenario(), mockEndedWithData(), mockFetch, mockScenario(), mockTranscriptScenario() (+4 more)
 
 ### Community 116 - "WebSocketEventHandler Module"
-Cohesion: 0.09
-Nodes (21): IdentityCheckInEvent, datetime, Durable identity event idempotency record., _utcnow(), IdentityCheckInEventRepository, Session, Persistence helpers for identity check-in idempotency., AckWebSocket (+13 more)
+Cohesion: 0.15
+Nodes (15): Connection, A single WebSocket client connection., AckWebSocket, CaptureWebSocket, _immediate_schedule(), _provision_tablet(), AbstractEventLoop, Thread (+7 more)
 
 ### Community 117 - "24. Final Visual Consistency"
 Cohesion: 0.11
 Nodes (18): 24.10 截图验收方法, 24.11 13.3 寸触控验收要求 (Seat 端), 24.12 86 寸大屏可读性要求 (Display 端), 24.13 Playwright Visual Smoke Test 要求, 24.14 停止大面积视觉重构, 24.1 三端状态颜色最终规则, 24.2 按钮最终规则, 24.3 触控热区最终规则 (+10 more)
 
 ### Community 118 - "TranscriptPanel.tsx Module"
-Cohesion: 0.13
-Nodes (15): formatTranscriptTime(), avatarColors, deduplicateFinals(), deduplicateInterims(), groupFinals(), initials(), InterimDisplayEntry, InterimRow() (+7 more)
+Cohesion: 0.14
+Nodes (14): formatTranscriptTime(), avatarColors, deduplicateFinals(), deduplicateInterims(), groupFinals(), initials(), InterimDisplayEntry, InterimRow() (+6 more)
 
 ### Community 119 - "admin.test.tsx Module"
 Cohesion: 0.17
@@ -1017,15 +1008,15 @@ Nodes (27): _make_pcm16_sine(), Verify that end_hint finalization failures publi
 
 ### Community 126 - "test translation model service.py"
 Cohesion: 0.06
-Nodes (26): Populate ``screen_size`` from the SendInput helper if available.      Kept separ, resolve_screen_size(), _canonical_gesture_enum(), gesture_recognizer_model_exists(), HandRecognizer, palm_center(), _project_root(), Normalise to a canonical Gesture enum member (for HandInput.gesture). (+18 more)
+Nodes (35): LandmarkList, _canonical_gesture_enum(), centroid_21(), finger_bent(), _FrameResult, gesture_recognizer_model_exists(), _gesture_to_canonical_string(), HandRecognizer (+27 more)
 
 ### Community 127 - "SeatGateway"
-Cohesion: 0.33
-Nodes (3): classify_gesture(), Map a 21-point landmark list to a single :class:`Gesture`.      Priority order (, TestClassifyGesture
+Cohesion: 0.10
+Nodes (18): classify_gesture(), finger_bent_status(), is_fist(), is_hand_open(), Return ``[index, middle, ring, pinky]`` bent flags., True when thumb + all four fingers are extended (open palm)., True when all four fingers are bent (thumb ignored, matching reference)., Map a 21-point landmark list to a single :class:`Gesture`.      Priority order ( (+10 more)
 
 ### Community 128 - "Base Module"
-Cohesion: 0.11
-Nodes (12): _Call, FakeDriver, Any, True if any event tuple starts with the given prefix., Return the Windows SendInput driver module.      ``sendinput_utils`` implements, One recorded action — used by the fake driver in tests and by logs., Records every call instead of touching the OS. Used in dry-run + tests.      Two, _real_driver() (+4 more)
+Cohesion: 0.13
+Nodes (9): _Call, FakeDriver, Any, True if any event tuple starts with the given prefix., One recorded action — used by the fake driver in tests and by logs., Records every call instead of touching the OS. Used in dry-run + tests.      Two, Any, FakeDriver.events must match the public action-driver tuple format. (+1 more)
 
 ### Community 129 - "compute chunk timing distribution()"
 Cohesion: 0.16
@@ -1036,8 +1027,8 @@ Cohesion: 0.12
 Nodes (16): 1.1 `meetingStatus`, 1.2 `voteStatus`, 1.3 `agendaStatus`, 1.4 `AdminWorkspace`, 1. 状态分层, 2. 页面状态显示, 3. 状态切换, 4. 按钮规则 (+8 more)
 
 ### Community 132 - "App.tsx Module"
-Cohesion: 0.20
-Nodes (9): main(), Seat Edge Agent — runs on each seat's Windows terminal.  Bridges the local Ardui, Called from the ArduinoManager reader thread., SeatAgent, _candidate_paths(), load_config(), Path, Load seat_agent_config.json (seat_id, serial_port, central_ws_url, ...). (+1 more)
+Cohesion: 0.18
+Nodes (15): FakeWebSocket, hello(), immediate_schedule(), occupancy(), ESP32 protocol validation, ordering, ACK, and compatibility tests., test_duplicate_and_out_of_order_occupancy_are_distinguished(), test_endpoint_handler_acknowledges_duplicate_without_second_transition(), test_heartbeat_timeout_only_applies_to_esp32() (+7 more)
 
 ### Community 133 - "TestScanDataset Module"
 Cohesion: 0.08
@@ -1048,12 +1039,12 @@ Cohesion: 0.07
 Nodes (28): 0. 记录基本信息, 1. 中央主机安装（约 5 分钟）, 2. 手机或平板（约 3 分钟）, 3. 一套 ESP32 实物（约 10–15 分钟）, 4. 真实语音和显示切换（约 5 分钟）, 5. 九席实物和 30 分钟稳定性（最后执行）, 6. 现场供电和安全（必须人工）, 7. 人脸标定（独立执行，不阻塞前面项目） (+20 more)
 
 ### Community 135 - "stt_streaming.py"
-Cohesion: 0.07
-Nodes (22): Business validation failure (e.g., invalid state transition)., ValidationError, Cannot create agenda in pending (not started) meeting., Requirement 14: all agenda write ops on ended meeting → 400., Set up an ended meeting with one active-then-completed agenda., create_agenda in ended meeting → 400., delete_agenda in ended meeting → 400., set_current_agenda in ended meeting → 400. (+14 more)
+Cohesion: 0.14
+Nodes (16): derive_camera(), derive_hand(), _is_drawing(), _is_recognizing(), Any, Native desktop floating overlay window for gesture status display.  This module, Return (text, colour) for the Camera row., Return (text, colour) for the Hand row. (+8 more)
 
 ### Community 136 - "is translation model enabled()"
-Cohesion: 0.03
-Nodes (55): Agenda, Meeting, MeetingRepository, Agenda, Meeting, MeetingRepository — CRUD for meetings + agendas.  Per DATABASE_SCHEMA.md §3-4, §, Data access for meetings and agendas.      Extends BaseRepository[Meeting] with:, Return the meeting with status='active', or None. (+47 more)
+Cohesion: 0.02
+Nodes (65): Meeting, Meeting ORM model — per DATABASE_SCHEMA.md §3.  Repository: MeetingRepository., MeetingService — meeting lifecycle, agendas, attendees.  Per system_architecture, Trigger SpeechModule preload in background after meeting starts.      Non-blocki, _trigger_speech_preload(), _preload_speech_models_background(), Thread, SpeechStreamService — manages speech stream sessions and utterance IDs.  Per W (+57 more)
 
 ### Community 137 - "StreamingChunkProcessor Module"
 Cohesion: 0.14
@@ -1081,31 +1072,31 @@ Nodes (8): Session correctly tracks utterance_id and revision., Create a fresh s
 
 ### Community 144 - "DisplayAgentClient Module"
 Cohesion: 0.07
-Nodes (23): _gesture_str_to_enum(), load_record(), Load a JSONL record file and return a list of frame dicts.      Lines that fail, Replay a JSONL gesture record through the tracker and state machine.      Args:, Convert a gesture string to the Gesture enum.      Returns Gesture.NONE for unre, replay_record(), _flat_record(), Write a list of flat record dicts to a JSONL file. (+15 more)
+Nodes (25): _gesture_str_to_enum(), load_record(), Load a JSONL record file and return a list of frame dicts.      Lines that fail, Extract the mode from a record dict., Replay a JSONL gesture record through the tracker and state machine.      Args:, Convert a gesture string to the Gesture enum.      Returns Gesture.NONE for unre, _record_to_mode(), replay_record() (+17 more)
 
 ### Community 145 - "landmarks to hand input()"
-Cohesion: 0.13
-Nodes (16): ensure_agenda_columns(), ensure_attendee_identity_columns(), ensure_tablet_device_status_columns(), Migrations — idempotent schema updates for SQLite.  Phase 4:     Add utterance_i, Idempotently upgrade existing tablet device registries., Idempotently add Phase 1 columns to agendas.      Checks existing columns via SQ, Add the stable Person link to existing attendee tables.      Fresh databases rec, Engine (+8 more)
+Cohesion: 0.23
+Nodes (11): dispatchImmediateResult(), parsePayload(), Window, dispatchNativeEvent(), legacyEventId(), NativeEventEnvelope, normalizeNativeEvent(), SmartDeskNativeEvent (+3 more)
 
 ### Community 146 - ".press() Module"
-Cohesion: 0.08
-Nodes (5): DeviceInfo, NativeBridge, RegisteredFaces, NativeIdentityStatus, WebNativeBridge
+Cohesion: 0.15
+Nodes (4): DeviceInfo, RegisteredFaces, NativeIdentityStatus, WebNativeBridge
 
 ### Community 147 - "is_translation_model_enabled"
-Cohesion: 0.05
-Nodes (27): MeetingService — meeting lifecycle, agendas, attendees.  Per system_architecture, Trigger SpeechModule preload in background after meeting starts.      Non-blocki, _trigger_speech_preload(), _preload_speech_models_background(), Thread, SpeechStreamService — manages speech stream sessions and utterance IDs.  Per W, Start a daemon thread for background tasks.      Extracted as a separate funct, Trigger SpeechModule preload in a background daemon thread.      Service-level (+19 more)
+Cohesion: 0.13
+Nodes (7): Exception, BusinessError, Business exceptions for the service layer.  Raised by Services, caught by Router, Base business exception with error_code for API responses., Business rules for stable people identities., ServiceCallService — service request lifecycle.  Per system_architecture §4.2, E, VoteService — vote lifecycle, ballot casting, statistics.  Per system_architectu
 
 ### Community 148 - "devDependencies Module"
 Cohesion: 0.13
-Nodes (15): autoprefixer, eslint, jsdom, devDependencies, autoprefixer, eslint, jsdom, @playwright/test (+7 more)
+Nodes (15): eslint, jsdom, devDependencies, eslint, jsdom, @playwright/test, @testing-library/react, typescript (+7 more)
 
 ### Community 149 - "BaseRepository Module"
 Cohesion: 0.21
 Nodes (15): _admit_immediately(), _RoutingSpeechModule, _service(), _silence_frame(), test_auto_probe_locks_route_for_the_utterance(), test_confirmed_online_punctuation_settles_previous_english_paragraphs(), test_english_sentence_completion_freezes_identity_before_correction(), test_english_sentence_pause_starts_an_isolated_decoder_for_next_sentence() (+7 more)
 
 ### Community 150 - "TranslationModelService Module"
-Cohesion: 0.12
-Nodes (7): _ModelBundle, Singleton registry for local zh→en and en→zh OPUS-MT models., Legacy zh→en readiness property., Sequentially preload both CPU models to avoid memory spikes., Generate one bounded unit and report whether its output is usable., TranslationModelService, test_persistent_degenerate_output_is_unavailable()
+Cohesion: 0.07
+Nodes (27): _fits_token_limit(), _ModelBundle, _output_looks_degenerate(), Any, Local, direction-aware OPUS-MT translation service., Produce bounded, punctuation-preserving translation units.      Terminal sentenc, Reject capped or clearly looping output before it reaches persistence., Singleton registry for local zh→en and en→zh OPUS-MT models. (+19 more)
 
 ### Community 151 - "SmartDesk 前端视觉规范"
 Cohesion: 0.13
@@ -1152,16 +1143,12 @@ Cohesion: 0.14
 Nodes (5): compute_cer returns correct CER values., Punctuation is stripped before CER computation., Test with a short realistic example., Result contains normalized hypothesis and reference., TestComputeCER
 
 ### Community 162 - "MockSpeechModule Module"
-Cohesion: 0.15
-Nodes (3): FaceDetectionResult, String, Bundle
+Cohesion: 0.12
+Nodes (11): Float, JSONObject, MainActivity, Bundle, com, ComponentActivity, ConnectivityManager, FrameLayout (+3 more)
 
 ### Community 163 - "test windows launcher contract.py"
 Cohesion: 0.21
 Nodes (10): _is_crlf(), Path, Windows launcher contract tests -- validates that start.bat and kill.bat meet th, start.bat and kill.bat must contain ONLY ASCII characters (0-127)., Files must use CRLF, no bare LF., start.bat must remain ASCII-only, BOM-free, CRLF, no bare LF., _read_bytes(), TestAsciiOnly (+2 more)
-
-### Community 164 - "Diagnose"
-Cohesion: 0.22
-Nodes (9): AckCapture, _build_hardware(), _immediate_schedule(), _occupy_one(), _provision_and_heartbeat_tablets(), Nine-seat software simulation with real services and protocol state.  Physical s, SimulatorTransport, _tablet_token() (+1 more)
 
 ### Community 165 - "app.js Module"
 Cohesion: 0.30
@@ -1181,7 +1168,7 @@ Nodes (30): _build_sessions(), _download(), _extract_selected(), FleursRow, main
 
 ### Community 169 - "meeting.py Module"
 Cohesion: 0.21
-Nodes (12): AgendaCreate, AgendaStateResponse, AttendeeCreate, AttendeeResponse, MeetingCreate, BaseModel, Meeting module — Request/Response DTOs.  Per API_SPEC §4-6:     Meeting, Agenda,, POST /api/meetings request body. (+4 more)
+Nodes (12): AgendaCreate, AgendaStateResponse, AttendeeCreate, MeetingCreate, BaseModel, Meeting module — Request/Response DTOs.  Per API_SPEC §4-6:     Meeting, Agenda,, POST /api/meetings request body., POST /api/meetings/{meeting_id}/agendas request body. (+4 more)
 
 ### Community 170 - "vote.py Module"
 Cohesion: 0.21
@@ -1192,8 +1179,8 @@ Cohesion: 0.22
 Nodes (12): generate_report(), _get_cpu_info(), main(), _probe_speech_module(), _probe_torch(), _probe_translation_service(), Generate speech-latency-device-report.json — device and model configuration audi, Check translation model service status. (+4 more)
 
 ### Community 172 - "NativeBridge.ts"
-Cohesion: 0.12
-Nodes (16): FacePhotoImportRequest, FacePhotoImportResult, FacePhotoInput, FacePhotoRejection, FacePhotoTemplateSelector, FloatArray, Int, List (+8 more)
+Cohesion: 0.11
+Nodes (17): FacePhotoImportRequest, FacePhotoImportResult, FacePhotoInput, FacePhotoRejection, FacePhotoTemplateSelector, FloatArray, Int, List (+9 more)
 
 ### Community 173 - "SmartDesk Deferred Issues"
 Cohesion: 0.15
@@ -1208,8 +1195,8 @@ Cohesion: 0.14
 Nodes (13): Android Tablet Integration, Backend Responsibilities, Demo Data and Startup, Frontend Architecture, Gesture Controller Integration, Host Services (Screen Stream & Display Agent), Repository Layer, Router Layer (+5 more)
 
 ### Community 176 - "scripts Module"
-Cohesion: 0.25
-Nodes (8): scripts, build, dev, e2e:speech, lint, preview, test, typecheck
+Cohesion: 0.15
+Nodes (12): name, private, scripts, build, dev, e2e:speech, lint, preview (+4 more)
 
 ### Community 177 - "SmartDesk Module"
 Cohesion: 0.13
@@ -1228,8 +1215,8 @@ Cohesion: 0.24
 Nodes (6): _punc_offset_for_raw(), Given ``raw_len`` raw (non-boundary) characters, return the     corresponding of, 6 raw chars + trailing 。→ offset should be past the 。, 6 raw chars + ，→ offset past the ，, When raw_len exceeds available raw chars, returns full string length., TestPuncOffsetForRaw
 
 ### Community 181 - "screen-view-review.test.tsx Module"
-Cohesion: 0.07
-Nodes (19): AbstractEventLoop, Backward-compatible name for the generic event deduplicator., Distributed mode: route lighting commands to Seat Edge Agents over WS.      The, SeatGateway, FakeWebSocket, hello(), immediate_schedule(), occupancy() (+11 more)
+Cohesion: 0.09
+Nodes (4): AbstractEventLoop, Backward-compatible name for the generic event deduplicator., Distributed mode: route lighting commands to Seat Edge Agents over WS.      The, SeatGateway
 
 ### Community 182 - "test caption formatter.py"
 Cohesion: 0.14
@@ -1240,8 +1227,8 @@ Cohesion: 0.17
 Nodes (7): SmartDesk: precise window matching, fixed Edge launch, error states., [EXPECTED_FAIL] find_smartdesk_display_windows must use URL parameter., [EXPECTED_FAIL] SmartDesk matching must not use generic 'display'.          Curr, Edge launched with argv list, not shell=True., Edge app URL comes from CONFIG, never from request body., No Edge executable → stable error, no crash., TestSmartDeskBehavior
 
 ### Community 184 - "TestActiveAppDetection Module"
-Cohesion: 0.11
-Nodes (17): _clear_env(), _make_svc(), Unit tests for TranslationModelService — Task 123.  Covers:     - Disabled-by, TranslationModelService when ENABLE_TRANSLATION_MODEL is not set., translate() returns NOT_AVAILABLE when disabled., loaded is False when disabled., translate('') returns '' when disabled., provider == 'disabled' when not enabled. (+9 more)
+Cohesion: 0.21
+Nodes (10): Logger, log_security_event(), Any, Structured security logging with recursive sensitive-field redaction., Return a JSON-safe copy with credential-like fields removed., Emit one single-line JSON security event with stable base fields., redact_sensitive(), Deterministic tests for bounded anti-abuse and log redaction helpers. (+2 more)
 
 ### Community 185 - "TestKillBatContract Module"
 Cohesion: 0.17
@@ -1260,8 +1247,8 @@ Cohesion: 0.17
 Nodes (7): Generated report has the correct structure., When ffmpeg is unavailable, report contains error message., When dataset is missing, report contains error., Report has all required top-level fields., Each file entry in the report has required fields., Summary has all required fields., TestReportSchema
 
 ### Community 189 - "useSpeechStream.test.tsx"
-Cohesion: 0.12
-Nodes (21): benchmark(), _latency(), main(), _percentile(), Any, Path, Evaluate final bilingual ASR and translation on the prepared FLEURS subset., main() (+13 more)
+Cohesion: 0.21
+Nodes (8): hostDisplayStatusResponse(), mockFetch, MockWSInstance, okResponse(), rawOkResponse(), renderScreenView(), TrackedMockWebSocket, wsInstances
 
 ### Community 190 - "TestPcm16Conversion Module"
 Cohesion: 0.25
@@ -1276,8 +1263,8 @@ Cohesion: 0.11
 Nodes (4): AndroidBridge, Boolean, Float, String
 
 ### Community 193 - "FrameResult Module"
-Cohesion: 0.15
-Nodes (11): LandmarkList, centroid_21(), finger_bent(), finger_bent_status(), is_fist(), A finger is "bent" when its tip is below (larger y) its root.      This is the s, Return ``[index, middle, ring, pinky]`` bent flags., True when all four fingers are bent (thumb ignored, matching reference). (+3 more)
+Cohesion: 0.25
+Nodes (5): list_seats: return all 10 seat states., Seed data provides exactly nine seats., Seats returned in seat_id order., All seats start vacant after seed., TestListSeats
 
 ### Community 194 - "levenshtein distance()"
 Cohesion: 0.29
@@ -1312,8 +1299,8 @@ Cohesion: 0.20
 Nodes (9): _echo_text(), _find_for_loop_block(), Return the batch-relevant content of a line, dropping leading labels.      A lin, If the line is an executable `echo` statement, return its text argument.      Re, Locate the first `for /L` loop that appears at/after a marker line.      Returns, No executable `echo` line may contain an unescaped `(` or `)`.      Inside `if (, The exact messages that caused the original failure must be gone.          This, _strip_batch_comment() (+1 more)
 
 ### Community 202 - "useSpeechStream.test.tsx"
-Cohesion: 0.17
-Nodes (14): AndroidNativeMicrophoneCapture, decodeBase64Pcm16(), isAndroidNativeMicrophoneAvailable(), AudioFrameCallback, isMicrophoneCaptureSupported(), MicrophoneErrorCallback, getNativeBridge(), legacyEventId() (+6 more)
+Cohesion: 0.33
+Nodes (7): AndroidNativeMicrophoneCapture, decodeBase64Pcm16(), isAndroidNativeMicrophoneAvailable(), AudioFrameCallback, isMicrophoneCaptureSupported(), MicrophoneErrorCallback, getNativeBridge()
 
 ### Community 203 - "_handle_text_message"
 Cohesion: 0.17
@@ -1388,8 +1375,8 @@ Cohesion: 0.28
 Nodes (4): Each readiness poll loop must wait ~1 second on the failure path.      Without a, Retry counts must have an upper bound (no unbounded polling)., A long fixed sleep must NOT replace the readiness probe.          The probe (Inv, TestReadinessPollingWaitsBetweenRetries
 
 ### Community 221 - "normalize_english_display"
-Cohesion: 0.11
-Nodes (18): ApiError, apiGetRaw(), apiPatch(), NetworkError, request(), mockFetch, ApiResponse, formatLastSeen() (+10 more)
+Cohesion: 0.20
+Nodes (11): formatLastSeen(), HardwareStatus(), HardwareStatusData, MODE_LABELS, modeLabel(), SeatStatus, STATUS_LABELS, statusClass() (+3 more)
 
 ### Community 222 - "7. Button Style Rules"
 Cohesion: 0.25
@@ -1428,12 +1415,12 @@ Cohesion: 0.25
 Nodes (3): start.bat must poll ports with bounded retries, not fixed sleep., After backend/frontend start, readiness must NOT rely solely on         a fixed, TestBoundedPortPolling
 
 ### Community 231 - "TestEnglishRollingMerge"
-Cohesion: 0.16
-Nodes (21): Indicates a pending interim utterance was discarded.      Published by SpeechStr, Moves a completed realtime segment into pending history immediately., TranslationFinalizingEvent, TranslationInterimCancelledEvent, Record a trace event with timestamp (monotonic ms) and metadata.      No-op unle, trace(), _cancel_replaced_session(), _handle_binary_message() (+13 more)
+Cohesion: 0.17
+Nodes (12): check_model_files(), Check that required model files exist in the project root.      Returns a list, Model file check passes when hand_landmarker.task exists., Model file check reports missing file when not present., When use_gesture_recognizer=True, gesture_recognizer.task is required., When use_gesture_recognizer=False, gesture_recognizer.task is NOT required., When both model files exist and use_gesture_recognizer=True, no missing., test_check_model_files_excludes_gesture_recognizer_when_disabled() (+4 more)
 
 ### Community 232 - "LightingMode Module"
-Cohesion: 0.11
-Nodes (18): event_bus(), _load_real_speech_audio(), _make_test_audio(), ndarray, Unit tests for TranslationService — Phase 4 additions.  Covers:     - process, Preload speech module; skip if unavailable., process_final_array writes utterance_id and source_type to DB., process_final_array publishes TranslationFinalEvent with full payload. (+10 more)
+Cohesion: 0.16
+Nodes (13): _load_real_speech_audio(), _make_test_audio(), ndarray, Preload speech module; skip if unavailable., process_final_array writes utterance_id and source_type to DB., process_final_array publishes TranslationFinalEvent with full payload., process_final_array with silence/tone raises ASR_EMPTY_RESULT., Record created via process_final_array is returned by get_history. (+5 more)
 
 ### Community 233 - "ApiResponse Module"
 Cohesion: 0.33
@@ -1464,8 +1451,8 @@ Cohesion: 0.35
 Nodes (11): _has_english_streaming_model(), _has_weights(), main(), _prepare_english_punctuation(), _prepare_english_streaming(), _prepare_huggingface(), _prepare_modelscope(), Path (+3 more)
 
 ### Community 241 - "test_speech_websocket_blackbox.py"
-Cohesion: 0.16
-Nodes (9): Bitmap, Boolean, TabletWebViewClient, Runnable, WebResourceError, WebResourceRequest, WebResourceResponse, WebView (+1 more)
+Cohesion: 0.29
+Nodes (4): Runnable, WebResourceError, WebResourceRequest, WebResourceResponse
 
 ### Community 242 - "sim test brightness.py"
 Cohesion: 0.53
@@ -1473,7 +1460,7 @@ Nodes (5): is_decimal_number(), new_parser(), old_parser(), Replicate Arduino St
 
 ### Community 243 - "derive_hand"
 Cohesion: 0.25
-Nodes (7): get_speech_diagnostics(), get_speech_status(), Speech API — model status and preload control.  Per Task 119:     GET  /api/spee, GET /api/speech/status — return unified model readiness state.      Response dat, POST /api/speech/preload — trigger model preload in background.      Returns imm, Return bounded speech latency events and live queue diagnostics.      The payloa, trigger_preload()
+Nodes (7): clear_speech_diagnostics(), get_speech_status(), Speech API — model status and preload control.  Per Task 119:     GET  /api/spee, Clear only the in-memory trace ring before a controlled reproduction., GET /api/speech/status — return unified model readiness state.      Response dat, POST /api/speech/preload — trigger model preload in background.      Returns imm, trigger_preload()
 
 ### Community 244 - "12. Lucide-React Icon Usage"
 Cohesion: 0.33
@@ -1548,8 +1535,8 @@ Cohesion: 0.30
 Nodes (16): align_largest_face(), collect_images(), cosine(), EmbeddingModel, evaluate_group(), l2_normalize(), main(), ordered_landmarks() (+8 more)
 
 ### Community 262 - "TestTwoLineOnly Module"
-Cohesion: 0.09
-Nodes (28): datetime, Trusted Android tablet binding and operational status., TabletDevice, _utcnow(), Session, Persistence helpers for trusted tablet bindings., TabletDeviceRepository, hash_device_token() (+20 more)
+Cohesion: 0.10
+Nodes (25): TabletDevice, Session, Persistence helpers for trusted tablet bindings., TabletDeviceRepository, hash_device_token(), Session, Provision and authenticate Android tablets without storing raw tokens., TabletDeviceService (+17 more)
 
 ### Community 263 - "TestBrowserStartProcess Module"
 Cohesion: 0.40
@@ -1580,8 +1567,8 @@ Cohesion: 0.50
 Nodes (4): Cardinal Direction Ticks, Central Target Point, Concentric Range Rings, Radar Icon
 
 ### Community 275 - "repack deploy.ps1"
-Cohesion: 0.13
-Nodes (12): VoteRecord, Vote, VoteRepository — CRUD for votes + vote_records.  Per DATABASE_SCHEMA.md §8-9, §1, Data access for votes and vote_records.      Extends BaseRepository[Vote] with:, Return the vote with status='open', or None., Return all votes for a meeting, newest first., Get a vote record by vote_id and attendee_id., Create a vote record. Auto-commits. (+4 more)
+Cohesion: 0.11
+Nodes (14): VoteRecord ORM model — per DATABASE_SCHEMA.md §9.  Repository: VoteRepository., VoteRecord, Vote, VoteRepository — CRUD for votes + vote_records.  Per DATABASE_SCHEMA.md §8-9, §1, Data access for votes and vote_records.      Extends BaseRepository[Vote] with:, Return the vote with status='open', or None., Return all votes for a meeting, newest first., Get a vote record by vote_id and attendee_id. (+6 more)
 
 ### Community 277 - "seed_demo_data"
 Cohesion: 0.17
@@ -1596,16 +1583,16 @@ Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: 显语音功能显示 microphone access denied: permission denied, Source Nodes
 
 ### Community 280 - "TestGetModelStatus"
-Cohesion: 0.08
-Nodes (18): _clear_trace_before(), disable_trace(), enable_trace(), MonkeyPatch, Tests for SpeechTrace — temporary diagnostic instrumentation.  Task 128A: Verifi, Trace buffer is thread-safe., Multiple threads can call trace() concurrently without data loss., Device report generator works correctly without CUDA. (+10 more)
+Cohesion: 0.17
+Nodes (7): Device report generator works correctly without CUDA., generate_device_report does not raise when CUDA is unavailable., generate_device_report handles CUDA-available scenario., Report contains all required top-level sections., Fields that cannot be read show 'unknown' rather than raising., probe_speech_module handles import errors gracefully., TestDeviceReportGenerator
 
 ### Community 284 - "TestTwoLineOnly"
 Cohesion: 0.22
 Nodes (5): DeviceIdentityStore, String, DeviceIdentityStoreTest, String, MemoryStringStore
 
 ### Community 293 - "@playwright/test Module"
-Cohesion: 0.17
-Nodes (29): _identity_post(), _prepare_active_attendee(), _provision_device(), Trusted Android identity check-in, idempotency, and legacy migration., _tablet_vacate_post(), test_calibration_pending_identity_cannot_check_in(), test_device_bound_seat_must_match_url_seat(), test_device_token_is_required() (+21 more)
+Cohesion: 0.11
+Nodes (38): Attendee, AttendeeRepository, Attendee, AttendeeRepository — CRUD for attendees.  Per DATABASE_SCHEMA.md §5, §15:     Ow, Data access for attendees.      Extends BaseRepository[Attendee] with:         -, List all attendees for a meeting., _identity_post(), _prepare_active_attendee() (+30 more)
 
 ### Community 297 - "@testing-library/react Module"
 Cohesion: 0.50
@@ -1620,8 +1607,8 @@ Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: 保存首次预配后，如何验证绑定、启动校验和 WebView 直达 seat 1 链路？, Source Nodes
 
 ### Community 308 - "translation_model_service.py"
-Cohesion: 0.25
-Nodes (10): hardware_status(), _heartbeat_age_seconds(), _probe_tcp(), datetime, Session, Hardware status API — expose per-seat hardware & gesture service status.  GET /a, Lightweight TCP reachability probe (gesture service is a WS server)., _tablet_timeout_seconds() (+2 more)
+Cohesion: 0.13
+Nodes (17): hardware_status(), _heartbeat_age_seconds(), _probe_tcp(), datetime, Session, Hardware status API — expose per-seat hardware & gesture service status.  GET /a, Lightweight TCP reachability probe (gesture service is a WS server)., _tablet_timeout_seconds() (+9 more)
 
 ### Community 309 - "._update_hold"
 Cohesion: 0.15
@@ -1636,12 +1623,12 @@ Cohesion: 0.25
 Nodes (3): _MockCumulativeProcessor, Tests for text merging logic: merge_texts overlap detection + SentenceMerger.  T, Minimal mock that simulates StreamingChunkProcessor returning     pre-defined cu
 
 ### Community 312 - "TestInterp"
-Cohesion: 0.09
-Nodes (16): App(), parseSeatId(), SeatRoute(), isDemoControlsEnabled(), mockFetch, MockWSInstance, TrackedMockWebSocket, wsInstances (+8 more)
+Cohesion: 0.07
+Nodes (24): fetchHostDisplayStatus(), HostDisplayStatus, App(), parseSeatId(), SeatRoute(), ActivateApp, ActivateResponseBody, AGENT_STATE_COPY (+16 more)
 
 ### Community 342 - ".pcm16_to_float32"
-Cohesion: 0.20
-Nodes (8): AndroidNativeBridge, dispatchImmediateResult(), isAndroidNativeAvailable(), nativeInterface(), parseEnvelope(), parsePayload(), Window, dispatchNativeEvent()
+Cohesion: 0.29
+Nodes (3): AndroidNativeBridge, nativeInterface(), parseEnvelope()
 
 ### Community 343 - "nativeEvents.ts"
 Cohesion: 0.18
@@ -1660,20 +1647,20 @@ Cohesion: 0.31
 Nodes (9): create_person(), list_people(), Session, Stable person identity API., _service(), PersonCreate, PersonResponse, BaseModel (+1 more)
 
 ### Community 347 - "SmartDeskNativeJavascriptInterface"
-Cohesion: 0.27
-Nodes (17): ContractError, load_object(), main(), Any, ValueError, Validate machine-readable SmartDesk integration and security contracts., require(), validate_android_config() (+9 more)
+Cohesion: 0.14
+Nodes (22): RateLimitDecision, Small bounded in-process rate limiter for device-facing endpoints., Thread-safe sliding window with bounded caller-key memory., Clear counters; intended for deterministic tests., SlidingWindowRateLimiter, ContractError, load_object(), main() (+14 more)
 
 ### Community 348 - "lighting_manager.py"
 Cohesion: 0.25
 Nodes (7): ESP32-WROOM-32E 接线, ESP32 席位控制器, HARDWARE_VALIDATION_REQUIRED, 后端配置, 固件构建, 模拟器, 目录
 
 ### Community 349 - ".reset"
-Cohesion: 0.12
-Nodes (12): CameraState, IDLE, RUNNING, STARTING, STOPPING, Uri, TabletWebChromeClient, Array (+4 more)
+Cohesion: 0.18
+Nodes (8): CameraState, IDLE, RUNNING, STARTING, STOPPING, TabletWebChromeClient, PermissionRequest, WebChromeClient
 
 ### Community 350 - "autoprefixer"
-Cohesion: 0.07
-Nodes (15): ActionLayer, All OS-level side effects the gesture controller can perform.      Phase 1: the, Return the fake driver — only valid when ``using_fake_driver``., Legacy left-button mouseDown — controller calls this., Legacy left-button mouseUp — controller calls this., Release every mouse button and modifier key that could be held.          Uncondi, Execute one or more ``ActionIntent`` objects in order.          Accepts:, The controller calls these methods directly; they must keep working. (+7 more)
+Cohesion: 0.08
+Nodes (10): ActionLayer, All OS-level side effects the gesture controller can perform.      Phase 1: the, Return the fake driver — only valid when ``using_fake_driver``., Legacy left-button mouseDown — controller calls this., Legacy left-button mouseUp — controller calls this., Release every mouse button and modifier key that could be held.          Uncondi, Execute one or more ``ActionIntent`` objects in order.          Accepts:, The controller calls these methods directly; they must keep working. (+2 more)
 
 ### Community 351 - "meeting_repository.py"
 Cohesion: 0.18
@@ -1688,28 +1675,28 @@ Cohesion: 0.25
 Nodes (4): Verify that VAD auto-final failures publish     TranslationInterimCancelledEvent, VAD auto-final ASR_EMPTY_RESULT -> cancelled event + terminal., An auto-final snapshot without confirmed speech is dropped quietly., TestVadAutoFinalErrorPaths
 
 ### Community 354 - "handle_speech_ws"
-Cohesion: 0.11
-Nodes (30): Logger, _error(), _log_heartbeat_result(), provision_tablet(), _provisioning_allowed(), JSONResponse, Request, Session (+22 more)
+Cohesion: 0.16
+Nodes (22): _error(), _log_heartbeat_result(), provision_tablet(), _provisioning_allowed(), JSONResponse, Request, Session, _rate_limited_response() (+14 more)
 
 ### Community 355 - ".publish"
-Cohesion: 0.17
-Nodes (19): Publish an event to all registered subscribers.          Per E1: only Services s, benchmark(), _checkpoint_rows(), _distribution(), _load_pcm_frames(), main(), _percentile(), Any (+11 more)
+Cohesion: 0.19
+Nodes (18): benchmark(), _checkpoint_rows(), _distribution(), _load_pcm_frames(), main(), _percentile(), Any, Path (+10 more)
 
 ### Community 357 - "FaceGuideView"
 Cohesion: 0.24
 Nodes (5): FaceGuideView, Canvas, Float, String, View
 
 ### Community 358 - "AndroidEvent"
-Cohesion: 0.43
-Nodes (3): is_hand_open(), True when thumb + all four fingers are extended (open palm)., TestIsHandOpen
+Cohesion: 0.24
+Nodes (9): BackendHealthChecker, isHealthyResponse(), Boolean, Int, String, Result, HEALTHY, OFFLINE (+1 more)
 
 ### Community 359 - "PROTOTYPE_README.md"
 Cohesion: 0.29
-Nodes (5): _fake_raw_hand(), _FakeNormalizedLandmark, Build a fake raw hand-landmark list with a configurable thumb-index gap.      Th, When raw MediaPipe landmarks are present, pinch_distance is 0-1., Minimal stand-in for MediaPipe NormalizedLandmark in tests.
+Nodes (4): String, MaintenancePinStoreTest, MemoryStringStore, MemoryStringStore
 
 ### Community 361 - ".prepare_next_utterance"
-Cohesion: 0.04
-Nodes (42): Speech-speaking events — published by SpeechStreamService.  Per the lighting int, SpeakerSpeakingEvent, SpeakerSpeakingStopEvent, Any, ndarray, Convert PCM16 little-endian bytes to float32 numpy array.          Args:, Begin a new utterance — reset revision, set utterance_id.          Also resets, Cancel current utterance. Returns the cancelled utterance_id or None. (+34 more)
+Cohesion: 0.03
+Nodes (66): Speech-speaking events — published by SpeechStreamService.  Per the lighting int, SpeakerSpeakingEvent, SpeakerSpeakingStopEvent, Any, ndarray, Convert PCM16 little-endian bytes to float32 numpy array.          Args:, Begin a new utterance — reset revision, set utterance_id.          Also resets, Cancel current utterance. Returns the cancelled utterance_id or None. (+58 more)
 
 ### Community 362 - "五、隐私、许可与当前边界"
 Cohesion: 0.50
@@ -1717,11 +1704,15 @@ Nodes (3): FFMPEG_PID, HERE, RUNTIME_DIR
 
 ### Community 363 - "ensure_translation_record_columns"
 Cohesion: 0.09
-Nodes (19): clear_speech_diagnostics(), Clear only the in-memory trace ring before a controlled reproduction., get_trace(), is_trace_enabled(), Any, Return a copy of all recorded trace events., True when SMART_DESK_ENABLE_SPEECH_TRACE=true., When trace is disabled, trace() does nothing. (+11 more)
+Nodes (19): get_speech_diagnostics(), Return bounded speech latency events and live queue diagnostics.      The payloa, get_trace(), is_trace_enabled(), Any, Return a copy of all recorded trace events., True when SMART_DESK_ENABLE_SPEECH_TRACE=true., When trace is disabled, trace() does nothing. (+11 more)
 
 ### Community 364 - "TestListSeats"
 Cohesion: 0.67
 Nodes (3): main(), Fail when Git tracks secrets, local device config, models, or build output., tracked_files()
+
+### Community 367 - "TestSingletonLifecycle"
+Cohesion: 0.40
+Nodes (4): _fake_raw_hand(), _FakeNormalizedLandmark, Build a fake raw hand-landmark list with a configurable thumb-index gap.      Th, Minimal stand-in for MediaPipe NormalizedLandmark in tests.
 
 ### Community 371 - "SE-MobileFaceNet embedding model card"
 Cohesion: 0.33
@@ -1784,20 +1775,20 @@ Cohesion: 0.18
 Nodes (8): CameraController, FrontCameraUnavailableException, ImageAnalysis, Int, Camera, ExecutorService, IllegalStateException, ProcessCameraProvider
 
 ### Community 407 - "meets_minimum_version"
-Cohesion: 0.29
-Nodes (8): _compare_prerelease(), meets_minimum_version(), parse_semantic_version(), Strict semantic-version checks for independently deployed devices., SemanticVersion, Deterministic tests for bounded anti-abuse and log redaction helpers., test_semantic_version_compatibility_is_strict_and_ordered(), test_sliding_window_limit_and_key_memory_bound()
+Cohesion: 0.48
+Nodes (6): _compare_prerelease(), meets_minimum_version(), parse_semantic_version(), Strict semantic-version checks for independently deployed devices., SemanticVersion, test_semantic_version_compatibility_is_strict_and_ordered()
 
 ### Community 408 - "SecureStringStore"
-Cohesion: 0.06
-Nodes (25): Boolean, Thread, NativeMicrophoneCapture, ByteArray, Int, Pcm16FrameEncoder, String, LocalStringStore (+17 more)
+Cohesion: 0.29
+Nodes (4): String, LocalStringStore, SecureStringStore, SecretKey
 
 ### Community 411 - "config_from_args"
 Cohesion: 0.15
 Nodes (13): ArgumentParser, build_arg_parser(), config_from_args(), Build a config from CLI args. Used by ``__main__`` only., --no-mouse creates a controller that uses FakeDriver., --start-unpaused disables pause_on_start / start_paused., --no-pause-on-start still works., test_no_mouse_uses_fake_driver() (+5 more)
 
 ### Community 412 - "._update_hold"
-Cohesion: 0.22
-Nodes (9): DeviceConfig, DeviceConfigPayload, Boolean, JSONObject, String, normalizeBaseUrl(), parse(), String (+1 more)
+Cohesion: 0.29
+Nodes (8): DeviceConfig, DeviceConfigPayload, Boolean, JSONObject, String, normalizeBaseUrl(), parse(), IllegalArgumentException
 
 ### Community 413 - ".prepare_next_utterance"
 Cohesion: 0.40
@@ -1812,8 +1803,8 @@ Cohesion: 0.32
 Nodes (6): AndroidEvent, Boolean, ByteArray, JSONObject, List, String
 
 ### Community 417 - "check_page_turn"
-Cohesion: 0.12
-Nodes (9): main(), Entry point: configure logging to file and console, then start controller., Open resources and enter the frame loop. Returns process exit code., Install global Ctrl+Alt+G (pause) and Ctrl+Alt+Q (exit).          Primary back, Try to install global hotkeys using the ``keyboard`` library.          Returns, Legacy fallback: install global hotkeys via pynput.          Kept only for com, Convert the pynput-style spec ``<ctrl>+<alt>+g`` to ``ctrl+alt+g``., Open camera through the configured driver factory.          If an externally p (+1 more)
+Cohesion: 0.38
+Nodes (8): event(), FakeGateway, test_agenda_create_without_current_keeps_meeting_mode(), test_base_and_overlay_priority_and_cleanup(), test_reconnect_resends_intended_mode(), test_stale_timer_cannot_clear_newer_overlay(), test_verified_occupancy_welcomes_during_meeting_and_can_repeat_after_vacate(), test_welcome_does_not_override_higher_priority_overlay()
 
 ### Community 419 - "test_gesture_camera_driver.py"
 Cohesion: 0.54
@@ -1856,8 +1847,8 @@ Cohesion: 0.25
 Nodes (8): Android Native Bridge 契约, DeviceInfo, WebView 安全, 事件信封, 兼容性, 前端接口, 范围, 身份状态处理
 
 ### Community 437 - "TestIdentitySafeCleanup"
-Cohesion: 0.13
-Nodes (10): TranslationRecord ORM model — per DATABASE_SCHEMA.md §11.  Repository: Translati, TranslationRecord, TranslationRecord, TranslationRepository — CRUD for translation_records.  Per DATABASE_SCHEMA.md §1, Data access for translation_records.      Extends BaseRepository[TranslationReco, List translation records for a meeting, newest first.          Args:, Return the largest persisted speech utterance sequence., TranslationRepository (+2 more)
+Cohesion: 0.15
+Nodes (8): TranslationRecord, TranslationRepository — CRUD for translation_records.  Per DATABASE_SCHEMA.md §1, Data access for translation_records.      Extends BaseRepository[TranslationReco, List translation records for a meeting, newest first.          Args:, Return the largest persisted speech utterance sequence., TranslationRepository, Session, Records without explicit source_type get the default 'speech_ws'.
 
 ### Community 438 - "SmartDesk 智能会议桌"
 Cohesion: 0.25
@@ -1872,8 +1863,8 @@ Cohesion: 0.29
 Nodes (7): 主要风险, 发布就绪报告, 完成判定, 当前结论, 正式发布退出条件, 自动验证基线, 阶段提交
 
 ### Community 442 - "globals"
-Cohesion: 0.17
-Nodes (9): _output_looks_degenerate(), Reject capped or clearly looping output before it reaches persistence., _CharacterTokenizer, _RetryModel, _RetryTokenizer, test_degenerate_output_retries_with_stricter_parameters(), test_final_translation_is_split_at_terminal_sentences_before_generation(), test_overlong_unpunctuated_input_is_bounded_without_losing_text() (+1 more)
+Cohesion: 0.22
+Nodes (4): Clear every transient continuous-action flag (no intents emitted)., In non-mouse modes, drop any stale drag/single state with a release., Pause/resume control. Returns the new paused state.          Entering pause emit, Switch the active control mode.          Phase 2: solidworks no longer raises No
 
 ### Community 443 - "ESP32 集成协议入口"
 Cohesion: 0.40
@@ -1884,16 +1875,16 @@ Cohesion: 0.14
 Nodes (9): idleBreathBrightness, CRGB, SmartDeskLighting::renderAiSpeaking(), SmartDeskLighting::renderError(), SmartDeskLighting::renderIdle(), SmartDeskLighting::renderMeetingActive(), SmartDeskLighting::renderServiceCall(), SmartDeskLighting::renderVoteOpen() (+1 more)
 
 ### Community 445 - "test_keyboard_backend_registers_global_hotkeys"
-Cohesion: 0.12
-Nodes (3): kind/args properties must bridge old controller dispatch to new fields., TestActionIntentCompat, TestActionIntentFields
+Cohesion: 0.39
+Nodes (4): Boolean, Thread, NativeMicrophoneCapture, AudioRecord
 
 ### Community 446 - "DeviceConfigStore"
-Cohesion: 0.29
-Nodes (4): DeviceConfigStore, DeviceConfigStoreTest, String, MemoryStringStore
+Cohesion: 0.23
+Nodes (5): DeviceConfigStore, String, DeviceConfigStoreTest, String, MemoryStringStore
 
 ### Community 447 - "translation_model_service.py"
-Cohesion: 0.08
-Nodes (16): EventBus, EventBus — process-internal publish/subscribe.  Per EVENT_BUS_SPEC §1-4, §13:, Process-internal publish/subscribe event hub.      All handlers for an event are, Register a handler for an event type.          Per §12: called at startup. No ru, Remove a handler. Rarely needed; provided for test cleanup., List all event names that have at least one subscriber., How many handlers registered for a given event., BaseService (+8 more)
+Cohesion: 0.12
+Nodes (9): EventBus, EventBus — process-internal publish/subscribe.  Per EVENT_BUS_SPEC §1-4, §13:, Process-internal publish/subscribe event hub.      All handlers for an event are, Publish an event to all registered subscribers.          Per E1: only Services s, Register a handler for an event type.          Per §12: called at startup. No ru, Remove a handler. Rarely needed; provided for test cleanup., List all event names that have at least one subscriber., How many handlers registered for a given event. (+1 more)
 
 ### Community 448 - "TestEnsureSpeechModule"
 Cohesion: 0.18
@@ -1904,12 +1895,12 @@ Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: 平板部署能力等检验如何进行, Source Nodes
 
 ### Community 450 - "test_keyboard_backend_registration_failure_still_starts"
-Cohesion: 0.20
-Nodes (9): ServiceCall, ServiceCall, ServiceCallRepository — CRUD for service_calls.  Per DATABASE_SCHEMA.md §10, §15, Data access for service_calls.      Extends BaseRepository[ServiceCall] with:, Return the pending call for a seat in a meeting, or None., List all service calls for a meeting, newest first., List all pending service calls for a meeting., ServiceCallRepository (+1 more)
+Cohesion: 0.29
+Nodes (7): check_page_turn(), Detect page-turn actions; return ``'next'`` / ``'previous'`` / ``None``., test_check_page_turn_next_via_action(), test_check_page_turn_next_via_next_keyword(), test_check_page_turn_none(), test_check_page_turn_previous_via_action(), test_check_page_turn_previous_via_previous_keyword()
 
 ### Community 451 - "check_model_files"
-Cohesion: 0.14
-Nodes (3): harness, MockMicInstance, MockWsInstance
+Cohesion: 0.33
+Nodes (4): ByteArray, Int, Pcm16FrameEncoder, ShortArray
 
 ### Community 452 - "FaceQualityException"
 Cohesion: 0.32
@@ -1919,33 +1910,21 @@ Nodes (5): FaceQualityEvaluator, FaceQualityException, FaceQualityResult, Bitmap
 Cohesion: 0.39
 Nodes (3): Boolean, String, WebViewPageAccessState
 
-### Community 454 - "package.json"
-Cohesion: 0.40
-Nodes (4): name, private, type, version
-
 ### Community 455 - "test_dev_api.py"
 Cohesion: 0.40
 Nodes (5): Boolean, String, parse(), Payload, ProvisioningRequest
 
 ### Community 456 - "test_dispatch_press_right_left_recorded"
-Cohesion: 0.21
-Nodes (10): SpeechLanguageMode, SpeechWsErrorCallback, SpeechWsStatus, SpeechWsStatusCallback, SpeechWsUtteranceStartedCallback, StartResult, SpeechState, SpeechStatus (+2 more)
+Cohesion: 0.33
+Nodes (4): create_camera(), _OpenCvCamera, cv2.VideoCapture wrapper with the legacy tuning parameters., Factory that creates the camera driver selected by ``config.camera_driver``.
 
 ### Community 457 - "test_controller_constructs_gesture_frame_from_frame_result"
-Cohesion: 0.29
-Nodes (11): _fits_token_limit(), Any, Local, direction-aware OPUS-MT translation service., Produce bounded, punctuation-preserving translation units.      Terminal sentenc, Split after punctuation while retaining that punctuation in each unit., Return a tokenizer count, with a deterministic fallback for test doubles., Split one long clause without cutting English words where possible., _split_at_boundaries() (+3 more)
+Cohesion: 0.40
+Nodes (4): Answer, Outcome, Q: 如何配合 CameraX 生命周期、陌生人和翻拍测试、正式人脸模型与阈值标定, Source Nodes
 
 ### Community 458 - "landmarks_to_hand_input"
-Cohesion: 0.13
-Nodes (14): landmarks_to_hand_input(), pinch_distance(), Euclidean distance between thumb tip(4) and index tip(8), in camera px., Build a :class:`HandInput` from a classified landmark list (rule path).      Thi, _closed_fist(), _make_landmarks(), Tests for hands.gesture_recognition — pure classification functions.  These test, Verify that the rule path outputs canonical Gesture enum members. (+6 more)
-
-### Community 459 - "test_tracker_update_receives_monotonic_time"
-Cohesion: 0.22
-Nodes (5): RateLimitDecision, Small bounded in-process rate limiter for device-facing endpoints., Thread-safe sliding window with bounded caller-key memory., Clear counters; intended for deterministic tests., SlidingWindowRateLimiter
-
-### Community 463 - ".configureWebView"
-Cohesion: 0.15
-Nodes (11): Float, JSONObject, String, MainActivity, com, ComponentActivity, ConnectivityManager, FrameLayout (+3 more)
+Cohesion: 0.17
+Nodes (8): landmarks_to_hand_input(), pinch_distance(), Euclidean distance between thumb tip(4) and index tip(8), in camera px., Build a :class:`HandInput` from a classified landmark list (rule path).      Thi, Verify that the rule path outputs canonical Gesture enum members., PINCH is still computed from landmarks, not from GestureRecognizer., TestLandmarksToHandInputCanonical, TestPinchDistance
 
 ### Community 464 - "SmartDesk 文档索引与统一约定"
 Cohesion: 0.40
@@ -1960,12 +1939,8 @@ Cohesion: 0.20
 Nodes (9): CapturePhase, CAPTURING, METERING, STABILITY, WAITING_FOR_FACE, Mode, ENROLLING, IDLE (+1 more)
 
 ### Community 468 - "TestMigrationIdempotency"
-Cohesion: 0.22
-Nodes (8): ensure_translation_record_columns(), Idempotently add Phase 4 columns to translation_records.      Checks existing co, SQLite column migration is idempotent., ensure_translation_record_columns can be called twice., Tables created after model update still have Phase 4 columns., Drop/recreate tables before each test., _reset_db(), TestMigrationIdempotency
-
-### Community 471 - "app-config.ts"
-Cohesion: 0.33
-Nodes (7): apiBase(), AppConfig, cfg(), NativeDeviceEnvelope, nativeServerUrl(), wsBase(), AppConfigWindow
+Cohesion: 0.13
+Nodes (13): ensure_translation_record_columns(), Idempotently add Phase 4 columns to translation_records.      Checks existing co, event_bus(), Unit tests for TranslationService — Phase 4 additions.  Covers:     - process, SQLite column migration is idempotent., ensure_translation_record_columns can be called twice., Tables created after model update still have Phase 4 columns., Drop/recreate tables before each test. (+5 more)
 
 ### Community 472 - "Q: 这三个问题存在于哪一个分支，如果不存在于当前最新的分支，则不修复。否则修复"
 Cohesion: 0.40
@@ -1978,10 +1953,6 @@ Nodes (4): Answer, Outcome, Q: 服务器预配口令是什么，维护页不回�
 ### Community 474 - "Q: 在维护页面如何退回会议页面？"
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: 在维护页面如何退回会议页面？, Source Nodes
-
-### Community 475 - "speechTrace.ts"
-Cohesion: 0.28
-Nodes (5): downloadTraceFile(), getTraceReport(), serializeTrace(), _traceBuffer, TraceEvent
 
 ### Community 476 - "test_semantic_sentence_tracking.py"
 Cohesion: 0.36
@@ -2011,55 +1982,43 @@ Nodes (3): FaceTemplateCollectionTest, Float, String
 Cohesion: 0.31
 Nodes (9): animationProgress, centerDistance, maximumCenterDistance, renderIdle, SmartDeskLighting::maximumCenterDistance(), SmartDeskLighting::renderAgendaActive(), SmartDeskLighting::renderBoot(), SmartDeskLighting::renderMeetingEnded() (+1 more)
 
-### Community 484 - "SeatState"
-Cohesion: 0.29
-Nodes (4): SeatState, Get a seat by its seat_id (1..9)., List the nine configured seats, ordered by seat_id., Persist changes to a seat.
-
 ### Community 485 - "TestInterp"
 Cohesion: 0.43
 Nodes (3): _interp(), Linear interpolation; equivalent to ``numpy.interp`` for scalars., TestInterp
 
-### Community 486 - "test_gesture_camera_driver.py"
-Cohesion: 0.43
-Nodes (6): _minimal_config(), Regression tests for the optional camera driver integration.  These tests do not, Return a config suitable for controller unit tests., test_camera_driver_external_cap_is_not_created_or_released(), test_camera_driver_open_camera_uses_factory(), test_camera_driver_opencv_factory_selection()
-
 ### Community 487 - "Q: 当前平板已连接，可以启动调试"
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: 当前平板已连接，可以启动调试, Source Nodes
-
-### Community 488 - "__init__.py"
-Cohesion: 0.50
-Nodes (3): __getattr__(), Any, SmartDesk local gesture-control package.  This package is a **standalone process
 
 ### Community 495 - "SmartDeskLighting::modeFromName"
 Cohesion: 0.33
 Nodes (6): modeFromName, LightMode, String, SmartDeskLighting::modeFromName(), SmartDeskLighting::modeName(), SmartDeskLighting::setMode()
 
 ## Knowledge Gaps
-- **827 isolated node(s):** `IDLE`, `STARTING`, `RUNNING`, `STOPPING`, `DeviceConfigPayload` (+822 more)
+- **830 isolated node(s):** `IDLE`, `STARTING`, `RUNNING`, `STOPPING`, `DeviceConfigPayload` (+825 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **80 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **79 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Work-memory lessons
 
 **Preferred sources** — corroborated by past sessions; start here.
-- `MainActivity` (8× useful, score=7.064145012) _(code changed — re-verify)_
-- `MaintenancePinStore` (3× useful, score=2.600520519)
-- `TabletDeviceService` (3× useful, score=2.596762128)
-- `SeatTablet.tsx` (2× useful, score=1.864655707)
-- `App.jsx` (2× useful, score=1.734544047) _(code changed — re-verify)_
-- `DeviceConfig` (2× useful, score=1.729527166)
-- `WebView` (2× useful, score=1.728861642)
+- `MainActivity` (9× useful, score=7.909572538)
+- `MaintenancePinStore` (3× useful, score=2.543976071)
+- `TabletDeviceService` (3× useful, score=2.540299401)
+- `SeatTablet.tsx` (2× useful, score=1.824111545) _(code changed — re-verify)_
+- `App.jsx` (2× useful, score=1.696828969)
+- `DeviceConfig` (2× useful, score=1.691921172)
+- `WebView` (2× useful, score=1.691270119)
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `SpeechModule` connect `HandInput Module` to `stt streaming.py`, `.prepare_next_utterance`, `is translation model enabled()`, `benchmark real speech dataset.py`, `TestCumulativeFullTextNoDuplication Module`, `TestMergeTexts Module`, `SentenceMerger Module`, `TestEnsureSpeechModule`, `test speech model smoke.py`, `is_translation_model_enabled`, `CaptionFormatter Module`, `TestSpeechDependencies`, `.update() Module`, `lifespan() Module`, `TestSpeakerSeat Module`, `useSpeechStream.test.tsx`?**
-  _High betweenness centrality (0.064) - this node is a cross-community bridge._
-- **Why does `MeetingService` connect `HandRecognizer Module` to `GestureIntentTracker Module`, `create pending()`, `ValidationError Module`, `stt_streaming.py`, `is translation model enabled()`, `TestEnglishRollingMerge`, `dev occupy()`, `is_translation_model_enabled`, `.ok() Module`, `seats.py Module`, `._publish_speaking_stop`, `ActionLayer Module`, `translation_model_service.py`?**
-  _High betweenness centrality (0.044) - this node is a cross-community bridge._
-- **Why does `ValidationError` connect `stt_streaming.py` to `GestureIntentTracker Module`, `create pending()`, `Diagnose`, `TestTwoLineOnly Module`, `ValidationError Module`, `LightingMode Module`, `VoteService Module`, `SpeechModule Module`, `TestMigrationIdempotency`, `handle binary message()`, `._publish_speaking_stop`, `HandRecognizer Module`, `ActionLayer Module`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+- **Why does `SpeechModule` connect `HandInput Module` to `is translation model enabled()`, `.prepare_next_utterance`, `stt streaming.py`, `benchmark real speech dataset.py`, `GestureController Module`, `TestCumulativeFullTextNoDuplication Module`, `TestMergeTexts Module`, `SentenceMerger Module`, `TestEnsureSpeechModule`, `test speech model smoke.py`, `CaptionFormatter Module`, `TestSpeechDependencies`, `.update() Module`, `lifespan() Module`?**
+  _High betweenness centrality (0.074) - this node is a cross-community bridge._
+- **Why does `MeetingService` connect `GestureIntentTracker Module` to `replay record()`, `FrameResult Module`, `create pending()`, `@playwright/test Module`, `GestureConfig Module`, `is translation model enabled()`, `TestSpeakerSeat Module`, `dev occupy()`, `.ok() Module`, `VoteService Module`, `test websocket integration.py`, `seats.py Module`, `._publish_speaking_stop`, `ActionLayer Module`, `HandRecognizer Module`, `translation_model_service.py`?**
+  _High betweenness centrality (0.047) - this node is a cross-community bridge._
+- **Why does `ValidationError` connect `GestureIntentTracker Module` to `FrameResult Module`, `main.py Module`, `create pending()`, `TestTwoLineOnly Module`, `ValidationError Module`, `LightingMode Module`, `is_translation_model_enabled`, `VoteService Module`, `SpeechModule Module`, `test websocket integration.py`, `TestMigrationIdempotency`, `handle binary message()`, `._publish_speaking_stop`, `HandRecognizer Module`, `ActionLayer Module`?**
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
 - **Are the 40 inferred relationships involving `GestureState` (e.g. with `GestureController` and `GestureFrameRecorder`) actually correct?**
   _`GestureState` has 40 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 75 inferred relationships involving `GestureIntentTracker` (e.g. with `GestureController` and `GestureConfig`) actually correct?**

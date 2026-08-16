@@ -143,10 +143,30 @@ const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
 
 function okResponse(data: unknown) {
+  const normalized = Array.isArray(data)
+    ? data.map((item) => {
+        if (
+          item &&
+          typeof item === "object" &&
+          "meeting_id" in item &&
+          "checked_in" in item &&
+          !("assigned_seat_id" in item)
+        ) {
+          const attendee = item as Record<string, unknown>;
+          return {
+            ...attendee,
+            assigned_seat_id: attendee.checked_in
+              ? attendee.seat_id ?? null
+              : null,
+          };
+        }
+        return item;
+      })
+    : data;
   return {
     ok: true,
     status: 200,
-    json: async () => ({ success: true, message: "OK", data }),
+    json: async () => ({ success: true, message: "OK", data: normalized }),
   };
 }
 
@@ -176,19 +196,18 @@ function createSeatMock(
     if (url === "/api/votes/active") return okResponse(null);
     if (url.includes("/api/service-calls/current")) return okResponse(null);
     if (url === "/api/meetings/1/attendees") {
-      if (seatStatus === "checked_in") {
-        return okResponse([
-          {
-            id: 1,
-            meeting_id: 1,
-            name: "Alice Wang",
-            title: "CEO",
-            seat_id: 1,
-            checked_in: true,
-          },
-        ]);
-      }
-      return okResponse([]);
+      return okResponse([
+        {
+          id: 1,
+          meeting_id: 1,
+          person_id: "person_001",
+          name: "Alice Wang",
+          title: "CEO",
+          assigned_seat_id: 1,
+          seat_id: seatStatus === "checked_in" ? 1 : null,
+          checked_in: seatStatus === "checked_in",
+        },
+      ]);
     }
     if (url === "/api/meetings/1/agendas") return okResponse([]);
     if (url.includes("/api/translations"))
@@ -241,48 +260,49 @@ describe("SeatTablet - no meeting state", () => {
   });
 });
 
-describe("SeatTablet - vacant seat state", () => {
-  it("shows vacant seat with waiting message and no demo controls by default", async () => {
+describe("SeatTablet - face gate", () => {
+  it("hides meeting controls while the assigned seat is vacant", async () => {
     mockFetch.mockImplementation(createSeatMock("vacant"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Vacant/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
-    expect(screen.getByText(/等待入座.*Waiting for occupant/)).toBeInTheDocument();
+    expect(screen.queryByTestId("seat-screen-entry")).not.toBeInTheDocument();
     expect(screen.queryByText(/模拟入座.*Occupy Seat \(Demo\)/)).not.toBeInTheDocument();
   });
 
-  it("shows occupy button when demo controls are enabled", async () => {
+  it("does not expose demo occupy controls at the gate", async () => {
     mockDemoControls = true;
     mockFetch.mockImplementation(createSeatMock("vacant"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/模拟入座.*Occupy Seat \(Demo\)/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
+    expect(screen.queryByText(/模拟入座.*Occupy Seat \(Demo\)/)).not.toBeInTheDocument();
   });
-});
 
-describe("SeatTablet - occupied_unchecked state", () => {
-  it("shows check-in prompt for occupied_unchecked seat", async () => {
+  it("keeps occupied_unchecked seats behind the gate", async () => {
     mockFetch.mockImplementation(createSeatMock("occupied_unchecked"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Check-in Required/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
+    expect(screen.queryByText(/Confirm Check-in/)).not.toBeInTheDocument();
     expect(screen.queryByText(/模拟离座.*Vacate \(Demo\)/)).not.toBeInTheDocument();
   });
 
-  it("shows vacate demo button when enabled", async () => {
+  it("does not expose demo vacate controls before check-in", async () => {
     mockDemoControls = true;
     mockFetch.mockImplementation(createSeatMock("occupied_unchecked"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/模拟离座.*Vacate \(Demo\)/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
+    expect(screen.queryByText(/模拟离座.*Vacate \(Demo\)/)).not.toBeInTheDocument();
   });
 });
 
@@ -296,103 +316,6 @@ describe("SeatTablet - checked_in state", () => {
     });
     expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     expect(screen.getByText("CEO")).toBeInTheDocument();
-  });
-});
-
-// ── Check-in Action Tests ───────────────────────────────────────────────────
-
-describe("SeatTablet - check-in action", () => {
-  it("selects attendee and calls checkin API on confirm", async () => {
-    mockDemoControls = true;
-    const postedUrls: string[] = [];
-    const postedBodies: unknown[] = [];
-
-    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
-      postedUrls.push(url);
-      if (opts?.body) postedBodies.push(JSON.parse(opts.body as string));
-
-      if (url === "/api/meetings/active") {
-        return okResponse({
-          id: 1,
-          title: "Meeting",
-          status: "active",
-          started_at: "2026-01-01T10:00:00Z",
-        });
-      }
-      if (url === "/api/seats") {
-        return okResponse(
-          Array.from({ length: 10 }, (_, i) => ({
-            seat_id: i + 1,
-            status: i === 0 ? ("occupied_unchecked" as const) : ("vacant" as const),
-            attendee_id: null,
-            updated_at: "2026-01-01T00:00:00Z",
-          })),
-        );
-      }
-      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
-      if (url === "/api/votes/active") return okResponse(null);
-      if (url === "/api/meetings/1/attendees") {
-        return okResponse([
-          {
-            id: 42,
-            meeting_id: 1,
-            name: "Charlie",
-            title: "VP",
-            seat_id: null,
-            checked_in: false,
-          },
-        ]);
-      }
-      if (url === "/api/meetings/1/agendas") return okResponse([]);
-      if (url.includes("/api/service-calls/current")) return okResponse(null);
-      if (url.includes("/api/translations"))
-        return okResponse({ meeting_id: 1, entries: [] });
-      // Mock checkin response
-      if (url.includes("/checkin")) {
-        return okResponse({
-          seat_id: 1,
-          status: "checked_in",
-          attendee_id: 42,
-          updated_at: "2026-01-01T00:00:00Z",
-        });
-      }
-      return okResponse(null);
-    });
-
-    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Check-in Required/)).toBeInTheDocument();
-    });
-
-    // Click attendee "Charlie" and wait for re-render
-    const charlieBtn = screen.getByText("Charlie").closest("button");
-    expect(charlieBtn).toBeInTheDocument();
-    await act(async () => {
-      charlieBtn!.click();
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // Wait for the Confirm button to become enabled (WS connection + state update)
-    let confirmBtn: HTMLElement;
-    await waitFor(() => {
-      confirmBtn = screen.getByText(/确认签到.*Confirm Check-in/);
-      if (confirmBtn.hasAttribute("disabled")) throw new Error("Button still disabled");
-    });
-
-    confirmBtn = screen.getByText(/确认签到.*Confirm Check-in/);
-    await act(async () => {
-      confirmBtn.click();
-      await new Promise((r) => setTimeout(r, 100));
-    });
-
-    // Verify checkin API was called with correct body
-    const checkinCall = postedUrls.find((u) => u.includes("/api/seats/1/checkin"));
-    expect(checkinCall).toBeTruthy();
-    const checkinBody = postedBodies.find(
-      (b: unknown) => (b as Record<string, unknown>)?.attendee_id === 42,
-    );
-    expect(checkinBody).toEqual({ attendee_id: 42 });
   });
 });
 
@@ -510,7 +433,7 @@ describe("SeatTablet - Android identity check-in", () => {
     );
   });
 
-  it("restarts face verification three seconds after a retryable result", async () => {
+  it("requires an explicit retry after an unrecognized face", async () => {
     const startFaceVerification = vi.fn();
     installNativeBridge({ startFaceVerification });
     mockFetch.mockImplementation(createSeatMock("vacant"));
@@ -534,10 +457,12 @@ describe("SeatTablet - Android identity check-in", () => {
       );
     });
 
-    await waitFor(
-      () => expect(startFaceVerification).toHaveBeenCalledTimes(2),
-      { timeout: 4_000 },
-    );
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    });
+    expect(startFaceVerification).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText(/重新识别.*Retry Recognition/));
+    await waitFor(() => expect(startFaceVerification).toHaveBeenCalledTimes(2));
   });
 
   it("does not retry a calibration configuration error", async () => {
@@ -573,11 +498,11 @@ describe("SeatTablet - Android identity check-in", () => {
     expect(startFaceVerification).toHaveBeenCalledTimes(1);
   });
 
-  it("stops face verification when the seat is no longer vacant", async () => {
+  it("stops face verification only after backend-confirmed check-in", async () => {
     const startFaceVerification = vi.fn();
     const stopFaceVerification = vi.fn();
     installNativeBridge({ startFaceVerification, stopFaceVerification });
-    let seatStatus: "vacant" | "occupied_unchecked" = "vacant";
+    let seatStatus: "vacant" | "checked_in" = "vacant";
     mockFetch.mockImplementation((url: string) =>
       createSeatMock(seatStatus)(url),
     );
@@ -587,8 +512,8 @@ describe("SeatTablet - Android identity check-in", () => {
       expect(startFaceVerification).toHaveBeenCalledTimes(1),
     );
 
-    seatStatus = "occupied_unchecked";
-    await triggerWsEvent("seat_occupied", 1, { seat_id: 1 });
+    seatStatus = "checked_in";
+    await triggerWsEvent("check_in", 1, { seat_id: 1, attendee_id: 1 });
 
     await waitFor(() =>
       expect(stopFaceVerification).toHaveBeenCalledTimes(1),
@@ -659,7 +584,7 @@ describe("SeatTablet - Android identity check-in", () => {
     });
   });
 
-  it("displays PROTOTYPE identity without automatic check-in", async () => {
+  it("automatically submits a PROTOTYPE result for backend policy evaluation", async () => {
     installNativeBridge();
     const identityCalls: string[] = [];
     mockFetch.mockImplementation((url: string) => {
@@ -692,7 +617,7 @@ describe("SeatTablet - Android identity check-in", () => {
     });
 
     await screen.findByText(/已验证 \/ VERIFIED.*人员编号 person_001.*相似度 0\.820.*原型验证 \/ PROTOTYPE/);
-    expect(identityCalls).toHaveLength(0);
+    await waitFor(() => expect(identityCalls).toHaveLength(1));
     expect(screen.queryByText("提交测试签到")).not.toBeInTheDocument();
   });
 
@@ -1543,7 +1468,7 @@ describe("SeatTablet - WebSocket disconnect", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Vacant/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
 
     // Disconnect WS synchronously
@@ -1552,17 +1477,17 @@ describe("SeatTablet - WebSocket disconnect", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/连接已断开.*Connection Lost/)).toBeInTheDocument();
+      expect(screen.getByText(/后端连接已断开/)).toBeInTheDocument();
     });
   });
 
-  it("disables write buttons when disconnected", async () => {
+  it("does not expose write buttons when disconnected at the gate", async () => {
     mockDemoControls = true;
     mockFetch.mockImplementation(createSeatMock("vacant"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/模拟入座.*Occupy Seat \(Demo\)/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
 
     // Disconnect WS synchronously
@@ -1571,11 +1496,10 @@ describe("SeatTablet - WebSocket disconnect", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/连接已断开.*Connection Lost/)).toBeInTheDocument();
+      expect(screen.getByText(/后端连接已断开/)).toBeInTheDocument();
     });
 
-    const occupyBtn = screen.getByText(/模拟入座.*Occupy Seat \(Demo\)/);
-    expect(occupyBtn).toBeDisabled();
+    expect(screen.queryByText(/模拟入座.*Occupy Seat \(Demo\)/)).not.toBeInTheDocument();
   });
 });
 
@@ -1587,7 +1511,7 @@ describe("SeatTablet - old voice placeholder removed", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Vacant/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
 
     expect(screen.queryByText(/语音识别接口预留/)).not.toBeInTheDocument();
@@ -2858,13 +2782,13 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
       if (url === "/api/seats") {
         return okResponse(
           Array.from({ length: 10 }, (_, i) => ({
-            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+            seat_id: i + 1, status: i === 0 ? "checked_in" as const : "vacant" as const, attendee_id: i === 0 ? 1 : null, updated_at: "2026-01-01T00:00:00Z",
           })),
         );
       }
       if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
       if (url === "/api/votes/active") return okResponse(null);
-      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/attendees") return okResponse([{ id: 1, meeting_id: 1, name: "Alice", title: "", seat_id: 1, checked_in: true }]);
       if (url === "/api/meetings/1/agendas") return okResponse([]);
       if (url.includes("/api/translations")) {
         translationsCallCount++;
@@ -2936,13 +2860,13 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
       if (url === "/api/seats") {
         return okResponse(
           Array.from({ length: 10 }, (_, i) => ({
-            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+            seat_id: i + 1, status: i === 1 ? "checked_in" as const : "vacant" as const, attendee_id: i === 1 ? 2 : null, updated_at: "2026-01-01T00:00:00Z",
           })),
         );
       }
       if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
       if (url === "/api/votes/active") return okResponse(null);
-      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/attendees") return okResponse([{ id: 2, meeting_id: 1, name: "Bob", title: "", seat_id: 2, checked_in: true }]);
       if (url === "/api/meetings/1/agendas") return okResponse([]);
       if (url.includes("/api/translations")) {
         translationsCallCount++;
@@ -4261,7 +4185,7 @@ describe("SeatTablet - current topic display (Phase 3)", () => {
     expect(fetchCount).toBeGreaterThan(initialFetches);
   });
 
-  it("shows current topic even when seat is vacant", async () => {
+  it("hides the current topic while the seat is gated", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/active") {
         return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
@@ -4287,10 +4211,9 @@ describe("SeatTablet - current topic display (Phase 3)", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      const titles = screen.getAllByText("Opening Remarks");
-      expect(titles.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
-    expect(screen.getByText(/ACTIVE/)).toBeInTheDocument();
+    expect(screen.queryByText("Opening Remarks")).not.toBeInTheDocument();
   });
 });
 
