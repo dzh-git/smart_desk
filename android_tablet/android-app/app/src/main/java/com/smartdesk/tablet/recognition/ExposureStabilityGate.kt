@@ -58,7 +58,7 @@ class ExposureStabilityGate {
 
     companion object {
         const val METERING_WAIT_MS = 400L
-        const val MAX_STABILITY_WAIT_MS = 1_000L
+        const val MAX_STABILITY_WAIT_MS = 3_000L
         const val STABILITY_FRAME_COUNT = 3
         const val MAX_BRIGHTNESS_RANGE = 15f
     }

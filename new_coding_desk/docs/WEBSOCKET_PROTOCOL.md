@@ -304,6 +304,7 @@ The meeting broadcast channel also carries:
 - `seat_vacant`
 - `checkin_prompt`
 - `check_in`
+- `seat_assignment_updated`
 - `speaker_seat_set`
 - `speaker_seat_clear`
 - `meeting_started`

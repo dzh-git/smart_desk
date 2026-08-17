@@ -231,7 +231,9 @@ class FaceRecognitionManager(
                         emit(latestStatus)
                     }
                     ExposureGateResult.TIMED_OUT -> {
-                        abortRetryLocked("曝光在1秒内未稳定，请重新验证")
+                        abortRetryLocked(
+                            "曝光未能稳定，请保持设备和光线稳定后重试"
+                        )
                     }
                 }
             } else {

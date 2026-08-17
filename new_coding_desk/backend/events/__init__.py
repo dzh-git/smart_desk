@@ -7,7 +7,7 @@ Per EVENT_BUS_SPEC:
 Exports:
     EventBus      — singleton publish/subscribe hub
     BaseEvent     — base class for all events
-    All 15 event types per EVENT_BUS_SPEC.
+    Typed event classes from EVENT_BUS_SPEC.
 """
 from backend.events.event_bus import EventBus, event_bus
 from backend.events.base_event import BaseEvent
@@ -20,6 +20,7 @@ from backend.events.seat_events import (
     SeatVacantEvent,
     CheckinPromptEvent,
     CheckInEvent,
+    SeatAssignmentUpdatedEvent,
     SpeakerSeatSetEvent,
     SpeakerSeatClearEvent,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "SeatVacantEvent",
     "CheckinPromptEvent",
     "CheckInEvent",
+    "SeatAssignmentUpdatedEvent",
     "SpeakerSeatSetEvent",
     "SpeakerSeatClearEvent",
     # Vote events

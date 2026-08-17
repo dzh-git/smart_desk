@@ -396,6 +396,19 @@ class MainActivity : ComponentActivity() {
             }
         }
         emitToReact(AndroidEvent.identityStatus(result))
+        IdentityCameraOverlayPolicy.closeDelayMs(result.status)?.let { delayMs ->
+            mainHandler.postDelayed(
+                {
+                    if (
+                        cameraState == CameraState.RUNNING &&
+                        recognitionManager?.currentStatus()?.status == "VERIFIED"
+                    ) {
+                        stopCamera()
+                    }
+                },
+                delayMs
+            )
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")

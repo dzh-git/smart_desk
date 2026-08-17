@@ -381,6 +381,33 @@ class TestAttendeeCRUD:
         assert fetched is not None
         assert fetched.id == attendee.id
 
+    def test_seat_assignment_changes_publish_refresh_events(self, svc, event_bus):
+        mid = _create_pending(svc)
+        attendee = svc.create_attendee(mid, "Assigned Person")
+        received = []
+
+        def capture(event):
+            received.append(event)
+
+        event_bus.subscribe("seat_assignment_updated", capture)
+
+        svc.assign_attendee_to_seat(mid, 1, attendee.id)
+        svc.clear_seat_assignment(mid, 1)
+
+        assert [event.meeting_id for event in received] == [mid, mid]
+        assert [event.payload for event in received] == [
+            {
+                "seat_id": 1,
+                "attendee_id": attendee.id,
+                "action": "assigned",
+            },
+            {
+                "seat_id": 1,
+                "attendee_id": attendee.id,
+                "action": "cleared",
+            },
+        ]
+
 
 # ── Extended Meeting End Behavior (Phase 03) ───────────────────────────────
 

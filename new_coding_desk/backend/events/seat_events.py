@@ -32,6 +32,11 @@ class CheckInEvent(BaseEvent):
 
 
 @dataclass
+class SeatAssignmentUpdatedEvent(BaseEvent):
+    event_name: str = "seat_assignment_updated"
+
+
+@dataclass
 class SpeakerSeatSetEvent(BaseEvent):
     event_name: str = "speaker_seat_set"
 

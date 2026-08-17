@@ -17,6 +17,7 @@ from backend.events.event_bus import EventBus
 from backend.events.meeting_events import MeetingStartedEvent, MeetingEndedEvent
 from backend.events.vote_events import VoteClosedEvent
 from backend.events.agenda_events import AgendaUpdatedEvent
+from backend.events.seat_events import SeatAssignmentUpdatedEvent
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.models.meeting import Meeting
 from backend.models.agenda import Agenda
@@ -592,7 +593,18 @@ class MeetingService(BaseService):
             self.attendee_repo.save(current, commit=False)
 
         attendee.assigned_seat_id = seat_id
-        return self.attendee_repo.save(attendee)
+        assigned = self.attendee_repo.save(attendee)
+        self.event_bus.publish(
+            SeatAssignmentUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "seat_id": seat_id,
+                    "attendee_id": attendee.id,
+                    "action": "assigned",
+                },
+            )
+        )
+        return assigned
 
     def clear_seat_assignment(self, meeting_id: int, seat_id: int) -> None:
         """Remove the default attendee assignment from a meeting seat."""
@@ -614,6 +626,16 @@ class MeetingService(BaseService):
             )
         attendee.assigned_seat_id = None
         self.attendee_repo.save(attendee)
+        self.event_bus.publish(
+            SeatAssignmentUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "seat_id": seat_id,
+                    "attendee_id": attendee.id,
+                    "action": "cleared",
+                },
+            )
+        )
 
     def delete_attendee(self, meeting_id: int, attendee_id: int) -> None:
         """Remove an attendee. Must belong to the given meeting."""

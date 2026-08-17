@@ -28,13 +28,17 @@ class ExposureStabilityGateTest {
     }
 
     @Test
-    fun timesOutInsteadOfLoweringRequirement() {
+    fun allowsThreeSecondsForStabilityBeforeTimingOut() {
         val gate = ExposureStabilityGate()
         gate.start(100L)
 
         assertEquals(
-            ExposureGateResult.TIMED_OUT,
+            ExposureGateResult.WAITING_FOR_STABILITY,
             gate.observe(100f, 1_501L)
+        )
+        assertEquals(
+            ExposureGateResult.TIMED_OUT,
+            gate.observe(130f, 3_501L)
         )
     }
 }

@@ -665,6 +665,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       nativeDeviceInfo?.seatId === seatId;
 
     if (!eligible) {
+      automaticFaceAttemptKey.current = null;
       if (ACTIVE_IDENTITY_STATUSES.has(nativeIdentityStatus?.status ?? "")) {
         void handleStopFaceVerification();
       }

@@ -433,6 +433,67 @@ describe("SeatTablet - Android identity check-in", () => {
     );
   });
 
+  it("restarts automatic verification when the same attendee is reassigned", async () => {
+    const startFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification });
+    const baseMock = createSeatMock("vacant");
+    let assigned = true;
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([
+          {
+            id: 1,
+            meeting_id: 1,
+            person_id: "person_001",
+            name: "Alice Wang",
+            title: "CEO",
+            assigned_seat_id: assigned ? 1 : null,
+            seat_id: null,
+            checked_in: false,
+          },
+        ]);
+      }
+      return baseMock(url);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+
+    assigned = false;
+    await triggerWsEvent("seat_assignment_updated", 1, {
+      seat_id: 1,
+      attendee_id: 1,
+      action: "cleared",
+    });
+    await screen.findByText(/等待主持人分配席位人员/);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "assignment-cleared-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_050,
+            data: { status: "UNKNOWN" },
+          },
+        }),
+      );
+    });
+
+    assigned = true;
+    await triggerWsEvent("seat_assignment_updated", 1, {
+      seat_id: 1,
+      attendee_id: 1,
+      action: "assigned",
+    });
+
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(2),
+    );
+  });
+
   it("requires an explicit retry after an unrecognized face", async () => {
     const startFaceVerification = vi.fn();
     installNativeBridge({ startFaceVerification });
