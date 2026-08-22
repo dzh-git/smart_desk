@@ -171,7 +171,7 @@ echo [2/4] Starting backend FastAPI on http://0.0.0.0:8000 ...
 echo.
 
 powershell -NoProfile -Command ^
-  "$p = Start-Process python.exe -ArgumentList '-m','uvicorn','backend.main:app','--host','0.0.0.0','--port','8000','--log-level','info' -WorkingDirectory '%SD_ROOT%' -WindowStyle Normal -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\backend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\backend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\backend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\backend.pid' -ErrorAction SilentlyContinue }"
+  "$p = Start-Process python.exe -ArgumentList '-m','uvicorn','backend.main:app','--host','0.0.0.0','--port','8000','--log-level','info' -WorkingDirectory '%SD_ROOT%' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\backend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\backend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\backend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\backend.pid' -ErrorAction SilentlyContinue }"
 
 if not exist "%SD_ROOT%\.smartdesk-runtime\backend.pid" (
     echo   [ERROR] Backend failed to start. Check:
@@ -238,7 +238,7 @@ echo [3/4] Starting frontend Vite on http://0.0.0.0:5173 ...
 echo.
 
 powershell -NoProfile -Command ^
-  "$p = Start-Process npm.cmd -ArgumentList 'run dev -- --host 0.0.0.0' -WorkingDirectory '%SD_ROOT%\frontend' -WindowStyle Normal -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\frontend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\frontend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\frontend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\frontend.pid' -ErrorAction SilentlyContinue }"
+  "$p = Start-Process npm.cmd -ArgumentList 'run dev -- --host 0.0.0.0' -WorkingDirectory '%SD_ROOT%\frontend' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\frontend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\frontend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\frontend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\frontend.pid' -ErrorAction SilentlyContinue }"
 
 if not exist "%SD_ROOT%\.smartdesk-runtime\frontend.pid" (
     echo   [ERROR] Frontend failed to start. Check:
@@ -388,8 +388,12 @@ if /I "%ENABLE_SCREEN_STREAM%"=="true" if %SCREEN_STREAM_READY% EQU 1 (
 echo.
 
 :: -- Step 4: Open browser --------------------------------------------------
-echo [4/4] Opening browser ...
-powershell -NoProfile -Command "Start-Process 'http://127.0.0.1:5173'"
+if /I "%SMARTDESK_SKIP_BROWSER%"=="true" (
+    echo [4/4] Browser launch skipped by controller.
+) else (
+    echo [4/4] Opening browser ...
+    powershell -NoProfile -Command "Start-Process 'http://127.0.0.1:5173'"
+)
 echo.
 
 echo ========================================
@@ -406,6 +410,6 @@ echo   Run kill.bat to stop all.
 echo ========================================
 echo.
 
-pause
+if /I not "%SMARTDESK_CONTROL_MODE%"=="true" pause
 endlocal
 exit /b 0

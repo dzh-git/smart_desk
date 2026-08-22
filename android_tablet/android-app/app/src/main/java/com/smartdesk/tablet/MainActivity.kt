@@ -912,19 +912,24 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        cancelSeatPageLoadTimeout()
-        pageLoadState.beginHealthCheck()
-        val generation = ++healthCheckGeneration
-        if (pageAccessState.needsInitialPage()) {
-            loadDiagnosticPage("checking")
+        val startedImmediately =
+            pageAccessState.shouldLoadConfiguredSeatPageImmediately(config)
+        if (startedImmediately) {
+            beginSeatPageLoad(config.seatPageUrl())
+        } else {
+            cancelSeatPageLoadTimeout()
+            pageLoadState.beginHealthCheck()
         }
+        val generation = ++healthCheckGeneration
         runCatching {
             healthExecutor.execute {
                 val healthResult = backendHealthChecker.check(config.serverUrl)
                 val bindingResult = if (
                     healthResult == BackendHealthChecker.Result.HEALTHY
                 ) {
-                    pageLoadState.beginBindingValidation()
+                    if (!startedImmediately) {
+                        pageLoadState.beginBindingValidation()
+                    }
                     tabletDeviceClient.validate(config, BuildConfig.VERSION_NAME)
                 } else {
                     null
@@ -944,7 +949,16 @@ class MainActivity : ComponentActivity() {
                                         binding.seatAlias == config.seatAlias &&
                                         binding.enabled
                                     ) {
-                                        beginSeatPageLoad(config.seatPageUrl())
+                                        if (
+                                            pageAccessState
+                                                .needsSeatPageLoadAfterValidation(
+                                                    startedImmediately
+                                                )
+                                        ) {
+                                            beginSeatPageLoad(
+                                                config.seatPageUrl()
+                                            )
+                                        }
                                     } else {
                                         pageLoadState.bindingError()
                                         loadDiagnosticPage("binding-error")

@@ -24,6 +24,12 @@ class WebViewPageAccessState(
     fun needsInitialPage(): Boolean =
         currentUrl().isNullOrBlank() || currentUrl() == "about:blank"
 
+    fun shouldLoadConfiguredSeatPageImmediately(config: DeviceConfig?): Boolean =
+        config != null && needsInitialPage()
+
+    fun needsSeatPageLoadAfterValidation(startedImmediately: Boolean): Boolean =
+        !startedImmediately || isDiagnosticPage()
+
     fun isDiagnosticPage(): Boolean =
         currentUrl()?.startsWith(localAssetPrefix) == true
 

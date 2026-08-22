@@ -1150,8 +1150,8 @@
     "semantic_hash": "dcd829a94300a82a873fc266ba20a80b"
   },
   "new_coding_desk/README.md": {
-    "mtime": 1785073218.0595605,
-    "ast_hash": "8db16565f933833e4bf276fc0bedfcf9",
+    "mtime": 1787385920.9285529,
+    "ast_hash": "30a18dae25ea022d67eea05644c0c679",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/API_SPEC.md": {
@@ -1435,8 +1435,8 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/MainActivity.kt": {
-    "mtime": 1786980368.3895159,
-    "ast_hash": "6ef02c86cb41593d85a5db9d3e3c8bb1",
+    "mtime": 1787381517.2733934,
+    "ast_hash": "f277a5079490a84f928ed83d5f086410",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/bridge/AndroidBridge.kt": {
@@ -1735,8 +1735,8 @@
     "semantic_hash": ""
   },
   "android_tablet/README.md": {
-    "mtime": 1786270871.662725,
-    "ast_hash": "b569d399c58edd10009c7fe40857eebf",
+    "mtime": 1787381517.8421457,
+    "ast_hash": "3ca9ef74f4e1c6f1d1cf610926c9bee2",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/assets/models/MODEL_CARD.md": {
@@ -2105,13 +2105,13 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/WebViewPageAccessState.kt": {
-    "mtime": 1786274910.6302216,
-    "ast_hash": "cd84336822533d2506bf111bc1906b5d",
+    "mtime": 1787381516.990934,
+    "ast_hash": "eff7ce0cd84ed9376a4085ccbfc0a22e",
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/WebViewPageAccessStateTest.kt": {
-    "mtime": 1786274912.024407,
-    "ast_hash": "213a3ca9ea2484a699c783585ab8c169",
+    "mtime": 1787381517.5450568,
+    "ast_hash": "97a171760a324de8c798006e83557155",
     "semantic_hash": ""
   },
   "config/smartdesk.integration.arduino.example.json": {
@@ -2532,6 +2532,21 @@
   "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/IdentityCameraOverlayPolicyTest.kt": {
     "mtime": 1786980368.6746435,
     "ast_hash": "4662723b83f73086491b07662c468cec",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/smartdesk_control.ps1": {
+    "mtime": 1787385920.153237,
+    "ast_hash": "1f06cf905b1506f12fbb6e03964dacdd",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_control_launcher_contract.py": {
+    "mtime": 1787385921.3733766,
+    "ast_hash": "d19007825ab580c0e4b91c9e4b36006d",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/assets/SmartDeskControl.png": {
+    "mtime": 1787385721.453195,
+    "ast_hash": "91e117ed2ddfad1311426d8f3af00f74",
     "semantic_hash": ""
   }
 }

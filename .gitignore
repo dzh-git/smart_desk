@@ -150,6 +150,10 @@ test-results/
 .DS_Store
 Thumbs.db
 Desktop.ini
+*.lnk
+
+# ---------- Private local media ----------
+/my_photos/
 
 .workbuddy/
 .stfolder/
