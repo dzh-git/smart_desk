@@ -1,5 +1,8 @@
 import type {
+  CentralFaceTemplateResult,
   DeviceInfo,
+  FaceTemplateSyncResult,
+  LocalFaceTemplateImportResult,
   NativeBridge,
   RegisteredFaces,
 } from "./NativeBridge";
@@ -57,11 +60,47 @@ export class WebNativeBridge implements NativeBridge {
     // Browser capture is owned by MicrophoneCapture.
   }
 
-  async startFaceVerification(): Promise<void> {
+  async startFaceVerification(_personId: string): Promise<void> {
     throw new Error("Android native face verification is unavailable");
   }
 
   async stopFaceVerification(): Promise<void> {
     // Browser debugging has no native camera session to stop.
+  }
+
+  async importLocalFaceTemplate(
+    _personId: string,
+    _photosJson: string,
+  ): Promise<LocalFaceTemplateImportResult> {
+    throw new Error("主持人本机模板管理只能在 Android 平板使用");
+  }
+
+  async removeLocalFaceTemplate(_personId: string): Promise<void> {
+    throw new Error("主持人本机模板管理只能在 Android 平板使用");
+  }
+
+  async applyProvisionalThreshold(
+    _value: number,
+  ): Promise<NativeIdentityStatus> {
+    throw new Error("原型阈值只能在主持人 Android 平板确认");
+  }
+
+  async publishCentralFaceTemplate(
+    _personId: string,
+    _photosJson: string,
+  ): Promise<CentralFaceTemplateResult> {
+    throw new Error("集中人脸模板管理只能在主持人 Android 平板使用");
+  }
+
+  async syncFaceTemplates(_meetingId: number): Promise<FaceTemplateSyncResult> {
+    throw new Error("会议人脸模板同步只能在参会者 Android 平板使用");
+  }
+
+  async openLocalDiagnostics(): Promise<void> {
+    throw new Error("本地诊断只能在 Android 平板使用");
+  }
+
+  async closeHostFaceTemplates(): Promise<void> {
+    throw new Error("模板管理页只能在主持人 Android 平板使用");
   }
 }

@@ -1,5 +1,6 @@
 {
   "deploy_mode": "central",
+  "identity_mode": "formal",
   "lighting": {
     "demo_seat_id": 1
   },

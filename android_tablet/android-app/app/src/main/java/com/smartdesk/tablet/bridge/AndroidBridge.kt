@@ -22,11 +22,15 @@ class AndroidBridge(
     private val onStartFaceDetection: () -> Unit,
     private val onStopFaceDetection: () -> Unit,
     private val onStartFaceEnrollment: (String) -> String,
-    private val onStartIdentityVerification: () -> String,
+    private val onStartIdentityVerification: (String) -> String,
     private val onStopIdentityVerification: () -> String,
     private val onClearFaceTemplate: () -> String,
     private val onRemoveFaceTemplate: (String) -> String,
     private val onImportFacePhotos: (String, String) -> String,
+    private val onPublishCentralFaceTemplate: (String, String) -> String,
+    private val onSyncFaceTemplates: (Int) -> String,
+    private val onOpenLocalDiagnostics: () -> Unit,
+    private val onCloseHostFaceTemplates: () -> Unit,
     private val onGetRegisteredFaces: () -> String,
     private val onSetVerificationThreshold: (Float) -> String,
     private val onSetDiagnosticsEnabled: (Boolean) -> String,
@@ -133,13 +137,14 @@ class AndroidBridge(
     }
 
     @JavascriptInterface
-    fun startIdentityVerification(): String {
-        Log.i(TAG, "Identity verification requested from JavaScript")
-        return onStartIdentityVerification()
+    fun startIdentityVerification(personId: String): String {
+        Log.i(TAG, "Identity verification requested from JavaScript for assigned person")
+        return onStartIdentityVerification(personId)
     }
 
     @JavascriptInterface
-    fun startFaceVerification(): String = startIdentityVerification()
+    fun startFaceVerification(personId: String): String =
+        startIdentityVerification(personId)
 
     @JavascriptInterface
     fun stopIdentityVerification(): String =
@@ -158,6 +163,20 @@ class AndroidBridge(
     @JavascriptInterface
     fun importFacePhotos(personId: String, photosJson: String): String =
         onImportFacePhotos(personId, photosJson)
+
+    @JavascriptInterface
+    fun publishCentralFaceTemplate(personId: String, photosJson: String): String =
+        onPublishCentralFaceTemplate(personId, photosJson)
+
+    @JavascriptInterface
+    fun syncFaceTemplates(meetingId: Int): String =
+        onSyncFaceTemplates(meetingId)
+
+    @JavascriptInterface
+    fun openLocalDiagnostics() = onOpenLocalDiagnostics()
+
+    @JavascriptInterface
+    fun closeHostFaceTemplates() = onCloseHostFaceTemplates()
 
     @JavascriptInterface
     fun getRegisteredFaces(): String = onGetRegisteredFaces()

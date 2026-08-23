@@ -10,7 +10,8 @@ data class TabletBinding(
     val deviceId: String,
     val seatId: Int,
     val seatAlias: String,
-    val enabled: Boolean
+    val enabled: Boolean,
+    val identityMode: String
 )
 
 sealed class TabletApiResult {
@@ -133,7 +134,10 @@ class TabletDeviceClient(
                         deviceId = deviceId,
                         seatId = seatId,
                         seatAlias = seatAlias,
-                        enabled = data.optBoolean("enabled", false)
+                        enabled = data.optBoolean("enabled", false),
+                        identityMode = data.optString("identityMode")
+                            .takeIf { it == "formal" || it == "debug" }
+                            ?: "formal"
                     )
                 )
             }

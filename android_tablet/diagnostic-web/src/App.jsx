@@ -1,25 +1,13 @@
 import { useEffect, useState } from "react";
 import {
-  clearFaceTemplate,
-  clearFaceDiagnostics,
   getDeviceConfig,
   getDeviceInfo,
-  getIdentityStatus,
-  getRegisteredFaces,
   isAndroidBridgeAvailable,
   isFaceDetectionAvailable,
-  isIdentityVerificationAvailable,
-  importFacePhotos,
-  removeFaceTemplate,
   reloadSeatPage,
   provisionDeviceConfig,
-  setFaceDiagnosticsEnabled,
-  setVerificationThreshold,
-  startFaceEnrollment,
   startFaceDetection,
-  startIdentityVerification,
   stopFaceDetection,
-  stopIdentityVerification,
 } from "./androidBridge";
 import {
   buildProvisioningPayload,
@@ -27,10 +15,7 @@ import {
   seatAlias,
   usesAdvancedEndpoints,
 } from "./configWorkflow";
-import {
-  buildFacePhotoPayload,
-  validateFacePhotoFiles,
-} from "./facePhotoImport";
+import { connectionWaitingCopy } from "./connectionWorkflow";
 
 const INITIAL_STATUS = {
   bridgeReady: false,
@@ -57,8 +42,6 @@ const INITIAL_STATUS = {
 
 export default function App() {
   const [status, setStatus] = useState(INITIAL_STATUS);
-  const [personId, setPersonId] = useState("seat-01");
-  const [thresholdInput, setThresholdInput] = useState("");
   const [device, setDevice] = useState({
     deviceId: "未配置",
     seatId: null,
@@ -83,9 +66,6 @@ export default function App() {
   const [showAdvancedUrls, setShowAdvancedUrls] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
   const [replacementRequired, setReplacementRequired] = useState(false);
-  const [selectedFacePhotos, setSelectedFacePhotos] = useState([]);
-  const [photoImporting, setPhotoImporting] = useState(false);
-  const [photoImportResult, setPhotoImportResult] = useState(null);
   const diagnosticMode =
     new URLSearchParams(window.location.search).get("mode") ?? "diagnostic";
   const diagnosticMessage = {
@@ -123,15 +103,6 @@ export default function App() {
         handleAndroidEvent(getDeviceConfig());
       } catch {
         // Configuration errors are surfaced when the user saves the form.
-      }
-    }
-
-    if (isIdentityVerificationAvailable()) {
-      try {
-        handleAndroidEvent(getIdentityStatus());
-        handleAndroidEvent(getRegisteredFaces());
-      } catch {
-        // Model initialization errors are shown when an identity action is used.
       }
     }
 
@@ -311,9 +282,6 @@ export default function App() {
         modelVersion: event.data.modelVersion ?? "—",
         error: event.data.status === "ERROR" ? event.data.message : "无",
       }));
-      if (event.data.threshold != null) {
-        setThresholdInput(Number(event.data.threshold).toFixed(3));
-      }
       return;
     }
 
@@ -423,115 +391,29 @@ export default function App() {
     stopFaceDetection();
   }
 
-  function runIdentityAction(action) {
-    try {
-      const event = action();
-      if (event) {
-        handleAndroidEvent(event);
-        if (event.type === "identity_status") {
-          try {
-            handleAndroidEvent(getRegisteredFaces());
-          } catch {
-            // Browser-only preview has no native template registry.
-          }
-        }
-      }
-    } catch (error) {
-      setStatus((current) => ({
-        ...current,
-        error: `IDENTITY_ACTION_FAILED：${error.message}`,
-      }));
-    }
-  }
-
-  function enrollFace() {
-    runIdentityAction(() => startFaceEnrollment(personId));
-  }
-
-  function verifyIdentity() {
-    runIdentityAction(startIdentityVerification);
-  }
-
-  function stopIdentity() {
-    runIdentityAction(stopIdentityVerification);
-  }
-
-  function clearTemplate() {
-    runIdentityAction(clearFaceTemplate);
-  }
-
-  function removeTemplate() {
-    runIdentityAction(() => removeFaceTemplate(personId));
-  }
-
-  function selectFacePhotos(event) {
-    try {
-      const files = validateFacePhotoFiles(event.target.files);
-      setSelectedFacePhotos(files);
-      setPhotoImportResult(null);
-      setStatus((current) => ({ ...current, error: "无" }));
-    } catch (error) {
-      setSelectedFacePhotos([]);
-      setPhotoImportResult(null);
-      event.target.value = "";
-      setStatus((current) => ({
-        ...current,
-        error: `FACE_PHOTO_SELECTION_INVALID：${error.message}`,
-      }));
-    }
-  }
-
-  async function importSelectedFacePhotos() {
-    setPhotoImporting(true);
-    setPhotoImportResult(null);
-    setStatus((current) => ({ ...current, error: "无" }));
-    try {
-      const photos = await buildFacePhotoPayload(selectedFacePhotos);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      const event = importFacePhotos(personId, photos);
-      handleAndroidEvent(event);
-    } catch (error) {
-      setStatus((current) => ({
-        ...current,
-        error: `FACE_PHOTO_IMPORT_FAILED：${error.message}`,
-      }));
-    } finally {
-      setPhotoImporting(false);
-    }
-  }
-
-  function applyThreshold() {
-    const value = Number(thresholdInput);
-    if (!Number.isFinite(value) || value < 0 || value > 1) {
-      setStatus((current) => ({
-        ...current,
-        error: "THRESHOLD_INVALID：请输入0到1之间的原型阈值",
-      }));
-      return;
-    }
-    runIdentityAction(() => setVerificationThreshold(value));
-  }
-
-  function toggleDiagnostics() {
-    const next = !status.diagnosticsEnabled;
-    runIdentityAction(() => setFaceDiagnosticsEnabled(next));
-    setStatus((current) => ({
-      ...current,
-      diagnosticsEnabled: next,
-    }));
-  }
-
-  function clearDiagnostics() {
-    runIdentityAction(clearFaceDiagnostics);
-  }
-
   const cameraImplemented = isFaceDetectionAvailable();
-  const identityImplemented = isIdentityVerificationAvailable();
   const cameraRunning = status.camera !== "空闲";
-  const thresholdLabel =
-    status.threshold == null ? "待标定" : status.threshold.toFixed(3);
   const configurationVisible = isConfigurationVisible(diagnosticMode);
   const selectedSeatAlias = seatAlias(deviceConfig.seatId);
+
+  const waitingCopy = connectionWaitingCopy(diagnosticMode);
+
+  if (waitingCopy) {
+    return (
+      <main className="connection-waiting" data-testid="connection-waiting">
+        <div className="connection-orbit" aria-hidden="true">
+          <div className="connection-core" />
+        </div>
+        <p className="connection-eyebrow">SMART DESK · SEAT TERMINAL</p>
+        <h1>{waitingCopy[0]}</h1>
+        <p className="connection-message">{waitingCopy[1]}</p>
+        <div className="connection-progress" aria-label="正在自动重连">
+          <span />
+        </div>
+        <p className="connection-hint">无需操作 · 恢复后将自动进入席位页面</p>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
@@ -714,57 +596,8 @@ export default function App() {
           <strong>{status.processingTime}</strong>
         </div>
         <div className="status-row">
-          <span>已注册人员</span>
-          <strong>
-            {status.registeredCount} / 9
-            {status.registeredPeople.length > 0
-              ? `（${status.registeredPeople.join("、")}）`
-              : ""}
-          </strong>
-        </div>
-        <div className="status-row">
-          <span>身份状态</span>
-          <strong className={status.identity === "验证通过" ? "ok" : ""}>
-            {status.identity}
-          </strong>
-        </div>
-        <div className="status-row">
-          <span>采集阶段</span>
-          <strong>{status.captureStage}</strong>
-        </div>
-        <div className="status-row">
-          <span>模板人员</span>
-          <strong>{status.identityPerson}</strong>
-        </div>
-        <div className="status-row">
-          <span>注册进度</span>
-          <strong>{status.enrollmentProgress}</strong>
-        </div>
-        <div className="status-row">
-          <span>Top1 / 阈值</span>
-          <strong>
-            {status.identityPerson}：{status.similarity} / {thresholdLabel}
-          </strong>
-        </div>
-        <div className="status-row">
-          <span>Top2 / 分差</span>
-          <strong>
-            {status.top2} / {status.margin}
-          </strong>
-        </div>
-        <div className="status-row">
-          <span>阈值状态</span>
-          <strong>
-            {status.thresholdStatus} · {status.verificationLevel}
-          </strong>
-        </div>
-        <div className="status-row">
           <span>模型版本</span>
           <strong>{status.modelVersion}</strong>
-        </div>
-        <div className="status-row">
-          <span>对齐与推理耗时</span>
-          <strong>{status.identityTime}</strong>
         </div>
         <div className="status-row error-row">
           <span>错误信息</span>
@@ -794,164 +627,8 @@ export default function App() {
         </button>
       </section>
 
-      {diagnosticMode === "maintenance" && <section
-        className="photo-import"
-        aria-label="上传参会者照片"
-      >
-        <h2>上传参会者照片</h2>
-        <p>
-          填写人员编号后选择 5–20 张清晰的 JPG/PNG 正脸照片。
-          原图不会保存，只保留加密人脸特征。
-        </p>
-        <label>
-          <span>参会者编号</span>
-          <input
-            value={personId}
-            maxLength={64}
-            onChange={(event) => setPersonId(event.target.value)}
-          />
-        </label>
-        <label>
-          <span>选择照片（可多选）</span>
-          <input
-            type="file"
-            accept="image/jpeg,image/png"
-            multiple
-            disabled={photoImporting || cameraRunning}
-            onChange={selectFacePhotos}
-          />
-        </label>
-        <div className="photo-import-summary">
-          已选择：<strong>{selectedFacePhotos.length}</strong> 张
-        </div>
-        <button
-          type="button"
-          className="primary"
-          disabled={
-            !identityImplemented ||
-            photoImporting ||
-            cameraRunning ||
-            selectedFacePhotos.length < 5
-          }
-          onClick={importSelectedFacePhotos}
-        >
-          {photoImporting ? "正在检查并生成模板…" : "导入为当前人员模板"}
-        </button>
-        {photoImportResult && <div
-          className={photoImportResult.saved ? "import-result ok" : "import-result error"}
-        >
-          <strong>{photoImportResult.message}</strong>
-          <span>
-            合格 {photoImportResult.acceptedCount} / 已选 {photoImportResult.selectedCount}；
-            用于模板 {photoImportResult.usedCount} 张
-          </span>
-          {photoImportResult.rejected?.length > 0 && <ul>
-            {photoImportResult.rejected.map((item) => <li key={item.name}>
-              {item.name}：{item.reason}
-            </li>)}
-          </ul>}
-        </div>}
-      </section>}
-
-      <section className="identity-controls" aria-label="人脸身份验证">
-        <label>
-          <span>座位人员编号</span>
-          <input
-            value={personId}
-            maxLength={64}
-            onChange={(event) => setPersonId(event.target.value)}
-          />
-        </label>
-        <div className="identity-actions">
-          <button
-            type="button"
-            className="primary"
-            disabled={!identityImplemented || cameraRunning}
-            onClick={enrollFace}
-          >
-            注册双光照 5+5 帧
-          </button>
-          <button
-            type="button"
-            disabled={
-              !identityImplemented ||
-              cameraRunning ||
-              status.registeredCount < 2
-            }
-            onClick={verifyIdentity}
-          >
-            开始身份验证
-          </button>
-          <button
-            type="button"
-            disabled={!identityImplemented || !cameraRunning}
-            onClick={stopIdentity}
-          >
-            停止身份验证
-          </button>
-          <button
-            type="button"
-            disabled={!identityImplemented || cameraRunning}
-            onClick={clearTemplate}
-          >
-            清除模板
-          </button>
-          <button
-            type="button"
-            disabled={!identityImplemented || cameraRunning}
-            onClick={removeTemplate}
-          >
-            删除当前编号
-          </button>
-        </div>
-        <div className="threshold-control">
-          <label>
-            <span>原型标定阈值（0–1）</span>
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.001"
-              value={thresholdInput}
-              onChange={(event) => setThresholdInput(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={
-              !identityImplemented ||
-              cameraRunning ||
-              status.registeredCount < 2
-            }
-            onClick={applyThreshold}
-          >
-            应用 PROVISIONAL 阈值
-          </button>
-        </div>
-        <div className="identity-actions">
-          <button
-            type="button"
-            disabled={!identityImplemented || cameraRunning}
-            onClick={toggleDiagnostics}
-          >
-            {status.diagnosticsEnabled
-              ? "关闭 Debug 诊断"
-              : "开启 Debug 诊断"}
-          </button>
-          <button
-            type="button"
-            disabled={!identityImplemented || cameraRunning}
-            onClick={clearDiagnostics}
-          >
-            清除诊断数据
-          </button>
-        </div>
-      </section>
-
       <p className="phase-note">
-        {identityImplemented
-          ? "本页只用于配置、注册与标定；PROVISIONAL 结果不会在这里触发会议签到。"
-          : "MobileFaceNet 身份验证仅在 Android App 中可用。"}
+        本页只用于设备配置、连接与原生能力诊断；人脸注册、阈值确认和席位分配统一在主持人人脸模板管理页完成。
       </p>
     </main>
   );

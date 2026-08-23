@@ -6,12 +6,30 @@
 `Attendee.id` 仍是某场会议的临时记录；`Attendee.person_id` 可空以兼容历史数据，
 但同一会议内非空 `person_id` 唯一。
 
-中央数据库只保存人员、参会关系和身份事件元数据。照片、embedding、诊断裁剪
-始终留在 Android App 私有存储。
+中央数据库除人员、参会关系和身份事件元数据外，允许按 `Person.id` 保存
+AES-GCM 加密的 256 维模板。原始照片和诊断裁剪始终不得上传；模板只在 Seat 1
+Android App 内由当前 ML Kit/对齐/MobileFaceNet 流水线生成。
+
+Seat 1 经长按和本地维护 PIN 进入 `/seat/1/face-templates`，管理本场主持人、
+中央模板与 Seat 2–9 分配。写接口必须同时验证设备令牌和后端绑定席位确为 Seat 1，普通
+浏览器及其他席位不得管理。授权离页或闲置 10 分钟失效。
+
+该页面明确区分两类模板：主持人本机模板仅保存在 Seat 1 Android Keystore，
+用于 Seat 1 身份验证和主持人分配；中央参会者模板由服务器加密保存，才会出现在 Seat 2–9
+分配下拉框。经过维护 PIN 授权后，页面可以调用系统多选照片器，并可逐项删除
+本机模板；中央模板正在被待开始或进行中会议使用时，必须先解除分配再删除。
+
+Seat 2–9 在识别前只下载各自席位已分配人员的模板；RSA-OAEP 包装 AES-GCM 会话密钥，
+本地模板再由 Android Keystore 加密保存。会议、模板集版本、模型哈希、流水线、
+维度或阈值策略不匹配时不得签到，也不得回退到旧会议模板。
+
+所有席位均按后端分配的稳定 `Person.id` 执行 1:1 验证。一个目标人员模板即可
+启动，相似度阈值和至少 4/5 帧通过仍为放行条件；Top2 与分差不参与放行。
 
 启动时后端使用可重复执行的 SQLite 兼容迁移创建/补齐 `people`、
 `tablet_devices`、`identity_checkin_events` 和 `attendees.person_id`。升级前仍
-必须备份数据库文件；回滚旧版本前恢复该备份。
+必须备份数据库文件以及 `.smartdesk-runtime/face-template-master.key`；已有模板但
+密钥缺失时服务失败关闭，不生成新密钥覆盖。回滚旧版本前恢复该备份。
 
 ## 设备预配
 
@@ -113,6 +131,7 @@ Content-Type: application/json
 | `PERSON_NOT_IN_ACTIVE_MEETING` | 人员不属于当前会议 |
 | `ATTENDEE_ALREADY_CHECKED_IN`、`SEAT_ALREADY_BOUND` | 人员/席位冲突 |
 | `RATE_LIMITED` | 设备/席位每分钟请求超限，按 `Retry-After` 重试 |
+| `DEBUG_IDENTITY_MODE_DISABLED` | 正式模式禁止 Debug 自动放行 |
 
 Pydantic 请求格式错误为 HTTP 422。业务拒绝不会部分写入 Seat、Attendee 或
 幂等事件。
@@ -136,6 +155,15 @@ Pydantic 请求格式错误为 HTTP 422。业务拒绝不会部分写入 Seat、
 | `SMARTDESK_IDENTITY_MAX_EVENT_AGE_SECONDS` | `120` | 10–600 |
 | `SMARTDESK_IDENTITY_MAX_FUTURE_SKEW_SECONDS` | `30` | 1–120 |
 | `SMARTDESK_IDENTITY_RATE_LIMIT_PER_MINUTE` | `60` | 1–600 |
+
+`config/smartdesk.integration.json` 的 `identity_mode` 仅允许 `formal` 或
+`debug`，缺失或非法值按 `formal` 处理。`debug` 模式仍必须通过设备令牌与席位
+绑定校验，只能自动放行当前活动会议分配给该席位的人员；它不上传人脸证据、
+不创建 `identity_checkin_events`，界面必须持续显示 Debug 标识。
+
+平板启动时先显示本地连接等待页。Wi-Fi、后端、绑定或前端未就绪时每 5 秒重试，
+网络恢复立即重试，不得自动进入诊断页。诊断仅可通过长按维护入口并验证 PIN
+进入；无活动会议等待会议，已签到席位重启后沿用后端签到状态。
 
 75 次标定未完成、陌生人误接受未验收或模型许可证未解除时，不得把开发开关用于
 正式自动签到。

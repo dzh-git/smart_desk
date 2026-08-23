@@ -24,11 +24,18 @@ from backend.security.rate_limit import (
     bounded_env_int,
 )
 from backend.security.structured_log import log_security_event
+from backend.hardware import identity_mode
 
 router = APIRouter(prefix="/api/tablet-devices", tags=["tablet-devices"])
 logger = logging.getLogger(__name__)
 provision_rate_limiter = SlidingWindowRateLimiter()
 heartbeat_rate_limiter = SlidingWindowRateLimiter()
+
+
+def _device_response(device) -> TabletDeviceResponse:
+    return TabletDeviceResponse.model_validate(device).model_copy(
+        update={"identity_mode": identity_mode},
+    )
 
 
 def _error(error, status_code: int) -> JSONResponse:
@@ -120,7 +127,7 @@ def provision_tablet(
         replace_existing=body.replace_existing,
     )
     return ApiResponse.ok(
-        data=TabletDeviceResponse.model_validate(device),
+        data=_device_response(device),
     )
 
 
@@ -155,7 +162,7 @@ def validate_tablet_binding(
         }.get(error.error_code, 400)
         return _error(error, status)
     return ApiResponse.ok(
-        data=TabletDeviceResponse.model_validate(device),
+        data=_device_response(device),
     )
 
 

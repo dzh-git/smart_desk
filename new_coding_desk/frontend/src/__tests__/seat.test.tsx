@@ -236,7 +236,7 @@ describe("SeatTablet - error state", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/席位数据加载失败.*Failed to load data/)).toBeInTheDocument();
+      expect(screen.getByText(/正在重新连接会议系统.*Reconnecting/)).toBeInTheDocument();
     });
     expect(screen.getByText("Retry")).toBeInTheDocument();
   });
@@ -322,6 +322,7 @@ describe("SeatTablet - checked_in state", () => {
 describe("SeatTablet - Android identity check-in", () => {
   function installNativeBridge(
     overrides: Partial<Window["SmartDeskNative"]> = {},
+    identityMode: "formal" | "debug" = "formal",
   ) {
     Object.defineProperty(window, "SmartDeskNative", {
       configurable: true,
@@ -344,6 +345,7 @@ describe("SeatTablet - Android identity check-in", () => {
               faceModelReady: true,
               microphoneReady: true,
               nativeLastError: null,
+              identityMode,
             },
           }),
         ),
@@ -433,6 +435,41 @@ describe("SeatTablet - Android identity check-in", () => {
     );
   });
 
+  it("debug mode admits the assigned attendee without camera verification", async () => {
+    const startFaceVerification = vi.fn();
+    const syncFaceTemplates = vi.fn();
+    installNativeBridge(
+      { startFaceVerification, syncFaceTemplates },
+      "debug",
+    );
+    let seatStatus: "vacant" | "checked_in" = "vacant";
+    const debugCalls: Array<{ url: string; body: string | undefined }> = [];
+    mockFetch.mockImplementation((url: string, options?: RequestInit) => {
+      if (url === "/api/seats/1/debug-admit") {
+        debugCalls.push({ url, body: options?.body as string | undefined });
+        seatStatus = "checked_in";
+        return okResponse({
+          seat_id: 1,
+          status: "checked_in",
+          attendee_id: 1,
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      return createSeatMock(seatStatus)(url);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(debugCalls).toHaveLength(1));
+    await screen.findByText("DEBUG · 已跳过人脸验证");
+    expect(JSON.parse(debugCalls[0].body ?? "{}")).toEqual({
+      deviceId: "tablet-seat-01",
+      deviceSeatId: 1,
+    });
+    expect(startFaceVerification).not.toHaveBeenCalled();
+    expect(syncFaceTemplates).not.toHaveBeenCalled();
+  });
+
   it("restarts automatic verification when the same attendee is reassigned", async () => {
     const startFaceVerification = vi.fn();
     installNativeBridge({ startFaceVerification });
@@ -458,7 +495,7 @@ describe("SeatTablet - Android identity check-in", () => {
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
     await waitFor(() =>
-      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+      expect(startFaceVerification).toHaveBeenCalledWith("person_001"),
     );
 
     assigned = false;
@@ -492,6 +529,7 @@ describe("SeatTablet - Android identity check-in", () => {
     await waitFor(() =>
       expect(startFaceVerification).toHaveBeenCalledTimes(2),
     );
+    expect(startFaceVerification).toHaveBeenLastCalledWith("person_001");
   });
 
   it("requires an explicit retry after an unrecognized face", async () => {

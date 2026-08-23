@@ -16,10 +16,24 @@ class FacePhotoImporter(
     private val engine: MobileFaceNetEngine,
     private val templateStore: FaceTemplateStore
 ) {
+    data class Generated(
+        val template: PersonFaceTemplate?,
+        val result: FacePhotoImportResult
+    )
+
     fun import(
         personId: String,
         photos: List<FacePhotoInput>
     ): FacePhotoImportResult {
+        val generated = generate(personId, photos)
+        generated.template?.let(templateStore::upsert)
+        return generated.result
+    }
+
+    fun generate(
+        personId: String,
+        photos: List<FacePhotoInput>
+    ): Generated {
         val detector = FaceDetectorManager(
             minFaceSize = 0.1f,
             performanceMode =
@@ -48,7 +62,7 @@ class FacePhotoImporter(
             acceptedEmbeddings.size <
             FacePhotoImportRequest.MIN_PHOTO_COUNT
         ) {
-            return FacePhotoImportResult(
+            return Generated(null, FacePhotoImportResult(
                 personId = personId,
                 selectedCount = photos.size,
                 acceptedCount = acceptedEmbeddings.size,
@@ -58,23 +72,21 @@ class FacePhotoImporter(
                 rejected = rejected,
                 registeredPeople = templateStore.loadAll()
                     .map(PersonFaceTemplate::personId)
-            )
+            ))
         }
 
         val selected = FacePhotoTemplateSelector.selectMostConsistent(
             acceptedEmbeddings
         )
         val aggregate = EmbeddingAggregator.aggregate(selected)
-        templateStore.upsert(
-            PersonFaceTemplate(
+        val template = PersonFaceTemplate(
                 personId = personId,
                 normalSampleCount = selected.size,
                 fillLightSampleCount = selected.size,
                 normalEmbedding = aggregate.embedding,
                 fillLightEmbedding = aggregate.embedding
             )
-        )
-        return FacePhotoImportResult(
+        return Generated(template, FacePhotoImportResult(
             personId = personId,
             selectedCount = photos.size,
             acceptedCount = acceptedEmbeddings.size,
@@ -82,9 +94,9 @@ class FacePhotoImporter(
             saved = true,
             message = "照片模板已加密保存；仅限原型验证",
             rejected = rejected,
-            registeredPeople = templateStore.loadAll()
-                .map(PersonFaceTemplate::personId)
-        )
+            registeredPeople = (templateStore.loadAll()
+                .map(PersonFaceTemplate::personId) + personId).distinct()
+        ))
     }
 
     private fun processPhoto(

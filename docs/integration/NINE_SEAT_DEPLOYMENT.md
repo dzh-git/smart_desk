@@ -29,7 +29,9 @@
 1. 备份数据库、当前配置和上一版部署包。
 2. 用 `config/smartdesk.integration.esp32.example.json` 生成
    `config/smartdesk.integration.json`，确认 `deploy_mode=esp32`、
-   `seats_total=9`、中央 Arduino 关闭。
+   `seats_total=9`、中央 Arduino 关闭，并明确设置
+   `identity_mode=formal`。只有受控联调窗口才允许改为 `debug`，完成后立即恢复
+   `formal` 并重启后端。
 3. 设置 9 台 ESP32 的 `SMARTDESK_ESP32_DEVICE_TOKENS_JSON` 和管理预配令牌。
 4. 以 `0.0.0.0:8000`、`0.0.0.0:5173` 启动后端与前端；Display Agent 仍只在
    中央主机 loopback。
@@ -47,11 +49,17 @@
 5. 每增加一批，观察 `/api/hardware/status` 至少 5 分钟再继续。
 6. 任一错席、认证、版本、人脸入座或 ACK 错误均停止扩容并回滚本批。
 7. 每台平板完整断电重启 5 次，确认无需触摸即可自动回到原席位页面。
+8. 分别断开 Wi-Fi、后端和前端，确认平板只显示连接等待页并自动恢复，绝不自动
+   打开“平板配置与原生能力诊断”。
 
 ## 5. 会议数据与模板
 
-- 先创建稳定 Person，再在每场会议创建带 `personId` 的 Attendee。
-- 每台平板只保存其允许识别的本地模板策略；不通过后端分发 embedding。
+- 在 Seat 1 隐藏管理页从主持人本机模板指定本场 Seat 1 主持人，并从中央模板分配 Seat 2–9；
+  后端查找或创建本场带 `personId` 的 Attendee。
+- Seat 2–9 通过设备加密包只下载本席分配人员模板，本机 Keystore 加密保存；
+  原始照片不上传，Seat 1 不保存 81 人本地识别集合。
+- 数据库迁移或备份必须同时迁移 `.smartdesk-runtime/face-template-master.key`；
+  密钥缺失时停止人脸同步，不得重新生成覆盖。
 - 模型版本变化会使旧模板失效，必须受控清除、重新注册和重新标定。
 - 管理端核对同一 Person 在一场会议只出现一次。
 
@@ -59,6 +67,7 @@
 
 1. 九台平板和九个 ESP32 同时在线 30 分钟。
 2. 逐席以正确/错误人脸触发入座并确认离席，确认只改变对应席位。
+   本人顺序测试 Seat 2→9 时必须每次先离席，再在 Seat 1 改到下一席位。
 3. 逐席验证 URL、设备绑定、签到和灯光 ACK。
 4. 同时触发多席心跳、会议 WebSocket、投票和服务呼叫。
 5. 轮流切换演讲席，旧席立即停止上传音频，新席正常开始。

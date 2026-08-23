@@ -269,6 +269,12 @@ def test_seat1_twenty_round_full_software_closure(monkeypatch):
             assert attendee_response.status_code == 200
             attendee_id = attendee_response.json()["data"]["id"]
 
+            assignment_response = client.put(
+                f"/api/meetings/{meeting_id}/seat-assignments/1",
+                json={"attendeeId": attendee_id},
+            )
+            assert assignment_response.status_code == 200
+
             admin_ws = CaptureWebSocket()
             seat_ws_capture = CaptureWebSocket()
             room = ws_service.get_or_create(meeting_id)

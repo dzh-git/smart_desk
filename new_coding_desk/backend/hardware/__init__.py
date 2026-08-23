@@ -67,6 +67,20 @@ if deploy_mode not in ("central", "distributed", "esp32"):
     logger.warning("Unknown deploy_mode %r; falling back to 'central'.", deploy_mode)
     deploy_mode = "central"
 
+def resolve_identity_mode(config: dict) -> str:
+    """Return the fail-closed tablet identity policy for a config mapping."""
+    configured = str(config.get("identity_mode") or "formal").strip().lower()
+    if configured in ("formal", "debug"):
+        return configured
+    logger.warning(
+        "Unknown identity_mode %r; falling back to 'formal'.",
+        configured,
+    )
+    return "formal"
+
+
+identity_mode = resolve_identity_mode(_config)
+
 
 def _resolve_seat_ids() -> list[int]:
     """Determine the seat ids from config (seats map or seats_total)."""
@@ -127,6 +141,8 @@ def set_lighting_manager(lm: LightingManager) -> None:
 __all__ = [
     "load_integration_config",
     "deploy_mode",
+    "identity_mode",
+    "resolve_identity_mode",
     "seat_ids",
     "seat_managers",
     "demo_seat_id",

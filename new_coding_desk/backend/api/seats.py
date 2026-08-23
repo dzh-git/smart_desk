@@ -26,6 +26,7 @@ from backend.schemas.seat import (
     SeatStateResponse,
     CheckInRequest,
     IdentityCheckInRequest,
+    DebugAdmitRequest,
     TabletVacateRequest,
     SpeakerSeatResponse,
     SetSpeakerRequest,
@@ -37,6 +38,7 @@ from backend.security.rate_limit import (
     bounded_env_int,
 )
 from backend.security.structured_log import log_security_event
+from backend.hardware import identity_mode
 
 logger = logging.getLogger(__name__)
 identity_rate_limiter = SlidingWindowRateLimiter()
@@ -192,6 +194,72 @@ def identity_check_in(
         )
     _log_identity_result(body, seat_id, "OK")
     return ApiResponse.ok(data=SeatStateResponse.model_validate(seat))
+
+
+@router.post(
+    "/{seat_id}/debug-admit",
+    response_model=ApiResponse[SeatStateResponse],
+)
+def debug_admit(
+    seat_id: int,
+    body: DebugAdmitRequest,
+    db: Session = Depends(get_db),
+    device_token: str | None = Header(
+        default=None,
+        alias="X-SmartDesk-Device-Token",
+    ),
+):
+    """Development-only admission for the attendee assigned to this tablet."""
+    if identity_mode != "debug":
+        return _to_json(
+            ApiResponse.fail(
+                "Debug identity admission is disabled",
+                "DEBUG_IDENTITY_MODE_DISABLED",
+            ),
+            403,
+        )
+    try:
+        seat = _service(db).debug_admit(
+            seat_id=seat_id,
+            device_seat_id=body.device_seat_id,
+            device_id=body.device_id,
+            device_token=device_token,
+        )
+    except ConflictError as error:
+        status = 409
+        failure = error
+    except NotFoundError as error:
+        status = 404
+        failure = error
+    except ValidationError as error:
+        status = {
+            "DEVICE_AUTH_FAILED": 401,
+            "DEVICE_DISABLED": 403,
+            "DEVICE_SEAT_MISMATCH": 409,
+        }.get(error.error_code, 400)
+        failure = error
+    else:
+        log_security_event(
+            logger,
+            event="debug_admit",
+            device_id=body.device_id,
+            seat_id=seat_id,
+            result="OK",
+        )
+        return ApiResponse.ok(data=SeatStateResponse.model_validate(seat))
+
+    log_security_event(
+        logger,
+        event="debug_admit",
+        level=logging.WARNING,
+        device_id=body.device_id,
+        seat_id=seat_id,
+        result=failure.error_code,
+    )
+    return _to_json(
+        ApiResponse.fail(failure.message, failure.error_code),
+        status,
+    )
 
 
 @router.post(

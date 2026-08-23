@@ -10,6 +10,7 @@ from backend.migrations import (
     ensure_attendee_identity_columns,
     ensure_tablet_device_status_columns,
     ensure_translation_record_columns,
+    ensure_face_template_meeting_columns,
 )
 
 
@@ -19,6 +20,7 @@ def upgrade_database_schema(engine: Engine) -> None:
     ensure_agenda_columns(engine)
     ensure_attendee_identity_columns(engine)
     ensure_tablet_device_status_columns(engine)
+    ensure_face_template_meeting_columns(engine)
 
 
 __all__ = ["upgrade_database_schema"]

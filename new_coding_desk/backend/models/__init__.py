@@ -17,6 +17,7 @@ Total: 10 tables.
 from backend.models.person import Person
 from backend.models.tablet_device import TabletDevice
 from backend.models.identity_checkin_event import IdentityCheckInEvent
+from backend.models.face_template import FaceTemplate, FaceModelPolicy
 from backend.models.meeting import Meeting
 from backend.models.agenda import Agenda
 from backend.models.attendee import Attendee
@@ -32,6 +33,8 @@ __all__ = [
     "Person",
     "TabletDevice",
     "IdentityCheckInEvent",
+    "FaceTemplate",
+    "FaceModelPolicy",
     "Agenda",
     "Attendee",
     "SeatState",

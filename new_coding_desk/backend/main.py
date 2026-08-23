@@ -58,6 +58,7 @@ from backend.api import (
     hardware,
     people,
     tablet_devices,
+    face_templates,
 )
 from backend.api import seat_ws
 
@@ -308,6 +309,8 @@ app.include_router(host_display.router)
 app.include_router(hardware.router)
 app.include_router(people.router)
 app.include_router(tablet_devices.router)
+app.include_router(face_templates.router)
+app.include_router(face_templates.device_router)
 
 # Network hardware modes: legacy Windows Seat Agent or direct ESP32 channel.
 if deploy_mode in {"distributed", "esp32"}:

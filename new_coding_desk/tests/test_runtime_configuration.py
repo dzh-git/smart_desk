@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from backend.database import resolve_data_dir
-from backend.hardware import load_integration_config
+from backend.hardware import load_integration_config, resolve_identity_mode
 from backend.security.device_auth import (
     ESP32_DEVICE_TOKENS_ENV,
     ESP32_DEVICE_TOKENS_FILE_ENV,
@@ -25,6 +25,12 @@ def test_integration_config_prefers_explicit_path(monkeypatch, tmp_path):
     )
     monkeypatch.setenv("SMARTDESK_CONFIG_PATH", str(path))
     assert load_integration_config()["deploy_mode"] == "esp32"
+
+
+def test_identity_mode_defaults_and_fails_closed():
+    assert resolve_identity_mode({}) == "formal"
+    assert resolve_identity_mode({"identity_mode": "debug"}) == "debug"
+    assert resolve_identity_mode({"identity_mode": "unexpected"}) == "formal"
 
 
 def test_esp32_credentials_load_from_protected_file(monkeypatch, tmp_path):

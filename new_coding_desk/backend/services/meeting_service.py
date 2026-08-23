@@ -54,11 +54,17 @@ class MeetingService(BaseService):
 
     def create_meeting(self, title: str, description: str | None = None) -> Meeting:
         """Create a new meeting with status='pending'."""
-        return self.meeting_repo.create(
+        meeting = self.meeting_repo.create(
             title=title,
             description=description or "",
             status="pending",
         )
+        # Face defaults are optional: an empty library leaves the meeting
+        # untouched, while an existing library copies the previous layout.
+        from backend.services.face_template_service import FaceTemplateService
+
+        FaceTemplateService(self.db).seed_meeting_assignments(meeting)
+        return meeting
 
     def get_meeting(self, meeting_id: int) -> Meeting:
         """Get meeting by ID. Raises NotFoundError if missing."""

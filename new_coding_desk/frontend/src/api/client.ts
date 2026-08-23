@@ -58,14 +58,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   // ── Handle HTTP-level errors (non-2xx) ──────────────────────────────
   if (!response.ok) {
     let detail: string | undefined;
+    let errorCode: string | null | undefined;
     try {
       const body = await response.json();
       // FastAPI returns { detail: "..." } on validation errors
       detail = body.detail ?? body.message ?? response.statusText;
+      errorCode = body.error_code;
     } catch {
       detail = response.statusText;
     }
-    throw new ApiError(detail ?? "Unknown error", response.status, undefined);
+    throw new ApiError(detail ?? "Unknown error", response.status, errorCode);
   }
 
   // ── Handle business-level errors (success: false) ────────────────────
@@ -90,8 +92,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // ── Convenience Methods ──────────────────────────────────────────────────
 
-export function apiGet<T>(path: string): Promise<T> {
-  return request<T>(path, { method: "GET" });
+export function apiGet<T>(path: string, headers?: HeadersInit): Promise<T> {
+  return request<T>(path, { method: "GET", headers });
 }
 
 /**
@@ -145,15 +147,20 @@ export function apiPatch<T>(path: string, data?: unknown): Promise<T> {
   });
 }
 
-export function apiPut<T>(path: string, data?: unknown): Promise<T> {
+export function apiPut<T>(
+  path: string,
+  data?: unknown,
+  headers?: HeadersInit,
+): Promise<T> {
   return request<T>(path, {
     method: "PUT",
+    headers,
     body: data !== undefined ? JSON.stringify(data) : undefined,
   });
 }
 
-export function apiDelete<T>(path: string): Promise<T> {
-  return request<T>(path, { method: "DELETE" });
+export function apiDelete<T>(path: string, headers?: HeadersInit): Promise<T> {
+  return request<T>(path, { method: "DELETE", headers });
 }
 
 // Re-export for advanced usage

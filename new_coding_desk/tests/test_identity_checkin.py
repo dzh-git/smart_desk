@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from backend.events import event_bus
 from backend.main import app
+from backend.api import seats as seats_api
 from backend.migrations import ensure_attendee_identity_columns
 from backend.models.attendee import Attendee
 from backend.models.identity_checkin_event import IdentityCheckInEvent
@@ -135,6 +136,21 @@ def _tablet_vacate_post(
 ):
     return client.post(
         f"/api/seats/{seat_id}/tablet-vacate",
+        json={
+            "deviceId": payload["deviceId"],
+            "deviceSeatId": payload["deviceSeatId"],
+        },
+        headers=headers or {},
+    )
+
+
+def _debug_admit_post(
+    seat_id: int,
+    payload: dict,
+    headers: dict | None,
+):
+    return client.post(
+        f"/api/seats/{seat_id}/debug-admit",
         json={
             "deviceId": payload["deviceId"],
             "deviceSeatId": payload["deviceSeatId"],
@@ -296,6 +312,36 @@ def test_registry_binding_must_match_url_seat():
 
     assert response.status_code == 400
     assert response.json()["error_code"] == "DEVICE_SEAT_MISMATCH"
+
+
+def test_participant_identity_requires_current_meeting_template_sync():
+    meeting_id, _, payload, headers = _prepare_active_attendee(
+        person_id="person_002",
+        seat_id=2,
+        provision_device=False,
+    )
+    _provision_device(device_id="tablet-seat-02", seat_id=2)
+
+    response = _identity_post(2, payload, headers)
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "FACE_TEMPLATE_SYNC_INCOMPLETE"
+    db = TestSessionLocal()
+    try:
+        device = TabletDeviceService(db).authenticate(
+            device_id="tablet-seat-02",
+            seat_id=2,
+            token=DEVICE_TOKEN,
+        )
+        device.face_template_sync_status = "SYNCED"
+        device.face_template_meeting_id = meeting_id
+        device.face_template_set_revision = 0
+        db.commit()
+    finally:
+        db.close()
+
+    accepted = _identity_post(2, payload, headers)
+    assert accepted.status_code == 200
 
 
 def test_repeated_event_is_idempotent_and_broadcasts_checkin_once():
@@ -473,6 +519,46 @@ def test_manual_admit_requires_an_assignment():
 
     assert response.status_code == 400
     assert response.json()["error_code"] == "SEAT_ASSIGNMENT_REQUIRED"
+
+
+def test_debug_admit_authenticates_device_and_is_idempotent(monkeypatch):
+    _, attendee_id, payload, headers = _prepare_active_attendee(
+        occupy_seat=False,
+    )
+    monkeypatch.setattr(seats_api, "identity_mode", "debug")
+
+    first = _debug_admit_post(1, payload, headers)
+    second = _debug_admit_post(1, payload, headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["data"]["attendee_id"] == attendee_id
+    db = TestSessionLocal()
+    try:
+        assert db.query(IdentityCheckInEvent).count() == 0
+    finally:
+        db.close()
+
+
+def test_debug_admit_fails_closed_and_rejects_wrong_device(monkeypatch):
+    _, _, payload, headers = _prepare_active_attendee(occupy_seat=False)
+
+    formal = _debug_admit_post(1, payload, headers)
+    monkeypatch.setattr(seats_api, "identity_mode", "debug")
+    wrong_token = _debug_admit_post(
+        1,
+        payload,
+        {"X-SmartDesk-Device-Token": "wrong-device-token-000001"},
+    )
+    wrong_seat_payload = {**payload, "deviceSeatId": 2}
+    wrong_seat = _debug_admit_post(1, wrong_seat_payload, headers)
+
+    assert formal.status_code == 403
+    assert formal.json()["error_code"] == "DEBUG_IDENTITY_MODE_DISABLED"
+    assert wrong_token.status_code == 401
+    assert wrong_token.json()["error_code"] == "DEVICE_AUTH_FAILED"
+    assert wrong_seat.status_code == 409
+    assert wrong_seat.json()["error_code"] == "DEVICE_SEAT_MISMATCH"
 
 
 def test_validated_identity_atomically_occupies_and_checks_in_vacant_seat():
@@ -654,7 +740,11 @@ def test_calibration_pending_identity_cannot_check_in():
     assert response.json()["error_code"] == "FACE_CALIBRATION_PENDING"
 
 
-def test_prototype_identity_is_blocked_by_default():
+def test_prototype_identity_is_blocked_by_default(monkeypatch):
+    monkeypatch.delenv(
+        "SMARTDESK_ALLOW_PROTOTYPE_IDENTITY_CHECKIN",
+        raising=False,
+    )
     _, _, payload, headers = _prepare_active_attendee()
     payload.update(
         {

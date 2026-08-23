@@ -44,6 +44,7 @@ import {
   cancelServiceCall,
   fetchSpeechStatus,
   reportTabletHeartbeat,
+  debugAdmitSeat,
 } from "../api/resources";
 import { ApiError, NetworkError } from "../api/client";
 import type { ServiceType, SpeechModelStatus, VoteStatistics } from "../api/types";
@@ -156,6 +157,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const submittedIdentityKey = useRef<string | null>(null);
   const identitySubmitRun = useRef(0);
   const automaticFaceAttemptKey = useRef<string | null>(null);
+  const [faceTemplateSyncRetry, setFaceTemplateSyncRetry] = useState(0);
+  const automaticDebugAdmitKey = useRef<string | null>(null);
+  const [debugAdmitRetry, setDebugAdmitRetry] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -239,6 +243,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     mySeat?.attendeeId === assignedAttendee.id;
   const isSpeaker = speakerSeatId === seatId;
   const wsConnected = connection === "connected";
+  const identityMode = nativeDeviceInfo?.identityMode === "debug"
+    ? "debug"
+    : "formal";
 
   useEffect(() => {
     const deviceInfo = nativeDeviceInfo;
@@ -389,6 +396,11 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   const handleFaceVerification = useCallback(async () => {
     setActionError(null);
+    const expectedPersonId = assignedAttendee?.person_id;
+    if (!expectedPersonId) {
+      setActionError("当前席位尚未分配可验证人员");
+      return;
+    }
     if (
       nativeDeviceInfo?.seatId != null &&
       nativeDeviceInfo.seatId !== seatId
@@ -405,7 +417,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     });
     nativeIdentityEvent.current = null;
     try {
-      await nativeBridge.startFaceVerification();
+      await nativeBridge.startFaceVerification(expectedPersonId);
     } catch (error: unknown) {
       setActionError(
         error instanceof Error
@@ -420,7 +432,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
             : "Unable to start native face verification",
       });
     }
-  }, [nativeBridge, nativeDeviceInfo, seatId]);
+  }, [assignedAttendee?.person_id, nativeBridge, nativeDeviceInfo, seatId]);
 
   const handleStopFaceVerification = useCallback(async () => {
     setActionError(null);
@@ -510,6 +522,17 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         }
         return false;
       } catch (error: unknown) {
+        if (
+          error instanceof ApiError &&
+          error.errorCode === "FACE_TEMPLATE_SYNC_INCOMPLETE"
+        ) {
+          automaticFaceAttemptKey.current = null;
+          submittedIdentityKey.current = null;
+          nativeIdentityEvent.current = null;
+          setNativeIdentityStatus(null);
+          await nativeBridge.stopFaceVerification().catch(() => undefined);
+          setFaceTemplateSyncRetry((value) => value + 1);
+        }
         setActionError(
           error instanceof Error
             ? error.message
@@ -522,7 +545,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         }
       }
     },
-    [nativeDeviceInfo, refresh, seatId],
+    [nativeBridge, nativeDeviceInfo, refresh, seatId],
   );
 
   useEffect(() => {
@@ -649,14 +672,78 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   // ── Whether writes are allowed (Task 4) ─────────────────────────────────
 
   const meetingStatus = deriveSeatMeetingStatus(meeting);
-  const writesAllowed = wsConnected && !!meeting && meeting?.status === "active";
+  const writesAllowed =
+    wsConnected && !error && !!meeting && meeting?.status === "active";
   const tabletVacateAvailable =
     nativeBridge.isAvailable() &&
     nativeCredentialReady &&
     nativeDeviceInfo?.seatId === seatId;
 
   useEffect(() => {
+    const deviceToken = nativeDeviceCredential.current;
     const eligible =
+      identityMode === "debug" &&
+      !meetingAccessGranted &&
+      assignedAttendee != null &&
+      writesAllowed &&
+      nativeCredentialReady &&
+      deviceToken != null &&
+      nativeDeviceInfo?.seatId === seatId;
+
+    if (!eligible || !nativeDeviceInfo || !deviceToken) {
+      automaticDebugAdmitKey.current = null;
+      return;
+    }
+
+    const admitKey = `${meeting?.id}:${seatId}:${assignedAttendee.id}`;
+    if (automaticDebugAdmitKey.current === admitKey) return;
+    automaticDebugAdmitKey.current = admitKey;
+    setActionError(null);
+    setNativeRuntimeError("DEBUG 模式：正在跳过人脸验证并完成签到…");
+    void handleStopFaceVerification().catch(() => undefined);
+
+    void debugAdmitSeat(
+      seatId,
+      {
+        deviceId: nativeDeviceInfo.deviceId,
+        deviceSeatId: nativeDeviceInfo.seatId,
+      },
+      deviceToken,
+    )
+      .then(() => {
+        setNativeRuntimeError(null);
+        refresh();
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error
+          ? error.message
+          : "Debug 自动放行失败";
+        setNativeRuntimeError(message);
+        setActionError(message);
+        window.setTimeout(() => {
+          if (automaticDebugAdmitKey.current === admitKey) {
+            automaticDebugAdmitKey.current = null;
+            setDebugAdmitRetry((value) => value + 1);
+          }
+        }, 5_000);
+      });
+  }, [
+    assignedAttendee,
+    debugAdmitRetry,
+    handleStopFaceVerification,
+    identityMode,
+    meeting?.id,
+    meetingAccessGranted,
+    nativeCredentialReady,
+    nativeDeviceInfo,
+    refresh,
+    seatId,
+    writesAllowed,
+  ]);
+
+  useEffect(() => {
+    const eligible =
+      identityMode === "formal" &&
       !meetingAccessGranted &&
       assignedAttendee?.person_id != null &&
       writesAllowed &&
@@ -685,7 +772,32 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     }
 
     automaticFaceAttemptKey.current = attemptKey;
-    void handleFaceVerification();
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (seatId >= 2 && seatId <= 9 && meeting?.id != null) {
+          setNativeRuntimeError("正在同步本次会议人脸模板…");
+          await nativeBridge.syncFaceTemplates(meeting.id);
+          if (cancelled) return;
+          setNativeRuntimeError(null);
+        }
+        await handleFaceVerification();
+      } catch (error: unknown) {
+        if (cancelled) return;
+        const syncError = error instanceof Error
+          ? error.message
+          : "会议人脸模板同步失败";
+        setNativeRuntimeError(syncError);
+        setActionError(syncError);
+        window.setTimeout(() => {
+          if (automaticFaceAttemptKey.current === attemptKey) {
+            automaticFaceAttemptKey.current = null;
+            setFaceTemplateSyncRetry((value) => value + 1);
+          }
+        }, 5_000);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [
     assignedAttendee,
     handleFaceVerification,
@@ -698,6 +810,8 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     nativeIdentityStatus?.status,
     seatId,
     writesAllowed,
+    faceTemplateSyncRetry,
+    identityMode,
   ]);
 
   const retryFaceVerification = useCallback(async () => {
@@ -707,6 +821,11 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     setNativeIdentityStatus(null);
     setActionError(null);
     await handleStopFaceVerification();
+    if (seatId >= 2 && seatId <= 9 && meeting?.id != null) {
+      setNativeRuntimeError("正在同步本次会议人脸模板…");
+      await nativeBridge.syncFaceTemplates(meeting.id);
+      setNativeRuntimeError(null);
+    }
     await handleFaceVerification();
     automaticFaceAttemptKey.current = `${meeting?.id}:${seatId}:${assignedAttendee?.id}`;
   }, [
@@ -714,6 +833,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     handleFaceVerification,
     handleStopFaceVerification,
     meeting?.id,
+    nativeBridge,
     seatId,
   ]);
 
@@ -765,7 +885,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   // ── Error State ────────────────────────────────────────────────────────
 
-  if (error) {
+  if (error && !meeting) {
     return (
       <div className="min-h-screen bg-techBg flex flex-col">
         <SeatHeader
@@ -781,11 +901,11 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md">
-            <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mx-auto">
-              <AlertCircle className="text-techRose" size={24} />
+            <div className="w-14 h-14 rounded-full bg-techCyan/10 border-2 border-techCyan/30 flex items-center justify-center mx-auto">
+              <Loader2 className="animate-spin text-techCyan" size={24} />
             </div>
             <p className="text-sm font-semibold text-techText">
-              席位数据加载失败 / Failed to load data
+              正在重新连接会议系统 / Reconnecting
             </p>
             <p className="text-xs text-techMuted">{error}</p>
             <ActionButton
@@ -868,6 +988,11 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
             maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
           }
         />
+        {error && (
+          <div className="border-b border-techAmber/40 bg-techAmber/10 px-4 py-2 text-center text-xs font-semibold text-techAmber">
+            连接暂时中断，正在自动重连；当前页面已保留，操作暂不可用。
+          </div>
+        )}
         <main
           data-testid="face-access-gate"
           className="flex-1 flex items-center justify-center p-6"
@@ -883,6 +1008,16 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
               <p className="mt-4 text-sm text-techAmber">
                 等待主持人分配席位人员 / Waiting for host seat assignment
               </p>
+            ) : identityMode === "debug" ? (
+              <div className="mt-5 space-y-2">
+                <Loader2 size={28} className="mx-auto animate-spin text-techAmber" />
+                <p className="text-base font-semibold text-techText">
+                  {assignedAttendee.name}
+                </p>
+                <p className="text-sm text-techAmber">
+                  Debug 模式正在自动完成签到，无需进行人脸验证。
+                </p>
+              </div>
             ) : !canRecognize ? (
               <div className="mt-4 space-y-2">
                 <p className="text-base font-semibold text-techText">
@@ -920,13 +1055,18 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
             )}
             {actionError && (
               <p className="mt-5 rounded-lg border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
-                验证失败：{actionError}
+                {identityMode === "debug" ? "自动放行失败" : "验证失败"}：{actionError}
               </p>
             )}
             {!wsConnected && (
               <p className="mt-4 text-xs text-techAmber">
                 后端连接已断开，恢复连接前不会解锁会议页面。
               </p>
+            )}
+            {identityMode === "debug" && (
+              <div className="mt-5 rounded-lg border border-techAmber/50 bg-techAmber/10 px-4 py-3 text-sm font-semibold text-techAmber">
+                DEBUG · 正在跳过人脸验证并自动签到
+              </div>
             )}
           </div>
         </main>
@@ -955,7 +1095,18 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         }
       />
 
+      {error && (
+        <div className="border-b border-techAmber/40 bg-techAmber/10 px-4 py-2 text-center text-xs font-semibold text-techAmber">
+          连接暂时中断，正在自动重连；当前页面已保留，操作暂不可用。
+        </div>
+      )}
+
       <main className="p-4 space-y-4 max-w-[900px] mx-auto w-full">
+        {identityMode === "debug" && (
+          <div className="rounded-lg border border-techAmber/50 bg-techAmber/10 px-4 py-3 text-center text-sm font-bold text-techAmber">
+            DEBUG · 已跳过人脸验证
+          </div>
+        )}
         {/* Action error */}
         {actionError && (
           <div className="bg-techRose/10 border border-techRose/30 rounded-lg px-4 py-3 flex items-center gap-2">

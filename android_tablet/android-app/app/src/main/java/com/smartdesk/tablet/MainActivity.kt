@@ -49,6 +49,7 @@ import com.smartdesk.tablet.model.ErrorCode
 import com.smartdesk.tablet.model.FaceDetectionResult
 import com.smartdesk.tablet.model.IdentityStatus
 import com.smartdesk.tablet.recognition.FacePhotoImportRequest
+import com.smartdesk.tablet.recognition.FaceTemplateSyncClient
 import com.smartdesk.tablet.recognition.FaceRecognitionManager
 import com.smartdesk.tablet.provisioning.DeviceTokenGenerator
 import com.smartdesk.tablet.provisioning.TabletApiResult
@@ -107,17 +108,21 @@ class MainActivity : ComponentActivity() {
     private val provisioningExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val tabletDeviceClient = TabletDeviceClient()
+    private val faceTemplateSyncClient = FaceTemplateSyncClient()
     private val deviceTokenGenerator = DeviceTokenGenerator()
     private var healthCheckGeneration = 0
     private var provisioningInProgress = false
+    @Volatile
+    private var identityMode = "formal"
     private var maintenanceAuthorized = false
     private var maintenanceUnlockAction: Runnable? = null
+    private var maintenanceExpiryAction: Runnable? = null
     private var offlineRetryAction: Runnable? = null
     private var pageLoadTimeoutAction: Runnable? = null
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             if (
-                pageAccessState.isDiagnosticPage() &&
+                isWaitingPage() &&
                 ::deviceConfigStore.isInitialized &&
                 deviceConfigStore.load() != null
             ) {
@@ -469,10 +474,10 @@ class MainActivity : ComponentActivity() {
                         AndroidEvent.identityStatus(result)
                     }
                 },
-                onStartIdentityVerification = {
+                onStartIdentityVerification = { personId ->
                     performIdentityAction(ErrorCode.FACE_TEMPLATE_NOT_FOUND) {
                         val result = requireRecognitionManager()
-                            .startVerification()
+                            .startVerification(personId)
                         runOnUiThread(::requestStartCamera)
                         AndroidEvent.identityStatus(result)
                     }
@@ -494,7 +499,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onRemoveFaceTemplate = { personId ->
-                    performDiagnosticIdentityAction(
+                    performMaintenanceIdentityAction(
                         ErrorCode.UNKNOWN_ERROR
                     ) {
                         AndroidEvent.identityStatus(
@@ -516,6 +521,52 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 },
+                onPublishCentralFaceTemplate = { personId, photosJson ->
+                    performHostFaceTemplateAction(
+                        ErrorCode.FACE_PHOTO_IMPORT_FAILED
+                    ) {
+                        val config = requireNotNull(deviceConfigStore.load())
+                        val photos = FacePhotoImportRequest.parse(photosJson)
+                        val manager = requireRecognitionManager()
+                        val generated = manager.generateCentralTemplate(
+                            personId,
+                            photos
+                        )
+                        val data = faceTemplateSyncClient.publishFromHost(
+                            config,
+                            personId,
+                            generated,
+                            manager
+                        )
+                        AndroidEvent.event("central_face_template_result", data)
+                    }
+                },
+                onSyncFaceTemplates = { meetingId ->
+                    performParticipantTemplateSync(
+                        ErrorCode.FACE_TEMPLATE_NOT_FOUND
+                    ) {
+                        val config = requireNotNull(deviceConfigStore.load())
+                        val data = faceTemplateSyncClient.syncActiveMeeting(
+                            config,
+                            meetingId,
+                            requireRecognitionManager()
+                        )
+                        AndroidEvent.event("face_template_sync", data)
+                    }
+                },
+                onOpenLocalDiagnostics = {
+                    runOnUiThread {
+                        if (isHostFaceTemplatesPage() && maintenanceAuthorized) {
+                            loadDiagnosticPage("maintenance")
+                        }
+                    }
+                },
+                onCloseHostFaceTemplates = {
+                    runOnUiThread {
+                        clearMaintenanceAuthorization()
+                        loadConfiguredPage()
+                    }
+                },
                 onGetRegisteredFaces = {
                     performIdentityAction(ErrorCode.UNKNOWN_ERROR) {
                         AndroidEvent.registeredPeople(
@@ -525,7 +576,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onSetVerificationThreshold = { value ->
-                    performDiagnosticIdentityAction(
+                    performHostFaceTemplateAction(
                         ErrorCode.UNKNOWN_ERROR
                     ) {
                         AndroidEvent.identityStatus(
@@ -663,6 +714,7 @@ class MainActivity : ComponentActivity() {
                     )
                     return
                 }
+                identityMode = binding.identityMode
                 runCatching {
                     if (!maintenancePinStore.hasPin()) {
                         maintenancePinStore.set(
@@ -818,7 +870,7 @@ class MainActivity : ComponentActivity() {
 
     private fun retryConfiguredPageIfNeeded() {
         if (
-            pageAccessState.isDiagnosticPage() &&
+            isWaitingPage() &&
             deviceConfigStore.load() != null
         ) {
             pageLoadState.retry()
@@ -857,6 +909,7 @@ class MainActivity : ComponentActivity() {
         }
         if (!maintenancePinStore.hasPin()) {
             maintenanceAuthorized = true
+            scheduleMaintenanceExpiry()
             openMaintenancePage()
             return
         }
@@ -874,6 +927,7 @@ class MainActivity : ComponentActivity() {
             ) { _, _ ->
                 if (maintenancePinStore.verify(input.text.toString())) {
                     maintenanceAuthorized = true
+                    scheduleMaintenanceExpiry()
                     openMaintenancePage()
                 } else {
                     Toast.makeText(
@@ -887,7 +941,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun getDeviceCredential(): String {
-        if (!isTrustedSeatPage()) {
+        if (!isTrustedSeatPage() && !(isHostFaceTemplatesPage() && maintenanceAuthorized)) {
             return AndroidEvent.error(
                 ErrorCode.BRIDGE_ACTION_FORBIDDEN,
                 "设备凭据只能提供给已配置的正式席位页面"
@@ -906,20 +960,17 @@ class MainActivity : ComponentActivity() {
 
     private fun loadConfiguredPage() {
         cancelOfflineRetry()
+        identityMode = "formal"
         val config = deviceConfigStore.load()
         if (config == null) {
-            loadDiagnosticPage("setup")
+            pageLoadState.waitingConfiguration()
+            loadWaitingPage("waiting-config", retry = false)
             return
         }
 
-        val startedImmediately =
-            pageAccessState.shouldLoadConfiguredSeatPageImmediately(config)
-        if (startedImmediately) {
-            beginSeatPageLoad(config.seatPageUrl())
-        } else {
-            cancelSeatPageLoadTimeout()
-            pageLoadState.beginHealthCheck()
-        }
+        cancelSeatPageLoadTimeout()
+        pageLoadState.beginHealthCheck()
+        loadWaitingPage("checking", retry = false)
         val generation = ++healthCheckGeneration
         runCatching {
             healthExecutor.execute {
@@ -927,9 +978,7 @@ class MainActivity : ComponentActivity() {
                 val bindingResult = if (
                     healthResult == BackendHealthChecker.Result.HEALTHY
                 ) {
-                    if (!startedImmediately) {
-                        pageLoadState.beginBindingValidation()
-                    }
+                    pageLoadState.beginBindingValidation()
                     tabletDeviceClient.validate(config, BuildConfig.VERSION_NAME)
                 } else {
                     null
@@ -949,51 +998,45 @@ class MainActivity : ComponentActivity() {
                                         binding.seatAlias == config.seatAlias &&
                                         binding.enabled
                                     ) {
-                                        if (
-                                            pageAccessState
-                                                .needsSeatPageLoadAfterValidation(
-                                                    startedImmediately
-                                                )
-                                        ) {
-                                            beginSeatPageLoad(
-                                                config.seatPageUrl()
-                                            )
-                                        }
+                                        identityMode = binding.identityMode
+                                        beginSeatPageLoad(config.seatPageUrl())
                                     } else {
-                                        pageLoadState.bindingError()
-                                        loadDiagnosticPage("binding-error")
+                                        pageLoadState.waitingBinding()
+                                        loadWaitingPage("waiting-binding")
                                     }
                                 }
                                 TabletApiResult.Offline -> {
-                                    pageLoadState.offline()
-                                    loadDiagnosticPage("offline")
+                                    pageLoadState.waitingNetwork()
+                                    loadWaitingPage("waiting-network")
                                 }
                                 is TabletApiResult.Conflict,
                                 is TabletApiResult.Rejected -> {
-                                    pageLoadState.bindingError()
-                                    loadDiagnosticPage("binding-error")
+                                    pageLoadState.waitingBinding()
+                                    loadWaitingPage("waiting-binding")
                                 }
                                 is TabletApiResult.ServerError,
                                 null -> {
-                                    pageLoadState.serverError()
-                                    loadDiagnosticPage("server-error")
+                                    pageLoadState.waitingBackend()
+                                    loadWaitingPage("waiting-backend")
                                 }
                             }
                         }
                         BackendHealthChecker.Result.OFFLINE -> {
-                            pageLoadState.offline()
-                            loadDiagnosticPage("offline")
+                            pageLoadState.waitingNetwork()
+                            loadWaitingPage("waiting-network")
                         }
                         BackendHealthChecker.Result.SERVER_ERROR -> {
-                            pageLoadState.serverError()
-                            loadDiagnosticPage("server-error")
+                            pageLoadState.waitingBackend()
+                            loadWaitingPage("waiting-backend")
                         }
                     }
                 }
             }
         }.onFailure {
-            pageLoadState.offline()
-            loadDiagnosticPage("offline")
+            webView.post {
+                pageLoadState.waitingNetwork()
+                loadWaitingPage("waiting-network")
+            }
         }
     }
 
@@ -1010,7 +1053,7 @@ class MainActivity : ComponentActivity() {
             if (pageLoadState.timedOut()) {
                 Log.e(TAG, "WebView seat page load timed out")
                 webView.stopLoading()
-                loadDiagnosticPage("timeout")
+                loadWaitingPage("waiting-frontend")
             }
         }
         pageLoadTimeoutAction = timeoutAction
@@ -1019,14 +1062,8 @@ class MainActivity : ComponentActivity() {
 
     private fun loadDiagnosticPage(mode: String) {
         cancelSeatPageLoadTimeout()
-        if (mode == "offline") {
-            scheduleOfflineRetry()
-        } else {
-            cancelOfflineRetry()
-        }
-        maintenanceButton.visibility = if (
-            shouldShowEmergencyMaintenanceButton(mode)
-        ) View.VISIBLE else View.GONE
+        cancelOfflineRetry()
+        maintenanceButton.visibility = View.GONE
         val url = "$LOCAL_PAGE_URL?mode=${Uri.encode(mode)}"
         val previousUrl = pageAccessState.currentUrl()
         if (previousUrl != url) {
@@ -1036,12 +1073,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun shouldShowEmergencyMaintenanceButton(mode: String?): Boolean {
-        if (deviceConfigStore.load() == null) return false
-        return mode == "offline" ||
-            mode == "server-error" ||
-            mode == "binding-error" ||
-            mode == "timeout"
+    private fun loadWaitingPage(mode: String, retry: Boolean = true) {
+        cancelSeatPageLoadTimeout()
+        if (retry) scheduleOfflineRetry() else cancelOfflineRetry()
+        maintenanceButton.visibility = View.VISIBLE
+        val url = "$LOCAL_PAGE_URL?mode=${Uri.encode(mode)}"
+        if (pageAccessState.currentUrl() != url) {
+            pageAccessState.update(null)
+            Log.i(TAG, "Loading local connection page: $mode")
+            webView.loadUrl(url)
+        }
+    }
+
+    private fun isWaitingPage(): Boolean {
+        val current = pageAccessState.currentUrl() ?: return false
+        if (!current.startsWith(LOCAL_ASSET_PREFIX)) return false
+        val mode = Uri.parse(current).getQueryParameter("mode") ?: return false
+        return mode == "checking" || mode.startsWith("waiting-")
     }
 
     private fun cancelSeatPageLoadTimeout() {
@@ -1070,7 +1118,35 @@ class MainActivity : ComponentActivity() {
         cancelPendingMicrophoneRequest()
         stopNativeMicrophoneCapture()
         emitToReact(AndroidEvent.appLifecycle("PAUSED", "maintenance"))
-        loadDiagnosticPage("maintenance")
+        val config = deviceConfigStore.load()
+        if (config == null) {
+            loadDiagnosticPage("setup")
+        } else if (config.seatId == 1 && isTrustedSeatPage()) {
+            webView.loadUrl("${config.frontendUrl.trimEnd('/')}/seat/1/face-templates")
+        } else {
+            loadDiagnosticPage("maintenance")
+        }
+    }
+
+    private fun scheduleMaintenanceExpiry() {
+        maintenanceExpiryAction?.let(mainHandler::removeCallbacks)
+        val action = Runnable {
+            maintenanceExpiryAction = null
+            if (isHostFaceTemplatesPage()) {
+                clearMaintenanceAuthorization()
+                loadConfiguredPage()
+            } else {
+                maintenanceAuthorized = false
+            }
+        }
+        maintenanceExpiryAction = action
+        mainHandler.postDelayed(action, HOST_MAINTENANCE_SESSION_MS)
+    }
+
+    private fun clearMaintenanceAuthorization() {
+        maintenanceExpiryAction?.let(mainHandler::removeCallbacks)
+        maintenanceExpiryAction = null
+        maintenanceAuthorized = false
     }
 
     private fun nativeRuntimeStatus(): JSONObject =
@@ -1082,6 +1158,7 @@ class MainActivity : ComponentActivity() {
                 )
             )
             .put("faceModelReady", recognitionManager != null)
+            .put("identityMode", identityMode)
             .put("maintenancePinConfigured", maintenancePinStore.hasPin())
             .put(
                 "microphoneReady",
@@ -1217,10 +1294,45 @@ class MainActivity : ComponentActivity() {
         errorCode: String,
         action: () -> String
     ): String {
-        if (!isDiagnosticPage() || !maintenanceAuthorized) {
+        if (
+            !WebViewAccessPolicy.mayOpenTemplatePhotoChooser(
+                currentPageUrl = pageAccessState.currentUrl(),
+                config = deviceConfigStore.load(),
+                maintenanceAuthorized = maintenanceAuthorized
+            )
+        ) {
             return AndroidEvent.error(
                 ErrorCode.BRIDGE_ACTION_FORBIDDEN,
-                "照片模板只能在管理员验证后的维护页面导入"
+                "本机人脸模板只能在管理员验证后的维护页面管理"
+            )
+        }
+        scheduleMaintenanceExpiry()
+        return performIdentityAction(errorCode, action)
+    }
+
+    private inline fun performHostFaceTemplateAction(
+        errorCode: String,
+        action: () -> String
+    ): String {
+        if (!isHostFaceTemplatesPage() || !maintenanceAuthorized) {
+            return AndroidEvent.error(
+                ErrorCode.BRIDGE_ACTION_FORBIDDEN,
+                "中央人脸模板只能由验证后的主持人平板管理"
+            )
+        }
+        scheduleMaintenanceExpiry()
+        return performIdentityAction(errorCode, action)
+    }
+
+    private inline fun performParticipantTemplateSync(
+        errorCode: String,
+        action: () -> String
+    ): String {
+        val config = deviceConfigStore.load()
+        if (!isTrustedSeatPage() || config?.seatId !in 2..9) {
+            return AndroidEvent.error(
+                ErrorCode.BRIDGE_ACTION_FORBIDDEN,
+                "只有正式参会者席位页面可以同步会议模板"
             )
         }
         return performIdentityAction(errorCode, action)
@@ -1232,6 +1344,12 @@ class MainActivity : ComponentActivity() {
     private fun isTrustedSeatPage(): Boolean {
         return pageAccessState.isTrustedSeatPage(deviceConfigStore.load())
     }
+
+    private fun isHostFaceTemplatesPage(): Boolean =
+        WebViewAccessPolicy.isHostFaceTemplatesPage(
+            pageAccessState.currentUrl(),
+            deviceConfigStore.load()
+        )
 
     private fun mayGrantMicrophone(
         request: PermissionRequest,
@@ -1346,7 +1464,7 @@ class MainActivity : ComponentActivity() {
             if (pageAccessState.isDiagnosticPage()) {
                 val mode = Uri.parse(url).getQueryParameter("mode")
                 maintenanceButton.visibility = if (
-                    shouldShowEmergencyMaintenanceButton(mode)
+                    mode == "checking" || mode?.startsWith("waiting-") == true
                 ) View.VISIBLE else View.GONE
             } else if (
                 WebViewAccessPolicy.isTrustedSeatPage(
@@ -1403,9 +1521,9 @@ class MainActivity : ComponentActivity() {
                 )
                 if (!request.url.toString().startsWith(LOCAL_ASSET_PREFIX)) {
                     cancelSeatPageLoadTimeout()
-                    pageLoadState.offline()
+                    pageLoadState.waitingNetwork()
                     view.post {
-                        loadDiagnosticPage("offline")
+                        loadWaitingPage("waiting-network")
                     }
                 }
             }
@@ -1426,9 +1544,9 @@ class MainActivity : ComponentActivity() {
                     "WebView main frame HTTP ${errorResponse.statusCode}"
                 )
                 cancelSeatPageLoadTimeout()
-                pageLoadState.serverError()
+                pageLoadState.waitingFrontend()
                 view.post {
-                    loadDiagnosticPage("server-error")
+                    loadWaitingPage("waiting-frontend")
                 }
             }
         }
@@ -1448,7 +1566,13 @@ class MainActivity : ComponentActivity() {
             filePathCallback: ValueCallback<Array<Uri>>,
             fileChooserParams: FileChooserParams
         ): Boolean {
-            if (!isDiagnosticPage() || !maintenanceAuthorized) {
+            if (
+                !WebViewAccessPolicy.mayOpenTemplatePhotoChooser(
+                    currentPageUrl = pageAccessState.currentUrl(),
+                    config = deviceConfigStore.load(),
+                    maintenanceAuthorized = maintenanceAuthorized
+                )
+            ) {
                 filePathCallback.onReceiveValue(null)
                 return true
             }
@@ -1515,6 +1639,7 @@ class MainActivity : ComponentActivity() {
         const val FACE_EVENT_HEARTBEAT_MS = 1_000L
         const val CONFIG_RELOAD_DELAY_MS = 250L
         const val MAINTENANCE_HOLD_MS = 5_000L
+        const val HOST_MAINTENANCE_SESSION_MS = 10 * 60 * 1_000L
         const val NETWORK_RETRY_DELAY_MS = 1_000L
         const val OFFLINE_RETRY_INTERVAL_MS = 5_000L
         const val PAGE_LOAD_TIMEOUT_MS = 15_000L

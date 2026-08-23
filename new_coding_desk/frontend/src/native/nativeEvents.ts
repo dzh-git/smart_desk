@@ -10,6 +10,8 @@ export interface NativeIdentityStatus {
   top2PersonId?: string | null;
   top2Score?: number | null;
   margin?: number | null;
+  threshold?: number | null;
+  registeredCount?: number;
   thresholdStatus?: string;
   verificationLevel?: string;
   modelVersion?: string | null;

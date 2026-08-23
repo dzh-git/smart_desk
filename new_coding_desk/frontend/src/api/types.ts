@@ -97,6 +97,11 @@ export interface TabletVacatePayload {
   deviceSeatId: number;
 }
 
+export interface DebugAdmitPayload {
+  deviceId: string;
+  deviceSeatId: number;
+}
+
 export interface TabletHeartbeatPayload {
   seatId: number;
   appVersion: string;

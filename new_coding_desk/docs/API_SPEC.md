@@ -243,6 +243,7 @@ Frontend clients must still be able to refresh the source of truth through
 | `GET` | `/api/seats` | Return all 9 seat states. |
 | `POST` | `/api/seats/{seat_id}/checkin` | Check an attendee into an occupied unchecked seat. |
 | `POST` | `/api/seats/{seat_id}/identity-checkin` | Validate Android identity evidence, map stable Person to the active meeting attendee, then reuse normal check-in. |
+| `POST` | `/api/seats/{seat_id}/debug-admit` | In configured `identity_mode=debug` only, authenticate the bound tablet and admit its assigned attendee without fabricating biometric evidence. |
 | `POST` | `/api/seats/{seat_id}/tablet-vacate` | Authenticate the bound tablet, release the attendee and return the seat to `vacant`. |
 | `GET` | `/api/seats/speaker` | Return the current speaker seat. |
 | `POST` | `/api/seats/speaker` | Set speaker seat. See request body below. |
@@ -371,8 +372,44 @@ Content-Type: application/json
 {"seatId": 1, "appVersion": "0.8.0"}
 ```
 
-The response includes the stable physical `deviceId` and derived human-readable
-`seatAlias` such as `tablet-seat-01`.
+The response includes the stable physical `deviceId`, derived human-readable
+`seatAlias` such as `tablet-seat-01`, and the backend-authoritative
+`identityMode` (`formal` or `debug`). Missing or invalid integration config
+always resolves to `formal`.
+
+`POST /api/seats/{seatId}/debug-admit` accepts the same authenticated device
+identity shape as tablet vacate:
+
+```json
+{"deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201", "deviceSeatId": 1}
+```
+
+It is rejected with `DEBUG_IDENTITY_MODE_DISABLED` outside debug mode. The
+server selects only the active meeting attendee assigned to the authenticated
+seat, reuses the normal seat state machine, and never writes an identity event.
+
+### Central face-template management and tablet synchronization
+
+All management writes require the bound Seat 1 `deviceId` and
+`X-SmartDesk-Device-Token`. Raw photos are never accepted by these APIs.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/face-templates` | Seat 1 list/capacity/revisions. |
+| `PUT` | `/api/face-templates/{personId}` | Seat 1 upload a device-encrypted 256-D template envelope. |
+| `DELETE` | `/api/face-templates/{personId}` | Delete an unused template without deleting Person/history. |
+| `GET/PUT` | `/api/face-templates/meetings/{meetingId}/assignments` | Read or batch update Seat 1 host and Seat 2–9 participant mappings through existing attendees. |
+| `PUT` | `/api/tablet-devices/{deviceId}/face-transport-key` | Register the device Android-Keystore RSA public key. |
+| `GET` | `/api/tablet-devices/{deviceId}/face-template-bundle` | Download the single template assigned to that participant seat, encrypted to the device. |
+| `POST` | `/api/tablet-devices/{deviceId}/face-template-sync-ack` | Report target meeting/revision/count/result and redacted error. |
+
+The central library holds at most 81 templates. Adding the 82nd evicts the
+oldest template not referenced by a pending or active meeting and returns the
+evicted person; if every template is protected, the request returns
+`FACE_TEMPLATE_CAPACITY_LOCKED`. Bundles carry the assigned `personId`, its
+single template, exact model hash, pipeline version, dimension, provisional
+threshold, meeting ID, and template-set revision. Verification is 1:1; Top2
+is optional diagnostic data and does not gate admission.
 
 The formal Android seat page sends authenticated operational heartbeats:
 
@@ -646,7 +683,8 @@ reported offline.
 `data.tablets` is a separate nine-seat Android channel. It reports provisioning
 and enablement, online/offline derived from authenticated `last_seen_at`,
 app version, camera, face model, registered-template count, microphone,
-meeting-WebSocket status, diagnostic status, and last error. The default
+meeting-WebSocket status, diagnostic status, last error, and face-template
+target meeting/revision/count/sync result/redacted error. The default
 offline window is 45 seconds and can be configured from 10–300 seconds with
 `SMARTDESK_TABLET_OFFLINE_TIMEOUT_SECONDS`.
 

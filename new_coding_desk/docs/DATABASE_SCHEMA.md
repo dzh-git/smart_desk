@@ -145,7 +145,7 @@ when users keep a local database.
 The Android identity migration adds nullable `attendees.person_id` without
 guessing mappings for historical attendees. Existing deployments receive a
 partial unique index on `(meeting_id, person_id)` for non-null values.
-Fresh and existing deployments create two additional tables through startup
+Fresh and existing deployments create the following additional tables through startup
 metadata:
 
 - `tablet_devices`: stable device ID, unique bound seat, salted PBKDF2 token
@@ -155,6 +155,19 @@ metadata:
   through the idempotent startup migration.
 - `identity_checkin_events`: durable native event ID, device/seat/person/
   attendee evidence, similarity, verification level and model version.
+- `face_templates`: one encrypted AES-GCM template payload per stable
+  `people.id`, plus model hash/version, pipeline, dimension, sample counts,
+  revision and timestamps. Capacity is 81; pending/active assignments protect
+  templates from eviction.
+- `face_model_policies`: provisional threshold bound to an exact model hash and
+  pipeline version. A model/pipeline change cannot reuse an older policy.
+
+`meetings.face_template_set_revision` versions the distributed candidate set.
+`tablet_devices` also stores each Android transport public key and the target
+meeting, revision, count, result, and redacted error from its last template
+sync. The AES-GCM master key is outside SQLite at
+`.smartdesk-runtime/face-template-master.key`; database backup and migration
+must include it.
 
 ## Repository Ownership
 
@@ -165,6 +178,7 @@ metadata:
 | `AttendeeRepository` | `attendees` |
 | `TabletDeviceRepository` | `tablet_devices` |
 | `IdentityCheckInEventRepository` | `identity_checkin_events` |
+| `FaceTemplateRepository` | `face_templates`, `face_model_policies` |
 | `SeatRepository` | `seat_states`, `speaker_seat` |
 | `VoteRepository` | `votes`, `vote_records` |
 | `ServiceCallRepository` | `service_calls` |

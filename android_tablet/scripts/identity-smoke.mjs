@@ -21,7 +21,9 @@ const expressions = {
   enroll: `(() => JSON.parse(
     window.SmartDeskNative.startFaceEnrollment(${JSON.stringify(personId)})
   ))()`,
-  verify: `JSON.parse(window.SmartDeskNative.startFaceVerification())`,
+  verify: `JSON.parse(
+    window.SmartDeskNative.startFaceVerification(${JSON.stringify(personId)})
+  )`,
   stop: `JSON.parse(window.SmartDeskNative.stopFaceVerification())`,
   people: `JSON.parse(window.SmartDeskNative.getRegisteredFaces())`,
   remove: `JSON.parse(

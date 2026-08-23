@@ -29,7 +29,7 @@ field-validation/<YYYY-MM-DD>/
 - 准备条件：已审核 Debug APK、本地研究模型、ADB、充足电量、旧数据备份。
 - 操作步骤：`adb install -r <apk>`；启动 App；授予相机/麦克风；拒绝后再从系统
   设置授权；执行 `adb shell dumpsys package com.smartdesk.tablet` 核对
-  `versionName=0.8.0`。
+  `versionName=0.9.0`。
 - 预期结果：覆盖安装/冷启动成功；首次授权、拒绝和再次授权均有明确状态，无
   崩溃；Release 调试不可用。
 - 失败表现：签名冲突、安装失败、权限死循环、空白页、崩溃或令牌回显。

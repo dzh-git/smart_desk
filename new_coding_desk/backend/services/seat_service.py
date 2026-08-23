@@ -347,7 +347,7 @@ class SeatService(BaseService):
                 ),
                 "DEVICE_SEAT_MISMATCH",
             )
-        self.tablet_device_service.authenticate(
+        device = self.tablet_device_service.authenticate(
             device_id=device_id,
             seat_id=seat_id,
             token=device_token,
@@ -446,6 +446,16 @@ class SeatService(BaseService):
             raise ValidationError(
                 "There is no active meeting",
                 "NO_ACTIVE_MEETING",
+            )
+        if seat_id in range(2, 10) and (
+            device.face_template_sync_status != "SYNCED"
+            or device.face_template_meeting_id != active.id
+            or device.face_template_set_revision
+            != (active.face_template_set_revision or 0)
+        ):
+            raise ValidationError(
+                "The participant tablet has not synchronized this meeting's face templates",
+                "FACE_TEMPLATE_SYNC_INCOMPLETE",
             )
 
         person = self.person_repo.get_by_id(person_id)
@@ -574,6 +584,30 @@ class SeatService(BaseService):
                 meeting_id=active.id,
             )
         return seat
+
+    def debug_admit(
+        self,
+        *,
+        seat_id: int,
+        device_seat_id: int,
+        device_id: str,
+        device_token: str | None,
+    ) -> SeatState:
+        """Authenticate a bound tablet, then admit only its assigned attendee."""
+        if device_seat_id != seat_id:
+            raise ValidationError(
+                (
+                    f"Device is bound to seat {device_seat_id}, "
+                    f"not requested seat {seat_id}"
+                ),
+                "DEVICE_SEAT_MISMATCH",
+            )
+        self.tablet_device_service.authenticate(
+            device_id=device_id,
+            seat_id=seat_id,
+            token=device_token,
+        )
+        return self.manual_admit(seat_id)
 
     def _stage_assigned_check_in(
         self,

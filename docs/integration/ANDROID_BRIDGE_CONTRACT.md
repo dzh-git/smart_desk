@@ -21,15 +21,27 @@ interface NativeBridge {
   getDeviceCredential(): Promise<string>;
   getNativeStatus(): Promise<NativeIdentityStatus>;
   getRegisteredFaces(): Promise<RegisteredFaces>;
-  startFaceVerification(): Promise<void>;
+  startFaceVerification(personId: string): Promise<void>;
   stopFaceVerification(): Promise<void>;
+  importLocalFaceTemplate(personId: string, photosJson: string): Promise<LocalFaceTemplateImportResult>;
+  removeLocalFaceTemplate(personId: string): Promise<void>;
+  applyProvisionalThreshold(value: number): Promise<NativeIdentityStatus>;
+  publishCentralFaceTemplate(personId: string, photosJson: string): Promise<CentralFaceTemplateResult>;
+  syncFaceTemplates(meetingId: number): Promise<FaceTemplateSyncResult>;
+  openLocalDiagnostics(): Promise<void>;
+  closeHostFaceTemplates(): Promise<void>;
 }
 ```
 
 前端 `getNativeStatus()` 映射 Android 原始方法 `getIdentityStatus()`。Android
 方法同步返回 JSON 字符串，适配器将其解析成 Promise，并把立即返回的状态也按
-统一事件派发。注册、清理模板、阈值和诊断开关属于本地诊断页能力，不是正式
-会议页面 API。
+统一事件派发。本机模板导入、逐项删除、原型阈值确认和中央模板发布只允许已通过
+维护 PIN 的 Seat 1 模板管理页调用。诊断页不提供人脸注册、阈值或模板管理入口。
+当前原型阈值输入默认显示 `0.55`，但模型哈希或处理流水线变化后仍须重新确认。
+阈值确认不依赖主持人本机模板或中央参会者模板的数量；本机模板的新增、更新、
+删除和清空也不得重置已确认阈值。席位页必须把后端分配的稳定 `Person.id` 传给
+`startFaceVerification`，Android 只对该人员执行 1:1 验证；Top2 和分差仅作为
+存在多模板时的可选诊断信息，不是启动或放行条件。
 
 ## DeviceInfo
 
@@ -43,9 +55,10 @@ Android 设备信息及 camera/face-model/microphone/bridge 状态。
 成功后发送 `device_config_saved`。接口响应和事件不得包含预配口令、设备令牌或
 PIN。正式席位页无权调用该配置入口。
 
-`getDeviceCredential()` 仅在当前 URL 与配置前端同源、路径严格为
-`/seat/{配置 seatId}` 时返回 `device_credential`。诊断页、错误页、错席 URL
-和外部网页均返回 `BRIDGE_ACTION_FORBIDDEN`。
+`getDeviceCredential()` 在当前 URL 与配置前端同源、路径严格为
+`/seat/{配置 seatId}` 时返回 `device_credential`；已通过维护 PIN 且路径严格为
+`/seat/1/face-templates` 的 Seat 1 页面也可获取。诊断页、错误页、错席 URL和
+外部网页均返回 `BRIDGE_ACTION_FORBIDDEN`。
 
 ## 事件信封
 
@@ -114,8 +127,10 @@ unsubscribe；页面刷新会建立新订阅。后端幂等表是跨刷新/重�
 2. `seatId` 必须为 1–9，URL 席位与设备配置一致。
 3. 外部 URL 不在 WebView 中加载；文件页不能进行通用跨源访问。
 4. 麦克风只向可信正式席位来源授予 `AUDIO_CAPTURE`。
-5. Release 使用 `BuildConfig.DEBUG=false` 关闭 WebView 调试。
-6. 配置与令牌加密存储；日志和诊断页不回显已保存令牌。
+5. 系统照片多选器只允许维护 PIN 有效期间、严格同源的 Seat 1 模板管理页调用，
+   仅接受 JPG/PNG；本地诊断页不得打开人脸照片选择器。
+6. Release 使用 `BuildConfig.DEBUG=false` 关闭 WebView 调试。
+7. 配置与令牌加密存储；日志和诊断页不回显已保存令牌。
 
 ## 兼容性
 

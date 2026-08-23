@@ -24,6 +24,19 @@ object WebViewAccessPolicy {
             current.path.trimEnd('/') == "/seat/${config.seatId}"
     }
 
+    fun isHostFaceTemplatesPage(
+        currentUrl: String?,
+        config: DeviceConfig?
+    ): Boolean {
+        if (currentUrl.isNullOrBlank() || config == null || config.seatId != 1) {
+            return false
+        }
+        val current = parseHttpUri(currentUrl) ?: return false
+        val frontend = parseHttpUri(config.frontendUrl) ?: return false
+        return sameOrigin(current, frontend) &&
+            current.path.trimEnd('/') == "/seat/1/face-templates"
+    }
+
     fun isTrustedFrontendOrigin(
         originUrl: String?,
         config: DeviceConfig?
@@ -35,6 +48,14 @@ object WebViewAccessPolicy {
         val frontend = parseHttpUri(config.frontendUrl) ?: return false
         return sameOrigin(origin, frontend)
     }
+
+    fun mayOpenTemplatePhotoChooser(
+        currentPageUrl: String?,
+        config: DeviceConfig?,
+        maintenanceAuthorized: Boolean
+    ): Boolean =
+        maintenanceAuthorized &&
+            isHostFaceTemplatesPage(currentPageUrl, config)
 
     fun mayGrantMicrophone(
         originUrl: String?,

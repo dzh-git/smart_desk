@@ -89,22 +89,24 @@ describe("NativeBridge", () => {
 
   it("forwards the immediate verification status through the unified event", async () => {
     const nativeEvent = vi.fn<(event: Event) => void>();
-    window.addEventListener(SMARTDESK_NATIVE_EVENT, nativeEvent);
-    installRequiredMethods({
-      startFaceVerification: vi.fn(() =>
-        JSON.stringify(
-          envelope(
-            "identity_status",
-            { status: "VERIFYING" },
-            "verification-start-0001",
-          ),
+    const startFaceVerification = vi.fn(() =>
+      JSON.stringify(
+        envelope(
+          "identity_status",
+          { status: "VERIFYING" },
+          "verification-start-0001",
         ),
       ),
+    );
+    window.addEventListener(SMARTDESK_NATIVE_EVENT, nativeEvent);
+    installRequiredMethods({
+      startFaceVerification,
     });
 
-    await getNativeBridge().startFaceVerification();
+    await getNativeBridge().startFaceVerification("person-001");
 
     expect(nativeEvent).toHaveBeenCalledTimes(1);
+    expect(startFaceVerification).toHaveBeenCalledWith("person-001");
     window.removeEventListener(SMARTDESK_NATIVE_EVENT, nativeEvent);
   });
 
@@ -122,7 +124,7 @@ describe("NativeBridge", () => {
       ),
     });
 
-    await expect(getNativeBridge().startFaceVerification()).rejects.toThrow(
+    await expect(getNativeBridge().startFaceVerification("person-001")).rejects.toThrow(
       "FACE_TEMPLATE_NOT_FOUND: At least two people must be registered",
     );
     expect(nativeEvent).toHaveBeenCalledTimes(1);
@@ -185,6 +187,42 @@ describe("NativeBridge", () => {
       personIds: ["person_001"],
       count: 1,
     });
+  });
+
+  it("imports and removes a host-local face template", async () => {
+    const importFacePhotos = vi.fn(() =>
+      JSON.stringify(
+        envelope("face_photo_import_result", {
+          personId: "host-person",
+          selectedCount: 5,
+          acceptedCount: 5,
+          usedCount: 5,
+          saved: true,
+          message: "主持人模板已保存",
+          registeredPeople: ["host-person"],
+        }),
+      ),
+    );
+    const removeFaceTemplate = vi.fn(() =>
+      JSON.stringify(
+        envelope("identity_status", {
+          status: "IDLE",
+          message: "主持人模板已删除",
+        }),
+      ),
+    );
+    installRequiredMethods({ importFacePhotos, removeFaceTemplate });
+
+    const bridge = getNativeBridge();
+    await expect(
+      bridge.importLocalFaceTemplate("host-person", "[]"),
+    ).resolves.toMatchObject({ personId: "host-person", saved: true });
+    await expect(
+      bridge.removeLocalFaceTemplate("host-person"),
+    ).resolves.toBeUndefined();
+
+    expect(importFacePhotos).toHaveBeenCalledWith("host-person", "[]");
+    expect(removeFaceTemplate).toHaveBeenCalledWith("host-person");
   });
 
   it("suppresses duplicate native event IDs", () => {

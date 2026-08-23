@@ -75,4 +75,66 @@ class WebViewAccessPolicyTest {
             )
         )
     }
+
+    @Test
+    fun hostFaceTemplatePageRequiresExactSeatOneOriginAndPath() {
+        assertTrue(
+            WebViewAccessPolicy.isHostFaceTemplatesPage(
+                "https://meeting.example.test/seat/1/face-templates",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.isHostFaceTemplatesPage(
+                "https://evil.example.test/seat/1/face-templates",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.isHostFaceTemplatesPage(
+                "https://meeting.example.test/seat/1/face-templates/debug",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.isHostFaceTemplatesPage(
+                "https://meeting.example.test/seat/1/face-templates",
+                config.copy(seatId = 2)
+            )
+        )
+    }
+
+    @Test
+    fun photoChooserAllowsOnlyAuthorizedHostTemplatePage() {
+        assertTrue(
+            WebViewAccessPolicy.mayOpenTemplatePhotoChooser(
+                currentPageUrl =
+                    "https://meeting.example.test/seat/1/face-templates",
+                config = config,
+                maintenanceAuthorized = true
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.mayOpenTemplatePhotoChooser(
+                currentPageUrl = "file:///android_asset/diagnostic/index.html",
+                config = config,
+                maintenanceAuthorized = true
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.mayOpenTemplatePhotoChooser(
+                currentPageUrl =
+                    "https://meeting.example.test/seat/1/face-templates",
+                config = config,
+                maintenanceAuthorized = false
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.mayOpenTemplatePhotoChooser(
+                currentPageUrl = "https://evil.example.test/seat/1/face-templates",
+                config = config,
+                maintenanceAuthorized = true
+            )
+        )
+    }
 }

@@ -546,7 +546,15 @@ describe("Phase 4 — /seat/:seatId provides shared-screen entry", () => {
       if (url === "/api/votes/active") return okResponse(null);
       if (url === "/api/meetings/1/attendees") {
         return okResponse([
-          { id: 1, meeting_id: 1, name: "Alice", title: "CEO", seat_id: 1, checked_in: true },
+          {
+            id: 1,
+            meeting_id: 1,
+            person_id: 1,
+            name: "Alice",
+            title: "CEO",
+            assigned_seat_id: 1,
+            checked_in: true,
+          },
         ]);
       }
       if (url === "/api/meetings/1/agendas") return okResponse([]);

@@ -99,6 +99,21 @@ class TabletVacateRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class DebugAdmitRequest(BaseModel):
+    """Authenticated development-only admission by a bound tablet."""
+
+    device_id: str = Field(
+        ...,
+        min_length=3,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._-]+$",
+        alias="deviceId",
+    )
+    device_seat_id: int = Field(..., ge=1, le=9, alias="deviceSeatId")
+
+    model_config = {"populate_by_name": True}
+
+
 class SpeakerSeatResponse(BaseModel):
     """Speaker seat data returned to clients."""
     seat_id: int | None

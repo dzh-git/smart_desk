@@ -69,6 +69,30 @@ class TabletDeviceResponse(BaseModel):
         default=None,
         serialization_alias="lastError",
     )
+    face_template_sync_status: str | None = Field(
+        default=None,
+        serialization_alias="faceTemplateSyncStatus",
+    )
+    face_template_set_revision: int | None = Field(
+        default=None,
+        serialization_alias="faceTemplateSetRevision",
+    )
+    face_template_meeting_id: int | None = Field(
+        default=None,
+        serialization_alias="faceTemplateMeetingId",
+    )
+    face_template_sync_count: int | None = Field(
+        default=None,
+        serialization_alias="faceTemplateSyncCount",
+    )
+    face_template_sync_error: str | None = Field(
+        default=None,
+        serialization_alias="faceTemplateSyncError",
+    )
+    identity_mode: Literal["formal", "debug"] = Field(
+        default="formal",
+        serialization_alias="identityMode",
+    )
 
     model_config = {
         "from_attributes": True,

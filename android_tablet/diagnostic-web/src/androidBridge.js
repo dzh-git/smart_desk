@@ -59,9 +59,9 @@ export function startFaceEnrollment(personId) {
   );
 }
 
-export function startIdentityVerification() {
+export function startIdentityVerification(personId) {
   return parseBridgePayload(
-    requireAndroidBridge().startFaceVerification(),
+    requireAndroidBridge().startFaceVerification(personId),
   );
 }
 

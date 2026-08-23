@@ -2,6 +2,9 @@ import type {
   DeviceInfo,
   NativeBridge,
   RegisteredFaces,
+  CentralFaceTemplateResult,
+  FaceTemplateSyncResult,
+  LocalFaceTemplateImportResult,
 } from "./NativeBridge";
 import {
   dispatchNativeEvent,
@@ -19,8 +22,15 @@ interface SmartDeskNativeJavascriptInterface {
   cancelMaintenanceHold?(): void;
   startMicrophoneCapture?(): void;
   stopMicrophoneCapture?(): void;
-  startFaceVerification(): string | object | void;
+  startFaceVerification(personId: string): string | object | void;
   stopFaceVerification(): string | object | void;
+  importFacePhotos?(personId: string, photosJson: string): string | object;
+  removeFaceTemplate?(personId: string): string | object;
+  applyProvisionalThreshold?(value: number): string | object;
+  publishCentralFaceTemplate?(personId: string, photosJson: string): string | object;
+  syncFaceTemplates?(meetingId: number): string | object;
+  openLocalDiagnostics?(): void;
+  closeHostFaceTemplates?(): void;
 }
 
 declare global {
@@ -158,9 +168,9 @@ export class AndroidNativeBridge implements NativeBridge {
     bridge.stopMicrophoneCapture?.();
   }
 
-  async startFaceVerification(): Promise<void> {
+  async startFaceVerification(personId: string): Promise<void> {
     dispatchImmediateResult(
-      nativeInterface().startFaceVerification(),
+      nativeInterface().startFaceVerification(personId),
     );
   }
 
@@ -168,5 +178,79 @@ export class AndroidNativeBridge implements NativeBridge {
     dispatchImmediateResult(
       nativeInterface().stopFaceVerification(),
     );
+  }
+
+  async importLocalFaceTemplate(
+    personId: string,
+    photosJson: string,
+  ): Promise<LocalFaceTemplateImportResult> {
+    const bridge = nativeInterface();
+    if (typeof bridge.importFacePhotos !== "function") {
+      throw new Error("当前平板版本不支持主持人本机模板管理");
+    }
+    return parseEnvelope<LocalFaceTemplateImportResult>(
+      bridge.importFacePhotos(personId, photosJson),
+      "face_photo_import_result",
+    );
+  }
+
+  async removeLocalFaceTemplate(personId: string): Promise<void> {
+    const bridge = nativeInterface();
+    if (typeof bridge.removeFaceTemplate !== "function") {
+      throw new Error("当前平板版本不支持删除主持人本机模板");
+    }
+    dispatchImmediateResult(bridge.removeFaceTemplate(personId));
+  }
+
+  async applyProvisionalThreshold(value: number): Promise<NativeIdentityStatus> {
+    const bridge = nativeInterface();
+    if (typeof bridge.applyProvisionalThreshold !== "function") {
+      throw new Error("当前平板版本不支持主持人确认原型阈值");
+    }
+    return parseEnvelope<NativeIdentityStatus>(
+      bridge.applyProvisionalThreshold(value),
+      "identity_status",
+    );
+  }
+
+  async publishCentralFaceTemplate(
+    personId: string,
+    photosJson: string,
+  ): Promise<CentralFaceTemplateResult> {
+    const bridge = nativeInterface();
+    if (typeof bridge.publishCentralFaceTemplate !== "function") {
+      throw new Error("当前平板版本不支持集中人脸模板管理");
+    }
+    return parseEnvelope<CentralFaceTemplateResult>(
+      bridge.publishCentralFaceTemplate(personId, photosJson),
+      "central_face_template_result",
+    );
+  }
+
+  async syncFaceTemplates(meetingId: number): Promise<FaceTemplateSyncResult> {
+    const bridge = nativeInterface();
+    if (typeof bridge.syncFaceTemplates !== "function") {
+      throw new Error("当前平板版本不支持会议人脸模板同步");
+    }
+    return parseEnvelope<FaceTemplateSyncResult>(
+      bridge.syncFaceTemplates(meetingId),
+      "face_template_sync",
+    );
+  }
+
+  async openLocalDiagnostics(): Promise<void> {
+    const bridge = nativeInterface();
+    if (typeof bridge.openLocalDiagnostics !== "function") {
+      throw new Error("当前平板版本不支持本地诊断入口");
+    }
+    bridge.openLocalDiagnostics();
+  }
+
+  async closeHostFaceTemplates(): Promise<void> {
+    const bridge = nativeInterface();
+    if (typeof bridge.closeHostFaceTemplates !== "function") {
+      throw new Error("当前平板版本不支持关闭模板管理页");
+    }
+    bridge.closeHostFaceTemplates();
   }
 }

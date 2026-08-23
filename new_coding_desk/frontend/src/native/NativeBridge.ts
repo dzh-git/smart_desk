@@ -25,11 +25,45 @@ export interface DeviceInfo {
   microphoneReady?: boolean;
   nativeMicrophoneCaptureAvailable?: boolean;
   nativeLastError?: string | null;
+  identityMode?: "formal" | "debug";
 }
 
 export interface RegisteredFaces {
   personIds: string[];
   count: number;
+}
+
+export interface LocalFaceTemplateImportResult {
+  personId: string;
+  selectedCount: number;
+  acceptedCount: number;
+  usedCount: number;
+  saved: boolean;
+  message: string;
+  registeredPeople: string[];
+}
+
+export interface CentralFaceTemplateResult {
+  template: {
+    personId: string;
+    personName: string;
+    modelVersion: string;
+    modelHash: string;
+    pipelineVersion: number;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  evictedPersonId?: string | null;
+  evictedPersonName?: string | null;
+}
+
+export interface FaceTemplateSyncResult {
+  meetingId: number;
+  templateSetRevision: number;
+  templateCount: number;
+  expectedPersonId: string;
+  status: "SYNCED";
 }
 
 export interface NativeBridge {
@@ -43,8 +77,23 @@ export interface NativeBridge {
   supportsMicrophoneCapture(): boolean;
   startMicrophoneCapture(): Promise<void>;
   stopMicrophoneCapture(): Promise<void>;
-  startFaceVerification(): Promise<void>;
+  startFaceVerification(personId: string): Promise<void>;
   stopFaceVerification(): Promise<void>;
+  importLocalFaceTemplate(
+    personId: string,
+    photosJson: string,
+  ): Promise<LocalFaceTemplateImportResult>;
+  removeLocalFaceTemplate(personId: string): Promise<void>;
+  applyProvisionalThreshold(
+    value: number,
+  ): Promise<import("./nativeEvents").NativeIdentityStatus>;
+  publishCentralFaceTemplate(
+    personId: string,
+    photosJson: string,
+  ): Promise<CentralFaceTemplateResult>;
+  syncFaceTemplates(meetingId: number): Promise<FaceTemplateSyncResult>;
+  openLocalDiagnostics(): Promise<void>;
+  closeHostFaceTemplates(): Promise<void>;
 }
 
 export function getNativeBridge(): NativeBridge {

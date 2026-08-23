@@ -224,6 +224,31 @@ async def hardware_status(db: Session = Depends(get_db)):
                 "last_error": (
                     device.last_error if device is not None else None
                 ),
+                "face_template_meeting_id": (
+                    device.face_template_meeting_id
+                    if device is not None
+                    else None
+                ),
+                "face_template_set_revision": (
+                    device.face_template_set_revision
+                    if device is not None
+                    else None
+                ),
+                "face_template_sync_count": (
+                    device.face_template_sync_count
+                    if device is not None
+                    else None
+                ),
+                "face_template_sync_status": (
+                    device.face_template_sync_status
+                    if device is not None
+                    else None
+                ),
+                "face_template_sync_error": (
+                    device.face_template_sync_error
+                    if device is not None
+                    else None
+                ),
             }
         )
 

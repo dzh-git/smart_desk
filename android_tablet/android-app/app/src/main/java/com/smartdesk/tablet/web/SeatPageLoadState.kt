@@ -2,14 +2,15 @@ package com.smartdesk.tablet.web
 
 enum class SeatPageLoadStatus {
     IDLE,
+    WAITING_CONFIGURATION,
+    WAITING_NETWORK,
+    WAITING_BACKEND,
     CHECKING_BACKEND,
     VALIDATING_BINDING,
+    WAITING_BINDING,
     LOADING,
+    WAITING_FRONTEND,
     READY,
-    OFFLINE,
-    SERVER_ERROR,
-    BINDING_ERROR,
-    TIMED_OUT
 }
 
 /**
@@ -35,23 +36,31 @@ class SeatPageLoadState {
         status = SeatPageLoadStatus.READY
     }
 
-    fun offline() {
-        status = SeatPageLoadStatus.OFFLINE
+    fun waitingConfiguration() {
+        status = SeatPageLoadStatus.WAITING_CONFIGURATION
     }
 
-    fun serverError() {
-        status = SeatPageLoadStatus.SERVER_ERROR
+    fun waitingNetwork() {
+        status = SeatPageLoadStatus.WAITING_NETWORK
     }
 
-    fun bindingError() {
-        status = SeatPageLoadStatus.BINDING_ERROR
+    fun waitingBackend() {
+        status = SeatPageLoadStatus.WAITING_BACKEND
+    }
+
+    fun waitingBinding() {
+        status = SeatPageLoadStatus.WAITING_BINDING
+    }
+
+    fun waitingFrontend() {
+        status = SeatPageLoadStatus.WAITING_FRONTEND
     }
 
     fun timedOut(): Boolean {
         if (status != SeatPageLoadStatus.LOADING) {
             return false
         }
-        status = SeatPageLoadStatus.TIMED_OUT
+        status = SeatPageLoadStatus.WAITING_FRONTEND
         return true
     }
 

@@ -1,6 +1,7 @@
 package com.smartdesk.tablet.recognition
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class FaceMatcherTest {
@@ -18,6 +19,22 @@ class FaceMatcherTest {
         normalEmbedding = floatArrayOf(0f, 1f),
         fillLightEmbedding = floatArrayOf(1f, 0f)
     )
+
+    @Test
+    fun singleAssignedTemplateIsEnoughForVerification() {
+        val result = FaceMatcher.evaluate(
+            List(5) { floatArrayOf(1f, 0f) },
+            listOf(personA),
+            TemplateKind.NORMAL,
+            ThresholdStatus.PROVISIONAL,
+            0.8f
+        )
+
+        assertEquals("VERIFIED", result.status)
+        assertEquals("A", result.top1PersonId)
+        assertNull(result.top2PersonId)
+        assertNull(result.margin)
+    }
 
     @Test
     fun naturalAndFillLightUseOnlySameConditionTemplates() {

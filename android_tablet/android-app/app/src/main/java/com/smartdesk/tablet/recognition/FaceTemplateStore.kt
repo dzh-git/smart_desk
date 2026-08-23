@@ -67,6 +67,46 @@ class FaceTemplateStore(
     }
 
     @Synchronized
+    fun replaceManagedMeeting(
+        meetingId: Int,
+        revision: Int,
+        templates: List<PersonFaceTemplate>,
+        threshold: Float,
+        thresholdStatus: ThresholdStatus,
+        modelHash: String,
+        pipelineVersion: Int
+    ) {
+        require(templates.size == 1) {
+            "席位验证模板包必须只包含当前分配人员"
+        }
+        require(templates.map { it.personId }.distinct().size == templates.size) {
+            "会议模板人员编号不能重复"
+        }
+        require(modelHash == modelConfig.modelSha256) {
+            "中央模板模型与当前应用不兼容"
+        }
+        require(pipelineVersion == modelConfig.pipelineVersion) {
+            "中央模板处理流水线与当前应用不兼容"
+        }
+        templates.forEach(::requireCompatible)
+        saveAll(templates, clearManagedMeeting = false)
+        preferences.edit()
+            .putFloat(THRESHOLD_KEY, threshold)
+            .putString(THRESHOLD_STATUS_KEY, thresholdStatus.name)
+            .putString(THRESHOLD_MODEL_HASH_KEY, modelHash)
+            .putInt(THRESHOLD_PIPELINE_VERSION_KEY, pipelineVersion)
+            .putInt(MANAGED_MEETING_ID_KEY, meetingId)
+            .putInt(MANAGED_REVISION_KEY, revision)
+            .apply()
+    }
+
+    fun managedMeetingId(): Int =
+        preferences.getInt(MANAGED_MEETING_ID_KEY, -1)
+
+    fun managedRevision(): Int =
+        preferences.getInt(MANAGED_REVISION_KEY, -1)
+
+    @Synchronized
     fun remove(personId: String): Boolean {
         val current = loadAll()
         val updated = current.filterNot { it.personId == personId }
@@ -82,10 +122,8 @@ class FaceTemplateStore(
         secureStore.remove(TEMPLATES_KEY)
         preferences.edit()
             .remove(LEGACY_TEMPLATE_KEY)
-            .remove(THRESHOLD_KEY)
-            .remove(THRESHOLD_STATUS_KEY)
-            .remove(THRESHOLD_MODEL_HASH_KEY)
-            .remove(THRESHOLD_PIPELINE_VERSION_KEY)
+            .remove(MANAGED_MEETING_ID_KEY)
+            .remove(MANAGED_REVISION_KEY)
             .apply()
     }
 
@@ -124,9 +162,6 @@ class FaceTemplateStore(
 
     fun applyProvisionalThreshold(value: Float) {
         require(value in 0f..1f) { "原型阈值必须在0到1之间" }
-        require(loadAll().size >= 2) {
-            "至少注册2名人员后才能应用原型阈值"
-        }
         preferences.edit()
             .putFloat(THRESHOLD_KEY, value)
             .putString(
@@ -144,7 +179,10 @@ class FaceTemplateStore(
             .apply()
     }
 
-    private fun saveAll(templates: List<PersonFaceTemplate>) {
+    private fun saveAll(
+        templates: List<PersonFaceTemplate>,
+        clearManagedMeeting: Boolean = true
+    ) {
         val persons = JSONArray()
         templates.forEach { template ->
             persons.put(
@@ -175,13 +213,13 @@ class FaceTemplateStore(
             .put("pipelineVersion", modelConfig.pipelineVersion)
             .put("persons", persons)
         secureStore.putString(TEMPLATES_KEY, payload.toString())
-        preferences.edit()
-            .remove(LEGACY_TEMPLATE_KEY)
-            .remove(THRESHOLD_KEY)
-            .remove(THRESHOLD_STATUS_KEY)
-            .remove(THRESHOLD_MODEL_HASH_KEY)
-            .remove(THRESHOLD_PIPELINE_VERSION_KEY)
-            .apply()
+        preferences.edit().apply {
+            remove(LEGACY_TEMPLATE_KEY)
+            if (clearManagedMeeting) {
+                remove(MANAGED_MEETING_ID_KEY)
+                remove(MANAGED_REVISION_KEY)
+            }
+        }.apply()
     }
 
     private fun requireCompatible(template: PersonFaceTemplate) {
@@ -211,6 +249,8 @@ class FaceTemplateStore(
             "threshold_model_hash_v3"
         private const val THRESHOLD_PIPELINE_VERSION_KEY =
             "threshold_pipeline_version_v3"
+        private const val MANAGED_MEETING_ID_KEY = "managed_meeting_id_v1"
+        private const val MANAGED_REVISION_KEY = "managed_revision_v1"
     }
 }
 

@@ -55,13 +55,15 @@ class FaceRecognitionManager(
     }
 
     @Synchronized
-    fun startVerification(): IdentityStatus {
+    fun startVerification(requestedPersonId: String): IdentityStatus {
+        val normalizedId = requestedPersonId.trim()
+        require(normalizedId.isNotEmpty()) { "待验证人员编号不能为空" }
         val templates = templateStore.loadAll()
-        require(templates.size >= MIN_REGISTERED_FOR_VERIFICATION) {
-            "至少注册2名人员后才能执行Top1/Top2验证"
+        require(templates.any { it.personId == normalizedId }) {
+            "未找到当前席位人员的人脸模板：$normalizedId"
         }
         resetSession()
-        personId = null
+        personId = normalizedId
         mode = Mode.VERIFYING
         latestStatus = progressStatus(
             status = "VERIFYING",
@@ -171,6 +173,57 @@ class FaceRecognitionManager(
         emit(latestStatus)
         return result
     }
+
+    @Synchronized
+    fun generateCentralTemplate(
+        requestedPersonId: String,
+        photos: List<FacePhotoInput>
+    ): FacePhotoImporter.Generated {
+        require(mode == Mode.IDLE) {
+            "采集或验证过程中不能导入照片"
+        }
+        val normalizedId = requestedPersonId.trim()
+        require(normalizedId.isNotEmpty()) { "人员编号不能为空" }
+        require(normalizedId.length <= MAX_PERSON_ID_LENGTH) {
+            "人员编号不能超过${MAX_PERSON_ID_LENGTH}个字符"
+        }
+        return FacePhotoImporter(engine, templateStore).generate(
+            normalizedId,
+            photos
+        )
+    }
+
+    @Synchronized
+    fun installManagedTemplates(
+        meetingId: Int,
+        revision: Int,
+        templates: List<PersonFaceTemplate>,
+        threshold: Float,
+        thresholdStatus: ThresholdStatus,
+        modelHash: String,
+        pipelineVersion: Int
+    ) {
+        require(mode == Mode.IDLE) {
+            "人脸识别运行时不能替换会议模板"
+        }
+        templateStore.replaceManagedMeeting(
+            meetingId,
+            revision,
+            templates,
+            threshold,
+            thresholdStatus,
+            modelHash,
+            pipelineVersion
+        )
+        latestStatus = initialStatus().copy(message = "会议人脸模板同步完成")
+        emit(latestStatus)
+    }
+
+    fun modelConfig(): FaceModelConfig = engine.config
+
+    fun currentThreshold(): Float? = templateStore.threshold()
+
+    fun currentThresholdStatus(): ThresholdStatus = templateStore.thresholdStatus()
 
     @Synchronized
     fun currentStatus(): IdentityStatus = latestStatus
@@ -401,7 +454,9 @@ class FaceRecognitionManager(
     private fun completeVerificationStage(processingTimeMs: Long) {
         val result = FaceMatcher.evaluate(
             frames = stageEmbeddings.toList(),
-            templates = templateStore.loadAll(),
+            templates = templateStore.loadAll().filter {
+                it.personId == personId
+            },
             templateKind = stage,
             thresholdStatus = templateStore.thresholdStatus(),
             threshold = templateStore.threshold()
@@ -674,7 +729,6 @@ class FaceRecognitionManager(
     private companion object {
         const val TAG = "SmartDeskTablet"
         const val MAX_PERSON_ID_LENGTH = 64
-        const val MIN_REGISTERED_FOR_VERIFICATION = 2
         const val TOTAL_ENROLLMENT_FRAMES =
             EmbeddingAggregator.REQUIRED_FRAMES * 2
     }

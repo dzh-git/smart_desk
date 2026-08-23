@@ -24,6 +24,7 @@ import type {
   Person,
   IdentityCheckInPayload,
   TabletVacatePayload,
+  DebugAdmitPayload,
   TabletDeviceStatus,
   TabletHeartbeatPayload,
   TranslationHistoryResponse,
@@ -35,6 +36,11 @@ import type {
 /** Returns the active meeting, or `null` when none exists. */
 export function fetchActiveMeeting(): Promise<Meeting | null> {
   return apiGet<Meeting | null>("/meetings/active");
+}
+
+/** Returns all meetings, newest first as provided by the backend. */
+export function fetchMeetings(): Promise<Meeting[]> {
+  return apiGet<Meeting[]>("/meetings");
 }
 
 /** Create a pending meeting. */
@@ -291,6 +297,20 @@ export function tabletVacateSeat(
   deviceToken: string,
 ): Promise<SeatState> {
   return apiRequest<SeatState>(`/seats/${seatId}/tablet-vacate`, {
+    method: "POST",
+    headers: {
+      "X-SmartDesk-Device-Token": deviceToken,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function debugAdmitSeat(
+  seatId: number,
+  payload: DebugAdmitPayload,
+  deviceToken: string,
+): Promise<SeatState> {
+  return apiRequest<SeatState>(`/seats/${seatId}/debug-admit`, {
     method: "POST",
     headers: {
       "X-SmartDesk-Device-Token": deviceToken,

@@ -10,6 +10,7 @@ import {
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { SeatTablet } from "./components/SeatTablet";
+import { FaceTemplateManager } from "./components/FaceTemplateManager";
 import { DisplayView } from "./components/DisplayView";
 import { ScreenView } from "./components/ScreenView";
 import { isDemoControlsEnabled } from "./components/shared";
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/" element={<LegacyRootRedirect />} />
         <Route path="/admin" element={<AdminRoute />} />
         <Route path="/seat/:seatId" element={<SeatRoute />} />
+        <Route path="/seat/1/face-templates" element={<FaceTemplateManager />} />
         <Route path="/display" element={<DisplayView />} />
         <Route path="/screen" element={<ScreenView />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />

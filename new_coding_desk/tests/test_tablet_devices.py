@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from backend.main import app
+from backend.api import tablet_devices as tablet_devices_api
 from backend.exceptions import ConflictError
 from backend.migrations import ensure_tablet_device_status_columns
 from backend.models.tablet_device import TabletDevice
@@ -256,6 +257,20 @@ def test_validate_binding_checks_token_seat_and_version(monkeypatch):
     assert old_version.json()["error_code"] == "DEVICE_APP_VERSION_UNSUPPORTED"
 
 
+def test_validate_binding_returns_backend_identity_mode(monkeypatch):
+    _provision_direct()
+    monkeypatch.setattr(tablet_devices_api, "identity_mode", "debug")
+
+    response = client.post(
+        "/api/tablet-devices/tablet-seat-01/validate",
+        headers={"X-SmartDesk-Device-Token": DEVICE_TOKEN},
+        json={"seatId": 1, "appVersion": "0.9.0"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["identityMode"] == "debug"
+
+
 def test_validate_binding_rejects_unknown_and_disabled_devices():
     unknown = client.post(
         "/api/tablet-devices/tablet-unknown/validate",
@@ -307,7 +322,13 @@ def test_authenticated_heartbeat_persists_operational_status():
         "meetingWebsocketStatus": "CONNECTED",
         "diagnosticStatus": "READY",
         "lastError": None,
-    }
+        "faceTemplateSyncStatus": None,
+        "faceTemplateSetRevision": None,
+        "faceTemplateMeetingId": None,
+            "faceTemplateSyncCount": None,
+            "faceTemplateSyncError": None,
+            "identityMode": "formal",
+        }
     db = TestSessionLocal()
     try:
         stored = db.get(TabletDevice, "tablet-seat-01")

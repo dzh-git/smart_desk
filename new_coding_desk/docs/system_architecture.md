@@ -144,7 +144,7 @@ business logic. Its production flow is:
 ```text
 persisted seat/device/server/frontend configuration
   -> WebView /seat/{seatId}
-  -> SmartDeskNative.startFaceVerification()
+  -> SmartDeskNative.startFaceVerification(personId)
   -> CameraX + ML Kit + alignment + MobileFaceNet
   -> smartdesk-native-event identity_status
   -> frontend policy gate

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 
 from backend.database import Base
 
@@ -28,6 +28,13 @@ class TabletDevice(Base):
     meeting_websocket_status = Column(String(32), nullable=True)
     diagnostic_status = Column(String(32), nullable=True)
     last_error = Column(String(300), nullable=True)
+    face_transport_public_key = Column(Text, nullable=True)
+    face_transport_key_fingerprint = Column(String(64), nullable=True)
+    face_template_sync_status = Column(String(32), nullable=True)
+    face_template_set_revision = Column(Integer, nullable=True)
+    face_template_meeting_id = Column(Integer, nullable=True)
+    face_template_sync_count = Column(Integer, nullable=True)
+    face_template_sync_error = Column(String(300), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(
         DateTime(timezone=True),

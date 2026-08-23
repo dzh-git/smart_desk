@@ -7,11 +7,11 @@ import org.junit.Test
 
 class SeatPageLoadStateTest {
     @Test
-    fun representsOfflineAndRetryTransitions() {
+    fun representsNetworkWaitAndRetryTransitions() {
         val state = SeatPageLoadState()
         state.beginHealthCheck()
-        state.offline()
-        assertEquals(SeatPageLoadStatus.OFFLINE, state.status)
+        state.waitingNetwork()
+        assertEquals(SeatPageLoadStatus.WAITING_NETWORK, state.status)
 
         state.retry()
         assertEquals(
@@ -29,7 +29,7 @@ class SeatPageLoadStateTest {
         assertFalse(state.timedOut())
         state.beginPageLoad()
         assertTrue(state.timedOut())
-        assertEquals(SeatPageLoadStatus.TIMED_OUT, state.status)
+        assertEquals(SeatPageLoadStatus.WAITING_FRONTEND, state.status)
         assertFalse(state.timedOut())
     }
 
@@ -42,27 +42,27 @@ class SeatPageLoadStateTest {
             SeatPageLoadStatus.VALIDATING_BINDING,
             state.status
         )
-        state.bindingError()
-        assertEquals(SeatPageLoadStatus.BINDING_ERROR, state.status)
+        state.waitingBinding()
+        assertEquals(SeatPageLoadStatus.WAITING_BINDING, state.status)
     }
 
     @Test
     fun representsBackendAndPageFailureBranches() {
         val state = SeatPageLoadState()
         state.beginHealthCheck()
-        state.serverError()
-        assertEquals(SeatPageLoadStatus.SERVER_ERROR, state.status)
+        state.waitingBackend()
+        assertEquals(SeatPageLoadStatus.WAITING_BACKEND, state.status)
 
         state.retry()
         state.beginBindingValidation()
-        state.offline()
-        assertEquals(SeatPageLoadStatus.OFFLINE, state.status)
+        state.waitingNetwork()
+        assertEquals(SeatPageLoadStatus.WAITING_NETWORK, state.status)
 
         state.retry()
         state.beginBindingValidation()
         state.beginPageLoad()
         assertTrue(state.timedOut())
-        assertEquals(SeatPageLoadStatus.TIMED_OUT, state.status)
+        assertEquals(SeatPageLoadStatus.WAITING_FRONTEND, state.status)
     }
 
     @Test

@@ -5,7 +5,7 @@
 - WebView 容器与席位设备配置；
 - CameraX、ML Kit、人脸对齐和 MobileFaceNet 本地推理；
 - `window.SmartDeskNative` JavaScript Bridge；
-- 首次配置、离线恢复、人脸注册和阈值标定诊断。
+- 首次配置、离线恢复和通用设备能力诊断。
 
 会议业务界面仍只有一套，位于 `../new_coding_desk/frontend`。正式运行时
 Android App 加载：
@@ -14,15 +14,15 @@ Android App 加载：
 {frontendBaseUrl}/seat/{seatId}
 ```
 
-`diagnostic-web` 不是第二套会议界面。它只在首次配置、中央页面不可用或管理员
-诊断时作为本地页面使用。
+`diagnostic-web` 不是第二套会议界面。它只在首次配置或管理员显式进入诊断时作为
+本地页面使用；网络或中央页面不可用时保持连接等待并自动重试。
 
 ## 目录
 
 ```text
 android_tablet/
 ├─ android-app/       # APK 与 Android 原生能力
-├─ diagnostic-web/    # 本地配置、注册、标定和诊断页面
+├─ diagnostic-web/    # 本地配置、连接与原生能力诊断页面
 ├─ model-tools/       # 模型转换与静态验证工具
 ├─ scripts/           # 真机 WebView/摄像头/身份验证 smoke 脚本
 ├─ docs/              # 原型标定与验证基线
@@ -63,7 +63,7 @@ window.SmartDeskNative.beginMaintenanceHold()
 window.SmartDeskNative.cancelMaintenanceHold()
 window.SmartDeskNative.getIdentityStatus()
 window.SmartDeskNative.getRegisteredFaces()
-window.SmartDeskNative.startFaceVerification()
+window.SmartDeskNative.startFaceVerification("assigned-person-id")
 window.SmartDeskNative.stopFaceVerification()
 ```
 
@@ -96,6 +96,15 @@ window.dispatchEvent(
 Android 只报告本地识别状态，不访问会议数据库，也不决定能否签到。75 次现场标定
 完成前应保持 `CALIBRATION_PENDING`；即使应用 `PROVISIONAL` 阈值，也只作为
 内部原型结果。
+
+人脸照片注册、本机模板管理、中央模板发布、Seat 1 主持人与 Seat 2–9 分配统一在
+已通过维护 PIN 的 Seat 1 `/seat/1/face-templates` 页面完成。当前原型阈值输入
+默认显示 `0.55`；首次使用或模型哈希/处理流水线变化后必须在该页面重新确认。
+阈值只绑定当前模型和处理流水线，不依赖本机或中央模板数量，本机模板变更也不会
+重置阈值。诊断页不再提供人脸模板和阈值写操作。
+
+正式席位页按当前席位已分配的 `Person.id` 执行 1:1 验证；一个人员模板即可
+启动，仍须满足相似度阈值与至少 4/5 帧通过。Seat 2–9 每场只同步本席人员模板。
 
 正式后端默认拒绝 `PROTOTYPE` 身份签到。仅在开发联调且已接受现场标定后，才可
 临时设置：
