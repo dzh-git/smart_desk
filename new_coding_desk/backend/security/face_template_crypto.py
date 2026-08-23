@@ -12,6 +12,17 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 AAD = b"smartdesk-face-template-v1"
+
+
+def _transport_oaep_padding() -> padding.OAEP:
+    """Match Android Keystore's RSA-OAEP SHA-256/MGF1-SHA1 contract."""
+    return padding.OAEP(
+        mgf=padding.MGF1(algorithm=hashes.SHA1()),
+        algorithm=hashes.SHA256(),
+        label=None,
+    )
+
+
 AT_REST_KEY_FILE = "face-template-master.key"
 SERVER_PRIVATE_KEY_FILE = "face-template-server-private.pem"
 
@@ -105,11 +116,7 @@ class FaceTemplateCrypto:
         private_key = self._load_or_create_server_private_key()
         aes_key = private_key.decrypt(
             _unb64(envelope["encryptedKey"]),
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None,
-            ),
+            _transport_oaep_padding(),
         )
         plaintext = AESGCM(aes_key).decrypt(
             _unb64(envelope["nonce"]),
@@ -135,11 +142,7 @@ class FaceTemplateCrypto:
         )
         encrypted_key = public_key.encrypt(
             aes_key,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None,
-            ),
+            _transport_oaep_padding(),
         )
         return {
             "algorithm": "RSA-OAEP-256+A256GCM",

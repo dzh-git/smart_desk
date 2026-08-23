@@ -116,7 +116,8 @@ ESP32 正式会话必须先完成 v1 `hello`、Bearer 设备认证、席位绑�
 - 平板配置和本场模板使用 Android Keystore 密钥加密，并排除备份/设备迁移。
 - 中央模板使用 `.smartdesk-runtime/face-template-master.key` 进行 AES-GCM 加密；
   备份数据库时必须同时备份该密钥，数据库已有模板而密钥缺失时失败关闭。
-- 模板传输使用每台平板独立 RSA-OAEP 包装 AES-GCM 会话密钥；热点 HTTP 上不
+- 模板传输使用每台平板独立 RSA-OAEP（主摘要 SHA-256、MGF1 摘要 SHA-1）包装
+  AES-GCM 会话密钥；热点 HTTP 上不
   传输明文 embedding，服务器从不接收原始照片。
 - WebView 仅允许配置前端同源；设备凭据只给路径严格匹配的正式席位页。
 - Release 关闭 WebView 调试；请求有限流、时效、幂等、版本和结构化脱敏日志。

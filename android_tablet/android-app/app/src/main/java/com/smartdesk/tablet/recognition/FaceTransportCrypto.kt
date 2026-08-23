@@ -93,16 +93,7 @@ class FaceTransportCrypto {
 
     private fun rsaCipher(mode: Int, key: java.security.Key): Cipher =
         Cipher.getInstance("RSA/ECB/OAEPPadding").apply {
-            init(
-                mode,
-                key,
-                OAEPParameterSpec(
-                    "SHA-256",
-                    "MGF1",
-                    MGF1ParameterSpec.SHA256,
-                    PSource.PSpecified.DEFAULT
-                )
-            )
+            init(mode, key, faceTransportOaepSpec())
         }
 
     private fun encode(value: ByteArray): String =
@@ -116,3 +107,17 @@ class FaceTransportCrypto {
         val AAD = "smartdesk-face-template-v1".toByteArray(Charsets.UTF_8)
     }
 }
+
+/**
+ * Android Keystore authorizes SHA-1 as the default MGF1 digest when an RSA-OAEP
+ * key is created without API 35's setMgf1Digests(). Keep this transport contract
+ * explicit and aligned with the backend while retaining SHA-256 as OAEP's main
+ * digest. Existing device keys can then be reused safely after an app update.
+ */
+internal fun faceTransportOaepSpec(): OAEPParameterSpec =
+    OAEPParameterSpec(
+        "SHA-256",
+        "MGF1",
+        MGF1ParameterSpec.SHA1,
+        PSource.PSpecified.DEFAULT
+    )

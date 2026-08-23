@@ -56,7 +56,7 @@ def _upload_envelope(crypto: FaceTemplateCrypto, payload: dict) -> dict[str, str
     encrypted_key = public_key.encrypt(
         key,
         padding.OAEP(
-            mgf=padding.MGF1(hashes.SHA256()),
+            mgf=padding.MGF1(hashes.SHA1()),
             algorithm=hashes.SHA256(),
             label=None,
         ),
@@ -148,7 +148,7 @@ def test_participant_bundle_is_device_encrypted_and_contains_only_assigned_perso
     aes_key = private_key.decrypt(
         base64.b64decode(envelope["encryptedKey"]),
         padding.OAEP(
-            mgf=padding.MGF1(hashes.SHA256()),
+            mgf=padding.MGF1(hashes.SHA1()),
             algorithm=hashes.SHA256(),
             label=None,
         ),
