@@ -2000,8 +2000,8 @@
     "semantic_hash": ""
   },
   "docs/integration/ARCHITECTURE.md": {
-    "mtime": 1787450487.6086192,
-    "ast_hash": "b9ab9ebafe2f0b69c07605a6ebaa64f5",
+    "mtime": 1787476123.4378412,
+    "ast_hash": "4fabe997d459f23fcee0f7084b6f8b9f",
     "semantic_hash": ""
   },
   "docs/integration/ESP32_PROTOCOL.md": {
@@ -2010,13 +2010,13 @@
     "semantic_hash": ""
   },
   "docs/integration/HUMAN_VALIDATION_REQUIRED.md": {
-    "mtime": 1787394764.6813781,
-    "ast_hash": "986e3125f7aa7ed8a9bb063b32b23d87",
+    "mtime": 1787478966.8191404,
+    "ast_hash": "5a0f8984beae0cf2377f57b299174e92",
     "semantic_hash": ""
   },
   "docs/integration/IDENTITY_CHECKIN_CONTRACT.md": {
-    "mtime": 1787467575.7275624,
-    "ast_hash": "e8629acb7e6198c8acad0d9dd8ab6596",
+    "mtime": 1787476123.1692505,
+    "ast_hash": "55778933c5edeeb43dffafea4cc94147",
     "semantic_hash": ""
   },
   "docs/integration/NINE_SEAT_DEPLOYMENT.md": {
@@ -2470,8 +2470,8 @@
     "semantic_hash": ""
   },
   "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FaceTransportCrypto.kt": {
-    "mtime": 1787394628.706034,
-    "ast_hash": "8575cadd48477d13c40a76fa39f6b6ef",
+    "mtime": 1787476122.1772678,
+    "ast_hash": "7bb9fb382b8f03a87ac39bf63104e916",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/face_templates.py": {
@@ -2495,8 +2495,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/backend/security/face_template_crypto.py": {
-    "mtime": 1787394628.1770625,
-    "ast_hash": "f7faa965247b80fde39d751e59eb0b43",
+    "mtime": 1787476181.6960258,
+    "ast_hash": "fd46d7adf44725bd121c840f84982b6b",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/face_template_service.py": {
@@ -2520,8 +2520,8 @@
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_face_template_sync.py": {
-    "mtime": 1787450243.5051646,
-    "ast_hash": "01b7b67fa7188ef4a7ee8ab59a80618f",
+    "mtime": 1787476122.921193,
+    "ast_hash": "664e2512c70599b346f5aa5b83e0b498",
     "semantic_hash": ""
   },
   "android_tablet/diagnostic-web/src/connectionWorkflow.js": {
@@ -2562,6 +2562,11 @@
   "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/ImmersiveNavigationContractTest.kt": {
     "mtime": 1787472127.5395586,
     "ast_hash": "0fd783db4428e24793d71c0c84ba9f01",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/FaceTransportCryptoContractTest.kt": {
+    "mtime": 1787476122.4168217,
+    "ast_hash": "86b9d7cb52947c3f5dd8d6b3eb13564a",
     "semantic_hash": ""
   }
 }

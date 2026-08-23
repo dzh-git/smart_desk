@@ -495,5 +495,9 @@
   "493": "_real_driver",
   "494": "test_controller_no_hand_gesture_frame",
   "495": "SmartDeskLighting::modeFromName",
-  "498": "globals"
+  "496": "人脸模型许可证发布门禁",
+  "497": "@eslint/js",
+  "498": "globals",
+  "499": ".cancel",
+  "500": ".reset"
 }
