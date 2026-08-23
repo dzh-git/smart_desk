@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import {
   Loader2,
   AlertCircle,
@@ -25,6 +25,7 @@ import { ServicePanel } from "./ServicePanel";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { MeetingResultPanel } from "./MeetingResultPanel";
 import { HostDisplayControl } from "./HostDisplayControl";
+import type { HostTabletDisplayAccess } from "./HostDisplayControl";
 import {
   SectionCard,
   ActionButton,
@@ -67,10 +68,16 @@ import {
 } from "../utils/uiState";
 
 interface AdminDashboardProps {
-  onSwitchToSeat: (seatId: number) => void;
+  onSwitchToSeat?: (seatId: number) => void;
+  hostTabletAccess?: HostTabletDisplayAccess;
+  hostSeatCheckIn?: ReactNode;
 }
 
-export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
+export function AdminDashboard({
+  onSwitchToSeat,
+  hostTabletAccess,
+  hostSeatCheckIn,
+}: AdminDashboardProps) {
   const {
     loading,
     error,
@@ -570,7 +577,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           title=""
           meetingStatus="pending"
           connection={connection}
-          onModeSwitch={isDemoControlsEnabled() ? () => onSwitchToSeat(previewSeat) : undefined}
+          onModeSwitch={isDemoControlsEnabled() && onSwitchToSeat ? () => onSwitchToSeat(previewSeat) : undefined}
           previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
         />
         <div className="flex-1 flex items-center justify-center">
@@ -593,7 +600,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           title=""
           meetingStatus="pending"
           connection={connection}
-          onModeSwitch={isDemoControlsEnabled() ? () => onSwitchToSeat(previewSeat) : undefined}
+          onModeSwitch={isDemoControlsEnabled() && onSwitchToSeat ? () => onSwitchToSeat(previewSeat) : undefined}
           previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
         />
         <div className="flex-1 flex items-center justify-center">
@@ -627,7 +634,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
           title=""
           meetingStatus="pending"
           connection={connection}
-          onModeSwitch={isDemoControlsEnabled() ? () => onSwitchToSeat(previewSeat) : undefined}
+          onModeSwitch={isDemoControlsEnabled() && onSwitchToSeat ? () => onSwitchToSeat(previewSeat) : undefined}
           previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
         />
         <div className="flex-1 flex items-center justify-center p-6">
@@ -744,7 +751,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         title={meeting?.title ?? ""}
         meetingStatus={meeting?.status ?? "pending"}
         connection={connection}
-        onModeSwitch={isDemoControlsEnabled() ? () => onSwitchToSeat(previewSeat) : undefined}
+        onModeSwitch={isDemoControlsEnabled() && onSwitchToSeat ? () => onSwitchToSeat(previewSeat) : undefined}
         previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
         checkedInCount={checkedIn}
         totalSeats={seats.length}
@@ -756,7 +763,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
       />
 
       {/* Seat preview selector — only visible in demo mode */}
-      {isDemoControlsEnabled() && (
+      {isDemoControlsEnabled() && onSwitchToSeat && (
         <div className="bg-techSurface border-t border-techBorder px-4 sm:px-6 py-2 flex flex-wrap items-center gap-3">
           <span className="shrink-0 text-xs text-techMuted font-medium">
             预览座位 / Preview seat:
@@ -776,13 +783,13 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
               </button>
             ))}
           </div>
-          <ActionButton
+          {onSwitchToSeat && <ActionButton
             variant="secondary"
             size="sm"
             onClick={() => onSwitchToSeat(previewSeat)}
           >
             打开席位平板页面 / Open Seat Tablet View
-          </ActionButton>
+          </ActionButton>}
         </div>
       )}
 
@@ -968,7 +975,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
         <div className="grid grid-cols-12 gap-6">
           {/* Conference table — only in overview workspace for active meetings */}
           {!isEndedMeeting && workspace === "overview" && (
-            <div className="col-span-12 xl:col-span-8">
+            <div className={hostTabletAccess ? "col-span-12" : "col-span-12 xl:col-span-8"}>
               <div className="bg-techCard border border-techBorder rounded-lg shadow-card-glow p-6">
                 <h3 className="text-xs font-semibold uppercase tracking-widest text-techMuted mb-5">
                   会议桌总览 / Conference Room — Seat Overview
@@ -1073,8 +1080,18 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
             </div>
           )}
 
-          {/* Right column */}
-          <div className={`col-span-12 flex flex-col gap-6 ${isEndedMeeting || workspace !== "overview" ? '' : 'xl:col-span-4'}`}>
+          {/* Supporting panels. The host tablet gives these a full-width row below the table. */}
+          <div className={`col-span-12 ${
+            !isEndedMeeting && workspace === "overview" && hostTabletAccess
+              ? "grid grid-cols-1 items-start gap-6 xl:grid-cols-2"
+              : `flex flex-col gap-6 ${isEndedMeeting || workspace !== "overview" ? "" : "xl:col-span-4"}`
+          }`}>
+            {workspace === "overview" && !isEndedMeeting && hostSeatCheckIn && (
+              <div className="xl:col-span-2" data-testid="host-checkin-layout-slot">
+                {hostSeatCheckIn}
+              </div>
+            )}
+
             {/* Attendees — visible in overview workspace or ended meetings */}
             {(isEndedMeeting || workspace === "overview") && (
               <SectionCard
@@ -1089,7 +1106,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
                 <div className="space-y-3">
                   {canManageAttendees(meetingStatus) && (
                     <>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                      <div className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${hostTabletAccess ? "" : "xl:grid-cols-1"}`}>
                         <input
                           type="text"
                           value={attendeeName}
@@ -1152,7 +1169,7 @@ export function AdminDashboard({ onSwitchToSeat }: AdminDashboardProps) {
 
             {/* Host Display Control — only in overview for active meetings */}
             {workspace === "overview" && !isEndedMeeting && (
-              <HostDisplayControl />
+              <HostDisplayControl tabletAccess={hostTabletAccess} />
             )}
 
             {/* AgendaPanel — visible in agenda_vote workspace or ended meetings */}

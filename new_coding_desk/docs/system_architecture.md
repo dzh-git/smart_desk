@@ -50,7 +50,7 @@ Current routers:
 - `translations.py`
 - `speech.py`
 - `dev.py` for demo-only seat controls
-- `host_display.py` for read-only display status aggregation (Display Agent + MediaMTX)
+- `host_display.py` for display status aggregation plus the authenticated Seat 1 fixed-target activation relay
 
 ### Service Layer
 
@@ -173,7 +173,9 @@ React frontend. They are described normatively in `docs/HOST_DISPLAY_CONTRACT.md
   loopback `127.0.0.1:8766`. It performs local Win32/COM application switching
   (PowerPoint/SolidWorks/SmartDesk) via `pywin32` + `psutil`. It exposes
   `GET /status`, `POST /activate`, and `GET /health`. The backend never calls
-  Win32 and never reaches this agent except over loopback `GET /status`.
+  Win32; it reaches this agent only over validated loopback HTTP for status and
+  for the authenticated Seat 1 activation relay. Desktop `/admin` still calls
+  the loopback Agent directly.
 - `host_services/screen_stream/`: a supervisor that starts MediaMTX and FFmpeg
   (`ddagrab` Desktop Duplication capture + H.264 encoding). FFmpeg publishes
   RTSP on `127.0.0.1:8554`; MediaMTX distributes via WebRTC on `:8889` (HTTP)

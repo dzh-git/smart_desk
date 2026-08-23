@@ -102,6 +102,13 @@ export interface DebugAdmitPayload {
   deviceSeatId: number;
 }
 
+export type HostDisplayApp = "powerpoint" | "solidworks" | "smartdesk";
+
+export interface HostDisplayActivateResult {
+  app: HostDisplayApp;
+  activated: boolean;
+}
+
 export interface TabletHeartbeatPayload {
   seatId: number;
   appVersion: string;

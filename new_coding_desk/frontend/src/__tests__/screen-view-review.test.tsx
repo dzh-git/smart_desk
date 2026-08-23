@@ -523,7 +523,7 @@ describe("Phase 4 — /seat/:seatId provides shared-screen entry", () => {
   it("/seat/:seatId shows a '共享画面' entry that navigates to /screen", async () => {
     // Target: SeatTablet has a link/button with data-testid="seat-screen-entry"
     // that navigates to /screen when clicked.
-    window.history.replaceState({}, "", "/seat/1");
+    window.history.replaceState({}, "", "/seat/2");
 
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/active") {
@@ -536,8 +536,8 @@ describe("Phase 4 — /seat/:seatId provides shared-screen entry", () => {
         return okResponse(
           Array.from({ length: 10 }, (_, i) => ({
             seat_id: i + 1,
-            status: i === 0 ? ("checked_in" as const) : ("vacant" as const),
-            attendee_id: i === 0 ? 1 : null,
+            status: i === 1 ? ("checked_in" as const) : ("vacant" as const),
+            attendee_id: i === 1 ? 1 : null,
             updated_at: "2026-01-01T00:00:00Z",
           })),
         );
@@ -552,7 +552,8 @@ describe("Phase 4 — /seat/:seatId provides shared-screen entry", () => {
             person_id: 1,
             name: "Alice",
             title: "CEO",
-            assigned_seat_id: 1,
+            assigned_seat_id: 2,
+            seat_id: 2,
             checked_in: true,
           },
         ]);

@@ -16,6 +16,9 @@ data class DeviceConfig(
 
     fun seatPageUrl(): String = "$frontendUrl/seat/$seatId"
 
+    fun operationalPageUrl(): String =
+        if (seatId == 1) "$frontendUrl/host" else seatPageUrl()
+
     fun centralHost(): String {
         val uri = URI(serverUrl)
         return "${uri.scheme}://${uri.host}"

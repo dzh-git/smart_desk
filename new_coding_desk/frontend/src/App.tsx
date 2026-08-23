@@ -11,6 +11,7 @@ import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { SeatTablet } from "./components/SeatTablet";
 import { FaceTemplateManager } from "./components/FaceTemplateManager";
+import { HostTabletConsole } from "./components/HostTabletConsole";
 import { DisplayView } from "./components/DisplayView";
 import { ScreenView } from "./components/ScreenView";
 import { isDemoControlsEnabled } from "./components/shared";
@@ -21,6 +22,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LegacyRootRedirect />} />
         <Route path="/admin" element={<AdminRoute />} />
+        <Route path="/host" element={<HostTabletConsole />} />
         <Route path="/seat/:seatId" element={<SeatRoute />} />
         <Route path="/seat/1/face-templates" element={<FaceTemplateManager />} />
         <Route path="/display" element={<DisplayView />} />
@@ -63,6 +65,10 @@ function SeatRoute() {
     return <InvalidSeatSelection message={parsed.error} />;
   }
 
+  if (parsed.seatId === 1) {
+    return <Navigate to="/host" replace />;
+  }
+
   return (
     <SeatTablet
       seatId={parsed.seatId}
@@ -81,10 +87,10 @@ function parseSeatId(
   raw: string | undefined,
 ): { seatId: number; error: null } | { seatId: null; error: string } {
   const num = Number(raw);
-  if (!raw || !Number.isInteger(num) || num < 1 || num > 10) {
+  if (!raw || !Number.isInteger(num) || num < 1 || num > 9) {
     return {
       seatId: null,
-      error: `Invalid seat number: "${raw ?? ""}". Seat must be an integer between 1 and 10.`,
+      error: `Invalid seat number: "${raw ?? ""}". Seat must be an integer between 1 and 9.`,
     };
   }
   return { seatId: num, error: null };

@@ -5,13 +5,13 @@
  *  - Reads display status via fetchHostDisplayStatus() (raw JSON, no envelope).
  *  - Probes the loopback Agent at http://127.0.0.1:8766/status to decide
  *    whether the current browser runs on the central host.
- *  - Sends activation requests DIRECTLY to http://127.0.0.1:8766/activate
- *    — NEVER to /api/host-display/activate.
+ *  - Desktop browsers send activation requests directly to loopback.
+ *  - The authenticated Seat 1 tablet uses the backend's fixed-target relay.
  *  - Does NOT use window.location.hostname for identity checks.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, AlertCircle, XCircle } from "lucide-react";
-import { fetchHostDisplayStatus } from "../api/resources";
+import { activateHostDisplayFromTablet, fetchHostDisplayStatus } from "../api/resources";
 import type { HostDisplayStatus } from "../api/types";
 import { DualLabel, SectionCard } from "./shared";
 
@@ -84,7 +84,16 @@ function formatActiveApp(app: string | null): BilingualCopy {
     : { cn: "无", en: "NONE" };
 }
 
-export function HostDisplayControl() {
+export interface HostTabletDisplayAccess {
+  deviceId: string;
+  token: string;
+}
+
+export function HostDisplayControl({
+  tabletAccess,
+}: {
+  tabletAccess?: HostTabletDisplayAccess;
+}) {
   const [status, setStatus] = useState<HostDisplayStatus | null>(null);
   const [agentReachable, setAgentReachable] = useState(false);
   const [activating, setActivating] = useState<ActivateApp | null>(null);
@@ -105,7 +114,13 @@ export function HostDisplayControl() {
         /* Backend may be offline — component shows fallback values */
       });
 
-    // Probe the local Agent directly.
+    if (tabletAccess) {
+      return () => {
+        mountedRef.current = false;
+      };
+    }
+
+    // Probe the local Agent directly for the central-host browser.
     // agent_state === "online" is the definitive signal.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
@@ -135,7 +150,13 @@ export function HostDisplayControl() {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, []);
+  }, [tabletAccess]);
+
+  useEffect(() => {
+    if (tabletAccess) {
+      setAgentReachable(status?.agent_state === "online");
+    }
+  }, [status?.agent_state, tabletAccess]);
 
   // ── App activation — POST directly to loopback Agent ───────────────────
 
@@ -143,6 +164,14 @@ export function HostDisplayControl() {
     setActivating(app);
     setActivateError(null);
     try {
+      if (tabletAccess) {
+        await activateHostDisplayFromTablet(
+          app,
+          tabletAccess.deviceId,
+          tabletAccess.token,
+        );
+        return;
+      }
       const res = await fetch("http://127.0.0.1:8766/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -191,7 +220,7 @@ export function HostDisplayControl() {
     } finally {
       if (mountedRef.current) setActivating(null);
     }
-  }, []);
+  }, [tabletAccess]);
 
   // ── Derived display values ─────────────────────────────────────────────
 
@@ -280,7 +309,9 @@ export function HostDisplayControl() {
             data-testid="local-agent-unreachable"
             className="text-xs text-techMuted bg-techCardSoft rounded px-2 py-1.5 text-center"
           >
-            仅可在中央主机操作 / Available on Central Host Only
+            {tabletAccess
+              ? "电脑控制服务暂不可用 / Display Agent Unavailable"
+              : "仅可在中央主机操作 / Available on Central Host Only"}
           </p>
         )}
 

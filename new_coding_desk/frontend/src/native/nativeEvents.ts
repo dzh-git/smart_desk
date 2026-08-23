@@ -28,6 +28,8 @@ export interface NativeEventEnvelope {
 export type SmartDeskNativeEvent = NativeEventEnvelope &
   (
     | { type: "identity_status"; data: NativeIdentityStatus }
+    | { type: "host_console_access"; data: { granted: boolean; pending: boolean; message?: string } }
+    | { type: "host_identity"; data: { defaultPersonId: string | null; registeredPersonIds: string[] } }
     | { type: "camera_status"; data: Record<string, unknown> }
     | { type: "face_detection_status"; data: Record<string, unknown> }
     | {

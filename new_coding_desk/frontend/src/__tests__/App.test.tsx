@@ -189,7 +189,7 @@ describe("App - admin mode (default)", () => {
 });
 
 describe("App - seat mode via URL (no VITE_ENABLE_DEMO_CONTROLS)", () => {
-  it("switches to seat tablet when ?seat=1 is provided", async () => {
+  it("redirects legacy Seat 1 URLs to the protected host entry", async () => {
     window.history.replaceState({}, "", "/?seat=1");
 
     mockFetch.mockImplementation((url: string) => {
@@ -224,11 +224,8 @@ describe("App - seat mode via URL (no VITE_ENABLE_DEMO_CONTROLS)", () => {
 
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/Seat 1/)).toBeInTheDocument();
-    });
-
-    // Back-to-admin is hidden outside demo controls.
+    expect(await screen.findByText("主持人控制台")).toBeInTheDocument();
+    expect(screen.getByText(/仅允许从已绑定的 Seat 1 Android 平板/)).toBeInTheDocument();
     expect(screen.queryByText("Back")).not.toBeInTheDocument();
   });
 
@@ -239,7 +236,7 @@ describe("App - seat mode via URL (no VITE_ENABLE_DEMO_CONTROLS)", () => {
     await waitFor(() => {
       expect(screen.getByText("Invalid Seat Selection")).toBeInTheDocument();
     });
-    expect(screen.getByText(/Seat must be an integer between 1 and 10/i)).toBeInTheDocument();
+    expect(screen.getByText(/Seat must be an integer between 1 and 9/i)).toBeInTheDocument();
     expect(screen.getByText("Back to Admin Dashboard")).toBeInTheDocument();
   });
 

@@ -21,6 +21,10 @@ interface NativeBridge {
   getDeviceCredential(): Promise<string>;
   getNativeStatus(): Promise<NativeIdentityStatus>;
   getRegisteredFaces(): Promise<RegisteredFaces>;
+  getHostConsoleAccess(): Promise<HostConsoleAccess>;
+  requestHostConsoleAccess(): Promise<HostConsoleAccess>;
+  getDefaultHostIdentity(): Promise<HostIdentityProfile>;
+  setDefaultHostIdentity(personId: string | null): Promise<HostIdentityProfile>;
   startFaceVerification(personId: string): Promise<void>;
   stopFaceVerification(): Promise<void>;
   importLocalFaceTemplate(personId: string, photosJson: string): Promise<LocalFaceTemplateImportResult>;
@@ -43,6 +47,11 @@ interface NativeBridge {
 `startFaceVerification`，Android 只对该人员执行 1:1 验证；Top2 和分差仅作为
 存在多模板时的可选诊断信息，不是启动或放行条件。
 
+Seat 1 的正式运行页严格为同源 `/host`。`getHostConsoleAccess` 查询当前进程内
+PIN 会话，`requestHostConsoleAccess` 打开原生 PIN 对话框；PIN 不进入 JavaScript。
+进程重启后授权恢复为锁定。默认主持人身份只保存在本机加密存储：唯一模板自动
+成为默认，多模板时显式选择；删除默认模板后按剩余数量自动选择或清空。
+
 ## DeviceInfo
 
 必须字段为 `deviceId`、`seatId`、`seatAlias`、`serverUrl`、`frontendUrl`、
@@ -56,7 +65,8 @@ Android 设备信息及 camera/face-model/microphone/bridge 状态。
 PIN。正式席位页无权调用该配置入口。
 
 `getDeviceCredential()` 在当前 URL 与配置前端同源、路径严格为
-`/seat/{配置 seatId}` 时返回 `device_credential`；已通过维护 PIN 且路径严格为
+`/seat/{配置 seatId}`，或 Seat 1 的严格同源 `/host` 时返回
+`device_credential`；已通过维护 PIN 且路径严格为
 `/seat/1/face-templates` 的 Seat 1 页面也可获取。诊断页、错误页、错席 URL和
 外部网页均返回 `BRIDGE_ACTION_FORBIDDEN`。
 

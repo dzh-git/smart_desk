@@ -146,6 +146,13 @@ class FaceRecognitionManager(
         templateStore.loadAll().map(PersonFaceTemplate::personId)
 
     @Synchronized
+    fun defaultHostPersonId(): String? = templateStore.defaultHostPersonId()
+
+    @Synchronized
+    fun setDefaultHostPersonId(personId: String?): String? =
+        templateStore.setDefaultHostPersonId(personId)
+
+    @Synchronized
     fun importFacePhotos(
         requestedPersonId: String,
         photos: List<FacePhotoInput>

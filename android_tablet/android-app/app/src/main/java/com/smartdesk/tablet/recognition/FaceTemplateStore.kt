@@ -64,6 +64,7 @@ class FaceTemplateStore(
             MAX_PERSON_COUNT
         )
         saveAll(updated)
+        reconcileDefaultHostIdentity(updated)
     }
 
     @Synchronized
@@ -114,17 +115,51 @@ class FaceTemplateStore(
             return false
         }
         saveAll(updated)
+        reconcileDefaultHostIdentity(updated)
         return true
     }
 
     @Synchronized
     fun clearAll() {
         secureStore.remove(TEMPLATES_KEY)
+        secureStore.remove(DEFAULT_HOST_PERSON_KEY)
         preferences.edit()
             .remove(LEGACY_TEMPLATE_KEY)
             .remove(MANAGED_MEETING_ID_KEY)
             .remove(MANAGED_REVISION_KEY)
             .apply()
+    }
+
+    @Synchronized
+    fun defaultHostPersonId(): String? {
+        val templates = loadAll()
+        val current = secureStore.getString(DEFAULT_HOST_PERSON_KEY)
+        val resolved = HostIdentityDefaultPolicy.resolve(
+            current,
+            templates.map(PersonFaceTemplate::personId)
+        )
+        if (resolved != current) {
+            if (resolved == null) {
+                secureStore.remove(DEFAULT_HOST_PERSON_KEY)
+            } else {
+                secureStore.putString(DEFAULT_HOST_PERSON_KEY, resolved)
+            }
+        }
+        return resolved
+    }
+
+    @Synchronized
+    fun setDefaultHostPersonId(personId: String?): String? {
+        val normalized = personId?.trim()?.takeIf(String::isNotEmpty)
+        if (normalized == null) {
+            secureStore.remove(DEFAULT_HOST_PERSON_KEY)
+            return defaultHostPersonId()
+        }
+        require(loadAll().any { it.personId == normalized }) {
+            "默认主持人必须使用已注册的本机模板"
+        }
+        secureStore.putString(DEFAULT_HOST_PERSON_KEY, normalized)
+        return normalized
     }
 
     fun thresholdStatus(): ThresholdStatus {
@@ -231,6 +266,21 @@ class FaceTemplateStore(
         ) { "模板与当前256维模型不兼容" }
     }
 
+    private fun reconcileDefaultHostIdentity(
+        templates: List<PersonFaceTemplate>
+    ) {
+        val current = secureStore.getString(DEFAULT_HOST_PERSON_KEY)
+        val resolved = HostIdentityDefaultPolicy.resolve(
+            current,
+            templates.map(PersonFaceTemplate::personId)
+        )
+        if (resolved == null) {
+            secureStore.remove(DEFAULT_HOST_PERSON_KEY)
+        } else {
+            secureStore.putString(DEFAULT_HOST_PERSON_KEY, resolved)
+        }
+    }
+
     private fun FloatArray.toJsonArray(): JSONArray =
         JSONArray().also { values -> forEach(values::put) }
 
@@ -251,7 +301,18 @@ class FaceTemplateStore(
             "threshold_pipeline_version_v3"
         private const val MANAGED_MEETING_ID_KEY = "managed_meeting_id_v1"
         private const val MANAGED_REVISION_KEY = "managed_revision_v1"
+        private const val DEFAULT_HOST_PERSON_KEY = "default_host_person_v1"
     }
+}
+
+object HostIdentityDefaultPolicy {
+    fun resolve(current: String?, registeredPersonIds: List<String>): String? =
+        when {
+            registeredPersonIds.isEmpty() -> null
+            current != null && current in registeredPersonIds -> current
+            registeredPersonIds.size == 1 -> registeredPersonIds.single()
+            else -> null
+        }
 }
 
 object FaceTemplateCollection {

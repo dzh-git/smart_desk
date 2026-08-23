@@ -1,17 +1,18 @@
 """
-Host display status API — read-only aggregation endpoint.
+Host display status and authenticated Seat 1 control relay.
 
-Per system_architecture: the backend NEVER calls Win32, NEVER executes shell,
-NEVER touches the database for this endpoint. It only reads state from the
-loopback Display Agent and MediaMTX Control API over local HTTP with timeouts.
+Per system_architecture: the backend NEVER calls Win32 and NEVER executes a
+shell. Status reads use loopback HTTP only; activation performs a read-only
+Seat 1 device-binding check before calling the loopback Display Agent.
 
 Endpoint:
     GET /api/host-display/status
 
 Returns a stable structure even when upstream services are offline.
-There is NO POST /api/host-display/activate — application switching is done
-only by the central-host browser calling http://127.0.0.1:8766/activate
-directly (loopback Agent).
+The desktop browser still calls the loopback Agent directly.  A bound Seat 1
+tablet may use POST /api/host-display/activate; the server authenticates the
+device and forwards only a whitelisted application name to the fixed loopback
+Agent URL.
 
 MediaMTX version contract: this reader targets **MediaMTX 1.19.0**, pinned in
 `host_services/screen_stream/README.md`. The Control API path
@@ -28,8 +29,15 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Header
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from backend.database import get_db
+from backend.exceptions import NotFoundError, ValidationError
+from backend.schemas import ApiResponse
+from backend.services.tablet_device_service import TabletDeviceService
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +142,28 @@ class HostDisplayStatus(BaseModel):
     profile: StreamProfile
 
 
+class HostDisplayActivateRequest(BaseModel):
+    deviceId: str
+    deviceSeatId: int
+    app: str
+
+
+class HostDisplayActivateResponse(BaseModel):
+    app: Literal["powerpoint", "solidworks", "smartdesk"]
+    activated: bool = True
+
+
+def _activate_error(
+    status_code: int,
+    message: str,
+    error_code: str,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=ApiResponse.fail(message, error_code).model_dump(),
+    )
+
+
 # ── Upstream readers (all use httpx with timeout, never raise) ─────────────
 
 
@@ -144,7 +174,7 @@ def _read_agent_status() -> dict | None:
     JSON). Never raises.
     """
     try:
-        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS, trust_env=False) as client:
             resp = client.get(f"{AGENT_URL}/status")
             if resp.status_code != 200:
                 return None
@@ -162,7 +192,7 @@ def _read_mediamtx_paths() -> dict | None:
     Never raises.
     """
     try:
-        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS, trust_env=False) as client:
             # MediaMTX 1.19.0 Control API path — matches the pinned version.
             resp = client.get(f"{MEDIAMTX_CONTROL_URL}/v3/paths/list")
             if resp.status_code != 200:
@@ -179,7 +209,7 @@ def _read_mediamtx_metrics() -> str | None:
     Returns the metrics text, or None on failure. Never raises.
     """
     try:
-        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS, trust_env=False) as client:
             resp = client.get(MEDIAMTX_METRICS_URL)
             if resp.status_code != 200:
                 return None
@@ -357,4 +387,113 @@ def get_host_display_status() -> HostDisplayStatus:
         viewer_count=viewer_count,
         apps=apps,
         profile=profile,
+    )
+
+
+@router.post(
+    "/activate",
+    response_model=ApiResponse[HostDisplayActivateResponse],
+)
+def activate_host_display(
+    payload: HostDisplayActivateRequest,
+    token: str | None = Header(None, alias="X-SmartDesk-Device-Token"),
+    db: Session = Depends(get_db),
+):
+    """Activate a host application for the authenticated Seat 1 tablet."""
+    if payload.deviceSeatId != 1:
+        return _activate_error(
+            403,
+            "Host display control requires a device bound to Seat 1",
+            "HOST_DEVICE_AUTH_FAILED",
+        )
+    try:
+        TabletDeviceService(db).authenticate(
+            device_id=payload.deviceId,
+            seat_id=1,
+            token=token,
+        )
+    except (NotFoundError, ValidationError):
+        logger.warning(
+            "Host display activation denied device=%s app=%s",
+            payload.deviceId,
+            payload.app,
+        )
+        return _activate_error(
+            403,
+            "Host tablet authentication failed",
+            "HOST_DEVICE_AUTH_FAILED",
+        )
+
+    allowed_apps = {"powerpoint", "solidworks", "smartdesk"}
+    if payload.app not in allowed_apps:
+        return _activate_error(
+            422,
+            "Unsupported host application",
+            "DISPLAY_APP_INVALID",
+        )
+
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS, trust_env=False) as client:
+            response = client.post(
+                f"{AGENT_URL}/activate",
+                json={"app": payload.app},
+            )
+    except httpx.RequestError:
+        logger.warning(
+            "Host display activation offline device=%s app=%s",
+            payload.deviceId,
+            payload.app,
+        )
+        return _activate_error(
+            503,
+            "Display Agent is offline",
+            "DISPLAY_AGENT_OFFLINE",
+        )
+    except Exception:
+        logger.exception(
+            "Host display activation failed device=%s app=%s",
+            payload.deviceId,
+            payload.app,
+        )
+        return _activate_error(
+            502,
+            "Display activation failed",
+            "DISPLAY_ACTIVATION_FAILED",
+        )
+
+    if response.status_code == 409:
+        return _activate_error(
+            409,
+            "Application is already active",
+            "DISPLAY_APP_ALREADY_ACTIVE",
+        )
+    if response.status_code != 200:
+        logger.warning(
+            "Host display activation rejected device=%s app=%s status=%s",
+            payload.deviceId,
+            payload.app,
+            response.status_code,
+        )
+        return _activate_error(
+            502,
+            "Display activation failed",
+            "DISPLAY_ACTIVATION_FAILED",
+        )
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    if isinstance(body, dict) and body.get("ok") is False:
+        return _activate_error(
+            502,
+            "Display activation failed",
+            "DISPLAY_ACTIVATION_FAILED",
+        )
+    logger.info(
+        "Host display activation succeeded device=%s app=%s",
+        payload.deviceId,
+        payload.app,
+    )
+    return ApiResponse.ok(
+        HostDisplayActivateResponse(app=payload.app, activated=True)
     )

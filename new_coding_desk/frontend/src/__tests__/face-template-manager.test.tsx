@@ -38,6 +38,7 @@ function envelope(type: string, data: unknown): string {
 }
 
 function installHostEnvironment(localPersonIds: string[]) {
+  let defaultHostPersonId = localPersonIds.length === 1 ? localPersonIds[0] : null;
   const removeFaceTemplate = vi.fn(() => envelope("identity_status", {
     status: "IDLE",
     message: "已删除",
@@ -70,6 +71,17 @@ function installHostEnvironment(localPersonIds: string[]) {
       personIds: localPersonIds,
       count: localPersonIds.length,
     })),
+    getDefaultHostIdentity: vi.fn(() => envelope("host_identity", {
+      defaultPersonId: defaultHostPersonId,
+      registeredPersonIds: localPersonIds,
+    })),
+    setDefaultHostIdentity: vi.fn((personId: string | null) => {
+      defaultHostPersonId = personId;
+      return envelope("host_identity", {
+        defaultPersonId: defaultHostPersonId,
+        registeredPersonIds: localPersonIds,
+      });
+    }),
     startFaceVerification: vi.fn(),
     stopFaceVerification: vi.fn(),
     removeFaceTemplate,

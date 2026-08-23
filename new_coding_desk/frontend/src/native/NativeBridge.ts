@@ -33,6 +33,17 @@ export interface RegisteredFaces {
   count: number;
 }
 
+export interface HostConsoleAccess {
+  granted: boolean;
+  pending: boolean;
+  message?: string;
+}
+
+export interface HostIdentityProfile {
+  defaultPersonId: string | null;
+  registeredPersonIds: string[];
+}
+
 export interface LocalFaceTemplateImportResult {
   personId: string;
   selectedCount: number;
@@ -72,6 +83,10 @@ export interface NativeBridge {
   getDeviceCredential(): Promise<string>;
   getNativeStatus(): Promise<import("./nativeEvents").NativeIdentityStatus>;
   getRegisteredFaces(): Promise<RegisteredFaces>;
+  getHostConsoleAccess(): Promise<HostConsoleAccess>;
+  requestHostConsoleAccess(): Promise<HostConsoleAccess>;
+  getDefaultHostIdentity(): Promise<HostIdentityProfile>;
+  setDefaultHostIdentity(personId: string | null): Promise<HostIdentityProfile>;
   beginMaintenanceHold(): Promise<void>;
   cancelMaintenanceHold(): Promise<void>;
   supportsMicrophoneCapture(): boolean;

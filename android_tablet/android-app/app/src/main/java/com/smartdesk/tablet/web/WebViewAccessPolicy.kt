@@ -37,6 +37,26 @@ object WebViewAccessPolicy {
             current.path.trimEnd('/') == "/seat/1/face-templates"
     }
 
+    fun isTrustedHostConsolePage(
+        currentUrl: String?,
+        config: DeviceConfig?
+    ): Boolean {
+        if (currentUrl.isNullOrBlank() || config == null || config.seatId != 1) {
+            return false
+        }
+        val current = parseHttpUri(currentUrl) ?: return false
+        val frontend = parseHttpUri(config.frontendUrl) ?: return false
+        return sameOrigin(current, frontend) &&
+            current.path.trimEnd('/') == "/host"
+    }
+
+    fun isTrustedOperationalPage(
+        currentUrl: String?,
+        config: DeviceConfig?
+    ): Boolean =
+        isTrustedSeatPage(currentUrl, config) ||
+            isTrustedHostConsolePage(currentUrl, config)
+
     fun isTrustedFrontendOrigin(
         originUrl: String?,
         config: DeviceConfig?
@@ -68,7 +88,7 @@ object WebViewAccessPolicy {
             requestedResources.isNotEmpty() &&
             requestedResources.all { it == AUDIO_CAPTURE_RESOURCE } &&
             isTrustedFrontendOrigin(originUrl, config) &&
-            isTrustedSeatPage(currentPageUrl, config)
+            isTrustedOperationalPage(currentPageUrl, config)
 
     private fun parseHttpUri(value: String): URI? =
         runCatching { URI(value) }

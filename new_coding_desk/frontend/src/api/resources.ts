@@ -29,6 +29,8 @@ import type {
   TabletHeartbeatPayload,
   TranslationHistoryResponse,
   ServiceType,
+  HostDisplayApp,
+  HostDisplayActivateResult,
 } from "./types";
 
 // ── Meeting ─────────────────────────────────────────────────────────────────
@@ -316,6 +318,20 @@ export function debugAdmitSeat(
       "X-SmartDesk-Device-Token": deviceToken,
     },
     body: JSON.stringify(payload),
+  });
+}
+
+export function activateHostDisplayFromTablet(
+  app: HostDisplayApp,
+  deviceId: string,
+  deviceToken: string,
+): Promise<HostDisplayActivateResult> {
+  return apiRequest<HostDisplayActivateResult>("/host-display/activate", {
+    method: "POST",
+    headers: {
+      "X-SmartDesk-Device-Token": deviceToken,
+    },
+    body: JSON.stringify({ deviceId, deviceSeatId: 1, app }),
   });
 }
 

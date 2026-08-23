@@ -18,7 +18,7 @@
  *   H. No change to existing workspace/meeting/agenda/vote/service/speech logic
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { AdminDashboard } from "../components/AdminDashboard";
 
 // ── Mock isDemoControlsEnabled ───────────────────────────────────────────────
@@ -104,6 +104,7 @@ function rawOkResponse(data: unknown) {
 }
 
 beforeEach(() => {
+  globalThis.fetch = mockFetch;
   mockFetch.mockReset();
 });
 
@@ -207,6 +208,44 @@ describe("Phase 5 — host display control card in /admin", () => {
     expect(screen.getByTestId("app-powerpoint")).toBeInTheDocument();
     expect(screen.getByTestId("app-solidworks")).toBeInTheDocument();
     expect(screen.getByTestId("app-smartdesk")).toBeInTheDocument();
+  });
+});
+
+describe("Seat 1 tablet display relay", () => {
+  it("uses the authenticated backend relay and never probes tablet loopback", async () => {
+    mockAdminActiveMeeting();
+    const baseImplementation = mockFetch.getMockImplementation();
+    mockFetch.mockImplementation((url: string, options?: RequestInit) => {
+      if (url === "/api/host-display/activate") {
+        return okResponse({ app: "powerpoint", activated: true });
+      }
+      return baseImplementation?.(url, options);
+    });
+
+    render(
+      <AdminDashboard
+        hostTabletAccess={{ deviceId: "tablet-seat-01", token: "secret-token" }}
+      />,
+    );
+
+    const button = await screen.findByTestId("activate-powerpoint");
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/host-display/activate",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "X-SmartDesk-Device-Token": "secret-token",
+          }),
+        }),
+      );
+    });
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      "http://127.0.0.1:8766/status",
+      expect.anything(),
+    );
   });
 });
 

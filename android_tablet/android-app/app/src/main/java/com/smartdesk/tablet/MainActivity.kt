@@ -35,6 +35,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.smartdesk.tablet.bridge.AndroidBridge
 import com.smartdesk.tablet.audio.NativeMicrophoneCapture
 import com.smartdesk.tablet.camera.CameraController
@@ -114,6 +116,7 @@ class MainActivity : ComponentActivity() {
     private var provisioningInProgress = false
     @Volatile
     private var identityMode = "formal"
+    private var hostConsoleAuthorized = false
     private var maintenanceAuthorized = false
     private var maintenanceUnlockAction: Runnable? = null
     private var maintenanceExpiryAction: Runnable? = null
@@ -169,6 +172,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "App started")
+        hideSystemNavigationBar()
         setContentView(R.layout.activity_main)
         deviceConfigStore = DeviceConfigStore(applicationContext)
         deviceIdentityStore = DeviceIdentityStore(applicationContext)
@@ -179,6 +183,26 @@ class MainActivity : ComponentActivity() {
         configureIdentityRecognition()
         configureCamera()
         configureWebView()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            hideSystemNavigationBar()
+        }
+    }
+
+    /**
+     * Keep the meeting surface clear of the persistent three-button bar.
+     * A swipe from the bottom temporarily reveals the system navigation,
+     * so kiosk users can still leave the app when maintenance requires it.
+     */
+    private fun hideSystemNavigationBar() {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 
     private fun configureIdentityRecognition() {
@@ -444,7 +468,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onBeginMaintenanceHold = {
                     runOnUiThread {
-                        if (isTrustedSeatPage()) {
+                        if (isTrustedOperationalPage()) {
                             scheduleMaintenanceUnlock()
                         }
                     }
@@ -452,6 +476,8 @@ class MainActivity : ComponentActivity() {
                 onCancelMaintenanceHold = {
                     runOnUiThread(::cancelMaintenanceUnlock)
                 },
+                onGetHostConsoleAccess = ::hostConsoleAccessStatus,
+                onRequestHostConsoleAccess = ::requestHostConsoleAccess,
                 onStartMicrophoneCapture = {
                     runOnUiThread(::requestStartNativeMicrophoneCapture)
                 },
@@ -573,6 +599,18 @@ class MainActivity : ComponentActivity() {
                             requireRecognitionManager()
                                 .registeredPeople()
                         )
+                    }
+                },
+                onGetDefaultHostIdentity = {
+                    performIdentityAction(ErrorCode.UNKNOWN_ERROR) {
+                        hostIdentityEvent(requireRecognitionManager())
+                    }
+                },
+                onSetDefaultHostIdentity = { personId ->
+                    performHostFaceTemplateAction(ErrorCode.UNKNOWN_ERROR) {
+                        val manager = requireRecognitionManager()
+                        manager.setDefaultHostPersonId(personId)
+                        hostIdentityEvent(manager)
                     }
                 },
                 onSetVerificationThreshold = { value ->
@@ -726,6 +764,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }.onSuccess { config ->
                     maintenanceAuthorized = false
+                    hostConsoleAuthorized = false
                     emitToReact(
                         AndroidEvent.event(
                             "device_config_saved",
@@ -904,7 +943,7 @@ class MainActivity : ComponentActivity() {
 
     private fun requestMaintenanceAccess() {
         maintenanceUnlockAction = null
-        if (!isTrustedSeatPage() && !pageAccessState.isDiagnosticPage()) {
+        if (!isTrustedOperationalPage() && !pageAccessState.isDiagnosticPage()) {
             return
         }
         if (!maintenancePinStore.hasPin()) {
@@ -940,8 +979,100 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
+    private fun hostConsoleAccessStatus(): String {
+        val config = deviceConfigStore.load()
+        if (!isTrustedHostConsolePage() || config?.seatId != 1) {
+            return AndroidEvent.error(
+                ErrorCode.BRIDGE_ACTION_FORBIDDEN,
+                "主持人控制台授权只能从已绑定的 Seat 1 页面查询"
+            )
+        }
+        return hostConsoleAccessEvent(hostConsoleAuthorized, pending = false)
+    }
+
+    private fun requestHostConsoleAccess(): String {
+        val config = deviceConfigStore.load()
+        if (!isTrustedHostConsolePage() || config?.seatId != 1) {
+            return AndroidEvent.error(
+                ErrorCode.BRIDGE_ACTION_FORBIDDEN,
+                "主持人控制台只能由已绑定的 Seat 1 平板解锁"
+            )
+        }
+        if (hostConsoleAuthorized) {
+            return hostConsoleAccessEvent(granted = true, pending = false)
+        }
+        if (!maintenancePinStore.hasPin()) {
+            return AndroidEvent.error(
+                ErrorCode.DEVICE_CONFIG_INVALID,
+                "尚未设置维护 PIN，请长按维护入口完成配置"
+            )
+        }
+        runOnUiThread(::showHostConsolePinDialog)
+        return hostConsoleAccessEvent(granted = false, pending = true)
+    }
+
+    private fun showHostConsolePinDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or
+                InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = getString(R.string.device_maintenance_pin_hint)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("解锁主持人控制台")
+            .setView(input)
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                emitHostConsoleAccess(
+                    granted = false,
+                    message = "已取消主持人控制台解锁"
+                )
+            }
+            .setPositiveButton(R.string.device_maintenance_confirm) { _, _ ->
+                val granted = maintenancePinStore.verify(input.text.toString())
+                if (granted) {
+                    hostConsoleAuthorized = true
+                } else {
+                    Toast.makeText(
+                        this,
+                        R.string.device_maintenance_pin_invalid,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                emitHostConsoleAccess(
+                    granted = granted,
+                    message = if (granted) {
+                        "主持人控制台已解锁"
+                    } else {
+                        "维护 PIN 错误"
+                    }
+                )
+            }
+            .show()
+    }
+
+    private fun emitHostConsoleAccess(granted: Boolean, message: String) {
+        emitToReact(
+            AndroidEvent.event(
+                "host_console_access",
+                JSONObject()
+                    .put("granted", granted)
+                    .put("pending", false)
+                    .put("message", message)
+            )
+        )
+    }
+
+    private fun hostConsoleAccessEvent(
+        granted: Boolean,
+        pending: Boolean
+    ): String = AndroidEvent.event(
+        "host_console_access",
+        JSONObject()
+            .put("granted", granted)
+            .put("pending", pending)
+    )
+
     private fun getDeviceCredential(): String {
-        if (!isTrustedSeatPage() && !(isHostFaceTemplatesPage() && maintenanceAuthorized)) {
+        if (!isTrustedOperationalPage() && !(isHostFaceTemplatesPage() && maintenanceAuthorized)) {
             return AndroidEvent.error(
                 ErrorCode.BRIDGE_ACTION_FORBIDDEN,
                 "设备凭据只能提供给已配置的正式席位页面"
@@ -999,7 +1130,7 @@ class MainActivity : ComponentActivity() {
                                         binding.enabled
                                     ) {
                                         identityMode = binding.identityMode
-                                        beginSeatPageLoad(config.seatPageUrl())
+                                        beginSeatPageLoad(config.operationalPageUrl())
                                     } else {
                                         pageLoadState.waitingBinding()
                                         loadWaitingPage("waiting-binding")
@@ -1121,7 +1252,7 @@ class MainActivity : ComponentActivity() {
         val config = deviceConfigStore.load()
         if (config == null) {
             loadDiagnosticPage("setup")
-        } else if (config.seatId == 1 && isTrustedSeatPage()) {
+        } else if (config.seatId == 1 && isTrustedHostConsolePage()) {
             webView.loadUrl("${config.frontendUrl.trimEnd('/')}/seat/1/face-templates")
         } else {
             loadDiagnosticPage("maintenance")
@@ -1345,11 +1476,32 @@ class MainActivity : ComponentActivity() {
         return pageAccessState.isTrustedSeatPage(deviceConfigStore.load())
     }
 
+    private fun isTrustedHostConsolePage(): Boolean =
+        pageAccessState.isTrustedHostConsolePage(deviceConfigStore.load())
+
+    private fun isTrustedOperationalPage(): Boolean =
+        pageAccessState.isTrustedOperationalPage(deviceConfigStore.load())
+
     private fun isHostFaceTemplatesPage(): Boolean =
         WebViewAccessPolicy.isHostFaceTemplatesPage(
             pageAccessState.currentUrl(),
             deviceConfigStore.load()
         )
+
+    private fun hostIdentityEvent(
+        manager: FaceRecognitionManager
+    ): String = AndroidEvent.event(
+        "host_identity",
+        JSONObject()
+            .put(
+                "defaultPersonId",
+                manager.defaultHostPersonId() ?: JSONObject.NULL
+            )
+            .put(
+                "registeredPersonIds",
+                org.json.JSONArray(manager.registeredPeople())
+            )
+    )
 
     private fun mayGrantMicrophone(
         request: PermissionRequest,
@@ -1401,6 +1553,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        hideSystemNavigationBar()
         if (::webView.isInitialized) {
             webView.onResume()
             emitToReact(AndroidEvent.appLifecycle("RESUMED"))
@@ -1467,7 +1620,7 @@ class MainActivity : ComponentActivity() {
                     mode == "checking" || mode?.startsWith("waiting-") == true
                 ) View.VISIBLE else View.GONE
             } else if (
-                WebViewAccessPolicy.isTrustedSeatPage(
+                WebViewAccessPolicy.isTrustedOperationalPage(
                     url,
                     deviceConfigStore.load()
                 )

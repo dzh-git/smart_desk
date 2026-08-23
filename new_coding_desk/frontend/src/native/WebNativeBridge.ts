@@ -5,6 +5,8 @@ import type {
   LocalFaceTemplateImportResult,
   NativeBridge,
   RegisteredFaces,
+  HostConsoleAccess,
+  HostIdentityProfile,
 } from "./NativeBridge";
 import type { NativeIdentityStatus } from "./nativeEvents";
 
@@ -38,6 +40,22 @@ export class WebNativeBridge implements NativeBridge {
 
   async getRegisteredFaces(): Promise<RegisteredFaces> {
     return { personIds: [], count: 0 };
+  }
+
+  async getHostConsoleAccess(): Promise<HostConsoleAccess> {
+    return { granted: false, pending: false, message: "仅允许主持人 Android 平板进入" };
+  }
+
+  async requestHostConsoleAccess(): Promise<HostConsoleAccess> {
+    throw new Error("主持人控制台只能在 Seat 1 Android 平板解锁");
+  }
+
+  async getDefaultHostIdentity(): Promise<HostIdentityProfile> {
+    return { defaultPersonId: null, registeredPersonIds: [] };
+  }
+
+  async setDefaultHostIdentity(_personId: string | null): Promise<HostIdentityProfile> {
+    throw new Error("默认主持人身份只能在 Seat 1 Android 平板设置");
   }
 
   async beginMaintenanceHold(): Promise<void> {

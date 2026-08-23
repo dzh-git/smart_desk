@@ -35,4 +35,10 @@ class WebViewPageAccessState(
 
     fun isTrustedSeatPage(config: DeviceConfig?): Boolean =
         WebViewAccessPolicy.isTrustedSeatPage(currentUrl(), config)
+
+    fun isTrustedHostConsolePage(config: DeviceConfig?): Boolean =
+        WebViewAccessPolicy.isTrustedHostConsolePage(currentUrl(), config)
+
+    fun isTrustedOperationalPage(config: DeviceConfig?): Boolean =
+        WebViewAccessPolicy.isTrustedOperationalPage(currentUrl(), config)
 }

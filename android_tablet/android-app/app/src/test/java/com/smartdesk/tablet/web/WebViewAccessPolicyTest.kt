@@ -105,6 +105,53 @@ class WebViewAccessPolicyTest {
     }
 
     @Test
+    fun hostConsoleRequiresExactSeatOneOriginAndPath() {
+        assertTrue(
+            WebViewAccessPolicy.isTrustedHostConsolePage(
+                "https://meeting.example.test/host",
+                config
+            )
+        )
+        assertTrue(
+            WebViewAccessPolicy.isTrustedOperationalPage(
+                "https://meeting.example.test/host",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.isTrustedHostConsolePage(
+                "https://evil.example.test/host",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.isTrustedHostConsolePage(
+                "https://meeting.example.test/host/seat",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.isTrustedHostConsolePage(
+                "https://meeting.example.test/host",
+                config.copy(seatId = 2)
+            )
+        )
+    }
+
+    @Test
+    fun grantsAudioToTrustedHostConsole() {
+        assertTrue(
+            WebViewAccessPolicy.mayGrantMicrophone(
+                "https://meeting.example.test",
+                "https://meeting.example.test/host",
+                listOf(WebViewAccessPolicy.AUDIO_CAPTURE_RESOURCE),
+                config,
+                true
+            )
+        )
+    }
+
+    @Test
     fun photoChooserAllowsOnlyAuthorizedHostTemplatePage() {
         assertTrue(
             WebViewAccessPolicy.mayOpenTemplatePhotoChooser(

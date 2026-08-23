@@ -29,6 +29,7 @@ class DeviceConfigTest {
         assertEquals("http://192.168.1.10", config.centralHost())
         assertEquals("tablet-seat-01", config.seatAlias)
         assertEquals("http://192.168.1.10:5173/seat/1", config.seatPageUrl())
+        assertEquals("http://192.168.1.10:5173/host", config.operationalPageUrl())
     }
 
     @Test
@@ -86,6 +87,10 @@ class DeviceConfigTest {
         assertEquals(
             "https://ui.example.test/seat/2",
             config.seatPageUrl()
+        )
+        assertEquals(
+            "https://ui.example.test/seat/2",
+            config.operationalPageUrl()
         )
     }
 

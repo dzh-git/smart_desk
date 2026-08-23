@@ -17,6 +17,8 @@ class AndroidBridge(
     private val onReloadSeatPage: () -> Unit,
     private val onBeginMaintenanceHold: () -> Unit,
     private val onCancelMaintenanceHold: () -> Unit,
+    private val onGetHostConsoleAccess: () -> String,
+    private val onRequestHostConsoleAccess: () -> String,
     private val onStartMicrophoneCapture: () -> Unit,
     private val onStopMicrophoneCapture: () -> Unit,
     private val onStartFaceDetection: () -> Unit,
@@ -32,6 +34,8 @@ class AndroidBridge(
     private val onOpenLocalDiagnostics: () -> Unit,
     private val onCloseHostFaceTemplates: () -> Unit,
     private val onGetRegisteredFaces: () -> String,
+    private val onGetDefaultHostIdentity: () -> String,
+    private val onSetDefaultHostIdentity: (String?) -> String,
     private val onSetVerificationThreshold: (Float) -> String,
     private val onSetDiagnosticsEnabled: (Boolean) -> String,
     private val onClearDiagnostics: () -> String,
@@ -109,6 +113,12 @@ class AndroidBridge(
     }
 
     @JavascriptInterface
+    fun getHostConsoleAccess(): String = onGetHostConsoleAccess()
+
+    @JavascriptInterface
+    fun requestHostConsoleAccess(): String = onRequestHostConsoleAccess()
+
+    @JavascriptInterface
     fun startMicrophoneCapture() {
         onStartMicrophoneCapture()
     }
@@ -180,6 +190,13 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun getRegisteredFaces(): String = onGetRegisteredFaces()
+
+    @JavascriptInterface
+    fun getDefaultHostIdentity(): String = onGetDefaultHostIdentity()
+
+    @JavascriptInterface
+    fun setDefaultHostIdentity(personId: String?): String =
+        onSetDefaultHostIdentity(personId)
 
     @JavascriptInterface
     fun setVerificationThreshold(value: Float): String =

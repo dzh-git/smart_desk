@@ -2884,6 +2884,26 @@ describe("AdminDashboard - AdminWorkspace", () => {
     expect(screen.getByText("ATTENDEES")).toBeInTheDocument();
   });
 
+  it("uses a full-width table and an inline host check-in row on the Seat 1 tablet", async () => {
+    mockActiveMeetingScenario();
+    render(
+      <AdminDashboard
+        hostTabletAccess={{ deviceId: "host-tablet-01", token: "device-token" }}
+        hostSeatCheckIn={<div data-testid="inline-host-checkin">HOST CHECK-IN</div>}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    const tableHeading = screen.getByText(/Conference Room.*Seat Overview/i);
+    expect(tableHeading.parentElement?.parentElement).toHaveClass("col-span-12");
+    expect(tableHeading.parentElement?.parentElement).not.toHaveClass("xl:col-span-8");
+    expect(screen.getByTestId("inline-host-checkin")).toBeInTheDocument();
+    expect(screen.getByTestId("host-checkin-layout-slot").parentElement).toHaveClass("xl:grid-cols-2");
+  });
+
   it("shows meeting records only in the service_records workspace", async () => {
     mockActiveMeetingScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);

@@ -5,6 +5,8 @@ import type {
   CentralFaceTemplateResult,
   FaceTemplateSyncResult,
   LocalFaceTemplateImportResult,
+  HostConsoleAccess,
+  HostIdentityProfile,
 } from "./NativeBridge";
 import {
   dispatchNativeEvent,
@@ -18,6 +20,10 @@ interface SmartDeskNativeJavascriptInterface {
   getDeviceCredential(): string | object;
   getIdentityStatus(): string | object;
   getRegisteredFaces(): string | object;
+  getHostConsoleAccess?(): string | object;
+  requestHostConsoleAccess?(): string | object;
+  getDefaultHostIdentity?(): string | object;
+  setDefaultHostIdentity?(personId: string | null): string | object;
   beginMaintenanceHold?(): void;
   cancelMaintenanceHold?(): void;
   startMicrophoneCapture?(): void;
@@ -132,6 +138,50 @@ export class AndroidNativeBridge implements NativeBridge {
     return parseEnvelope<RegisteredFaces>(
       nativeInterface().getRegisteredFaces(),
       "registered_people",
+    );
+  }
+
+  async getHostConsoleAccess(): Promise<HostConsoleAccess> {
+    const bridge = nativeInterface();
+    if (typeof bridge.getHostConsoleAccess !== "function") {
+      throw new Error("当前平板版本不支持主持人控制台解锁");
+    }
+    return parseEnvelope<HostConsoleAccess>(
+      bridge.getHostConsoleAccess(),
+      "host_console_access",
+    );
+  }
+
+  async requestHostConsoleAccess(): Promise<HostConsoleAccess> {
+    const bridge = nativeInterface();
+    if (typeof bridge.requestHostConsoleAccess !== "function") {
+      throw new Error("当前平板版本不支持主持人控制台解锁");
+    }
+    return parseEnvelope<HostConsoleAccess>(
+      bridge.requestHostConsoleAccess(),
+      "host_console_access",
+    );
+  }
+
+  async getDefaultHostIdentity(): Promise<HostIdentityProfile> {
+    const bridge = nativeInterface();
+    if (typeof bridge.getDefaultHostIdentity !== "function") {
+      throw new Error("当前平板版本不支持默认主持人身份");
+    }
+    return parseEnvelope<HostIdentityProfile>(
+      bridge.getDefaultHostIdentity(),
+      "host_identity",
+    );
+  }
+
+  async setDefaultHostIdentity(personId: string | null): Promise<HostIdentityProfile> {
+    const bridge = nativeInterface();
+    if (typeof bridge.setDefaultHostIdentity !== "function") {
+      throw new Error("当前平板版本不支持默认主持人身份");
+    }
+    return parseEnvelope<HostIdentityProfile>(
+      bridge.setDefaultHostIdentity(personId),
+      "host_identity",
     );
   }
 

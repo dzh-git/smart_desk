@@ -13,7 +13,7 @@ import {
   type TabletFaceSyncStatus,
 } from "../api/faceTemplates";
 import { getNativeBridge } from "../native/NativeBridge";
-import type { RegisteredFaces } from "../native/NativeBridge";
+import type { HostIdentityProfile, RegisteredFaces } from "../native/NativeBridge";
 import type { NativeIdentityStatus } from "../native/nativeEvents";
 
 interface Access {
@@ -37,6 +37,10 @@ export function FaceTemplateManager() {
   const [denied, setDenied] = useState<string | null>(null);
   const [library, setLibrary] = useState<FaceTemplateLibrary | null>(null);
   const [localFaces, setLocalFaces] = useState<RegisteredFaces>({ personIds: [], count: 0 });
+  const [hostIdentity, setHostIdentity] = useState<HostIdentityProfile>({
+    defaultPersonId: null,
+    registeredPersonIds: [],
+  });
   const [nativeIdentityStatus, setNativeIdentityStatus] = useState<NativeIdentityStatus | null>(null);
   const [thresholdInput, setThresholdInput] = useState(DEFAULT_PROTOTYPE_THRESHOLD.toFixed(3));
   const [people, setPeople] = useState<Person[]>([]);
@@ -54,13 +58,14 @@ export function FaceTemplateManager() {
   const [error, setError] = useState<string | null>(null);
 
   const loadCore = useCallback(async (current: Access) => {
-    const [nextLibrary, nextPeople, nextMeetings, nextSync, nextLocalFaces, nextIdentityStatus] = await Promise.all([
+    const [nextLibrary, nextPeople, nextMeetings, nextSync, nextLocalFaces, nextIdentityStatus, nextHostIdentity] = await Promise.all([
       fetchFaceTemplateLibrary(current.deviceId, current.token),
       fetchPeople(),
       fetchMeetings(),
       fetchTabletFaceSyncStatus(),
       bridge.getRegisteredFaces(),
       bridge.getNativeStatus(),
+      bridge.getDefaultHostIdentity(),
     ]);
     setLibrary(nextLibrary);
     setPeople(nextPeople);
@@ -68,6 +73,7 @@ export function FaceTemplateManager() {
     setSyncStatus(nextSync);
     setLocalFaces(nextLocalFaces);
     setNativeIdentityStatus(nextIdentityStatus);
+    setHostIdentity(nextHostIdentity);
     setThresholdInput(
       typeof nextIdentityStatus.threshold === "number"
         ? nextIdentityStatus.threshold.toFixed(3)
@@ -252,6 +258,22 @@ export function FaceTemplateManager() {
     }
   }
 
+  async function updateDefaultHostIdentity(personId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await bridge.setDefaultHostIdentity(personId || null);
+      setHostIdentity(result);
+      setMessage(personId
+        ? `已将“${personDisplayName(personId)}”设为默认主持人身份`
+        : "已清除默认主持人身份");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveAssignments() {
     if (!access || meetingId == null) return;
     const selected = Object.values(assignmentDraft).filter(Boolean);
@@ -299,7 +321,7 @@ export function FaceTemplateManager() {
           </div>
           <div className="flex gap-2">
             <button className="rounded-lg border border-slate-700 px-3 py-2 text-sm" onClick={() => void bridge.openLocalDiagnostics()}>设备诊断</button>
-            <button className="rounded-lg bg-slate-800 px-3 py-2 text-sm" onClick={() => void bridge.closeHostFaceTemplates()}><ArrowLeft className="mr-1 inline" size={15} />返回会议</button>
+            <button className="rounded-lg bg-slate-800 px-3 py-2 text-sm" onClick={() => void bridge.closeHostFaceTemplates()}><ArrowLeft className="mr-1 inline" size={15} />返回主持人控制台</button>
           </div>
         </header>
 
@@ -336,6 +358,19 @@ export function FaceTemplateManager() {
           <div className="space-y-5">
             <div className="rounded-2xl border border-emerald-900 bg-slate-900 p-5">
               <div className="flex items-center justify-between"><div><h2 className="font-semibold">主持人本机模板</h2><p className="mt-1 text-xs text-slate-400">仅保存在当前 Seat 1 平板，用于主持人身份验证。</p></div><span className="text-sm text-slate-400">{localFaces.count} 个</span></div>
+              <label className="mt-4 block text-sm text-slate-300">默认主持人身份
+                <select
+                  aria-label="默认主持人身份"
+                  className="mt-1 w-full rounded-lg border border-emerald-900 bg-slate-950 p-2"
+                  disabled={busy || localFaces.count === 0}
+                  value={hostIdentity.defaultPersonId ?? ""}
+                  onChange={(event) => void updateDefaultHostIdentity(event.target.value)}
+                >
+                  <option value="">请选择默认主持人</option>
+                  {localFaces.personIds.map((personId) => <option key={personId} value={personId}>{personDisplayName(personId)}</option>)}
+                </select>
+              </label>
+              <p className="mt-2 text-xs text-slate-500">只有一个本机模板时会自动选为默认身份；多个模板时可在这里指定。</p>
               <div className="mt-3 max-h-40 overflow-auto divide-y divide-slate-800">
                 {localFaces.personIds.length === 0 && <p className="py-6 text-center text-sm text-slate-500">尚未设置主持人本机模板</p>}
                 {localFaces.personIds.map((personId) => <div key={personId} className="flex items-center justify-between gap-3 py-3">
@@ -406,7 +441,7 @@ export function FaceTemplateManager() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="font-semibold text-emerald-200">Seat 1 · 本场主持人</h3>
-                <p className="mt-1 text-xs text-slate-400">仅使用主持人平板本机模板，返回席位页后按指定人员进行 1:1 验证。</p>
+                <p className="mt-1 text-xs text-slate-400">仅使用主持人平板本机模板；返回主持人控制台后，由主持人主动点击 Seat 1 签到。</p>
               </div>
               <select
                 aria-label="Seat 1 本场主持人"

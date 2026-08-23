@@ -706,7 +706,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       seatId,
       {
         deviceId: nativeDeviceInfo.deviceId,
-        deviceSeatId: nativeDeviceInfo.seatId,
+        deviceSeatId: seatId,
       },
       deviceToken,
     )

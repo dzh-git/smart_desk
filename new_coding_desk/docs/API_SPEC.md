@@ -693,7 +693,7 @@ offline window is 45 seconds and can be configured from 10–300 seconds with
 The complete Phase 1-6 process, network, HTTP, frontend, and deployment
 contract is defined in `HOST_DISPLAY_CONTRACT.md`.
 
-### SmartDesk backend: read-only status
+### SmartDesk backend: status and Seat 1 control relay
 
 ```http
 GET /api/host-display/status
@@ -711,15 +711,25 @@ Frontend integration note: this raw response is incompatible with the common
 `apiGetRaw()` which reads the body as-is without expecting an envelope.
 Test fixtures return raw JSON matching the actual backend schema.
 
-There is deliberately no backend application-switching endpoint:
+The bound Seat 1 Android tablet may switch the host application through:
 
-```text
-POST /api/host-display/activate  # forbidden / not implemented
+```http
+POST /api/host-display/activate
+X-SmartDesk-Device-Token: <device-token>
+
+{"deviceId":"...","deviceSeatId":1,"app":"powerpoint|solidworks|smartdesk"}
 ```
+
+The backend authenticates an enabled device bound to Seat 1, accepts only the
+three application values, and forwards only `{app}` to the configured,
+loopback-validated Display Agent URL with a short timeout. The caller cannot
+provide a target URL. Stable errors include `HOST_DEVICE_AUTH_FAILED`,
+`DISPLAY_AGENT_OFFLINE`, `DISPLAY_APP_INVALID`,
+`DISPLAY_APP_ALREADY_ACTIVE`, and `DISPLAY_ACTIVATION_FAILED`.
 
 ### Central-host local Display Agent
 
-These endpoints are not served by the SmartDesk backend and are reachable only
+These endpoints are served by the local Display Agent and are reachable only
 on the browser machine's loopback interface (CORS is a fixed origin whitelist —
 default `http://127.0.0.1:5173`, `http://localhost:5173` — not `*`):
 
