@@ -161,10 +161,9 @@ export function FaceTemplateManager() {
       const personId = await resolveSelectedPerson();
       const result = await bridge.publishCentralFaceTemplate(personId, JSON.stringify(photos));
       await loadCore(access);
-      setMessage(`“${result.template.personName}”的人脸模板已保存，原始照片未上传服务器。`);
-      if (result.evictedPersonName) {
-        window.alert(`模板库已满，已自动删除最早且未被会议使用的模板：${result.evictedPersonName}`);
-      }
+      setMessage(result.evictedPersonName
+        ? `“${result.template.personName}”的人脸模板已保存，原始照片未上传服务器。模板库已满，已自动删除最早且未被会议使用的模板：${result.evictedPersonName}`
+        : `“${result.template.personName}”的人脸模板已保存，原始照片未上传服务器。`);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -325,7 +324,16 @@ export function FaceTemplateManager() {
           </div>
         </header>
 
-        {(message || error) && <div className={`rounded-xl border p-3 text-sm ${error ? "border-red-700 bg-red-950/60 text-red-200" : "border-emerald-700 bg-emerald-950/50 text-emerald-200"}`}>{error ?? message}</div>}
+        {(message || error) && (
+          <NoticeDialog
+            error={Boolean(error)}
+            message={error ?? message ?? ""}
+            onConfirm={() => {
+              setError(null);
+              setMessage(null);
+            }}
+          />
+        )}
         {library.count === 0 && <div className="rounded-xl border border-amber-700 bg-amber-950/50 p-3 text-sm text-amber-200">中央模板库尚为空。Seat 2–9 分配一位人员并完成其模板注册后，即可进行该席位的一对一验证。</div>}
 
         <section className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
@@ -521,4 +529,42 @@ function errorMessage(reason: unknown): string {
 
 function AccessDenied({ message }: { message: string }) {
   return <main className="min-h-screen bg-slate-950 text-slate-100 grid place-items-center p-6"><div className="max-w-md rounded-2xl border border-red-800 bg-red-950/40 p-6 text-center"><AlertTriangle className="mx-auto text-red-400" /><h1 className="mt-3 text-xl font-bold">禁止访问</h1><p className="mt-2 text-sm text-red-200">{message}</p><p className="mt-4 text-xs text-slate-400"><ShieldCheck className="mr-1 inline" size={14} />请在 Seat 1 平板长按右上角图标 5 秒并验证维护 PIN。</p></div></main>;
+}
+
+function NoticeDialog({
+  error,
+  message,
+  onConfirm,
+}: {
+  error: boolean;
+  message: string;
+  onConfirm: () => void;
+}) {
+  const titleId = "face-template-notice-title";
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/75 p-6 backdrop-blur-sm">
+      <div
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className={`w-full max-w-lg rounded-2xl border bg-slate-900 p-6 text-center shadow-2xl ${error ? "border-red-700" : "border-emerald-700"}`}
+        role="dialog"
+      >
+        {error
+          ? <AlertTriangle className="mx-auto text-red-400" size={36} />
+          : <ShieldCheck className="mx-auto text-emerald-400" size={36} />}
+        <h2 id={titleId} className={`mt-3 text-xl font-bold ${error ? "text-red-200" : "text-emerald-200"}`}>
+          {error ? "操作未完成" : "操作成功"}
+        </h2>
+        <p className="mt-3 text-base leading-7 text-slate-200">{message}</p>
+        <button
+          autoFocus
+          className={`mt-6 min-w-32 rounded-lg px-6 py-3 font-semibold text-white ${error ? "bg-red-600" : "bg-emerald-600"}`}
+          onClick={onConfirm}
+          type="button"
+        >
+          确认
+        </button>
+      </div>
+    </div>
+  );
 }

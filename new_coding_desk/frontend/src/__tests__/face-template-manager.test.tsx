@@ -141,6 +141,10 @@ describe("FaceTemplateManager access gate", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认当前模型阈值" }));
     await waitFor(() => expect(applyProvisionalThreshold).toHaveBeenCalledWith(0.55));
     expect(await screen.findByText(/原型阈值已确认为 0.550/)).toBeInTheDocument();
+    const notice = screen.getByRole("dialog", { name: "操作成功" });
+    expect(notice.parentElement).toHaveClass("fixed", "inset-0", "place-items-center");
+    fireEvent.click(within(notice).getByRole("button", { name: "确认" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     const picker = screen.getByLabelText(/选择 5–20 张 JPG\/PNG 正脸照片/) as HTMLInputElement;
     expect(picker.multiple).toBe(true);
