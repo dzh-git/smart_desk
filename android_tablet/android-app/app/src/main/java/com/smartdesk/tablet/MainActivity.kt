@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -44,6 +45,7 @@ import com.smartdesk.tablet.camera.FillLightOverlayView
 import com.smartdesk.tablet.config.DeviceConfig
 import com.smartdesk.tablet.config.DeviceConfigStore
 import com.smartdesk.tablet.config.DeviceIdentityStore
+import com.smartdesk.tablet.config.HostConsoleAccessStore
 import com.smartdesk.tablet.config.MaintenancePinStore
 import com.smartdesk.tablet.config.ProvisioningRequest
 import com.smartdesk.tablet.model.AndroidEvent
@@ -73,6 +75,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var cameraController: CameraController
     private lateinit var deviceConfigStore: DeviceConfigStore
     private lateinit var deviceIdentityStore: DeviceIdentityStore
+    private lateinit var hostConsoleAccessStore: HostConsoleAccessStore
     private lateinit var maintenancePinStore: MaintenancePinStore
     private lateinit var stableDeviceId: String
     private var recognitionManager: FaceRecognitionManager? = null
@@ -116,7 +119,6 @@ class MainActivity : ComponentActivity() {
     private var provisioningInProgress = false
     @Volatile
     private var identityMode = "formal"
-    private var hostConsoleAuthorized = false
     private var maintenanceAuthorized = false
     private var maintenanceUnlockAction: Runnable? = null
     private var maintenanceExpiryAction: Runnable? = null
@@ -176,6 +178,7 @@ class MainActivity : ComponentActivity() {
         setContentView(R.layout.activity_main)
         deviceConfigStore = DeviceConfigStore(applicationContext)
         deviceIdentityStore = DeviceIdentityStore(applicationContext)
+        hostConsoleAccessStore = HostConsoleAccessStore(this)
         stableDeviceId = deviceIdentityStore.getOrCreate(
             deviceConfigStore.load()?.deviceId
         )
@@ -189,6 +192,14 @@ class MainActivity : ComponentActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             hideSystemNavigationBar()
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        hideSystemNavigationBar()
+        if (::webView.isInitialized) {
+            webView.invalidate()
         }
     }
 
@@ -764,7 +775,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }.onSuccess { config ->
                     maintenanceAuthorized = false
-                    hostConsoleAuthorized = false
+                    hostConsoleAccessStore.clear()
                     emitToReact(
                         AndroidEvent.event(
                             "device_config_saved",
@@ -826,22 +837,29 @@ class MainActivity : ComponentActivity() {
             return@registerForActivityResult
         }
         if (nativeStartRequested) {
-            if (granted) {
+            if (
+                granted && WebViewAccessPolicy.mayStartNativeMicrophone(
+                    pageAccessState.currentUrl(),
+                    deviceConfigStore.load()
+                )
+            ) {
                 startNativeMicrophoneCapture()
-            } else {
+            } else if (!granted) {
                 reportMicrophonePermissionDenied()
+            } else {
+                reportNativeMicrophonePageForbidden()
             }
         }
     }
 
     private fun requestStartNativeMicrophoneCapture() {
-        if (!isTrustedSeatPage()) {
-            emitToReact(
-                AndroidEvent.error(
-                    ErrorCode.BRIDGE_ACTION_FORBIDDEN,
-                    "原生麦克风只能从已绑定的正式席位页面启动"
-                )
+        if (
+            !WebViewAccessPolicy.mayStartNativeMicrophone(
+                pageAccessState.currentUrl(),
+                deviceConfigStore.load()
             )
+        ) {
+            reportNativeMicrophonePageForbidden()
             return
         }
         if (nativeMicrophoneCapture.isRunning) {
@@ -862,6 +880,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startNativeMicrophoneCapture() {
+        if (
+            !WebViewAccessPolicy.mayStartNativeMicrophone(
+                pageAccessState.currentUrl(),
+                deviceConfigStore.load()
+            )
+        ) {
+            reportNativeMicrophonePageForbidden()
+            return
+        }
         if (
             ContextCompat.checkSelfPermission(
                 this,
@@ -894,6 +921,15 @@ class MainActivity : ComponentActivity() {
         nativeMicrophoneCapture.stop()
         emitToReact(AndroidEvent.microphoneStatus("STOPPED"))
         Log.i(TAG, "Native microphone capture stopped")
+    }
+
+    private fun reportNativeMicrophonePageForbidden() {
+        emitToReact(
+            AndroidEvent.error(
+                ErrorCode.BRIDGE_ACTION_FORBIDDEN,
+                "原生麦克风只能从已绑定的正式业务页面启动"
+            )
+        )
     }
 
     private fun reportMicrophonePermissionDenied() {
@@ -987,7 +1023,10 @@ class MainActivity : ComponentActivity() {
                 "主持人控制台授权只能从已绑定的 Seat 1 页面查询"
             )
         }
-        return hostConsoleAccessEvent(hostConsoleAuthorized, pending = false)
+        return hostConsoleAccessEvent(
+            hostConsoleAccessStore.isAuthorized(),
+            pending = false
+        )
     }
 
     private fun requestHostConsoleAccess(): String {
@@ -998,7 +1037,7 @@ class MainActivity : ComponentActivity() {
                 "主持人控制台只能由已绑定的 Seat 1 平板解锁"
             )
         }
-        if (hostConsoleAuthorized) {
+        if (hostConsoleAccessStore.isAuthorized()) {
             return hostConsoleAccessEvent(granted = true, pending = false)
         }
         if (!maintenancePinStore.hasPin()) {
@@ -1029,7 +1068,7 @@ class MainActivity : ComponentActivity() {
             .setPositiveButton(R.string.device_maintenance_confirm) { _, _ ->
                 val granted = maintenancePinStore.verify(input.text.toString())
                 if (granted) {
-                    hostConsoleAuthorized = true
+                    hostConsoleAccessStore.grant()
                 } else {
                     Toast.makeText(
                         this,
@@ -1604,6 +1643,14 @@ class MainActivity : ComponentActivity() {
     private inner class TabletWebViewClient : WebViewClient() {
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             pageAccessState.update(url)
+            if (
+                !WebViewAccessPolicy.mayStartNativeMicrophone(
+                    url,
+                    deviceConfigStore.load()
+                )
+            ) {
+                stopNativeMicrophoneCapture()
+            }
             Log.i(TAG, "WebView loading: $url")
         }
 

@@ -13,6 +13,12 @@ class LauncherManifestContractTest {
         assertTrue(manifest.contains("android.intent.category.HOME"))
         assertTrue(manifest.contains("android.intent.category.DEFAULT"))
         assertTrue(manifest.contains("android:launchMode=\"singleTask\""))
+        assertTrue(
+            manifest.contains(
+                "android:configChanges=\"orientation|screenSize|" +
+                    "smallestScreenSize|screenLayout|keyboard|keyboardHidden\""
+            )
+        )
     }
 
     @Test

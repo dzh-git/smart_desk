@@ -152,6 +152,40 @@ class WebViewAccessPolicyTest {
     }
 
     @Test
+    fun startsNativeMicrophoneOnlyFromConfiguredOperationalPages() {
+        assertTrue(
+            WebViewAccessPolicy.mayStartNativeMicrophone(
+                "https://meeting.example.test/seat/1",
+                config
+            )
+        )
+        assertTrue(
+            WebViewAccessPolicy.mayStartNativeMicrophone(
+                "https://meeting.example.test/host",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.mayStartNativeMicrophone(
+                "https://evil.example.test/host",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.mayStartNativeMicrophone(
+                "https://meeting.example.test/seat/2",
+                config
+            )
+        )
+        assertFalse(
+            WebViewAccessPolicy.mayStartNativeMicrophone(
+                "https://meeting.example.test/host",
+                config.copy(seatId = 2)
+            )
+        )
+    }
+
+    @Test
     fun photoChooserAllowsOnlyAuthorizedHostTemplatePage() {
         assertTrue(
             WebViewAccessPolicy.mayOpenTemplatePhotoChooser(

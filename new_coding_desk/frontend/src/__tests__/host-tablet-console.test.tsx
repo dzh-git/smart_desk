@@ -6,6 +6,7 @@ import { HostTabletConsole } from "../components/HostTabletConsole";
 const mocks = vi.hoisted(() => ({
   useSeatData: vi.fn(),
   debugAdmitSeat: vi.fn(),
+  fetchSpeechStatus: vi.fn(),
   identityCheckinSeat: vi.fn(),
 }));
 
@@ -20,8 +21,13 @@ vi.mock("../components/AdminDashboard", () => ({
 vi.mock("../hooks/useSeatData", () => ({ useSeatData: mocks.useSeatData }));
 vi.mock("../api/resources", () => ({
   debugAdmitSeat: mocks.debugAdmitSeat,
+  fetchSpeechStatus: mocks.fetchSpeechStatus,
   identityCheckinSeat: mocks.identityCheckinSeat,
 }));
+vi.mock("../audio/microphone", async () => {
+  const actual = await vi.importActual<typeof import("../audio/microphone")>("../audio/microphone");
+  return { ...actual, isMicrophoneCaptureSupported: () => true };
+});
 
 function envelope(type: string, data: unknown) {
   return JSON.stringify({
@@ -101,15 +107,43 @@ function seatData() {
     }],
     seats: [{ seatId: 1, isCheckedIn: false }],
     refresh: vi.fn(),
+    speakerSeatId: null,
+    connection: "connected",
+    terminateUtterance: vi.fn(),
   };
 }
 
 describe("HostTabletConsole", () => {
+  function checkedInSeatData(speakerSeatId: number | null) {
+    const data = seatData();
+    return {
+      ...data,
+      speakerSeatId,
+      attendees: data.attendees.map((attendee) => ({
+        ...attendee,
+        seat_id: 1,
+        checked_in: true,
+      })),
+      seats: [{ seatId: 1, isCheckedIn: true }],
+    };
+  }
+
   beforeEach(() => {
     mocks.useSeatData.mockReturnValue(seatData());
     mocks.debugAdmitSeat.mockResolvedValue({});
-  });
 
+    mocks.fetchSpeechStatus.mockResolvedValue({
+      ready: true,
+      preloading: false,
+      streaming_model: "loaded",
+      offline_model: "loaded",
+      punctuation_model: "loaded",
+      punctuation_fallback: false,
+      translation_model: "loaded",
+      translation_models: {},
+      last_error: null,
+    });
+  });
   afterEach(() => {
     delete window.SmartDeskNative;
     vi.clearAllMocks();
@@ -162,5 +196,31 @@ describe("HostTabletConsole", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Seat 1 Debug 签到" }));
     await waitFor(() => expect(mocks.debugAdmitSeat).toHaveBeenCalled());
     expect(native.startFaceVerification).not.toHaveBeenCalled();
+  });
+
+  it("shows a read-only speech hint when checked-in Seat 1 is not the speaker", async () => {
+    installNative();
+    mocks.useSeatData.mockReturnValue(checkedInSeatData(2));
+    render(<HostTabletConsole />);
+
+    expect(await screen.findByText(/仅当前发言席可识别/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /开始识别/ })).not.toBeInTheDocument();
+  });
+
+  it("enables speech recognition when checked-in Seat 1 is the speaker", async () => {
+    installNative();
+    mocks.useSeatData.mockReturnValue(checkedInSeatData(1));
+    render(<HostTabletConsole />);
+
+    expect(await screen.findByRole("button", { name: /开始识别/ })).toBeEnabled();
+  });
+
+  it("keeps speech read-only until speaker Seat 1 has checked in", async () => {
+    installNative();
+    mocks.useSeatData.mockReturnValue({ ...seatData(), speakerSeatId: 1 });
+    render(<HostTabletConsole />);
+
+    expect(await screen.findByText(/仅当前发言席可识别/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /开始识别/ })).not.toBeInTheDocument();
   });
 });

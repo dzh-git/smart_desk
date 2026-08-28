@@ -7,6 +7,7 @@ import re
 import shutil
 import struct
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,57 @@ def test_vbs_starts_controller_without_a_console() -> None:
     assert "-STA" in text
     assert "-WindowStyle Hidden" in text
     assert re.search(r"shell\.Run\s+command,\s*0,\s*False", text, re.IGNORECASE)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Script Host test requires Windows")
+def test_vbs_launch_does_not_depend_on_explorer_finding_pwsh(tmp_path: Path) -> None:
+    launcher = tmp_path / VBS_LAUNCHER.name
+    launcher.write_text(_read(VBS_LAUNCHER), encoding="utf-8")
+
+    marker = tmp_path / "controller-launched.txt"
+    marker_literal = str(marker).replace("'", "''")
+    controller = tmp_path / CONTROLLER.name
+    controller.write_text(
+        f"Set-Content -LiteralPath '{marker_literal}' -Value launched -Encoding UTF8",
+        encoding="utf-8",
+    )
+
+    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    env = os.environ.copy()
+    env["PATH"] = os.pathsep.join(
+        (
+            str(system_root / "System32"),
+            str(system_root),
+            str(system_root / "System32" / "Wbem"),
+            str(system_root / "System32" / "WindowsPowerShell" / "v1.0"),
+        )
+    )
+
+    result = subprocess.run(
+        [
+            str(system_root / "System32" / "cscript.exe"),
+            "//B",
+            "//nologo",
+            str(launcher),
+        ],
+        cwd=tmp_path,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+    )
+    output = result.stdout + result.stderr
+
+    assert "SmartDeskControl.vbs(" not in output, output
+
+    deadline = time.monotonic() + 5
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
+
+    assert marker.is_file(), output
 
 
 def test_shortcut_creator_uses_project_icon() -> None:

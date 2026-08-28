@@ -2000,7 +2000,7 @@ interface SpeechControlProps {
   onLocalTerminalUtterance?: (utteranceId: string, reason: string) => void;
 }
 
-function SpeechControl({
+export function SpeechControl({
   meetingId,
   seatId,
   isSpeaker,
@@ -2085,7 +2085,7 @@ function SpeechControl({
           icon={<Mic size={14} />}
         />
         <p className="text-xs text-techMuted mt-2">
-          仅发言席可传输音频。 / Only the speaker seat can stream audio.
+          仅当前发言席可识别。 / Only the current speaker seat can use speech recognition.
         </p>
       </PanelCard>
     );

@@ -1706,7 +1706,7 @@ describe("SeatTablet - speech control (non-speaker)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/仅发言席可传输音频.*Only the speaker seat can stream audio/),
+        screen.getByText(/仅当前发言席可识别.*Only the current speaker seat can use speech recognition/),
       ).toBeInTheDocument();
     });
 
@@ -1720,7 +1720,7 @@ describe("SeatTablet - speech control (non-speaker)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/仅发言席可传输音频.*Only the speaker seat can stream audio/),
+        screen.getByText(/仅当前发言席可识别.*Only the current speaker seat can use speech recognition/),
       ).toBeInTheDocument();
     });
 

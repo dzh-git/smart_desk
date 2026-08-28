@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, LockKeyhole, Settings, ShieldCheck, UserCheck, X } from "lucide-react";
 import { AdminDashboard } from "./AdminDashboard";
+import { SpeechControl } from "./SeatTablet";
 import { debugAdmitSeat, identityCheckinSeat } from "../api/resources";
 import { getNativeBridge } from "../native/NativeBridge";
 import type {
@@ -164,7 +165,17 @@ function HostCheckInCard({
   onIdentityChange: (value: HostIdentityProfile) => void;
 }) {
   const bridge = useMemo(() => getNativeBridge(), []);
-  const { meeting, attendees, seats, loading, error, refresh } = useSeatData(1);
+  const {
+    meeting,
+    attendees,
+    seats,
+    speakerSeatId,
+    connection,
+    loading,
+    error,
+    refresh,
+    terminateUtterance,
+  } = useSeatData(1);
   const [faceOpen, setFaceOpen] = useState(false);
   const [nativeStatus, setNativeStatus] = useState<NativeIdentityStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -184,6 +195,10 @@ function HostCheckInCard({
     identity.defaultPersonId
       && identity.registeredPersonIds.includes(identity.defaultPersonId),
   );
+  const meetingStatus = meeting?.status === "active" ? "meeting_active" : "no_meeting";
+  const speechEligible = checkedIn && speakerSeatId === 1;
+  const speechWritesAllowed =
+    connection === "connected" && !error && meeting?.status === "active";
   const identityMode = access.device.identityMode === "debug" ? "debug" : "formal";
 
   useEffect(() => subscribeNativeEvents((event) => {
@@ -308,6 +323,18 @@ function HostCheckInCard({
           </button>
         )}
       </section>
+
+      <div className="mt-4">
+        <SpeechControl
+          meetingId={meeting?.id ?? null}
+          seatId={1}
+          isSpeaker={speechEligible}
+          isCheckedIn={checkedIn}
+          writesAllowed={speechWritesAllowed}
+          meetingStatus={meetingStatus}
+          onLocalTerminalUtterance={terminateUtterance}
+        />
+      </div>
 
       {faceOpen && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/80 p-6 text-white backdrop-blur-sm">

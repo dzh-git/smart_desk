@@ -1,6 +1,7 @@
 package com.smartdesk.tablet
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -21,5 +22,19 @@ class ImmersiveNavigationContractTest {
         )
         assertTrue(mainActivity.contains("override fun onWindowFocusChanged"))
         assertTrue(mainActivity.contains("override fun onResume"))
+    }
+
+    @Test
+    fun configurationChangeRedrawsExistingWebViewWithoutReloading() {
+        val handler = mainActivity.substring(
+            mainActivity.indexOf("override fun onConfigurationChanged("),
+            mainActivity.indexOf("private fun hideSystemNavigationBar()")
+        )
+
+        assertTrue(handler.contains("super.onConfigurationChanged(newConfig)"))
+        assertTrue(handler.contains("webView.invalidate()"))
+        assertTrue(handler.contains("hideSystemNavigationBar()"))
+        assertFalse(handler.contains("configureWebView()"))
+        assertFalse(handler.contains("loadConfiguredPage"))
     }
 }

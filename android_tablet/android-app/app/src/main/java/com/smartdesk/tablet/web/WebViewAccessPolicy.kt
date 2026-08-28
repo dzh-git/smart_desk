@@ -57,6 +57,11 @@ object WebViewAccessPolicy {
         isTrustedSeatPage(currentUrl, config) ||
             isTrustedHostConsolePage(currentUrl, config)
 
+    fun mayStartNativeMicrophone(
+        currentPageUrl: String?,
+        config: DeviceConfig?
+    ): Boolean = isTrustedOperationalPage(currentPageUrl, config)
+
     fun isTrustedFrontendOrigin(
         originUrl: String?,
         config: DeviceConfig?
