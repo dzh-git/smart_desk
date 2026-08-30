@@ -95,4 +95,20 @@ class FaceMatcherTest {
         assertEquals("RETRY_REQUIRED", result.status)
         assertEquals("PROTOTYPE", result.verificationLevel)
     }
+    @Test
+    fun verificationProgressReportsLatestFrameSimilarityAndAgreementCount() {
+        val progress = FaceMatcher.progress(
+            frames = listOf(
+                floatArrayOf(1f, 0f),
+                floatArrayOf(0.8f, 0.6f),
+                floatArrayOf(0.6f, 0.8f)
+            ),
+            templates = listOf(personA),
+            templateKind = TemplateKind.NORMAL,
+            threshold = 0.75f
+        )
+
+        assertEquals(0.6f, progress.similarity, 0.0001f)
+        assertEquals(2, progress.agreeingFrames)
+    }
 }

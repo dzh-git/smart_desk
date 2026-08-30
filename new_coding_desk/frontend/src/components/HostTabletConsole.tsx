@@ -20,6 +20,14 @@ interface HostDeviceAccess {
   token: string;
 }
 
+const REQUIRED_FACE_MATCH_FRAMES = 4;
+
+function formatFaceScore(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toFixed(3)
+    : "--";
+}
+
 export function HostTabletConsole() {
   const bridge = useMemo(() => getNativeBridge(), []);
   const [deviceAccess, setDeviceAccess] = useState<HostDeviceAccess | null>(null);
@@ -109,6 +117,21 @@ export function HostTabletConsole() {
         hostTabletAccess={{
           deviceId: deviceAccess.device.deviceId,
           token: deviceAccess.token,
+          heartbeat: {
+            seatId: 1,
+            appVersion: deviceAccess.device.appVersion ?? "unknown",
+            cameraStatus: deviceAccess.device.cameraReady === true
+              ? "READY"
+              : deviceAccess.device.cameraReady === false ? "ERROR" : "UNKNOWN",
+            faceModelStatus: deviceAccess.device.faceModelReady === true
+              ? "READY"
+              : deviceAccess.device.faceModelReady === false ? "ERROR" : "UNKNOWN",
+            registeredTemplatesCount: identity.registeredPersonIds.length,
+            microphoneStatus: bridge.supportsMicrophoneCapture()
+              && deviceAccess.device.microphoneReady !== false ? "READY" : "ERROR",
+            diagnosticStatus: deviceAccess.device.nativeLastError ? "ERROR" : "READY",
+            lastError: deviceAccess.device.nativeLastError?.slice(0, 300) ?? null,
+          },
         }}
         hostSeatCheckIn={(
           <HostCheckInCard
@@ -117,6 +140,7 @@ export function HostTabletConsole() {
             onIdentityChange={setIdentity}
           />
         )}
+        hostSpeechControl={<HostSpeechControl />}
       />
       <MaintenanceHoldButton bridge={bridge} />
     </div>
@@ -169,12 +193,9 @@ function HostCheckInCard({
     meeting,
     attendees,
     seats,
-    speakerSeatId,
-    connection,
     loading,
     error,
     refresh,
-    terminateUtterance,
   } = useSeatData(1);
   const [faceOpen, setFaceOpen] = useState(false);
   const [nativeStatus, setNativeStatus] = useState<NativeIdentityStatus | null>(null);
@@ -195,10 +216,6 @@ function HostCheckInCard({
     identity.defaultPersonId
       && identity.registeredPersonIds.includes(identity.defaultPersonId),
   );
-  const meetingStatus = meeting?.status === "active" ? "meeting_active" : "no_meeting";
-  const speechEligible = checkedIn && speakerSeatId === 1;
-  const speechWritesAllowed =
-    connection === "connected" && !error && meeting?.status === "active";
   const identityMode = access.device.identityMode === "debug" ? "debug" : "formal";
 
   useEffect(() => subscribeNativeEvents((event) => {
@@ -295,6 +312,13 @@ function HostCheckInCard({
     canCheckIn = true;
   }
 
+  const isFinalSimilarity = nativeStatus?.status === "VERIFIED"
+    || nativeStatus?.status === "UNKNOWN"
+    || nativeStatus?.status === "RETRY_REQUIRED";
+  const stageSampleCount = nativeStatus?.stageSampleCount ?? 0;
+  const stageRequiredSamples = nativeStatus?.stageRequiredSamples ?? 5;
+  const agreeingFrames = nativeStatus?.matchStreak ?? 0;
+
   return (
     <>
       <section
@@ -324,17 +348,6 @@ function HostCheckInCard({
         )}
       </section>
 
-      <div className="mt-4">
-        <SpeechControl
-          meetingId={meeting?.id ?? null}
-          seatId={1}
-          isSpeaker={speechEligible}
-          isCheckedIn={checkedIn}
-          writesAllowed={speechWritesAllowed}
-          meetingStatus={meetingStatus}
-          onLocalTerminalUtterance={terminateUtterance}
-        />
-      </div>
 
       {faceOpen && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/80 p-6 text-white backdrop-blur-sm">
@@ -344,6 +357,35 @@ function HostCheckInCard({
             <p className="mt-3 text-sm text-slate-300">{nativeStatus?.message ?? "请保持正对摄像头并稍后"}</p>
             <p className="mt-2 font-mono text-xs text-cyan-300">{nativeStatus?.status ?? "STARTING"}</p>
             {actionError && <p className="mt-3 text-sm text-red-300">{actionError}</p>}
+            <div className="mt-5 grid grid-cols-2 gap-3 text-left">
+              <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
+                <p className="text-xs text-slate-400">{isFinalSimilarity ? "最终聚合相似度" : "实时相似度"}</p>
+                <p data-testid="face-live-similarity" className="mt-1 font-mono text-xl font-semibold text-cyan-300">
+                  {formatFaceScore(nativeStatus?.similarity)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
+                <p className="text-xs text-slate-400">当前阈值</p>
+                <p data-testid="face-threshold" className="mt-1 font-mono text-xl font-semibold text-cyan-300">
+                  {formatFaceScore(nativeStatus?.threshold)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
+                <p className="text-xs text-slate-400">采样进度</p>
+                <p data-testid="face-sample-progress" className="mt-1 font-mono text-lg text-slate-100">
+                  {stageSampleCount}/{stageRequiredSamples}
+                </p>
+              </div>
+              <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
+                <p className="text-xs text-slate-400">达标帧数</p>
+                <p data-testid="face-qualified-frames" className="mt-1 font-mono text-lg text-slate-100">
+                  {agreeingFrames}/{REQUIRED_FACE_MATCH_FRAMES}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-left text-xs leading-5 text-slate-400">
+              最终通过需聚合相似度达到阈值，且至少 4 帧单帧相似度达到阈值。
+            </p>
             <button onClick={() => void stopVerification()} className="mt-6 inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm">
               <X size={15} />取消验证
             </button>
@@ -351,6 +393,36 @@ function HostCheckInCard({
         </div>
       )}
     </>
+  );
+}
+
+function HostSpeechControl() {
+  const {
+    meeting,
+    attendees,
+    seats,
+    speakerSeatId,
+    connection,
+    error,
+    terminateUtterance,
+  } = useSeatData(1);
+  const assigned = attendees.find((person) => person.assigned_seat_id === 1)
+    ?? attendees.find((person) => person.seat_id === 1)
+    ?? null;
+  const seat = seats.find((item) => item.seatId === 1);
+  const checkedIn = seat?.isCheckedIn === true
+    || Boolean(assigned?.checked_in && assigned.seat_id === 1);
+
+  return (
+    <SpeechControl
+      meetingId={meeting?.id ?? null}
+      seatId={1}
+      isSpeaker={checkedIn && speakerSeatId === 1}
+      isCheckedIn={checkedIn}
+      writesAllowed={connection === "connected" && !error && meeting?.status === "active"}
+      meetingStatus={meeting?.status === "active" ? "meeting_active" : "no_meeting"}
+      onLocalTerminalUtterance={terminateUtterance}
+    />
   );
 }
 

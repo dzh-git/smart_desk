@@ -14,6 +14,9 @@ import type { Agenda } from "../api/types";
 import {
   deriveAgendaState,
 } from "../utils/agendaState";
+const DEFAULT_AGENDA_TITLE =
+  "会议开场与议题确认 / Opening and Agenda Confirmation";
+
 
 // ── Props ──────────────────────────────────────────────────────────────────
 
@@ -70,7 +73,7 @@ export function AgendaCommandCenter({
 
   // ── Local UI state ─────────────────────────────────────────────────────
   const [previewId, setPreviewId] = useState<number | null>(null);
-  const [newTitle, setNewTitle] = useState("");
+  const [newTitle, setNewTitle] = useState(DEFAULT_AGENDA_TITLE);
   const [addBusy, setAddBusy] = useState(false);
 
   // Reset preview when agendas change (e.g. after refresh)
@@ -88,7 +91,7 @@ export function AgendaCommandCenter({
     setAddBusy(true);
     try {
       await onAdd(title);
-      setNewTitle("");
+      setNewTitle(DEFAULT_AGENDA_TITLE);
     } finally {
       setAddBusy(false);
     }

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HostTabletConsole } from "../components/HostTabletConsole";
 
@@ -11,10 +11,17 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../components/AdminDashboard", () => ({
-  AdminDashboard: ({ hostSeatCheckIn }: { hostSeatCheckIn?: ReactNode }) => (
+  AdminDashboard: ({
+    hostSeatCheckIn,
+    hostSpeechControl,
+  }: {
+    hostSeatCheckIn?: ReactNode;
+    hostSpeechControl?: ReactNode;
+  }) => (
     <div data-testid="admin-dashboard">
       HOST ADMIN
-      {hostSeatCheckIn}
+      <section data-testid="mock-overview">{hostSeatCheckIn}</section>
+      <section data-testid="mock-service-records">{hostSpeechControl}</section>
     </div>
   ),
 }));
@@ -160,13 +167,14 @@ describe("HostTabletConsole", () => {
   });
 
   it("does not render the admin dashboard before native PIN unlock", async () => {
-    installNative({ unlocked: false });
+    const native = installNative({ unlocked: false });
     render(<HostTabletConsole />);
 
     expect(await screen.findByRole("button", { name: "输入维护 PIN" })).toBeInTheDocument();
     expect(screen.queryByTestId("admin-dashboard")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "输入维护 PIN" }));
     expect(await screen.findByTestId("admin-dashboard")).toBeInTheDocument();
+    expect(native.startFaceVerification).not.toHaveBeenCalled();
   });
 
   it("starts formal face verification only after explicit Seat 1 check-in", async () => {
@@ -178,6 +186,7 @@ describe("HostTabletConsole", () => {
     fireEvent.click(button);
     await waitFor(() => expect(native.startFaceVerification).toHaveBeenCalledWith("host-person"));
     expect(screen.getByText("主持人人脸验证")).toBeInTheDocument();
+    expect(screen.getByTestId("face-live-similarity")).toHaveTextContent("--");
   });
 
   it("renders the Seat 1 check-in card in normal document flow", async () => {
@@ -215,6 +224,21 @@ describe("HostTabletConsole", () => {
     expect(await screen.findByRole("button", { name: /开始识别/ })).toBeEnabled();
   });
 
+  it("moves enabled host speech recognition out of overview into service records", async () => {
+    installNative();
+    mocks.useSeatData.mockReturnValue(checkedInSeatData(1));
+    render(<HostTabletConsole />);
+
+    const overview = await screen.findByTestId("mock-overview");
+    const serviceRecords = screen.getByTestId("mock-service-records");
+    expect(
+      within(overview).queryByRole("button", { name: /开始识别/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(serviceRecords).getByRole("button", { name: /开始识别/ }),
+    ).toBeEnabled();
+  });
+
   it("keeps speech read-only until speaker Seat 1 has checked in", async () => {
     installNative();
     mocks.useSeatData.mockReturnValue({ ...seatData(), speakerSeatId: 1 });
@@ -222,5 +246,57 @@ describe("HostTabletConsole", () => {
 
     expect(await screen.findByText(/仅当前发言席可识别/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /开始识别/ })).not.toBeInTheDocument();
+  });
+  it("shows live similarity, threshold, sample progress, and qualifying frames", async () => {
+    installNative();
+    render(<HostTabletConsole />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "开始 Seat 1 人脸签到" }));
+    act(() => {
+    window.dispatchEvent(new CustomEvent("smartdesk-native-event", {
+      detail: {
+        schemaVersion: 1,
+        eventId: "identity-progress-1",
+        timestamp: 1_700_000_000_100,
+        type: "identity_status",
+        data: {
+          status: "VERIFYING",
+          message: "自然光已采集3/5",
+          similarity: 0.6472,
+          threshold: 0.55,
+          stageSampleCount: 3,
+          stageRequiredSamples: 5,
+          matchStreak: 2,
+        },
+      },
+    }));
+    });
+
+    expect(await screen.findByTestId("face-live-similarity")).toHaveTextContent("0.647");
+    expect(screen.getByTestId("face-threshold")).toHaveTextContent("0.550");
+    expect(screen.getByTestId("face-sample-progress")).toHaveTextContent("3/5");
+    expect(screen.getByTestId("face-qualified-frames")).toHaveTextContent("2/4");
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("smartdesk-native-event", {
+        detail: {
+          schemaVersion: 1,
+          eventId: "identity-final-1",
+          timestamp: 1_700_000_000_200,
+          type: "identity_status",
+          data: {
+            status: "RETRY_REQUIRED",
+            message: "聚合分数达标，但单帧一致性不足",
+            similarity: 0.65,
+            threshold: 0.55,
+            stageSampleCount: 5,
+            stageRequiredSamples: 5,
+            matchStreak: 3,
+          },
+        },
+      }));
+    });
+    expect(screen.getByText("最终聚合相似度")).toBeInTheDocument();
+    expect(screen.getByTestId("face-live-similarity")).toHaveTextContent("0.650");
   });
 });

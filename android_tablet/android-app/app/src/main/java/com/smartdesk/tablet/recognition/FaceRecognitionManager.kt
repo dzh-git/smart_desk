@@ -319,6 +319,21 @@ class FaceRecognitionManager(
                 return
             }
             stageEmbeddings += embeddingResult.embedding
+            val verificationProgress = if (mode == Mode.VERIFYING) {
+                val assignedTemplates = templateStore.loadAll().filter {
+                    it.personId == personId
+                }
+                assignedTemplates.takeIf { it.isNotEmpty() }?.let {
+                    FaceMatcher.progress(
+                        frames = stageEmbeddings,
+                        templates = it,
+                        templateKind = stage,
+                        threshold = templateStore.threshold()
+                    )
+                }
+            } else {
+                null
+            }
             runCatching {
                 diagnostics.recordFrame(
                     bitmap = bitmap,
@@ -336,6 +351,8 @@ class FaceRecognitionManager(
             if (stageEmbeddings.size < EmbeddingAggregator.REQUIRED_FRAMES) {
                 latestStatus = progressStatus(
                     processingTimeMs = totalTimeMs,
+                    similarity = verificationProgress?.similarity,
+                    matchStreak = verificationProgress?.agreeingFrames ?: 0,
                     message = stageMessage(
                         "已采集${stageEmbeddings.size}/" +
                             "${EmbeddingAggregator.REQUIRED_FRAMES}"
@@ -573,6 +590,8 @@ class FaceRecognitionManager(
     private fun progressStatus(
         status: String = modeStatus(),
         processingTimeMs: Long? = null,
+        similarity: Float? = null,
+        matchStreak: Int = 0,
         message: String
     ): IdentityStatus = statusSnapshot(
         status = status,
@@ -581,6 +600,8 @@ class FaceRecognitionManager(
         captureStage = captureStage(),
         stageSampleCount = stageEmbeddings.size,
         processingTimeMs = processingTimeMs,
+        similarity = similarity,
+        matchStreak = matchStreak,
         message = message
     )
 

@@ -203,6 +203,9 @@ class SeatService(BaseService):
             - Publishes seat_vacant.
         """
         seat = self._get_seat(seat_id)
+        speaker = self.seat_repo.get_speaker_seat()
+        if speaker.seat_id == seat_id:
+            self.clear_speaker_seat(meeting_id=meeting_id)
 
         if seat.status == "vacant":
             return seat  # already vacant, no event
@@ -720,12 +723,24 @@ class SeatService(BaseService):
         """Set the speaker seat. Overwrites any previous speaker.
 
         Rules:
-            - seat_id must reference a valid seat (1..9).
+            - seat_id must reference a valid, checked-in seat (1..9) while a
+              meeting is active.
             - If the old and new seat differ, performs a hard switch:
               old speech WS closed, pending interim cancelled, buffer cleared.
             - Publishes speaker_seat_set.
         """
-        self._get_seat(seat_id)  # validate seat exists
+        seat = self._get_seat(seat_id)
+        if meeting_id is None:
+            raise ValidationError(
+                "Current speaker requires an active meeting",
+                "NO_ACTIVE_MEETING",
+            )
+        if seat.status != "checked_in":
+            raise ValidationError(
+                f"Seat {seat_id} must be checked in before it can become "
+                "the current speaker",
+                "SPEAKER_SEAT_NOT_CHECKED_IN",
+            )
 
         speaker = self.seat_repo.get_speaker_seat()
         old_seat_id = speaker.seat_id

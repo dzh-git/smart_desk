@@ -24,8 +24,34 @@ data class FaceMatchResult(
     val verificationLevel: String
 )
 
+data class FaceVerificationProgress(
+    val similarity: Float,
+    val agreeingFrames: Int
+)
+
 object FaceMatcher {
     const val MIN_AGREEING_FRAMES = 4
+
+    fun progress(
+        frames: List<FloatArray>,
+        templates: List<PersonFaceTemplate>,
+        templateKind: TemplateKind,
+        threshold: Float?
+    ): FaceVerificationProgress {
+        require(frames.isNotEmpty()) { "至少需要1帧人脸特征才能计算实时相似度" }
+        require(templates.isNotEmpty()) { "至少需要1个人脸模板才能计算实时相似度" }
+        val scores = frames.map { frame ->
+            rank(frame, templates, templateKind).first().score
+        }
+        return FaceVerificationProgress(
+            similarity = scores.last(),
+            agreeingFrames = if (threshold == null) {
+                0
+            } else {
+                scores.count { it >= threshold }
+            }
+        )
+    }
 
     fun evaluate(
         frames: List<FloatArray>,

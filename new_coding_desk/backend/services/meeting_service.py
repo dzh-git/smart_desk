@@ -20,6 +20,7 @@ from backend.events.agenda_events import AgendaUpdatedEvent
 from backend.events.seat_events import SeatAssignmentUpdatedEvent
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.models.meeting import Meeting
+from backend.models.speaker_seat import SpeakerSeat
 from backend.models.agenda import Agenda
 from backend.models.attendee import Attendee
 from backend.models.seat_state import SeatState
@@ -41,7 +42,7 @@ class MeetingService(BaseService):
         - Status flow: pending → active → finished (no rollback).
         - start_meeting() publishes meeting_started.
         - end_meeting() resets seats, unbinds attendees, closes open vote,
-          preserves speaker seat, publishes meeting_ended + vote_closed.
+          clears speaker ownership, publishes meeting_ended + vote_closed.
     """
 
     def __init__(self, db: Session, event_bus: EventBus) -> None:
@@ -138,7 +139,7 @@ class MeetingService(BaseService):
             - All attendees for this meeting have seat_id cleared and
               checked_in set to false.
             - Any open vote is automatically closed (vote_closed event).
-            - Speaker seat is preserved (NOT cleared).
+            - Speaker ownership and active speech state are cleared.
             - Historical votes, service calls and translation records
               are preserved.
             - Publishes meeting_ended and (if vote was closed) vote_closed.
@@ -184,7 +185,15 @@ class MeetingService(BaseService):
                 )
             )
 
-        # Speaker seat deliberately preserved — NOT cleared.
+        # Ending a meeting also ends ownership of the speech stream. Reuse the
+        # speaker-seat cleanup path so active utterances and websockets close
+        # before subscribers receive meeting_ended.
+        from backend.services.seat_service import SeatService
+
+        if self.db.get(SpeakerSeat, 1) is not None:
+            SeatService(self.db, self.event_bus).clear_speaker_seat(
+                meeting_id=meeting_id
+            )
 
         self.meeting_repo.save(meeting)
 

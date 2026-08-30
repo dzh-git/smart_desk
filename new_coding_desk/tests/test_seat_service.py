@@ -33,6 +33,23 @@ def _active_meeting_with_attendee(db, event_bus, name="Alice", title=""):
     return meeting, attendee
 
 
+def _check_in_speaker_seat(svc, seat_id: int, name: str = "Speaker"):
+    """Create or reuse an active meeting and check an attendee into a seat."""
+    ms = MeetingService(svc.db, svc.event_bus)
+    meeting = ms.get_active_meeting()
+    if meeting is None:
+        meeting = ms.create_meeting("Speaker Test Meeting")
+        ms.start_meeting(meeting.id)
+    attendee = ms.create_attendee(
+        meeting.id,
+        f"{name} {seat_id}",
+        "Speaker Fixture",
+    )
+    svc.seat_occupied(seat_id, meeting_id=meeting.id)
+    svc.check_in(seat_id, attendee_id=attendee.id, meeting_id=meeting.id)
+    return meeting, attendee
+
+
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
@@ -352,41 +369,76 @@ class TestSpeakerSeat:
 
     def test_set_speaker_seat(self, svc):
         """Set speaker to a valid seat."""
-        speaker = svc.set_speaker_seat(3)
+        meeting, _attendee = _check_in_speaker_seat(svc, 3)
+        speaker = svc.set_speaker_seat(3, meeting_id=meeting.id)
         assert speaker.seat_id == 3
+
+
+    def test_rejects_unchecked_speaker_without_meeting_context(self, svc):
+        """Omitting meeting context must not bypass the checked-in rule."""
+        with pytest.raises(ValidationError) as exc_info:
+            svc.set_speaker_seat(1)
+
+        assert exc_info.value.error_code == "NO_ACTIVE_MEETING"
+    def test_rejects_unchecked_speaker_during_active_meeting(self, svc):
+        """A vacant seat cannot become the meeting's current speaker."""
+        meeting, _attendee = _active_meeting_with_attendee(svc.db, svc.event_bus)
+
+        with pytest.raises(ValidationError) as exc_info:
+            svc.set_speaker_seat(1, meeting_id=meeting.id)
+
+        assert exc_info.value.error_code == "SPEAKER_SEAT_NOT_CHECKED_IN"
 
     def test_publishes_speaker_seat_set(self, svc, event_bus):
         """Publishes speaker_seat_set event."""
         events = []
         event_bus.subscribe("speaker_seat_set", lambda e: events.append(e))
-        svc.set_speaker_seat(5)
+        meeting, _attendee = _check_in_speaker_seat(svc, 5)
+        svc.set_speaker_seat(5, meeting_id=meeting.id)
         assert len(events) == 1
         assert events[0].event_name == "speaker_seat_set"
         assert events[0].payload == {"seat_id": 5}
 
     def test_auto_overwrites_previous_speaker(self, svc):
         """Setting new speaker automatically replaces old."""
-        svc.set_speaker_seat(1)
-        svc.set_speaker_seat(2)
+        meeting, _attendee = _check_in_speaker_seat(svc, 1)
+        _check_in_speaker_seat(svc, 2)
+        svc.set_speaker_seat(1, meeting_id=meeting.id)
+        svc.set_speaker_seat(2, meeting_id=meeting.id)
         speaker = svc.get_speaker_seat()
         assert speaker.seat_id == 2
 
     def test_clear_speaker_seat(self, svc):
         """Clear speaker seat sets seat_id to None."""
-        svc.set_speaker_seat(4)
-        speaker = svc.clear_speaker_seat()
+        meeting, _attendee = _check_in_speaker_seat(svc, 4)
+        svc.set_speaker_seat(4, meeting_id=meeting.id)
+        speaker = svc.clear_speaker_seat(meeting_id=meeting.id)
         assert speaker.seat_id is None
 
     def test_publishes_speaker_seat_clear(self, svc, event_bus):
         """Publishes speaker_seat_clear event."""
-        svc.set_speaker_seat(3)
+        meeting, _attendee = _check_in_speaker_seat(svc, 3)
+        svc.set_speaker_seat(3, meeting_id=meeting.id)
         events = []
         event_bus.subscribe("speaker_seat_clear", lambda e: events.append(e))
-        svc.clear_speaker_seat()
+        svc.clear_speaker_seat(meeting_id=meeting.id)
         assert len(events) == 1
         assert events[0].event_name == "speaker_seat_clear"
         assert events[0].payload == {}
 
+
+    def test_vacating_current_speaker_clears_ownership(self, svc, event_bus):
+        """A speaker cannot retain speech authority after leaving the seat."""
+        meeting, _attendee = _check_in_speaker_seat(svc, 1)
+        svc.set_speaker_seat(1, meeting_id=meeting.id)
+        events = []
+        event_bus.subscribe("speaker_seat_clear", lambda event: events.append(event))
+
+        svc.seat_vacant(1, meeting_id=meeting.id)
+
+        assert svc.get_speaker_seat().seat_id is None
+        assert len(events) == 1
+        assert events[0].meeting_id == meeting.id
     def test_clear_already_clear_is_noop(self, svc):
         """Clearing when already None works (no-op)."""
         speaker = svc.clear_speaker_seat()
@@ -399,7 +451,8 @@ class TestSpeakerSeat:
 
     def test_get_speaker_seat_persists(self, svc):
         """get_speaker_seat returns persisted state after set."""
-        svc.set_speaker_seat(8)
+        meeting, _attendee = _check_in_speaker_seat(svc, 8)
+        svc.set_speaker_seat(8, meeting_id=meeting.id)
         speaker = svc.get_speaker_seat()
         assert speaker.id == 1
         assert speaker.seat_id == 8

@@ -52,8 +52,9 @@ import {
   setSeatAssignment,
   clearSeatAssignment,
   manualAdmitSeat,
+  reportTabletHeartbeat,
 } from "../api/resources";
-import type { Meeting, Attendee } from "../api/types";
+import type { Meeting, Attendee, TabletHeartbeatPayload } from "../api/types";
 import {
   deriveMeetingLifecycleStatus,
   deriveAdminVoteState,
@@ -67,16 +68,29 @@ import {
   canResolveServiceCall,
 } from "../utils/uiState";
 
+export interface HostTabletAccess extends HostTabletDisplayAccess {
+  heartbeat?: Omit<TabletHeartbeatPayload, "meetingWebsocketStatus">;
+}
+
 interface AdminDashboardProps {
   onSwitchToSeat?: (seatId: number) => void;
-  hostTabletAccess?: HostTabletDisplayAccess;
+  hostTabletAccess?: HostTabletAccess;
   hostSeatCheckIn?: ReactNode;
+  hostSpeechControl?: ReactNode;
 }
+const DEFAULT_VOTE_TITLE = "是否通过当前议题？ / Approve Current Agenda Item?";
+const DEFAULT_VOTE_OPTIONS = [
+  "同意 / Approve",
+  "反对 / Reject",
+  "弃权 / Abstain",
+] as const;
+
 
 export function AdminDashboard({
   onSwitchToSeat,
   hostTabletAccess,
   hostSeatCheckIn,
+  hostSpeechControl,
 }: AdminDashboardProps) {
   const {
     loading,
@@ -103,12 +117,44 @@ export function AdminDashboard({
     clearEndedMeeting,
   } = useAdminData();
 
+  useEffect(() => {
+    const heartbeatProfile = hostTabletAccess?.heartbeat;
+    if (!hostTabletAccess || !heartbeatProfile) return;
+
+    let active = true;
+    const heartbeat = async () => {
+      if (!active) return;
+      try {
+        await reportTabletHeartbeat(
+          hostTabletAccess.deviceId,
+          {
+            ...heartbeatProfile,
+            meetingWebsocketStatus: connection.toUpperCase() as
+              TabletHeartbeatPayload["meetingWebsocketStatus"],
+          },
+          hostTabletAccess.token,
+        );
+      } catch {
+        // Staleness in hardware status represents a missed heartbeat.
+      }
+    };
+
+    void heartbeat();
+    const timer = window.setInterval(heartbeat, 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [connection, hostTabletAccess]);
+
   const [activeSeatId, setActiveSeatId] = useState<number | undefined>();
   const [previewSeat, setPreviewSeat] = useState(1);
 
   // ── Admin action state ─────────────────────────────────────────────────
-  const [createVoteTitle, setCreateVoteTitle] = useState("");
-  const [createVoteOptions, setCreateVoteOptions] = useState(["", ""]);
+  const [createVoteTitle, setCreateVoteTitle] = useState(DEFAULT_VOTE_TITLE);
+  const [createVoteOptions, setCreateVoteOptions] = useState<string[]>(() => [
+    ...DEFAULT_VOTE_OPTIONS,
+  ]);
   const [createVoteAnonymous, setCreateVoteAnonymous] = useState(false);
   const [creatingVote, setCreatingVote] = useState(false);
   const [closingVote, setClosingVote] = useState(false);
@@ -172,8 +218,8 @@ export function AdminDashboard({
     setAdminActionError(null);
     try {
       await createVote(meeting.id, trimmedTitle, validOptions, createVoteAnonymous);
-      setCreateVoteTitle("");
-      setCreateVoteOptions(["", ""]);
+      setCreateVoteTitle(DEFAULT_VOTE_TITLE);
+      setCreateVoteOptions([...DEFAULT_VOTE_OPTIONS]);
       setCreateVoteAnonymous(false);
       refresh();
     } catch (err: unknown) {
@@ -1058,7 +1104,12 @@ export function AdminDashboard({
                         </button>
                         <button
                           onClick={() => handleSetSpeaker(selectedSeat.seatId)}
-                          disabled={!canControlSpeaker(meetingStatus) || speakerBusy || speakerSeatId === selectedSeat.seatId}
+                          disabled={
+                            !canControlSpeaker(meetingStatus) ||
+                            speakerBusy ||
+                            speakerSeatId === selectedSeat.seatId ||
+                            !selectedSeat.isCheckedIn
+                          }
                           className="inline-flex items-center gap-1.5 rounded-lg bg-techCyan/20 border border-techCyan/40 px-3 py-1.5 text-xs font-medium text-techCyan transition-colors hover:bg-techCyan/30 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {speakerBusy ? <Loader2 size={12} className="animate-spin" /> : <Mic size={13} />}
@@ -1083,7 +1134,7 @@ export function AdminDashboard({
           {/* Supporting panels. The host tablet gives these a full-width row below the table. */}
           <div className={`col-span-12 ${
             !isEndedMeeting && workspace === "overview" && hostTabletAccess
-              ? "grid grid-cols-1 items-start gap-6 xl:grid-cols-2"
+              ? "flex flex-col gap-6"
               : `flex flex-col gap-6 ${isEndedMeeting || workspace !== "overview" ? "" : "xl:col-span-4"}`
           }`}>
             {workspace === "overview" && !isEndedMeeting && hostSeatCheckIn && (
@@ -1092,8 +1143,8 @@ export function AdminDashboard({
               </div>
             )}
 
-            {/* Attendees — visible in overview workspace or ended meetings */}
-            {(isEndedMeeting || workspace === "overview") && (
+            {/* Attendees — desktop overview management or ended-meeting read-only roster. */}
+            {(isEndedMeeting || (workspace === "overview" && !hostTabletAccess)) && (
               <SectionCard
                 title="参会人员"
                 titleEn="ATTENDEES"
@@ -1286,7 +1337,8 @@ export function AdminDashboard({
 
         {/* Transcript row — visible only in the service_records workspace */}
         {workspace === "service_records" && (
-          <div className="mt-6">
+          <div className="mt-6 space-y-4">
+            {hostSpeechControl}
             <TranscriptPanel
               entries={translations}
               liveFinal={liveFinal}

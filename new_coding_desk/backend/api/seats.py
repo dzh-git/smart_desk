@@ -403,6 +403,8 @@ def set_speaker_seat(
         speaker = svc.set_speaker_seat(seat_id=body.seat_id, meeting_id=mid)
     except NotFoundError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
     return ApiResponse.ok(data=SpeakerSeatResponse.model_validate(speaker))
 
 

@@ -14,6 +14,7 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.text.InputType
 import android.view.MotionEvent
@@ -59,8 +60,10 @@ import com.smartdesk.tablet.provisioning.DeviceTokenGenerator
 import com.smartdesk.tablet.provisioning.TabletApiResult
 import com.smartdesk.tablet.provisioning.TabletDeviceClient
 import com.smartdesk.tablet.web.BackendHealthChecker
+import com.smartdesk.tablet.web.PageHealthRecoveryAction
 import com.smartdesk.tablet.web.SeatPageLoadState
 import com.smartdesk.tablet.web.WebViewAccessPolicy
+import com.smartdesk.tablet.web.WebViewPageHealthWatchdog
 import com.smartdesk.tablet.web.WebViewPageAccessState
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -108,6 +111,7 @@ class MainActivity : ComponentActivity() {
         )
     }
     private val pageLoadState = SeatPageLoadState()
+    private val pageHealthWatchdog = WebViewPageHealthWatchdog()
     private val backendHealthChecker = BackendHealthChecker()
     private val healthExecutor = Executors.newSingleThreadExecutor()
     private val provisioningExecutor = Executors.newSingleThreadExecutor()
@@ -124,6 +128,11 @@ class MainActivity : ComponentActivity() {
     private var maintenanceExpiryAction: Runnable? = null
     private var offlineRetryAction: Runnable? = null
     private var pageLoadTimeoutAction: Runnable? = null
+    private var pageHealthProbeAction: Runnable? = null
+    private var pageHealthProbeTimeoutAction: Runnable? = null
+    private var pageHealthProbeGeneration = 0
+    private var pageHealthProbeStartedAtMs = 0L
+    private var activityResumed = false
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             if (
@@ -1129,6 +1138,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadConfiguredPage() {
+        cancelPageHealthMonitoring()
         cancelOfflineRetry()
         identityMode = "formal"
         val config = deviceConfigStore.load()
@@ -1211,6 +1221,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun beginSeatPageLoad(url: String) {
+        cancelPageHealthMonitoring()
         maintenanceAuthorized = false
         maintenanceButton.visibility = View.GONE
         cancelOfflineRetry()
@@ -1231,6 +1242,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadDiagnosticPage(mode: String) {
+        cancelPageHealthMonitoring()
         cancelSeatPageLoadTimeout()
         cancelOfflineRetry()
         maintenanceButton.visibility = View.GONE
@@ -1244,6 +1256,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadWaitingPage(mode: String, retry: Boolean = true) {
+        cancelPageHealthMonitoring()
         cancelSeatPageLoadTimeout()
         if (retry) scheduleOfflineRetry() else cancelOfflineRetry()
         maintenanceButton.visibility = View.VISIBLE
@@ -1267,6 +1280,122 @@ class MainActivity : ComponentActivity() {
         pageLoadTimeoutAction = null
     }
 
+    private fun schedulePageHealthProbe(delayMs: Long) {
+        pageHealthProbeAction?.let(mainHandler::removeCallbacks)
+        pageHealthProbeAction = null
+        if (!activityResumed || !isTrustedOperationalPage()) {
+            pageHealthWatchdog.resetFailures()
+            return
+        }
+
+        val generation = pageHealthProbeGeneration
+        val action = Runnable {
+            pageHealthProbeAction = null
+            if (
+                generation != pageHealthProbeGeneration ||
+                !activityResumed ||
+                !isTrustedOperationalPage()
+            ) {
+                pageHealthWatchdog.resetFailures()
+                return@Runnable
+            }
+            runPageHealthProbe(generation)
+        }
+        pageHealthProbeAction = action
+        mainHandler.postDelayed(action, delayMs)
+    }
+
+    private fun runPageHealthProbe(generation: Int) {
+        pageHealthProbeStartedAtMs = SystemClock.elapsedRealtime()
+        val timeoutAction = Runnable {
+            completePageHealthProbe(
+                generation = generation,
+                isHealthy = false,
+                failureReason = "JavaScript probe timed out"
+            )
+        }
+        pageHealthProbeTimeoutAction = timeoutAction
+        mainHandler.postDelayed(
+            timeoutAction,
+            PAGE_HEALTH_PROBE_TIMEOUT_MS
+        )
+
+        runCatching {
+            webView.evaluateJavascript(PAGE_HEALTH_JAVASCRIPT) { result ->
+                completePageHealthProbe(
+                    generation = generation,
+                    isHealthy = result == "true",
+                    failureReason = "rendered root is empty"
+                )
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Unable to evaluate WebView health", error)
+            completePageHealthProbe(
+                generation = generation,
+                isHealthy = false,
+                failureReason = "JavaScript probe failed"
+            )
+        }
+    }
+
+    private fun completePageHealthProbe(
+        generation: Int,
+        isHealthy: Boolean,
+        failureReason: String,
+    ) {
+        if (generation != pageHealthProbeGeneration) {
+            return
+        }
+        pageHealthProbeGeneration += 1
+        pageHealthProbeTimeoutAction?.let(mainHandler::removeCallbacks)
+        pageHealthProbeTimeoutAction = null
+
+        val completedAtMs = SystemClock.elapsedRealtime()
+        val isTrustedPage = isTrustedOperationalPage()
+        val recoveryAction = pageHealthWatchdog.observe(
+            isTrustedPage = isTrustedPage,
+            isHealthy = isHealthy,
+            nowMs = completedAtMs
+        )
+        if (!activityResumed || !isTrustedPage) {
+            return
+        }
+
+        if (!isHealthy && recoveryAction == PageHealthRecoveryAction.NONE) {
+            Log.w(
+                TAG,
+                "WebView health check failed: $failureReason; " +
+                    "consecutive=${pageHealthWatchdog.consecutiveFailures}"
+            )
+        }
+
+        if (recoveryAction == PageHealthRecoveryAction.RELOAD) {
+            val currentUrl = pageAccessState.currentUrl() ?: return
+            Log.e(
+                TAG,
+                "Reloading trusted business page after repeated blank or stalled probes"
+            )
+            beginSeatPageLoad(currentUrl)
+            return
+        }
+
+        val probeDurationMs = completedAtMs - pageHealthProbeStartedAtMs
+        schedulePageHealthProbe(
+            (PAGE_HEALTH_PROBE_INTERVAL_MS - probeDurationMs)
+                .coerceAtLeast(0L)
+        )
+    }
+
+    private fun cancelPageHealthMonitoring() {
+        pageHealthProbeGeneration += 1
+        pageHealthProbeAction?.let(mainHandler::removeCallbacks)
+        pageHealthProbeAction = null
+        pageHealthProbeTimeoutAction?.let(mainHandler::removeCallbacks)
+        pageHealthProbeTimeoutAction = null
+        pageHealthProbeStartedAtMs = 0L
+        pageHealthWatchdog.resetFailures()
+    }
+
     private fun scheduleOfflineRetry() {
         cancelOfflineRetry()
         if (deviceConfigStore.load() == null) return
@@ -1285,6 +1414,7 @@ class MainActivity : ComponentActivity() {
 
     private fun openMaintenancePage() {
         healthCheckGeneration += 1
+        cancelPageHealthMonitoring()
         cancelPendingMicrophoneRequest()
         stopNativeMicrophoneCapture()
         emitToReact(AndroidEvent.appLifecycle("PAUSED", "maintenance"))
@@ -1560,6 +1690,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         healthCheckGeneration += 1
+        cancelPageHealthMonitoring()
         cancelMaintenanceUnlock()
         cancelOfflineRetry()
         cancelSeatPageLoadTimeout()
@@ -1592,14 +1723,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         hideSystemNavigationBar()
         if (::webView.isInitialized) {
             webView.onResume()
             emitToReact(AndroidEvent.appLifecycle("RESUMED"))
+            schedulePageHealthProbe(PAGE_HEALTH_INITIAL_GRACE_MS)
         }
     }
 
     override fun onPause() {
+        activityResumed = false
+        cancelPageHealthMonitoring()
         cancelPendingMicrophoneRequest()
         stopNativeMicrophoneCapture()
         if (::webView.isInitialized) {
@@ -1642,6 +1777,7 @@ class MainActivity : ComponentActivity() {
 
     private inner class TabletWebViewClient : WebViewClient() {
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            cancelPageHealthMonitoring()
             pageAccessState.update(url)
             if (
                 !WebViewAccessPolicy.mayStartNativeMicrophone(
@@ -1675,6 +1811,7 @@ class MainActivity : ComponentActivity() {
                 cancelSeatPageLoadTimeout()
                 pageLoadState.ready()
                 maintenanceButton.visibility = View.GONE
+                schedulePageHealthProbe(PAGE_HEALTH_INITIAL_GRACE_MS)
             }
         }
 
@@ -1843,6 +1980,15 @@ class MainActivity : ComponentActivity() {
         const val NETWORK_RETRY_DELAY_MS = 1_000L
         const val OFFLINE_RETRY_INTERVAL_MS = 5_000L
         const val PAGE_LOAD_TIMEOUT_MS = 15_000L
+        const val PAGE_HEALTH_INITIAL_GRACE_MS = 20_000L
+        const val PAGE_HEALTH_PROBE_INTERVAL_MS = 15_000L
+        const val PAGE_HEALTH_PROBE_TIMEOUT_MS = 5_000L
+        const val PAGE_HEALTH_JAVASCRIPT =
+            "(function(){var root=document.getElementById('root');" +
+                "if(document.readyState!=='complete'||!root||" +
+                "root.childElementCount===0){return false;}" +
+                "var child=root.firstElementChild;var rect=child.getBoundingClientRect();" +
+                "return rect.width>0&&rect.height>0;})()"
     }
 
     private enum class CameraState {

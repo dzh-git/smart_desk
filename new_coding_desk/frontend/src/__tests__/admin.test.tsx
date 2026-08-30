@@ -433,9 +433,19 @@ describe("AdminDashboard - create vote", () => {
       // Section title should exist (use heading role to avoid button ambiguity)
       expect(screen.getByRole("heading", { name: /Create Vote/i })).toBeInTheDocument();
     });
-    expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("选项 1 / Option 1")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("选项 2 / Option 2")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toHaveValue(
+      "是否通过当前议题？ / Approve Current Agenda Item?",
+    );
+    expect(screen.getByPlaceholderText("选项 1 / Option 1")).toHaveValue("同意 / Approve");
+    expect(screen.getByPlaceholderText("选项 2 / Option 2")).toHaveValue("反对 / Reject");
+    expect(screen.getByPlaceholderText("选项 3 / Option 3")).toHaveValue("弃权 / Abstain");
+    expect(
+      mockFetch.mock.calls.some(
+        ([url, options]) =>
+          (url === "/api/votes" || url === "/api/meetings/1/agendas")
+          && options?.method === "POST",
+      ),
+    ).toBe(false);
   });
 
   it("calls create vote API with correct data when form is submitted", async () => {
@@ -446,7 +456,7 @@ describe("AdminDashboard - create vote", () => {
       if (url === "/api/votes" && opts?.method === "POST") {
         postUrl = url;
         postBody = opts.body ? JSON.parse(opts.body as string) : null;
-        return okResponse({ id: 99, meeting_id: 1, title: "Test Vote", options: ["Yes", "No"], status: "open", is_anonymous: false });
+        return okResponse({ id: 99, meeting_id: 1, title: "Test Vote", options: ["Yes", "No", "Abstain"], status: "open", is_anonymous: false });
       }
       if (url === "/api/meetings/active") {
         return okResponse({ id: 1, title: "Test", status: "active", started_at: "2026-01-01T10:00:00Z" });
@@ -490,6 +500,9 @@ describe("AdminDashboard - create vote", () => {
       const opt2Input = screen.getByPlaceholderText("选项 2 / Option 2");
       fireEvent.input(opt2Input, { target: { value: "No" } });
 
+      const opt3Input = screen.getByPlaceholderText("选项 3 / Option 3");
+      fireEvent.input(opt3Input, { target: { value: "Abstain" } });
+
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -505,9 +518,15 @@ describe("AdminDashboard - create vote", () => {
     expect(postBody).toEqual({
       meeting_id: 1,
       title: "Test Vote",
-      options: ["Yes", "No"],
+      options: ["Yes", "No", "Abstain"],
       is_anonymous: false,
     });
+    expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toHaveValue(
+      "是否通过当前议题？ / Approve Current Agenda Item?",
+    );
+    expect(screen.getByPlaceholderText("选项 1 / Option 1")).toHaveValue("同意 / Approve");
+    expect(screen.getByPlaceholderText("选项 2 / Option 2")).toHaveValue("反对 / Reject");
+    expect(screen.getByPlaceholderText("选项 3 / Option 3")).toHaveValue("弃权 / Abstain");
   });
 
   it("shows error when creating duplicate vote returns conflict", async () => {
@@ -2698,7 +2717,11 @@ describe("AdminDashboard - ended meeting view", () => {
     sessionStorage.setItem("endedMeetingTitle", "Review");
     mockEndedMeetingScenario(42);
 
-    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    render(
+      <AdminDashboard
+        hostTabletAccess={{ deviceId: "host-tablet-01", token: "device-token" }}
+      />,
+    );
 
     await waitFor(() => {
       expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
@@ -2706,6 +2729,7 @@ describe("AdminDashboard - ended meeting view", () => {
 
     expect(screen.getAllByText("Past Vote").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Meeting Results")).toBeInTheDocument();
+    expect(screen.getByText("参会人员")).toBeInTheDocument();
     expect(screen.getAllByText(/Coffee.*Seat 2/).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Meeting ended")).not.toBeInTheDocument();
 
@@ -2838,6 +2862,65 @@ describe("AdminDashboard - AdminWorkspace", () => {
     });
   }
 
+  it("keeps Set Speaker disabled for a vacant seat", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard />);
+
+    await screen.findByText("Test Meeting");
+    fireEvent.click(screen.getByTestId("conference-seat-1"));
+
+    const setSpeaker = await screen.findByRole("button", {
+      name: /设为发言/,
+    });
+    expect(setSpeaker).toBeDisabled();
+  });
+
+  it("reports an authenticated operational heartbeat from the host tablet", async () => {
+    mockActiveMeetingScenario();
+    const hostTabletAccess = {
+      deviceId: "host-tablet-01",
+      token: "device-token",
+      heartbeat: {
+        seatId: 1,
+        appVersion: "0.9.0",
+        cameraStatus: "READY" as const,
+        faceModelStatus: "READY" as const,
+        registeredTemplatesCount: 1,
+        microphoneStatus: "READY" as const,
+        diagnosticStatus: "READY" as const,
+        lastError: null,
+      },
+    };
+
+    render(<AdminDashboard hostTabletAccess={hostTabletAccess} />);
+
+    await waitFor(() => {
+      const heartbeatCall = mockFetch.mock.calls.find(([url, options]) => {
+        if (
+          url !== "/api/tablet-devices/host-tablet-01/heartbeat"
+          || typeof options?.body !== "string"
+        ) return false;
+        return JSON.parse(options.body).meetingWebsocketStatus === "CONNECTED";
+      });
+      expect(heartbeatCall).toBeDefined();
+      expect(heartbeatCall?.[1]?.headers).toEqual({
+        "Content-Type": "application/json",
+        "X-SmartDesk-Device-Token": "device-token",
+      });
+      expect(JSON.parse(heartbeatCall?.[1]?.body as string)).toEqual({
+        seatId: 1,
+        appVersion: "0.9.0",
+        cameraStatus: "READY",
+        faceModelStatus: "READY",
+        registeredTemplatesCount: 1,
+        microphoneStatus: "READY",
+        meetingWebsocketStatus: "CONNECTED",
+        diagnosticStatus: "READY",
+        lastError: null,
+      });
+    });
+  });
+
   it("does NOT show Current Phase selector when meeting is active", async () => {
     mockActiveMeetingScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
@@ -2883,8 +2966,53 @@ describe("AdminDashboard - AdminWorkspace", () => {
     expect(screen.getByText("参会人员")).toBeInTheDocument();
     expect(screen.getByText("ATTENDEES")).toBeInTheDocument();
   });
+  it("prefills the agenda draft, submits edited text, and restores the template", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
-  it("uses a full-width table and an inline host check-in row on the Seat 1 tablet", async () => {
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const agendaInput = screen.getByPlaceholderText("输入议题标题 / TOPIC TITLE");
+    expect(agendaInput).toHaveValue(
+      "会议开场与议题确认 / Opening and Agenda Confirmation",
+    );
+    expect(
+      mockFetch.mock.calls.some(
+        ([url, options]) =>
+          url === "/api/meetings/1/agendas" && options?.method === "POST",
+      ),
+    ).toBe(false);
+
+    fireEvent.input(agendaInput, {
+      target: { value: "董事会报告 / Board Report" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加 / ADD" }));
+
+    await waitFor(() => {
+      const call = mockFetch.mock.calls.find(
+        ([url, options]) =>
+          url === "/api/meetings/1/agendas" && options?.method === "POST",
+      );
+      expect(call).toBeDefined();
+      expect(JSON.parse(call?.[1]?.body as string)).toEqual({
+        title: "董事会报告 / Board Report",
+        sort_order: 1,
+      });
+    });
+    expect(agendaInput).toHaveValue(
+      "会议开场与议题确认 / Opening and Agenda Confirmation",
+    );
+  });
+
+
+  it("hides attendee management and uses a full-width host check-in row on the Seat 1 tablet", async () => {
     mockActiveMeetingScenario();
     render(
       <AdminDashboard
@@ -2901,8 +3029,38 @@ describe("AdminDashboard - AdminWorkspace", () => {
     expect(tableHeading.parentElement?.parentElement).toHaveClass("col-span-12");
     expect(tableHeading.parentElement?.parentElement).not.toHaveClass("xl:col-span-8");
     expect(screen.getByTestId("inline-host-checkin")).toBeInTheDocument();
-    expect(screen.getByTestId("host-checkin-layout-slot").parentElement).toHaveClass("xl:grid-cols-2");
+    expect(screen.queryByText("参会人员")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("参会人姓名 / Attendee name")).not.toBeInTheDocument();
+    expect(screen.getByTestId("host-checkin-layout-slot").parentElement).toHaveClass("flex", "flex-col");
+    expect(screen.getByTestId("host-checkin-layout-slot").parentElement).not.toHaveClass("xl:grid-cols-2");
   });
+  it("places host speech controls only in the service_records workspace", async () => {
+    mockActiveMeetingScenario();
+    render(
+      <AdminDashboard
+        hostTabletAccess={{ deviceId: "host-tablet-01", token: "device-token" }}
+        hostSeatCheckIn={<div data-testid="inline-host-checkin">HOST CHECK-IN</div>}
+        hostSpeechControl={<div data-testid="host-speech-control">HOST SPEECH</div>}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("inline-host-checkin")).toBeInTheDocument();
+    expect(screen.queryByTestId("host-speech-control")).not.toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(screen.queryByTestId("inline-host-checkin")).not.toBeInTheDocument();
+    expect(screen.getByTestId("host-speech-control")).toBeInTheDocument();
+    expect(screen.getByText("会议记录", { exact: true })).toBeInTheDocument();
+  });
+
 
   it("shows meeting records only in the service_records workspace", async () => {
     mockActiveMeetingScenario();

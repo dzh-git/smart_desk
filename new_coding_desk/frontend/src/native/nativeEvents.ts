@@ -11,6 +11,9 @@ export interface NativeIdentityStatus {
   top2Score?: number | null;
   margin?: number | null;
   threshold?: number | null;
+  stageSampleCount?: number;
+  stageRequiredSamples?: number;
+  matchStreak?: number;
   registeredCount?: number;
   thresholdStatus?: string;
   verificationLevel?: string;
