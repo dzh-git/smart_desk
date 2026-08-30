@@ -3124,5 +3124,17 @@
     "seen": 1788022067.9811854,
     "ast_hash": "9c1a8c65b9844c3a58fdc3abe53fcfcc",
     "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_esp32_provisioning_script.py": {
+    "mtime": 1788102369.4456112,
+    "seen": 1788102858.8735876,
+    "ast_hash": "d83d67a343dc0c276201b822725ba62e",
+    "semantic_hash": ""
+  },
+  "scripts/provision_esp32.ps1": {
+    "mtime": 1788102538.5633528,
+    "seen": 1788102858.8735876,
+    "ast_hash": "af5408b1a3726228ab406b85c5ac654b",
+    "semantic_hash": ""
   }
 }
