@@ -171,7 +171,7 @@ try {
 
     if ($Profile -eq "CI") {
         Invoke-Check "Backend tests (model-independent)" "REQUIRED" $deskRoot {
-            python -m pytest -q `
+            python -m pytest -q tests `
                 --ignore=tests/test_translation_model_safety.py `
                 --ignore=tests/test_bidirectional_translation.py `
                 --ignore=tests/test_translation_model_service.py `
@@ -202,7 +202,7 @@ try {
     }
     else {
         Invoke-Check "Backend full non-soak pytest" "REQUIRED" $deskRoot {
-            python -m pytest -q `
+            python -m pytest -q tests `
                 --ignore=tests/test_speech_stream_service.py `
                 --ignore=tests/test_speech_websocket_blackbox.py
         }

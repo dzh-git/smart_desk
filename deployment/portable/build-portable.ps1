@@ -30,24 +30,30 @@ function Copy-SourceTree {
         ".git", ".gradle", ".pio", ".pytest_cache", ".venv",
         "__pycache__", "build", "dist", "logs", "node_modules"
     )
-    Get-ChildItem -LiteralPath $Source -Recurse -File | ForEach-Object {
-        $relative = $_.FullName.Substring($Source.Length).TrimStart("\")
-        $segments = $relative -split "[\\/]"
-        if (@($segments | Where-Object { $_ -in $blockedDirectories }).Count -gt 0) {
-            return
+    function Copy-Directory {
+        param([string]$CurrentDirectory)
+
+        Get-ChildItem -LiteralPath $CurrentDirectory -Force -File | ForEach-Object {
+            if ($_.Extension -in @(
+                ".db", ".log", ".pyc",
+                ".tflite", ".task", ".onnx", ".pt", ".pth", ".ckpt"
+            )) {
+                return
+            }
+            $relative = $_.FullName.Substring($Source.Length).TrimStart("\")
+            $target = Join-Path $Destination $relative
+            New-Item -ItemType Directory -Force -Path (
+                Split-Path -Parent $target
+            ) | Out-Null
+            Copy-Item -LiteralPath $_.FullName -Destination $target -Force
         }
-        if ($_.Extension -in @(
-            ".db", ".log", ".pyc",
-            ".tflite", ".task", ".onnx", ".pt", ".pth", ".ckpt"
-        )) {
-            return
-        }
-        $target = Join-Path $Destination $relative
-        New-Item -ItemType Directory -Force -Path (
-            Split-Path -Parent $target
-        ) | Out-Null
-        Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+
+        Get-ChildItem -LiteralPath $CurrentDirectory -Force -Directory |
+            Where-Object { $_.Name -notin $blockedDirectories } |
+            ForEach-Object { Copy-Directory -CurrentDirectory $_.FullName }
     }
+
+    Copy-Directory -CurrentDirectory $Source
 }
 
 if (-not $SkipBuild) {

@@ -45,9 +45,11 @@ App 原生层生成独立设备令牌并调用 `/api/tablet-devices/provision`�
 
 正式页面的席位头部在“在线”和时间右侧显示 SmartDesk 标识；它随页面正常滚动，
 长按 5 秒并通过本地 PIN 后才能进入维护配置页。后端离线或绑定错误时，本地状态页
-仍保留原生应急入口，维护页自身不显示该入口。Android 系统广播 `BOOT_COMPLETED`
-后会自动拉起单实例 Activity；
-现场仍需为目标平板启用厂商自启动白名单并关闭阻塞式锁屏。
+仍保留原生应急入口，维护页自身不显示该入口。App 被声明为 Android `HOME`
+应用；将 SmartDesk 设为默认桌面后，系统会在开机进入桌面时启动单实例
+Activity。项目刻意不使用 `BOOT_COMPLETED` Receiver，避免后台拉起受系统
+版本和厂商策略影响。现场仍需启用厂商自启动/后台无限制白名单、保持接电常亮，
+并关闭阻塞式锁屏。
 主前端会通过 `SmartDeskNative.getDeviceInfo()` 读取 `serverBaseUrl`，并据此连接后端
 HTTP API 和会议/语音 WebSocket。
 
@@ -140,3 +142,18 @@ android-app/app/src/main/assets/models/se_mobilefacenet_emb256_fp32.tflite
 `docs/CALIBRATION.md`；设备与现场验收统一使用
 `../docs/integration/FIELD_VALIDATION_QUICKSTART.md` 和
 `../docs/integration/HUMAN_VALIDATION_REQUIRED.md`。
+
+## 九台平板统一部署
+
+Seat 1–9 使用同一个 APK。通过仓库根目录的脚本逐台执行：
+
+```powershell
+.\scripts\manage_android_tablet.ps1 -Action Configure -SeatId 2 -SkipInstall
+.\scripts\manage_android_tablet.ps1 -Action Configure -SeatId 2 -Apply
+.\scripts\manage_android_tablet.ps1 -Action Verify -SeatId 2 -ExpectedWifiSsid "SmartDesk"
+```
+
+第一条命令只显示计划；第二条才会安装 APK（未指定 `-SkipInstall` 时）、授予
+相机/麦克风权限、设置默认 HOME、配置接电常亮与锁屏策略。随后在 App 内完成
+该席位预配，再运行 `Verify`。完整流程见
+`../docs/integration/TABLET_FLEET_DEPLOYMENT.md`。

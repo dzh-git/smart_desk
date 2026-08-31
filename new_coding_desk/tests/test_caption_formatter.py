@@ -414,12 +414,12 @@ class TestNoForcedVisualSplit:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 2-second timeout triggers split
+# Timeout compatibility remains a no-op; PCM/VAD owns pause boundaries
 # ═════════════════════════════════════════════════════════════════════════════
 
 
 class TestTimeoutSplit:
-    """>2 seconds without text change commits current_line."""
+    """>2 seconds without text change does not commit current_line."""
 
     def test_timeout_before_expiry_no_split(self):
         f = CaptionFormatter(CaptionConfig(min_line_length=5), punctuator=_no_punc)
@@ -447,7 +447,7 @@ class TestTimeoutSplit:
         f = CaptionFormatter(punctuator=_no_punc)
         now = time.monotonic()
         f.update("今天天气真好我们", now)
-        f.check_timeout(now + 2.5)  # commits
+        f.check_timeout(now + 2.5)
         assert f.check_timeout(now + 3.0) is None  # nothing new
 
     def test_timeout_is_noop_with_heuristic(self):

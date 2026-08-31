@@ -77,11 +77,11 @@ def test_single_seat_parameter_rebinds_config_and_preserves_other_devices(
             {
                 "esp32-seat-01": {
                     "seatId": 1,
-                    "token": "old-device-token-0000000000000001",
+                    "token": "test-old-device-token-0000000000000001",
                 },
                 "esp32-seat-03": {
                     "seatId": 3,
-                    "token": "seat-three-token-00000000000000003",
+                    "token": "test-seat-three-token-00000000000000003",
                 },
             }
         ),
@@ -107,7 +107,7 @@ def test_single_seat_parameter_rebinds_config_and_preserves_other_devices(
     assert credentials["esp32-seat-03"]["seatId"] == 3
     output = result.stdout + result.stderr
     assert generated_token not in output
-    assert "old-device-token-0000000000000001" not in output
+    assert "test-old-device-token-0000000000000001" not in output
 
 
 def test_conflicting_target_seat_fails_without_partial_changes(
@@ -120,11 +120,11 @@ def test_conflicting_target_seat_fails_without_partial_changes(
         {
             "esp32-seat-01": {
                 "seatId": 1,
-                "token": "old-device-token-0000000000000001",
+                "token": "test-old-device-token-0000000000000001",
             },
             "existing-seat-two-device": {
                 "seatId": 2,
-                "token": "existing-seat-two-token-00000000002",
+                "token": "test-existing-seat-two-token-00000000002",
             },
         }
     )
@@ -148,7 +148,7 @@ def test_what_if_reports_plan_without_writing_credentials_or_config(
         {
             "esp32-seat-01": {
                 "seatId": 1,
-                "token": "old-device-token-0000000000000001",
+                "token": "test-old-device-token-0000000000000001",
             }
         }
     )

@@ -7,6 +7,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$gradleFile = Join-Path $repoRoot (
+    "android_tablet\android-app\app\build.gradle.kts"
+)
+$gradle = Get-Content -LiteralPath $gradleFile -Encoding UTF8 -Raw
+$versionMatch = [regex]::Match($gradle, 'versionName\s*=\s*"([^"]+)"')
+if (-not $versionMatch.Success) {
+    throw "Unable to read Android versionName from $gradleFile"
+}
+$expectedVersion = $versionMatch.Groups[1].Value
 $reportRoot = Join-Path $repoRoot "logs\hardware\android-latest"
 New-Item -ItemType Directory -Force -Path $reportRoot | Out-Null
 $adb = Get-Command adb -ErrorAction SilentlyContinue
@@ -96,7 +105,11 @@ $permissionDetail = (
     "camera={0}; microphone={1}; MIUI may require visible confirmation" -f
     $cameraGranted, $microphoneGranted
 )
-$versionStatus = if ($package -match "versionName=0\.8\.0") {
+$versionStatus = if (
+    $package -match (
+        "versionName=$([regex]::Escape($expectedVersion))(?:\s|$)"
+    )
+) {
     "PASS"
 } else { "FAIL" }
 $activityStatus = if (
@@ -112,7 +125,7 @@ $results = @(
     },
     [PSCustomObject]@{
         name = "Version"; status = $versionStatus
-        detail = "Expected versionName 0.8.0"
+        detail = "Expected versionName $expectedVersion"
     },
     [PSCustomObject]@{
         name = "MainActivity"; status = $activityStatus

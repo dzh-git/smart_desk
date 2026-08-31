@@ -307,22 +307,14 @@ class TestProcessPcmFrame:
         assert audio is not None
         assert len(audio) == 1600
 
-    # ── Phase 02: caption timeout commit ──────────────────────────────
+    # ── Caption timeout compatibility ─────────────────────────────────
 
-    def test_timeout_commits_via_check_timeout(self, monkeypatch):
-        """When ASR text does not change for text_change_timeout_s (2.0s),
-        check_timeout commits uncommitted current_line to previous_line.
+    def test_timeout_does_not_commit_frozen_interim_text(self, monkeypatch):
+        """Frozen ASR text must not create a semantic sentence boundary.
 
-        Strategy:
-          - Mock SpeechModule to return identical >=5-char text on each call.
-          - Monkeypatch time.monotonic: first call → t0, second → t0 + 2.5.
-          - First process_pcm_frame: update() sets _last_change_time = t0.
-            check_timeout(t0) sees elapsed=0 and returns None.
-            → current_line non-empty, previous_line empty.
-          - Second process_pcm_frame: same text → update() short-circuits
-            (raw_text == _last_raw), _last_change_time stays t0.
-            check_timeout(t0+2.5) sees elapsed=2.5 >= 2.0 and commits.
-            → previous_line non-empty, current_line empty.
+        PCM/VAD owns pause detection.  The legacy caption timeout API remains
+        a no-op so an unchanged interim hypothesis stays visible until a real
+        speech boundary is detected.
         """
         mock_sm = _MockSpeechModule()
         monkeypatch.setattr(
@@ -358,15 +350,15 @@ class TestProcessPcmFrame:
         assert c1["previous_line"] == "", \
             "First frame: previous_line should be empty"
 
-        # ── Second frame: same text → timeout triggers commit ──
+        # ── Second frame: same text remains current despite elapsed time ──
         r2 = stream_service.process_pcm_frame(
             self.session_key, _make_pcm16_sine(),
         )
         c2 = r2["caption"]
-        assert c2["previous_line"] != "", \
-            "Second frame: previous_line should contain committed text"
-        assert c2["current_line"] == "", \
-            "Second frame: current_line should be empty after commit"
+        assert c2["previous_line"] == "", \
+            "Elapsed time alone must not commit an interim hypothesis"
+        assert c2["current_line"] == c1["current_line"], \
+            "Frozen interim text should remain visible until VAD finalizes it"
 
     def test_cached_error_fails_fast(self) -> None:
         """When _speech_module_error is set, process_pcm_frame raises immediately."""
