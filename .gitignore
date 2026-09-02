@@ -1,3 +1,7 @@
+# SmartDesk monorepo ignore rules.
+# Unanchored rules apply to every module; generated files that are intentionally
+# versioned must be re-included explicitly with a leading `!`.
+
 # ---------- Python ----------
 __pycache__/
 *.py[cod]
@@ -7,19 +11,30 @@ __pycache__/
 
 .pytest_cache/
 .pytest_tmp/
+.pytest-tmp-*/
+.hypothesis/
+.tox/
+.nox/
 
 .coverage
+.coverage.*
 coverage.xml
+coverage.json
 htmlcov/
 
 .mypy_cache/
 .ruff_cache/
+.pyre/
+.pytype/
 
 # ---------- Python Build ----------
 build/
 dist/
 *.egg
 *.egg-info/
+.eggs/
+wheels/
+pip-wheel-metadata/
 
 # ---------- Virtual Env ----------
 .venv/
@@ -29,30 +44,97 @@ env/
 
 # ---------- Database ----------
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
 
-# ---------- Environment ----------
+# ---------- Local configuration and secrets ----------
 .env
 .env.*
+!.env.example
+!.env.sample
+!.env.template
+config/smartdesk.integration.json
+config/*device-tokens*.json
+!config/*.example.json
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.private.key
+*.private.pem
+keystore.properties
+**/google-services.json
+esp32_seat_controller/firmware/include/DeviceConfig.h
 
 # ---------- Node ----------
 node_modules/
 **/dist/
 .vite/
+.eslintcache
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
 # ---------- Runtime ----------
 .smartdesk-runtime/
+.smartdesk-packaging/
+artifacts/
 logs/
 log/
 *.log
+*.pid
+*.pid.lock
 *.tmp
+*.bak
 
 # ---------- AI Model Cache ----------
 .hf_cache/
 .cache/
 modelscope_cache/
 
+# ---------- Android tablet ----------
+.android-user-home/
+.gradle-user-home/
+.npm-cache/
+**/.gradle/
+**/local.properties
+**/.cxx/
+**/.externalNativeBuild/
+**/.kotlin/
+**/captures/
+*.iml
+*.apk
+*.aab
+android_tablet/android-app/app/src/main/assets/web/
+android_tablet/android-app/app/src/main/assets/models/*.tflite
+android_tablet/model-tools/*.h5
+android_tablet/model-tools/*.onnx
+android_tablet/model-tools/*.local.json
+android_tablet/static-test-data/
+android_tablet/STATIC_IMAGE_TEST_RESULTS.json
+android_tablet/install-blocked.png
+android_tablet/smartdesk-*.png
+
+# ---------- ESP32 / C/C++ build ----------
+**/.pio/
+**/.pioenvs/
+**/.piolibdeps/
+**/CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+
 # ---------- Playwright ----------
 .playwright-mcp/
+.codex-playwright-output/
 playwright-report/
 test-results/
 
@@ -61,13 +143,19 @@ test-results/
 .idea/
 .vs/
 *.code-workspace
+*.swp
+*.swo
 
 # ---------- OS ----------
 .DS_Store
 Thumbs.db
+Desktop.ini
+*.lnk
+
+# ---------- Private local media ----------
+/my_photos/
 
 .workbuddy/
-.claude/
 .stfolder/
 sync.ffs_db
 **/.claude/memory/

@@ -11,8 +11,10 @@ Two deploy modes (config/smartdesk.integration.json -> ``deploy_mode``):
   serial ports directly via ``seat_managers`` (``{seat_id: ArduinoManager}``).
   Use this to test on one machine with Arduinos plugged into the host.
 
-* ``distributed`` (production): the central host talks to Seat Edge Agents over
-  WebSocket (``/ws/seat/{seat_id}``); each agent owns its seat's serial port.
+* ``distributed`` (compatibility): the central host talks to Windows Seat Edge
+  Agents over WebSocket.
+* ``esp32`` (production): ESP32 controllers connect directly to the same
+  versioned WebSocket endpoint.
   ``seat_managers`` is empty here.
 
 In both modes a ``SeatGatewayLike`` gateway is built (``LocalSeatGateway`` or
@@ -25,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -38,11 +41,15 @@ logger = logging.getLogger(__name__)
 
 def load_integration_config() -> dict:
     """Locate and parse config/smartdesk.integration.json."""
-    candidates = [
+    configured_path = os.environ.get("SMARTDESK_CONFIG_PATH", "").strip()
+    candidates = []
+    if configured_path:
+        candidates.append(Path(configured_path).expanduser())
+    candidates.extend([
         Path(__file__).resolve().parents[2] / "config" / "smartdesk.integration.json",
         Path(__file__).resolve().parents[3] / "config" / "smartdesk.integration.json",
         Path.cwd() / "config" / "smartdesk.integration.json",
-    ]
+    ])
     for path in candidates:
         if path.exists():
             try:
@@ -56,9 +63,23 @@ def load_integration_config() -> dict:
 _config = load_integration_config()
 gesture_config = _config.get("gesture", {})
 deploy_mode = (_config.get("deploy_mode") or "central").strip().lower()
-if deploy_mode not in ("central", "distributed"):
+if deploy_mode not in ("central", "distributed", "esp32"):
     logger.warning("Unknown deploy_mode %r; falling back to 'central'.", deploy_mode)
     deploy_mode = "central"
+
+def resolve_identity_mode(config: dict) -> str:
+    """Return the fail-closed tablet identity policy for a config mapping."""
+    configured = str(config.get("identity_mode") or "formal").strip().lower()
+    if configured in ("formal", "debug"):
+        return configured
+    logger.warning(
+        "Unknown identity_mode %r; falling back to 'formal'.",
+        configured,
+    )
+    return "formal"
+
+
+identity_mode = resolve_identity_mode(_config)
 
 
 def _resolve_seat_ids() -> list[int]:
@@ -81,7 +102,7 @@ lighting_config = _config.get("lighting") or {}
 demo_seat_id: Optional[int] = lighting_config.get("demo_seat_id")
 
 # In central mode, build the per-seat serial managers at import (ports NOT yet
-# opened). In distributed mode, the central host owns no serial ports.
+# opened). In network modes, the central host owns no serial ports.
 seat_managers: dict[int, ArduinoManager] = (
     build_seat_managers(_config) if deploy_mode == "central" else {}
 )
@@ -120,6 +141,8 @@ def set_lighting_manager(lm: LightingManager) -> None:
 __all__ = [
     "load_integration_config",
     "deploy_mode",
+    "identity_mode",
+    "resolve_identity_mode",
     "seat_ids",
     "seat_managers",
     "demo_seat_id",

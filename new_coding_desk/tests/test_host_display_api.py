@@ -10,7 +10,7 @@ Covers:
   - Timeout / network failure → graceful degradation
   - Malformed upstream response → no 500
   - viewer_count null when metrics unavailable
-  - No POST /api/host-display/activate exists
+  - POST /api/host-display/activate fails closed without Seat 1 authentication
   - No shell execution
 """
 
@@ -229,13 +229,13 @@ def test_viewer_count_null_when_metric_absent(client):
     assert data["viewer_count"] is None
 
 
-# ── No activate endpoint ───────────────────────────────────────────────────
+# ── Authenticated activate endpoint ───────────────────────────────────────
 
 
-def test_no_activate_endpoint(client):
-    """No POST /api/host-display/activate exists → 404 or 405."""
+def test_activate_requires_host_authentication(client):
+    """POST activation fails closed without Seat 1 credentials."""
     resp = client.post("/api/host-display/activate", json={"app": "powerpoint"})
-    assert resp.status_code in (404, 405, 422)
+    assert resp.status_code in (403, 422)
 
 
 def test_no_activate_get_endpoint(client):

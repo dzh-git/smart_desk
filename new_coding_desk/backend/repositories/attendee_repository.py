@@ -27,3 +27,31 @@ class AttendeeRepository(BaseRepository[Attendee]):
             .filter(Attendee.meeting_id == meeting_id)
             .all()
         )
+
+    def get_by_person_and_meeting(
+        self,
+        person_id: str,
+        meeting_id: int,
+    ) -> Attendee | None:
+        return (
+            self.db.query(Attendee)
+            .filter(
+                Attendee.person_id == person_id,
+                Attendee.meeting_id == meeting_id,
+            )
+            .first()
+        )
+
+    def get_by_assigned_seat(
+        self,
+        meeting_id: int,
+        seat_id: int,
+    ) -> Attendee | None:
+        return (
+            self.db.query(Attendee)
+            .filter(
+                Attendee.meeting_id == meeting_id,
+                Attendee.assigned_seat_id == seat_id,
+            )
+            .first()
+        )

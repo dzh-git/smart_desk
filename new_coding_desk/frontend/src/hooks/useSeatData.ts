@@ -367,6 +367,18 @@ export function useSeatData(seatId: number): SeatData {
     doFetch(true);
   }, [doFetch]);
 
+  useEffect(() => {
+    if (!error) return;
+    const retry = window.setTimeout(() => doFetch(false), 5_000);
+    return () => window.clearTimeout(retry);
+  }, [doFetch, error]);
+
+  useEffect(() => {
+    if (loading || error || data.meeting) return;
+    const poll = window.setTimeout(() => doFetch(false), 5_000);
+    return () => window.clearTimeout(poll);
+  }, [data.meeting, doFetch, error, loading]);
+
   // ── WebSocket event handler ────────────────────────────────────────────
 
   const handleWSEvent = useCallback(
@@ -686,6 +698,7 @@ export function useSeatData(seatId: number): SeatData {
         });
         if (uid) {
           finalizedUtteranceIdsRef.current.add(uid);
+          setLyricMap((prev) => removeLyricsForUtterance(prev, uid));
           // Task 126: mark as terminal (skip if already recorded)
           if (!terminalUtteranceIdsRef.current.has(uid)) {
             recordTerminalId(uid);

@@ -168,8 +168,8 @@ describe("DisplayView — Task 2 ended meeting", () => {
       expect(screen.getByText("Red")).toBeInTheDocument();
     });
 
-    // Should NOT show Meeting Ended
-    expect(screen.queryByText("Meeting Ended")).not.toBeInTheDocument();
+    // Should NOT show the ended-meeting banner.
+    expect(screen.queryByText(/会议已结束/)).not.toBeInTheDocument();
   });
 
   it("2. no active meeting, no endedMeetingId → waiting state", async () => {
@@ -187,8 +187,8 @@ describe("DisplayView — Task 2 ended meeting", () => {
       expect(screen.getByText("暂无投票")).toBeInTheDocument();
     });
 
-    // Should NOT show Meeting Ended
-    expect(screen.queryByText("Meeting Ended")).not.toBeInTheDocument();
+    // Should NOT show the ended-meeting banner.
+    expect(screen.queryByText(/会议已结束/)).not.toBeInTheDocument();
   });
 
   it("3. meeting_ended WS event → saves endedMeetingId, shows Meeting Ended with vote results", async () => {
@@ -312,7 +312,7 @@ describe("DisplayView — Task 2 ended meeting", () => {
     });
 
     // Ended meeting state should be gone
-    expect(screen.queryByText("Meeting Ended")).not.toBeInTheDocument();
+    expect(screen.queryByText(/会议已结束/)).not.toBeInTheDocument();
     expect(screen.queryByText("Floor Color")).not.toBeInTheDocument();
 
     // New meeting votes should show
@@ -516,7 +516,7 @@ describe("DisplayView — Task 6 polling for active meeting", () => {
     });
 
     // Ended meeting indicators should be gone
-    expect(screen.queryByText("Meeting Ended")).not.toBeInTheDocument();
+    expect(screen.queryByText(/会议已结束/)).not.toBeInTheDocument();
     // h1 should show the new meeting title, not "Waiting for Meeting"
     expect(screen.queryByText("Waiting for Meeting")).not.toBeInTheDocument();
 
@@ -679,7 +679,7 @@ describe("DisplayView — agenda progress (Phase 3)", () => {
     });
   });
 
-  it("shows progress dots with correct status colors", async () => {
+  it("shows bilingual agenda statuses in the vertical timeline", async () => {
     activeMeetingWithAgendas([
       { id: 1, meeting_id: 1, title: "A", sort_order: 1, status: "completed", started_at: null, completed_at: null, skipped_at: null },
       { id: 2, meeting_id: 1, title: "B", sort_order: 2, status: "active", started_at: null, completed_at: null, skipped_at: null },
@@ -694,18 +694,28 @@ describe("DisplayView — agenda progress (Phase 3)", () => {
       expect(titles.length).toBeGreaterThanOrEqual(1);
     });
 
-    // Status labels should be present
-    const doneEls = screen.getAllByText("Done");
-    expect(doneEls.length).toBeGreaterThanOrEqual(1);
-    const activeEls = screen.getAllByText("Active");
-    expect(activeEls.length).toBeGreaterThanOrEqual(1);
-    const skipEls = screen.getAllByText("Skip");
-    expect(skipEls.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/已完成 \/ Completed/)).toBeInTheDocument();
+    expect(screen.getByText(/进行中 \/ Active/)).toBeInTheDocument();
+    expect(screen.getByText(/已跳过 \/ Skipped/)).toBeInTheDocument();
+    expect(screen.getByText(/待处理 \/ Pending/)).toBeInTheDocument();
+    expect(screen.queryByText("Done")).not.toBeInTheDocument();
+    expect(screen.queryByText("Skip")).not.toBeInTheDocument();
+  });
 
-    // Legend should show all color labels
-    expect(screen.getByText("Completed")).toBeInTheDocument();
-    expect(screen.getByText("Skipped")).toBeInTheDocument();
-    expect(screen.getByText("Pending")).toBeInTheDocument();
+  it("uses the full-screen agenda and vote columns", async () => {
+    activeMeetingWithAgendas([
+      { id: 1, meeting_id: 1, title: "Opening", sort_order: 1, status: "active", started_at: null, completed_at: null, skipped_at: null },
+    ]);
+
+    renderDisplay();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("display-dashboard-grid")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("display-dashboard-grid")).toHaveClass("lg:grid-cols-12");
+    expect(screen.getByTestId("display-agenda-panel")).toHaveClass("lg:col-span-4");
+    expect(screen.getByTestId("display-vote-panel")).toHaveClass("lg:col-span-8");
   });
 
   it("fetches ended meeting agendas when endedMeetingId is set", async () => {

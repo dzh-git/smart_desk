@@ -1,0 +1,14 @@
+{
+  "sourceFile": "se_mobilefacenet_ms1mv3_arcface_emb256_basic.h5",
+  "sourceUrl": "https://github.com/leondgarse/Keras_insightface/releases/download/v1.0.0/TF11_se_mobilefacenet_pointwise_GDC_arc_emb256_dr0_sgd_no_alpha_bs512_ms1m_rand_0_bnm09_bne1e4_cos16_batch_float16_basic_agedb_30_epoch_50_0.973000.h5",
+  "sourceSize": 5206744,
+  "sourceSha256": "1482ccbfba3c9f3d453c4419cea78459b570f1856867d2c0270a7dd8a90be56d",
+  "outputFile": "se_mobilefacenet_emb256_fp32.tflite",
+  "outputSize": 4441048,
+  "outputSha256": "4593a73d01a55342fd0f857b881bbb8da9308134b1de0ed4db34f14566650ad5",
+  "inputShape": [1, 112, 112, 3],
+  "outputShape": [1, 256],
+  "parityImageCount": 10,
+  "minimumCosineParity": 1.0,
+  "meanCosineParity": 1.0000000715255737
+}

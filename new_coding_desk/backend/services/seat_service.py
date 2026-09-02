@@ -11,6 +11,8 @@ Per system_architecture §4.2, EVENT_BUS_SPEC §6:
 from __future__ import annotations
 
 import logging
+import os
+import time
 
 from sqlalchemy.orm import Session
 
@@ -29,13 +31,33 @@ from backend.models.seat_state import SeatState
 from backend.models.speaker_seat import SpeakerSeat
 from backend.models.attendee import Attendee
 from backend.models.meeting import Meeting
+from backend.models.identity_checkin_event import IdentityCheckInEvent
 from backend.repositories.seat_repository import SeatRepository, SEAT_COUNT
 from backend.repositories.attendee_repository import AttendeeRepository
+from backend.repositories.person_repository import PersonRepository
+from backend.repositories.identity_checkin_event_repository import (
+    IdentityCheckInEventRepository,
+)
 from backend.services.base import BaseService
+from backend.services.tablet_device_service import TabletDeviceService
 from backend.services.speech_stream_service import stream_service
 from backend.websocket.speech_registry import speech_registry
 
 logger = logging.getLogger(__name__)
+
+
+def _bounded_identity_time_setting(
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
 
 
 class SeatService(BaseService):
@@ -54,6 +76,9 @@ class SeatService(BaseService):
         super().__init__(db, event_bus)
         self.seat_repo = SeatRepository(db)
         self.attendee_repo = AttendeeRepository(db)
+        self.person_repo = PersonRepository(db)
+        self.identity_event_repo = IdentityCheckInEventRepository(db)
+        self.tablet_device_service = TabletDeviceService(db)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -178,6 +203,9 @@ class SeatService(BaseService):
             - Publishes seat_vacant.
         """
         seat = self._get_seat(seat_id)
+        speaker = self.seat_repo.get_speaker_seat()
+        if speaker.seat_id == seat_id:
+            self.clear_speaker_seat(meeting_id=meeting_id)
 
         if seat.status == "vacant":
             return seat  # already vacant, no event
@@ -209,7 +237,13 @@ class SeatService(BaseService):
     # ── check_in ─────────────────────────────────────────────────────────────
 
     def check_in(
-        self, seat_id: int, attendee_id: int, meeting_id: int | None = None
+        self,
+        seat_id: int,
+        attendee_id: int,
+        meeting_id: int | None = None,
+        *,
+        commit: bool = True,
+        publish: bool = True,
     ) -> SeatState:
         """Transition: occupied_unchecked → checked_in.
 
@@ -274,20 +308,408 @@ class SeatService(BaseService):
         seat.attendee_id = attendee_id
         attendee.seat_id = seat_id
         attendee.checked_in = True
-        self.seat_repo.save_seat(seat)
-        self.attendee_repo.save(attendee)
+        self.seat_repo.save_seat(seat, commit=commit)
+        self.attendee_repo.save(attendee, commit=commit)
 
+        if publish:
+            self._publish_checkin_success(
+                seat_id=seat_id,
+                attendee_id=attendee_id,
+                meeting_id=meeting_id,
+            )
+        return seat
+
+    def identity_check_in(
+        self,
+        *,
+        seat_id: int,
+        device_seat_id: int,
+        device_id: str,
+        device_token: str | None,
+        event_id: str,
+        event_timestamp: int,
+        person_id: str,
+        identity_status: str,
+        threshold_status: str,
+        verification_level: str,
+        similarity: float,
+        model_version: str | None,
+        allow_prototype: bool = False,
+    ) -> SeatState:
+        """Resolve a stable person in the active meeting, then reuse check_in.
+
+        The Android result is evidence only. This method enforces the rollout
+        gate before mapping Person -> Attendee and delegates the actual seat
+        transition to check_in(), so there is still one check-in state machine.
+        """
+        if device_seat_id != seat_id:
+            raise ValidationError(
+                (
+                    f"Device is bound to seat {device_seat_id}, "
+                    f"not requested seat {seat_id}"
+                ),
+                "DEVICE_SEAT_MISMATCH",
+            )
+        device = self.tablet_device_service.authenticate(
+            device_id=device_id,
+            seat_id=seat_id,
+            token=device_token,
+        )
+
+        existing_event = self.identity_event_repo.get(event_id)
+        if existing_event is not None:
+            if (
+                existing_event.device_id != device_id
+                or existing_event.seat_id != seat_id
+                or existing_event.person_id != person_id
+            ):
+                raise ConflictError(
+                    "Identity event_id was already used for different evidence",
+                    "IDENTITY_EVENT_CONFLICT",
+                )
+            seat = self._get_seat(existing_event.seat_id)
+            if (
+                seat.status != "checked_in"
+                or seat.attendee_id != existing_event.attendee_id
+            ):
+                raise ConflictError(
+                    "Identity event exists but its seat state no longer matches",
+                    "IDENTITY_EVENT_STATE_CONFLICT",
+                )
+            return seat
+
+        now_ms = int(time.time() * 1000)
+        max_age_ms = (
+            _bounded_identity_time_setting(
+                "SMARTDESK_IDENTITY_MAX_EVENT_AGE_SECONDS",
+                120,
+                minimum=10,
+                maximum=600,
+            )
+            * 1000
+        )
+        future_skew_ms = (
+            _bounded_identity_time_setting(
+                "SMARTDESK_IDENTITY_MAX_FUTURE_SKEW_SECONDS",
+                30,
+                minimum=1,
+                maximum=120,
+            )
+            * 1000
+        )
+        if event_timestamp < now_ms - max_age_ms:
+            raise ValidationError(
+                "Identity event is too old",
+                "IDENTITY_EVENT_STALE",
+            )
+        if event_timestamp > now_ms + future_skew_ms:
+            raise ValidationError(
+                "Identity event timestamp is in the future",
+                "IDENTITY_EVENT_FUTURE",
+            )
+
+        identity_status = identity_status.upper()
+        threshold_status = threshold_status.upper()
+        verification_level = verification_level.upper()
+        if identity_status != "VERIFIED":
+            raise ValidationError(
+                "Identity result is not VERIFIED",
+                "IDENTITY_NOT_VERIFIED",
+            )
+        if threshold_status == "CALIBRATION_PENDING":
+            raise ValidationError(
+                "Face verification calibration is still pending",
+                "FACE_CALIBRATION_PENDING",
+            )
+        if verification_level == "PROTOTYPE":
+            if threshold_status != "PROVISIONAL":
+                raise ValidationError(
+                    "Prototype verification requires a PROVISIONAL threshold",
+                    "IDENTITY_THRESHOLD_INVALID",
+                )
+            if not allow_prototype:
+                raise ValidationError(
+                    "Prototype identity check-in is disabled",
+                    "PROTOTYPE_IDENTITY_CHECKIN_DISABLED",
+                )
+        elif verification_level == "VALIDATED":
+            if threshold_status != "VALIDATED":
+                raise ValidationError(
+                    "Validated verification requires a VALIDATED threshold",
+                    "IDENTITY_THRESHOLD_INVALID",
+                )
+        else:
+            raise ValidationError(
+                f"Unsupported verification level: {verification_level}",
+                "IDENTITY_VERIFICATION_LEVEL_INVALID",
+            )
+
+        active = self._active_meeting()
+        if active is None:
+            raise ValidationError(
+                "There is no active meeting",
+                "NO_ACTIVE_MEETING",
+            )
+        if seat_id in range(2, 10) and (
+            device.face_template_sync_status != "SYNCED"
+            or device.face_template_meeting_id != active.id
+            or device.face_template_set_revision
+            != (active.face_template_set_revision or 0)
+        ):
+            raise ValidationError(
+                "The participant tablet has not synchronized this meeting's face templates",
+                "FACE_TEMPLATE_SYNC_INCOMPLETE",
+            )
+
+        person = self.person_repo.get_by_id(person_id)
+        if person is None:
+            raise ValidationError(
+                f"Person {person_id} not found",
+                "PERSON_NOT_FOUND",
+            )
+        if not person.active:
+            raise ValidationError(
+                f"Person {person_id} is inactive",
+                "PERSON_INACTIVE",
+            )
+
+        attendee = self.attendee_repo.get_by_person_and_meeting(
+            person_id,
+            active.id,
+        )
+        if attendee is None:
+            raise ValidationError(
+                f"Person {person_id} is not in the active meeting",
+                "PERSON_NOT_IN_ACTIVE_MEETING",
+            )
+        if attendee.assigned_seat_id != seat_id:
+            raise ConflictError(
+                (
+                    f"Person {person_id} is assigned to seat "
+                    f"{attendee.assigned_seat_id}, not seat {seat_id}"
+                ),
+                "PERSON_SEAT_ASSIGNMENT_MISMATCH",
+            )
+
+        try:
+            checked_in_seat, occupied_by_identity, performed_checkin = (
+                self._stage_assigned_check_in(
+                    seat_id=seat_id,
+                    attendee=attendee,
+                    meeting_id=active.id,
+                )
+            )
+
+            identity_event = IdentityCheckInEvent(
+                event_id=event_id,
+                device_id=device_id,
+                seat_id=seat_id,
+                person_id=person_id,
+                attendee_id=attendee.id,
+                similarity=similarity,
+                verification_level=verification_level,
+                model_version=model_version,
+            )
+            self.identity_event_repo.save(
+                identity_event,
+                commit=False,
+            )
+            self.db.commit()
+            self.db.refresh(checked_in_seat)
+            self.db.refresh(identity_event)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        if occupied_by_identity:
+            self._publish(
+                SeatOccupiedEvent(payload={"seat_id": seat_id}),
+                meeting_id=active.id,
+            )
+        if performed_checkin:
+            self._publish_checkin_success(
+                seat_id=seat_id,
+                attendee_id=attendee.id,
+                meeting_id=active.id,
+            )
+        return checked_in_seat
+
+    def get_assigned_attendee(
+        self,
+        seat_id: int,
+        meeting_id: int | None = None,
+    ) -> Attendee | None:
+        """Return the active meeting's default attendee for a seat."""
+        active = self._active_meeting()
+        effective_meeting_id = meeting_id or (active.id if active else None)
+        if effective_meeting_id is None:
+            return None
+        return self.attendee_repo.get_by_assigned_seat(
+            effective_meeting_id,
+            seat_id,
+        )
+
+    def manual_admit(self, seat_id: int) -> SeatState:
+        """Admit only the active meeting attendee assigned to this seat."""
+        active = self._active_meeting()
+        if active is None:
+            raise ValidationError(
+                "There is no active meeting",
+                "NO_ACTIVE_MEETING",
+            )
+        attendee = self.get_assigned_attendee(seat_id, active.id)
+        if attendee is None:
+            raise ValidationError(
+                f"Seat {seat_id} has no assigned attendee",
+                "SEAT_ASSIGNMENT_REQUIRED",
+            )
+        try:
+            seat, occupied, performed_checkin = self._stage_assigned_check_in(
+                seat_id=seat_id,
+                attendee=attendee,
+                meeting_id=active.id,
+            )
+            self.db.commit()
+            self.db.refresh(seat)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        if occupied:
+            self._publish(
+                SeatOccupiedEvent(payload={"seat_id": seat_id}),
+                meeting_id=active.id,
+            )
+        if performed_checkin:
+            self._publish_checkin_success(
+                seat_id=seat_id,
+                attendee_id=attendee.id,
+                meeting_id=active.id,
+            )
+        return seat
+
+    def debug_admit(
+        self,
+        *,
+        seat_id: int,
+        device_seat_id: int,
+        device_id: str,
+        device_token: str | None,
+    ) -> SeatState:
+        """Authenticate a bound tablet, then admit only its assigned attendee."""
+        if device_seat_id != seat_id:
+            raise ValidationError(
+                (
+                    f"Device is bound to seat {device_seat_id}, "
+                    f"not requested seat {seat_id}"
+                ),
+                "DEVICE_SEAT_MISMATCH",
+            )
+        self.tablet_device_service.authenticate(
+            device_id=device_id,
+            seat_id=seat_id,
+            token=device_token,
+        )
+        return self.manual_admit(seat_id)
+
+    def _stage_assigned_check_in(
+        self,
+        *,
+        seat_id: int,
+        attendee: Attendee,
+        meeting_id: int,
+    ) -> tuple[SeatState, bool, bool]:
+        """Stage the shared face/manual admission state transition."""
+        if attendee.meeting_id != meeting_id or attendee.assigned_seat_id != seat_id:
+            raise ConflictError(
+                "Attendee is not assigned to the requested seat",
+                "PERSON_SEAT_ASSIGNMENT_MISMATCH",
+            )
+
+        seat = self._get_seat(seat_id)
+        if seat.status == "checked_in":
+            if seat.attendee_id == attendee.id:
+                return seat, False, False
+            raise ConflictError(
+                f"Seat {seat_id} is checked in by another attendee",
+                "SEAT_ALREADY_CHECKED_IN",
+            )
+        if attendee.checked_in and attendee.seat_id != seat_id:
+            raise ConflictError(
+                f"Attendee {attendee.id} is checked in at another seat",
+                "ATTENDEE_ALREADY_CHECKED_IN",
+            )
+        if seat.attendee_id is not None and seat.attendee_id != attendee.id:
+            raise ConflictError(
+                f"Seat {seat_id} is occupied by another attendee",
+                "SEAT_ALREADY_BOUND",
+            )
+
+        occupied = seat.status == "vacant"
+        if occupied:
+            seat.status = "occupied_unchecked"
+            seat.attendee_id = None
+            self.seat_repo.save_seat(seat, commit=False)
+        checked_in_seat = self.check_in(
+            seat_id=seat_id,
+            attendee_id=attendee.id,
+            meeting_id=meeting_id,
+            commit=False,
+            publish=False,
+        )
+        return checked_in_seat, occupied, True
+
+    def tablet_vacate(
+        self,
+        *,
+        seat_id: int,
+        device_seat_id: int,
+        device_id: str,
+        device_token: str | None,
+    ) -> SeatState:
+        """Release a seat after authenticating its bound Android tablet."""
+        if device_seat_id != seat_id:
+            raise ValidationError(
+                (
+                    f"Device is bound to seat {device_seat_id}, "
+                    f"not requested seat {seat_id}"
+                ),
+                "DEVICE_SEAT_MISMATCH",
+            )
+        self.tablet_device_service.authenticate(
+            device_id=device_id,
+            seat_id=seat_id,
+            token=device_token,
+        )
+        active = self._active_meeting()
+        if active is None:
+            raise ValidationError(
+                "There is no active meeting",
+                "NO_ACTIVE_MEETING",
+            )
+        return self.seat_vacant(
+            seat_id=seat_id,
+            meeting_id=active.id,
+        )
+
+    def _publish_checkin_success(
+        self,
+        *,
+        seat_id: int,
+        attendee_id: int,
+        meeting_id: int | None,
+    ) -> None:
         self._publish(
             CheckInEvent(
                 payload={"seat_id": seat_id, "attendee_id": attendee_id},
             ),
             meeting_id=meeting_id,
         )
-
         logger.info(
-            "Seat %d: checked_in by attendee %d", seat_id, attendee_id
+            "Seat %d: checked_in by attendee %d",
+            seat_id,
+            attendee_id,
         )
-        return seat
 
     # ── Speaker Seat ─────────────────────────────────────────────────────────
 
@@ -301,12 +723,24 @@ class SeatService(BaseService):
         """Set the speaker seat. Overwrites any previous speaker.
 
         Rules:
-            - seat_id must reference a valid seat (1..9).
+            - seat_id must reference a valid, checked-in seat (1..9) while a
+              meeting is active.
             - If the old and new seat differ, performs a hard switch:
               old speech WS closed, pending interim cancelled, buffer cleared.
             - Publishes speaker_seat_set.
         """
-        self._get_seat(seat_id)  # validate seat exists
+        seat = self._get_seat(seat_id)
+        if meeting_id is None:
+            raise ValidationError(
+                "Current speaker requires an active meeting",
+                "NO_ACTIVE_MEETING",
+            )
+        if seat.status != "checked_in":
+            raise ValidationError(
+                f"Seat {seat_id} must be checked in before it can become "
+                "the current speaker",
+                "SPEAKER_SEAT_NOT_CHECKED_IN",
+            )
 
         speaker = self.seat_repo.get_speaker_seat()
         old_seat_id = speaker.seat_id

@@ -51,10 +51,19 @@ export interface Agenda {
 export interface Attendee {
   id: number;
   meeting_id: number;
+  person_id?: string | null;
   name: string;
   title: string;
+  assigned_seat_id: number | null;
   seat_id: number | null;
   checked_in: boolean;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  active: boolean;
+  created_at: string;
 }
 
 // ── Seat ──────────────────────────────────────────────────────────────────
@@ -68,6 +77,58 @@ export interface SeatState {
 
 export interface SpeakerSeat {
   seat_id: number | null;
+}
+
+export interface IdentityCheckInPayload {
+  eventId: string;
+  eventTimestamp: number;
+  personCode: string;
+  deviceId: string;
+  deviceSeatId: number;
+  status: string;
+  similarity: number;
+  thresholdStatus: string;
+  verificationLevel: string;
+  modelVersion: string | null;
+}
+
+export interface TabletVacatePayload {
+  deviceId: string;
+  deviceSeatId: number;
+}
+
+export interface DebugAdmitPayload {
+  deviceId: string;
+  deviceSeatId: number;
+}
+
+export type HostDisplayApp = "powerpoint" | "solidworks" | "smartdesk";
+
+export interface HostDisplayActivateResult {
+  app: HostDisplayApp;
+  activated: boolean;
+}
+
+export interface TabletHeartbeatPayload {
+  seatId: number;
+  appVersion: string;
+  cameraStatus: "READY" | "ERROR" | "UNKNOWN";
+  faceModelStatus: "READY" | "ERROR" | "UNKNOWN";
+  registeredTemplatesCount: number;
+  microphoneStatus: "READY" | "ERROR" | "UNKNOWN";
+  meetingWebsocketStatus:
+    | "CONNECTED"
+    | "CONNECTING"
+    | "DISCONNECTED"
+    | "UNKNOWN";
+  diagnosticStatus: "READY" | "ERROR" | "UNKNOWN";
+  lastError: string | null;
+}
+
+export interface TabletDeviceStatus extends TabletHeartbeatPayload {
+  deviceId: string;
+  enabled: boolean;
+  lastSeenAt: string | null;
 }
 
 // ── Vote ──────────────────────────────────────────────────────────────────
@@ -176,6 +237,7 @@ export interface SpeechModelStatus {
     minimum_onset_rms: number;
     minimum_continue_rms: number;
     sentence_pause_seconds: number;
+    chinese_finalize_pause_seconds: number;
     clause_pause_seconds: number;
     natural_pause_seconds: number;
     hard_silence_seconds: number;

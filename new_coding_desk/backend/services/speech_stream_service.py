@@ -28,6 +28,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.services.speech_inference_runtime import inference_runtime
+from backend.services.speech_debug_capture import (
+    record_speech_debug_decoder_call,
+    record_speech_debug_revision,
+    save_speech_debug_capture,
+)
 
 import numpy as np
 
@@ -41,6 +46,7 @@ from backend.speech_module.english_punctuation import (
 from backend.speech_module.punctuation import ALL_BOUNDARY
 from backend.speech_module.text_utils import (
     format_english_streaming_display,
+    merge_texts,
     merge_english_transcripts,
     normalize_english_display,
 )
@@ -74,6 +80,7 @@ SENSEVOICE_LIVE_WINDOW_FRAMES = round(SENSEVOICE_LIVE_WINDOW_SECONDS * 10)
 
 # Boundary policy: punctuation + pause first, silence fallback last.
 VAD_SENTENCE_PAUSE_S: float = 0.9
+VAD_CHINESE_FINALIZE_PAUSE_S: float = 2.0
 VAD_CLAUSE_PAUSE_S: float = 1.3
 VAD_NATURAL_PAUSE_S: float = 2.0
 VAD_SILENCE_DURATION_S: float = 3.0      # compatibility alias / hard silence
@@ -151,7 +158,10 @@ class SpeechStreamSession:
         self.peak_processing_ms: int = 0
         self.speaking_event_active = False
         self.utterance_audio_seconds = 0.0
+        self.last_streaming_text = ""
         self.last_source_text = ""
+        self.speech_debug_decoder_calls: list[dict[str, Any]] = []
+        self.speech_debug_revisions: list[dict[str, Any]] = []
         self.last_caption: dict[str, str] = {
             "previous_line": "",
             "current_line": "",
@@ -187,6 +197,9 @@ class SpeechStreamSession:
         self.english_streaming_frames: int = 0
         self.english_streaming_last_error: str | None = None
         self.english_streaming_flushed: bool = False
+        # Chinese Paraformer keeps final CIF tokens in its streaming cache.
+        # This flag ensures one explicit final flush per detected pause.
+        self.chinese_streaming_flushed: bool = False
         self.english_punctuation_last_error: str | None = None
         self.english_punctuation_source_text: str = ""
         self.english_punctuation_text: str = ""
@@ -380,6 +393,7 @@ class SpeechStreamService:
             "noise_start_ratio": VAD_NOISE_START_RATIO,
             "noise_continue_ratio": VAD_NOISE_CONTINUE_RATIO,
             "sentence_pause_seconds": VAD_SENTENCE_PAUSE_S,
+            "chinese_finalize_pause_seconds": VAD_CHINESE_FINALIZE_PAUSE_S,
             "clause_pause_seconds": VAD_CLAUSE_PAUSE_S,
             "natural_pause_seconds": VAD_NATURAL_PAUSE_S,
             "hard_silence_seconds": VAD_SILENCE_DURATION_S,
@@ -557,6 +571,7 @@ class SpeechStreamService:
             session.voice_active = True
             session.has_speech = True
             session.vad_silence_seconds = 0.0
+            session.chinese_streaming_flushed = False
             session.voice_start_frames = 0
             admitted = list(session._pre_roll)
             session._pre_roll.clear()
@@ -564,6 +579,10 @@ class SpeechStreamService:
 
         if rms >= continue_threshold:
             session.vad_silence_seconds = 0.0
+            # The prior pause was a hesitation rather than an utterance end.
+            # Paraformer has already closed its old cache; the next speech
+            # frame starts its new cache while retaining cumulative text.
+            session.chinese_streaming_flushed = False
         else:
             session.vad_silence_seconds += frame_duration
         return [pcm_bytes], False
@@ -601,7 +620,7 @@ class SpeechStreamService:
             if (
                 session.detected_language != "en"
                 and stripped[-1] in "。！？.!?"
-                and silence + 1e-6 >= VAD_SENTENCE_PAUSE_S
+                and silence + 1e-6 >= VAD_CHINESE_FINALIZE_PAUSE_S
             ):
                 return "sentence_pause"
             if (
@@ -1098,7 +1117,10 @@ class SpeechStreamService:
         session.voice_active = continuous_rollover
         session.has_speech = continuous_rollover
         session.utterance_audio_seconds = 0.0
+        session.last_streaming_text = ""
         session.last_source_text = ""
+        session.speech_debug_decoder_calls.clear()
+        session.speech_debug_revisions.clear()
         session.last_caption = {
             "previous_line": "",
             "current_line": "",
@@ -1128,6 +1150,7 @@ class SpeechStreamService:
         session.english_streaming_frames = 0
         session.english_streaming_last_error = None
         session.english_streaming_flushed = False
+        session.chinese_streaming_flushed = False
         session.english_punctuation_last_error = None
         session.english_punctuation_source_text = ""
         session.english_punctuation_text = ""
@@ -1181,6 +1204,10 @@ class SpeechStreamService:
         session.vad_silence_seconds = 0.0
         session.voice_active = False
         session.has_speech = False
+        session.chinese_streaming_flushed = False
+        session.last_streaming_text = ""
+        session.speech_debug_decoder_calls.clear()
+        session.speech_debug_revisions.clear()
         session._pre_roll.clear()
         session._rollover_overlap_pcm = b""
         session._rollover_started_at = None
@@ -1204,6 +1231,68 @@ class SpeechStreamService:
         session = self._sessions.get(session_key)
         if session is not None:
             session.caption_formatter.reset()
+
+    def _flush_chinese_stream(
+        self,
+        session_key: str,
+        session: SpeechStreamSession,
+        speech_module: Any,
+    ) -> str:
+        """Release Paraformer's pending final token(s) once per pause."""
+        if (
+            session.detected_language != "zh"
+            or session.recognition_engine != "paraformer_streaming"
+            or session.chinese_streaming_flushed
+        ):
+            return ""
+        try:
+            if hasattr(speech_module, "finish_chinese_interim"):
+                flushed = speech_module.finish_chinese_interim(session_key)
+            else:
+                # Compatibility for lightweight adapters used in diagnostics.
+                flushed = speech_module.process_interim_array(
+                    np.zeros(1600, dtype=np.float32),
+                    session_key,
+                    is_final=True,
+                )
+            self._record_chinese_decoder_call(
+                session, speech_module, session_key, stage="final_flush",
+            )
+            session.chinese_streaming_flushed = True
+            trace(
+                "chinese_streaming_flush_at",
+                utterance_id=session.current_utterance_id,
+                meeting_id=session.meeting_id,
+                seat_id=session.seat_id,
+                silence_ms=round(session.vad_silence_seconds * 1000),
+                text_len=len(flushed or ""),
+            )
+            return str(flushed or "")
+        except Exception as exc:
+            # Preserve the existing live hypothesis if a degraded adapter does
+            # not support explicit finalization.
+            logger.warning("Chinese streaming flush failed; retaining interim text: %s", exc)
+            return ""
+
+    @staticmethod
+    def _record_chinese_decoder_call(
+        session: SpeechStreamSession,
+        speech_module: Any,
+        session_key: str,
+        *,
+        stage: str,
+    ) -> None:
+        getter = getattr(speech_module, "get_interim_debug", None)
+        if not callable(getter):
+            return
+        try:
+            record_speech_debug_decoder_call(
+                session,
+                stage=stage,
+                decoder=getter(session_key),
+            )
+        except Exception as exc:
+            logger.warning("Speech decoder debug capture failed: %s", exc)
 
     def snapshot_auto_finalization(
         self,
@@ -1250,7 +1339,8 @@ class SpeechStreamService:
         overlap_pcm = b""
         if continuous_rollover and session._utterance_buffer:
             overlap_pcm = b"".join(session._utterance_buffer)[-ROLLOVER_OVERLAP_BYTES:]
-        audio = self.pcm16_to_float32(b"".join(session._utterance_buffer)).copy()
+        pcm_bytes = b"".join(session._utterance_buffer)
+        audio = self.pcm16_to_float32(pcm_bytes).copy()
         snapshot = {
             "utterance_id": utterance_id,
             "meeting_id": session.meeting_id,
@@ -1277,6 +1367,15 @@ class SpeechStreamService:
                 "degraded" if session.sensevoice_last_error else "ok"
             ),
         }
+
+        try:
+            save_speech_debug_capture(
+                session,
+                pcm_bytes=pcm_bytes,
+                boundary_reason=boundary_reason,
+            )
+        except Exception as exc:
+            logger.warning("Speech debug capture failed: %s", exc)
 
         session.terminal_utterance_ids.add(utterance_id)
         session._utterance_buffer.clear()
@@ -1441,6 +1540,9 @@ class SpeechStreamService:
                     sm.process_interim_array(
                         self.pcm16_to_float32(overlap_pcm), session_key,
                     )
+                    self._record_chinese_decoder_call(
+                        session, sm, session_key, stage="rollover_replay",
+                    )
                     sm.reset_interim(session_key)
                 except Exception as exc:
                     logger.warning(
@@ -1453,6 +1555,9 @@ class SpeechStreamService:
             for frame in frames:
                 text = sm.process_interim_array(
                     self.pcm16_to_float32(frame), session_key,
+                )
+                self._record_chinese_decoder_call(
+                    session, sm, session_key, stage="streaming",
                 )
             return text
 
@@ -1549,10 +1654,41 @@ class SpeechStreamService:
                     raw_text = paraformer_text or probe_text
         elif session.detected_language == "zh":
             session.recognition_engine = "paraformer_streaming"
-            raw_text = process_paraformer(admitted_frames)
+            if (
+                session.chinese_streaming_flushed
+                and session.vad_silence_seconds > 0.0
+            ):
+                # Do not start an empty decoder after a pause flush.  It would
+                # replace the complete live hypothesis with an empty result.
+                raw_text = session.last_streaming_text
+            else:
+                raw_text = process_paraformer(admitted_frames)
             session.paraformer_replayed_frames = len(session._utterance_buffer)
         else:
             raw_text = process_english_stream(admitted_frames)
+
+        # Paraformer retains a small right-context/CIF cache.  A 0.9 s pause is
+        # sufficient evidence to flush the tail into the *live* event, without
+        # waiting for background final ASR or a database refresh.  A duration
+        # rollover also needs the same flush even while speech continues.
+        should_flush_chinese = (
+            session.detected_language == "zh"
+            and not session.chinese_streaming_flushed
+            and (
+                session.vad_silence_seconds + 1e-6 >= VAD_SENTENCE_PAUSE_S
+                or session.utterance_audio_seconds >= VAD_MAX_UTTERANCE_S
+            )
+        )
+        if should_flush_chinese:
+            flushed = self._flush_chinese_stream(session_key, session, sm)
+            if flushed:
+                # Some Paraformer versions return a shorter final hypothesis
+                # for an incomplete chunk.  A flush may extend live text, but
+                # must never make an already rendered subtitle regress.
+                raw_text = merge_texts(raw_text, flushed)
+
+        if raw_text:
+            session.last_streaming_text = raw_text
         if (
             session.detected_language == "en"
             and session.recognition_engine == "sensevoice_rolling_fallback"
@@ -1678,6 +1814,12 @@ class SpeechStreamService:
             committed_boundary=caption_result.committed_boundary,
             english_boundary_confirmed=english_boundary_confirmed,
         )
+        record_speech_debug_revision(
+            session,
+            raw_text=raw_text,
+            source_text=source_text,
+            boundary_reason=boundary_reason,
+        )
         # English sentence pauses feed translation_sentence but must not reset
         # the underlying online recognizer. Only a hard/manual/duration
         # boundary creates a new utterance and clears its decoder cache.
@@ -1796,6 +1938,37 @@ class SpeechStreamService:
             )
             return None
 
+        live_flush = False
+        if (
+            session.detected_language == "zh"
+            and not session.chinese_streaming_flushed
+        ):
+            try:
+                speech_module = self._get_speech_module()
+                flushed = self._flush_chinese_stream(
+                    session_key,
+                    session,
+                    speech_module,
+                )
+                if flushed:
+                    flushed = merge_texts(session.last_streaming_text, flushed)
+                    caption = session.caption_formatter.update(
+                        flushed,
+                        time.monotonic(),
+                        source_lang="zh",
+                    )
+                    session.last_streaming_text = flushed
+                    session.last_source_text = caption.punctuated_text
+                    session.last_caption = {
+                        "previous_line": caption.previous_line,
+                        "current_line": caption.current_line,
+                        "mode": caption.mode,
+                    }
+                    session.revision += 1
+                    live_flush = True
+            except Exception as exc:
+                logger.warning("Chinese end-hint flush failed; retaining interim text: %s", exc)
+
         if (
             session.detected_language == "en"
             and session.recognition_engine == "sherpa_onnx_streaming"
@@ -1850,6 +2023,7 @@ class SpeechStreamService:
                     exc,
                 )
 
+        pcm_bytes = b"".join(session._utterance_buffer)
         audio = self.get_buffered_audio(session_key)
         if audio is None:
             return None
@@ -1873,7 +2047,19 @@ class SpeechStreamService:
             "recognition_status": (
                 "degraded" if session.sensevoice_last_error else "ok"
             ),
+            "live_flush": live_flush,
+            "revision": session.revision,
+            "caption": dict(session.last_caption),
         }
+
+        try:
+            save_speech_debug_capture(
+                session,
+                pcm_bytes=pcm_bytes,
+                boundary_reason="end_hint",
+            )
+        except Exception as exc:
+            logger.warning("Speech debug capture failed: %s", exc)
 
         # Clear buffer; keep utterance_id/revision for event correlation
         session._utterance_buffer.clear()

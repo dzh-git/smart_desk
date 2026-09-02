@@ -124,6 +124,29 @@ test.describe("Visual Smoke — 三端截图验收", () => {
       path: path.join(SCREENSHOT_DIR, "visual-display-1920x1080.png"),
       fullPage: false,
     });
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  });
+
+  test("/display at 1366×768 — compact display has no horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto("/display", { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(2000);
+
+    await expect(
+      page.getByText(/会议大屏|Command Display|等待|Refresh|Loading|Display/).first(),
+    ).toBeVisible({ timeout: 5000 });
+
+    await page.screenshot({
+      path: path.join(SCREENSHOT_DIR, "visual-display-1366x768.png"),
+      fullPage: false,
+    });
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
   });
 
   test("/display at 3840×2160 — 4K display check", async ({ page }) => {
@@ -139,5 +162,9 @@ test.describe("Visual Smoke — 三端截图验收", () => {
       path: path.join(SCREENSHOT_DIR, "visual-display-3840x2160.png"),
       fullPage: false,
     });
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
   });
 });

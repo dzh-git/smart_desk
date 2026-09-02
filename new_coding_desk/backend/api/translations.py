@@ -44,7 +44,7 @@ def _service(db: Session) -> TranslationService:
 def _to_json(api_response: ApiResponse, status_code: int = 200) -> JSONResponse:
     """Serialize ApiResponse to JSONResponse with the given HTTP status."""
     return JSONResponse(
-        content=api_response.model_dump(),
+        content=api_response.model_dump(mode="json"),
         status_code=status_code,
     )
 

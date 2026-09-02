@@ -24,7 +24,9 @@ Legacy fixtures from Phase 01 (used by service-level tests):
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -36,6 +38,10 @@ import tempfile
 import os
 
 import backend.database as db_module
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # Use a temporary file so all connections share the same database.
 # :memory: creates a separate DB per connection, which breaks the

@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render as rtlRender, screen, waitFor, act } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { SeatTablet } from "../components/SeatTablet";
 
@@ -127,11 +127,14 @@ beforeEach(() => {
   // Clear tracked instances from previous tests
   wsInstances.length = 0;
   (globalThis as unknown as Record<string, unknown>).WebSocket = MultiMockWebSocket as unknown as typeof WebSocket;
+  Reflect.deleteProperty(window, "SmartDeskNative");
   mockDemoControls = false;
 });
 
 afterEach(() => {
+  Reflect.deleteProperty(window, "SmartDeskNative");
   mockDemoControls = false;
+  vi.restoreAllMocks();
 });
 
 // ── Mock fetch ──────────────────────────────────────────────────────────────
@@ -140,10 +143,30 @@ const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
 
 function okResponse(data: unknown) {
+  const normalized = Array.isArray(data)
+    ? data.map((item) => {
+        if (
+          item &&
+          typeof item === "object" &&
+          "meeting_id" in item &&
+          "checked_in" in item &&
+          !("assigned_seat_id" in item)
+        ) {
+          const attendee = item as Record<string, unknown>;
+          return {
+            ...attendee,
+            assigned_seat_id: attendee.checked_in
+              ? attendee.seat_id ?? null
+              : null,
+          };
+        }
+        return item;
+      })
+    : data;
   return {
     ok: true,
     status: 200,
-    json: async () => ({ success: true, message: "OK", data }),
+    json: async () => ({ success: true, message: "OK", data: normalized }),
   };
 }
 
@@ -173,19 +196,18 @@ function createSeatMock(
     if (url === "/api/votes/active") return okResponse(null);
     if (url.includes("/api/service-calls/current")) return okResponse(null);
     if (url === "/api/meetings/1/attendees") {
-      if (seatStatus === "checked_in") {
-        return okResponse([
-          {
-            id: 1,
-            meeting_id: 1,
-            name: "Alice Wang",
-            title: "CEO",
-            seat_id: 1,
-            checked_in: true,
-          },
-        ]);
-      }
-      return okResponse([]);
+      return okResponse([
+        {
+          id: 1,
+          meeting_id: 1,
+          person_id: "person_001",
+          name: "Alice Wang",
+          title: "CEO",
+          assigned_seat_id: 1,
+          seat_id: seatStatus === "checked_in" ? 1 : null,
+          checked_in: seatStatus === "checked_in",
+        },
+      ]);
     }
     if (url === "/api/meetings/1/agendas") return okResponse([]);
     if (url.includes("/api/translations"))
@@ -204,7 +226,7 @@ describe("SeatTablet - loading state", () => {
   it("shows loading state initially", () => {
     mockFetch.mockImplementation(() => new Promise(() => {}));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
-    expect(screen.getByText("Loading seat data...")).toBeInTheDocument();
+    expect(screen.getByText(/正在加载席位数据.*Loading seat data/)).toBeInTheDocument();
   });
 });
 
@@ -214,7 +236,7 @@ describe("SeatTablet - error state", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Failed to load data")).toBeInTheDocument();
+      expect(screen.getByText(/正在重新连接会议系统.*Reconnecting/)).toBeInTheDocument();
     });
     expect(screen.getByText("Retry")).toBeInTheDocument();
   });
@@ -233,53 +255,54 @@ describe("SeatTablet - no meeting state", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Waiting for Meeting")).toBeInTheDocument();
+      expect(screen.getByText(/等待会议开始.*Waiting for Meeting/)).toBeInTheDocument();
     });
   });
 });
 
-describe("SeatTablet - vacant seat state", () => {
-  it("shows vacant seat with waiting message and no demo controls by default", async () => {
+describe("SeatTablet - face gate", () => {
+  it("hides meeting controls while the assigned seat is vacant", async () => {
     mockFetch.mockImplementation(createSeatMock("vacant"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Vacant/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
-    expect(screen.getByText("Waiting for occupant")).toBeInTheDocument();
-    expect(screen.queryByText("Occupy Seat (Demo)")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("seat-screen-entry")).not.toBeInTheDocument();
+    expect(screen.queryByText(/模拟入座.*Occupy Seat \(Demo\)/)).not.toBeInTheDocument();
   });
 
-  it("shows occupy button when demo controls are enabled", async () => {
+  it("does not expose demo occupy controls at the gate", async () => {
     mockDemoControls = true;
     mockFetch.mockImplementation(createSeatMock("vacant"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Occupy Seat (Demo)")).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
+    expect(screen.queryByText(/模拟入座.*Occupy Seat \(Demo\)/)).not.toBeInTheDocument();
   });
-});
 
-describe("SeatTablet - occupied_unchecked state", () => {
-  it("shows check-in prompt for occupied_unchecked seat", async () => {
+  it("keeps occupied_unchecked seats behind the gate", async () => {
     mockFetch.mockImplementation(createSeatMock("occupied_unchecked"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Check-in Required/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Vacate (Demo)")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Confirm Check-in/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/模拟离座.*Vacate \(Demo\)/)).not.toBeInTheDocument();
   });
 
-  it("shows vacate demo button when enabled", async () => {
+  it("does not expose demo vacate controls before check-in", async () => {
     mockDemoControls = true;
     mockFetch.mockImplementation(createSeatMock("occupied_unchecked"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Vacate (Demo)")).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
+    expect(screen.queryByText(/模拟离座.*Vacate \(Demo\)/)).not.toBeInTheDocument();
   });
 });
 
@@ -296,56 +319,320 @@ describe("SeatTablet - checked_in state", () => {
   });
 });
 
-// ── Check-in Action Tests ───────────────────────────────────────────────────
+describe("SeatTablet - Android identity check-in", () => {
+  function installNativeBridge(
+    overrides: Partial<Window["SmartDeskNative"]> = {},
+    identityMode: "formal" | "debug" = "formal",
+  ) {
+    Object.defineProperty(window, "SmartDeskNative", {
+      configurable: true,
+      value: {
+        getDeviceInfo: vi.fn(() =>
+          JSON.stringify({
+            schemaVersion: 1,
+            eventId: "device-info-event-0001",
+            type: "device_info",
+            timestamp: 1_700_000_000_000,
+            data: {
+              deviceId: "tablet-seat-01",
+              seatId: 1,
+              serverUrl: "http://host:8000",
+              frontendUrl: "http://host:5173",
+              configured: true,
+              maintenanceAccessAvailable: true,
+              appVersion: "0.8.0",
+              cameraReady: true,
+              faceModelReady: true,
+              microphoneReady: true,
+              nativeLastError: null,
+              identityMode,
+            },
+          }),
+        ),
+        getDeviceCredential: vi.fn(() =>
+          JSON.stringify({
+            schemaVersion: 1,
+            eventId: "device-credential-event-0001",
+            type: "device_credential",
+            timestamp: 1_700_000_000_000,
+            data: {
+              deviceToken: "device-secret-token-00000001",
+            },
+          }),
+        ),
+        getIdentityStatus: vi.fn(() =>
+          JSON.stringify({
+            schemaVersion: 1,
+            eventId: "identity-status-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_000,
+            data: { status: "IDLE" },
+          }),
+        ),
+        getRegisteredFaces: vi.fn(() =>
+          JSON.stringify({
+            schemaVersion: 1,
+            eventId: "registered-faces-event-0001",
+            type: "registered_people",
+            timestamp: 1_700_000_000_000,
+            data: {
+              personIds: ["person_001", "person_002"],
+              count: 2,
+            },
+          }),
+        ),
+        startFaceVerification: vi.fn(() =>
+          JSON.stringify({
+            schemaVersion: 1,
+            eventId: "verification-start-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_000,
+            data: { status: "VERIFYING" },
+          }),
+        ),
+        beginMaintenanceHold: vi.fn(),
+        cancelMaintenanceHold: vi.fn(),
+        stopFaceVerification: vi.fn(),
+        ...overrides,
+      },
+    });
+  }
 
-describe("SeatTablet - check-in action", () => {
-  it("selects attendee and calls checkin API on confirm", async () => {
-    mockDemoControls = true;
-    const postedUrls: string[] = [];
-    const postedBodies: unknown[] = [];
+  it("places the maintenance hold control after status and time in the scrolling header", async () => {
+    const beginMaintenanceHold = vi.fn();
+    const cancelMaintenanceHold = vi.fn();
+    installNativeBridge({
+      beginMaintenanceHold,
+      cancelMaintenanceHold,
+    });
+    mockFetch.mockImplementation(createSeatMock("vacant"));
 
-    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
-      postedUrls.push(url);
-      if (opts?.body) postedBodies.push(JSON.parse(opts.body as string));
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
-      if (url === "/api/meetings/active") {
+    const button = await screen.findByTestId("maintenance-access");
+    const scrollContainer = screen.getByTestId("seat-page-scroll");
+    expect(scrollContainer).toContainElement(button);
+    expect(scrollContainer).toHaveClass("overflow-y-auto");
+    expect(button.parentElement?.lastElementChild).toBe(button);
+
+    fireEvent.pointerDown(button);
+    await waitFor(() => expect(beginMaintenanceHold).toHaveBeenCalledTimes(1));
+    fireEvent.pointerUp(button);
+    await waitFor(() => expect(cancelMaintenanceHold).toHaveBeenCalledTimes(1));
+  });
+
+  it("automatically starts face verification while an active seat is vacant", async () => {
+    const startFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification });
+    mockFetch.mockImplementation(createSeatMock("vacant"));
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await screen.findByText("自动人脸入座");
+    expect(screen.getByText("AUTOMATIC FACE CHECK-IN")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  it("debug mode admits the assigned attendee without camera verification", async () => {
+    const startFaceVerification = vi.fn();
+    const syncFaceTemplates = vi.fn();
+    installNativeBridge(
+      { startFaceVerification, syncFaceTemplates },
+      "debug",
+    );
+    let seatStatus: "vacant" | "checked_in" = "vacant";
+    const debugCalls: Array<{ url: string; body: string | undefined }> = [];
+    mockFetch.mockImplementation((url: string, options?: RequestInit) => {
+      if (url === "/api/seats/1/debug-admit") {
+        debugCalls.push({ url, body: options?.body as string | undefined });
+        seatStatus = "checked_in";
         return okResponse({
-          id: 1,
-          title: "Meeting",
-          status: "active",
-          started_at: "2026-01-01T10:00:00Z",
+          seat_id: 1,
+          status: "checked_in",
+          attendee_id: 1,
+          updated_at: "2026-01-01T00:00:00Z",
         });
       }
-      if (url === "/api/seats") {
-        return okResponse(
-          Array.from({ length: 10 }, (_, i) => ({
-            seat_id: i + 1,
-            status: i === 0 ? ("occupied_unchecked" as const) : ("vacant" as const),
-            attendee_id: null,
-            updated_at: "2026-01-01T00:00:00Z",
-          })),
-        );
-      }
-      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
-      if (url === "/api/votes/active") return okResponse(null);
+      return createSeatMock(seatStatus)(url);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    await waitFor(() => expect(debugCalls).toHaveLength(1));
+    await screen.findByText("DEBUG · 已跳过人脸验证");
+    expect(JSON.parse(debugCalls[0].body ?? "{}")).toEqual({
+      deviceId: "tablet-seat-01",
+      deviceSeatId: 1,
+    });
+    expect(startFaceVerification).not.toHaveBeenCalled();
+    expect(syncFaceTemplates).not.toHaveBeenCalled();
+  });
+
+  it("restarts automatic verification when the same attendee is reassigned", async () => {
+    const startFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification });
+    const baseMock = createSeatMock("vacant");
+    let assigned = true;
+    mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/1/attendees") {
         return okResponse([
           {
-            id: 42,
+            id: 1,
             meeting_id: 1,
-            name: "Charlie",
-            title: "VP",
+            person_id: "person_001",
+            name: "Alice Wang",
+            title: "CEO",
+            assigned_seat_id: assigned ? 1 : null,
             seat_id: null,
             checked_in: false,
           },
         ]);
       }
-      if (url === "/api/meetings/1/agendas") return okResponse([]);
-      if (url.includes("/api/service-calls/current")) return okResponse(null);
-      if (url.includes("/api/translations"))
-        return okResponse({ meeting_id: 1, entries: [] });
-      // Mock checkin response
-      if (url.includes("/checkin")) {
+      return baseMock(url);
+    });
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledWith("person_001"),
+    );
+
+    assigned = false;
+    await triggerWsEvent("seat_assignment_updated", 1, {
+      seat_id: 1,
+      attendee_id: 1,
+      action: "cleared",
+    });
+    await screen.findByText(/等待主持人分配席位人员/);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "assignment-cleared-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_050,
+            data: { status: "UNKNOWN" },
+          },
+        }),
+      );
+    });
+
+    assigned = true;
+    await triggerWsEvent("seat_assignment_updated", 1, {
+      seat_id: 1,
+      attendee_id: 1,
+      action: "assigned",
+    });
+
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(2),
+    );
+    expect(startFaceVerification).toHaveBeenLastCalledWith("person_001");
+  });
+
+  it("requires an explicit retry after an unrecognized face", async () => {
+    const startFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification });
+    mockFetch.mockImplementation(createSeatMock("vacant"));
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "unknown-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_100,
+            data: { status: "UNKNOWN", message: "No registered match" },
+          },
+        }),
+      );
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    });
+    expect(startFaceVerification).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText(/重新识别.*Retry Recognition/));
+    await waitFor(() => expect(startFaceVerification).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not retry a calibration configuration error", async () => {
+    const startFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification });
+    mockFetch.mockImplementation(createSeatMock("vacant"));
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "calibration-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_200,
+            data: {
+              status: "CALIBRATION_PENDING",
+              message: "Face threshold calibration is incomplete",
+            },
+          },
+        }),
+      );
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 3_200));
+    });
+    expect(startFaceVerification).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops face verification only after backend-confirmed check-in", async () => {
+    const startFaceVerification = vi.fn();
+    const stopFaceVerification = vi.fn();
+    installNativeBridge({ startFaceVerification, stopFaceVerification });
+    let seatStatus: "vacant" | "checked_in" = "vacant";
+    mockFetch.mockImplementation((url: string) =>
+      createSeatMock(seatStatus)(url),
+    );
+
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await waitFor(() =>
+      expect(startFaceVerification).toHaveBeenCalledTimes(1),
+    );
+
+    seatStatus = "checked_in";
+    await triggerWsEvent("check_in", 1, { seat_id: 1, attendee_id: 1 });
+
+    await waitFor(() =>
+      expect(stopFaceVerification).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  it("automatically submits only a VALIDATED identity result", async () => {
+    installNativeBridge();
+    const identityCalls: Array<{
+      url: string;
+      body: unknown;
+      headers?: HeadersInit;
+    }> = [];
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/seats/1/identity-checkin") {
+        identityCalls.push({
+          url,
+          body: JSON.parse(String(opts?.body)),
+          headers: opts?.headers,
+        });
         return okResponse({
           seat_id: 1,
           status: "checked_in",
@@ -353,43 +640,252 @@ describe("SeatTablet - check-in action", () => {
           updated_at: "2026-01-01T00:00:00Z",
         });
       }
-      return okResponse(null);
+      return createSeatMock("occupied_unchecked")(url);
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await screen.findByTestId("native-identity-panel");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "verified-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_123,
+            data: {
+              status: "VERIFIED",
+              personId: "person_001",
+              similarity: 0.82,
+              thresholdStatus: "VALIDATED",
+              verificationLevel: "VALIDATED",
+              modelVersion: "validated-model-v1",
+            },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => expect(identityCalls).toHaveLength(1));
+    expect(identityCalls[0].body).toMatchObject({
+      eventId: "verified-event-0001",
+      eventTimestamp: 1_700_000_000_123,
+      personCode: "person_001",
+      deviceId: "tablet-seat-01",
+      deviceSeatId: 1,
+      status: "VERIFIED",
+      thresholdStatus: "VALIDATED",
+      verificationLevel: "VALIDATED",
+    });
+    expect(identityCalls[0].headers).toMatchObject({
+      "X-SmartDesk-Device-Token":
+        "device-secret-token-00000001",
+    });
+  });
+
+  it("automatically submits a PROTOTYPE result for backend policy evaluation", async () => {
+    installNativeBridge();
+    const identityCalls: string[] = [];
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/seats/1/identity-checkin") {
+        identityCalls.push(url);
+      }
+      return createSeatMock("occupied_unchecked")(url);
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await screen.findByTestId("native-identity-panel");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "prototype-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_456,
+            data: {
+              status: "VERIFIED",
+              personId: "person_001",
+              similarity: 0.82,
+              thresholdStatus: "PROVISIONAL",
+              verificationLevel: "PROTOTYPE",
+            },
+          },
+        }),
+      );
+    });
+
+    await screen.findByText(/已验证 \/ VERIFIED.*人员编号 person_001.*相似度 0\.820.*原型验证 \/ PROTOTYPE/);
+    await waitFor(() => expect(identityCalls).toHaveLength(1));
+    expect(screen.queryByText("提交测试签到")).not.toBeInTheDocument();
+  });
+
+  it("retries a server failure with the same identity event id", async () => {
+    installNativeBridge();
+    const eventIds: string[] = [];
+    let attempts = 0;
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/seats/1/identity-checkin") {
+        attempts += 1;
+        eventIds.push(JSON.parse(String(opts?.body)).eventId);
+        if (attempts === 1) {
+          return {
+            ok: false,
+            status: 500,
+            json: async () => ({
+              success: false,
+              message: "temporary failure",
+              error_code: "TEMPORARY_FAILURE",
+            }),
+          };
+        }
+        return okResponse({
+          seat_id: 1,
+          status: "checked_in",
+          attendee_id: 42,
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      return createSeatMock("occupied_unchecked")(url);
+    });
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await screen.findByTestId("native-identity-panel");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("smartdesk-native-event", {
+          detail: {
+            schemaVersion: 1,
+            eventId: "retry-event-0001",
+            type: "identity_status",
+            timestamp: 1_700_000_000_789,
+            data: {
+              status: "VERIFIED",
+              personId: "person_001",
+              similarity: 0.82,
+              thresholdStatus: "VALIDATED",
+              verificationLevel: "VALIDATED",
+              modelVersion: "validated-model-v1",
+            },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => expect(eventIds).toHaveLength(2), { timeout: 2_500 });
+    expect(eventIds).toEqual(["retry-event-0001", "retry-event-0001"]);
+  });
+
+  it("vacates a checked-in seat only after tablet confirmation", async () => {
+    installNativeBridge();
+    const vacateCalls: Array<{
+      body: Record<string, unknown>;
+      headers?: HeadersInit;
+    }> = [];
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === "/api/seats/1/tablet-vacate") {
+        vacateCalls.push({
+          body: JSON.parse(String(opts?.body)),
+          headers: opts?.headers,
+        });
+        return okResponse({
+          seat_id: 1,
+          status: "vacant",
+          attendee_id: null,
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      return createSeatMock("checked_in")(url);
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    fireEvent.click(
+      await screen.findByText(/确认离席.*Confirm Vacate/),
+    );
+
+    await waitFor(() => expect(vacateCalls).toHaveLength(1));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(vacateCalls[0].body).toEqual({
+      deviceId: "tablet-seat-01",
+      deviceSeatId: 1,
+    });
+    expect(vacateCalls[0].headers).toMatchObject({
+      "X-SmartDesk-Device-Token": "device-secret-token-00000001",
+    });
+  });
+
+  it("does not vacate when tablet confirmation is cancelled", async () => {
+    installNativeBridge();
+    const vacateCalls: string[] = [];
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/seats/1/tablet-vacate") {
+        vacateCalls.push(url);
+      }
+      return createSeatMock("checked_in")(url);
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    fireEvent.click(
+      await screen.findByText(/确认离席.*Confirm Vacate/),
+    );
+
+    expect(vacateCalls).toHaveLength(0);
+  });
+
+  it("reports authenticated tablet operational heartbeat", async () => {
+    installNativeBridge();
+    const heartbeatCalls: Array<{
+      body: Record<string, unknown>;
+      headers?: HeadersInit;
+    }> = [];
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (
+        url ===
+        "/api/tablet-devices/tablet-seat-01/heartbeat"
+      ) {
+        heartbeatCalls.push({
+          body: JSON.parse(String(opts?.body)),
+          headers: opts?.headers,
+        });
+        return okResponse({
+          deviceId: "tablet-seat-01",
+          seatId: 1,
+          enabled: true,
+          lastSeenAt: "2026-01-01T00:00:00Z",
+        });
+      }
+      return createSeatMock("occupied_unchecked")(url);
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/Check-in Required/)).toBeInTheDocument();
-    });
-
-    // Click attendee "Charlie" and wait for re-render
-    const charlieBtn = screen.getByText("Charlie").closest("button");
-    expect(charlieBtn).toBeInTheDocument();
-    await act(async () => {
-      charlieBtn!.click();
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // Wait for the Confirm button to become enabled (WS connection + state update)
-    let confirmBtn: HTMLElement;
-    await waitFor(() => {
-      confirmBtn = screen.getByText("Confirm Check-in");
-      if (confirmBtn.hasAttribute("disabled")) throw new Error("Button still disabled");
-    });
-
-    confirmBtn = screen.getByText("Confirm Check-in");
-    await act(async () => {
-      confirmBtn.click();
-      await new Promise((r) => setTimeout(r, 100));
-    });
-
-    // Verify checkin API was called with correct body
-    const checkinCall = postedUrls.find((u) => u.includes("/api/seats/1/checkin"));
-    expect(checkinCall).toBeTruthy();
-    const checkinBody = postedBodies.find(
-      (b: unknown) => (b as Record<string, unknown>)?.attendee_id === 42,
+    await waitFor(() =>
+      expect(
+        heartbeatCalls.some(
+          (call) => call.body.meetingWebsocketStatus === "CONNECTED",
+        ),
+      ).toBe(true),
     );
-    expect(checkinBody).toEqual({ attendee_id: 42 });
+    const connectedHeartbeat = heartbeatCalls.find(
+      (call) => call.body.meetingWebsocketStatus === "CONNECTED",
+    );
+    expect(connectedHeartbeat?.body).toMatchObject({
+      seatId: 1,
+      appVersion: "0.8.0",
+      cameraStatus: "READY",
+      faceModelStatus: "READY",
+      registeredTemplatesCount: 2,
+      microphoneStatus: "READY",
+      meetingWebsocketStatus: "CONNECTED",
+      diagnosticStatus: "READY",
+      lastError: null,
+    });
+    expect(connectedHeartbeat?.headers).toMatchObject({
+      "X-SmartDesk-Device-Token":
+        "device-secret-token-00000001",
+    });
   });
 });
 
@@ -509,11 +1005,11 @@ describe("SeatTablet - voting action", () => {
 
     // Wait for submit button to become enabled
     await waitFor(() => {
-      const btn = screen.getByText("Submit Vote");
+      const btn = screen.getByText(/提交投票.*Submit Vote/);
       if (btn.hasAttribute("disabled")) throw new Error("Button still disabled");
     });
 
-    const submitBtn = screen.getByText("Submit Vote");
+    const submitBtn = screen.getByText(/提交投票.*Submit Vote/);
     await act(async () => {
       submitBtn.click();
       await new Promise((r) => setTimeout(r, 100));
@@ -818,11 +1314,11 @@ describe("SeatTablet - same-name attendee voting (Task 6)", () => {
 
     // Submit vote
     await waitFor(() => {
-      const btn = screen.getByText("Submit Vote");
+      const btn = screen.getByText(/提交投票.*Submit Vote/);
       if (btn.hasAttribute("disabled")) throw new Error("Button still disabled");
     });
 
-    const submitBtn = screen.getByText("Submit Vote");
+    const submitBtn = screen.getByText(/提交投票.*Submit Vote/);
     await act(async () => {
       submitBtn.click();
       await new Promise((r) => setTimeout(r, 100));
@@ -984,7 +1480,7 @@ describe("SeatTablet - service call actions", () => {
     });
 
     // Click Cancel
-    const cancelBtn = screen.getByText("Cancel");
+    const cancelBtn = screen.getByText(/取消 \/ Cancel/);
     expect(cancelBtn).toBeInTheDocument();
 
     await act(async () => {
@@ -1071,7 +1567,7 @@ describe("SeatTablet - WebSocket disconnect", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Vacant/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
 
     // Disconnect WS synchronously
@@ -1080,17 +1576,17 @@ describe("SeatTablet - WebSocket disconnect", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Connection Lost")).toBeInTheDocument();
+      expect(screen.getByText(/后端连接已断开/)).toBeInTheDocument();
     });
   });
 
-  it("disables write buttons when disconnected", async () => {
+  it("does not expose write buttons when disconnected at the gate", async () => {
     mockDemoControls = true;
     mockFetch.mockImplementation(createSeatMock("vacant"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Occupy Seat (Demo)")).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
 
     // Disconnect WS synchronously
@@ -1099,11 +1595,10 @@ describe("SeatTablet - WebSocket disconnect", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Connection Lost")).toBeInTheDocument();
+      expect(screen.getByText(/后端连接已断开/)).toBeInTheDocument();
     });
 
-    const occupyBtn = screen.getByText("Occupy Seat (Demo)");
-    expect(occupyBtn).toBeDisabled();
+    expect(screen.queryByText(/模拟入座.*Occupy Seat \(Demo\)/)).not.toBeInTheDocument();
   });
 });
 
@@ -1115,7 +1610,7 @@ describe("SeatTablet - old voice placeholder removed", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Vacant/)).toBeInTheDocument();
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
 
     expect(screen.queryByText(/语音识别接口预留/)).not.toBeInTheDocument();
@@ -1211,7 +1706,7 @@ describe("SeatTablet - speech control (non-speaker)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Only speaker seat can stream audio"),
+        screen.getByText(/仅当前发言席可识别.*Only the current speaker seat can use speech recognition/),
       ).toBeInTheDocument();
     });
 
@@ -1225,7 +1720,7 @@ describe("SeatTablet - speech control (non-speaker)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Only speaker seat can stream audio"),
+        screen.getByText(/仅当前发言席可识别.*Only the current speaker seat can use speech recognition/),
       ).toBeInTheDocument();
     });
 
@@ -2386,13 +2881,13 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
       if (url === "/api/seats") {
         return okResponse(
           Array.from({ length: 10 }, (_, i) => ({
-            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+            seat_id: i + 1, status: i === 0 ? "checked_in" as const : "vacant" as const, attendee_id: i === 0 ? 1 : null, updated_at: "2026-01-01T00:00:00Z",
           })),
         );
       }
       if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
       if (url === "/api/votes/active") return okResponse(null);
-      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/attendees") return okResponse([{ id: 1, meeting_id: 1, name: "Alice", title: "", seat_id: 1, checked_in: true }]);
       if (url === "/api/meetings/1/agendas") return okResponse([]);
       if (url.includes("/api/translations")) {
         translationsCallCount++;
@@ -2464,13 +2959,13 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
       if (url === "/api/seats") {
         return okResponse(
           Array.from({ length: 10 }, (_, i) => ({
-            seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
+            seat_id: i + 1, status: i === 1 ? "checked_in" as const : "vacant" as const, attendee_id: i === 1 ? 2 : null, updated_at: "2026-01-01T00:00:00Z",
           })),
         );
       }
       if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
       if (url === "/api/votes/active") return okResponse(null);
-      if (url === "/api/meetings/1/attendees") return okResponse([]);
+      if (url === "/api/meetings/1/attendees") return okResponse([{ id: 2, meeting_id: 1, name: "Bob", title: "", seat_id: 2, checked_in: true }]);
       if (url === "/api/meetings/1/agendas") return okResponse([]);
       if (url.includes("/api/translations")) {
         translationsCallCount++;
@@ -3789,7 +4284,7 @@ describe("SeatTablet - current topic display (Phase 3)", () => {
     expect(fetchCount).toBeGreaterThan(initialFetches);
   });
 
-  it("shows current topic even when seat is vacant", async () => {
+  it("hides the current topic while the seat is gated", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/active") {
         return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
@@ -3815,10 +4310,9 @@ describe("SeatTablet - current topic display (Phase 3)", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      const titles = screen.getAllByText("Opening Remarks");
-      expect(titles.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByTestId("face-access-gate")).toBeInTheDocument();
     });
-    expect(screen.getByText(/ACTIVE/)).toBeInTheDocument();
+    expect(screen.queryByText("Opening Remarks")).not.toBeInTheDocument();
   });
 });
 

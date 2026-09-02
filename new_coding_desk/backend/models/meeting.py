@@ -21,6 +21,7 @@ class Meeting(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     ended_at = Column(DateTime, nullable=True)
+    face_template_set_revision = Column(Integer, nullable=False, default=0)
 
     __table_args__ = (
         Index("ix_meetings_status", "status"),

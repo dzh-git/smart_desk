@@ -9,8 +9,8 @@ function deriveSeatStatus(
   seat: SeatDisplay,
   isCurrentSpeaker: boolean,
 ): SeatStatus {
-  if (isCurrentSpeaker) return "speaking";
   if (seat.isVacant) return "vacant";
+  if (isCurrentSpeaker && seat.isCheckedIn) return "speaking";
   if (seat.isCheckedIn) return "checked_in";
   return "waiting";
 }
@@ -70,6 +70,7 @@ interface SeatVisualNodeProps {
   status: SeatStatus;
   selected?: boolean;
   onClick?: () => void;
+  isHostSeat?: boolean;
 }
 
 function SeatVisualNode({
@@ -78,6 +79,7 @@ function SeatVisualNode({
   status,
   selected,
   onClick,
+  isHostSeat = false,
 }: SeatVisualNodeProps) {
   const sv = statusVisuals[status];
   const isSpeaking = status === "speaking";
@@ -85,10 +87,12 @@ function SeatVisualNode({
   return (
     <button
       type="button"
+      data-testid={`conference-seat-${seatId}`}
       onClick={onClick}
       className={`
         flex flex-col items-center justify-center gap-1
-        min-w-[96px] min-h-[80px]
+        min-w-0 w-full px-2
+        ${isHostSeat ? "min-h-[112px]" : "min-h-[74px]"}
         rounded-xl border transition-all duration-200
         ${sv.container}
         ${isSpeaking ? "animate-pulse" : ""}
@@ -115,6 +119,14 @@ function SeatVisualNode({
           <span className="w-1.5 h-1.5 rounded-full bg-techCyan animate-pulse" />
         )}
       </div>
+      {isHostSeat && (
+        <span className="flex flex-col items-center text-[11px] font-semibold text-techCyan">
+          主持人席
+          <span className="font-mono text-[8px] uppercase tracking-wider text-techCyan/60">
+            Host Seat
+          </span>
+        </span>
+      )}
 
       {/* Attendee name or vacant label */}
       {name ? (
@@ -194,84 +206,112 @@ export function ConferenceTable({
   activeSeat,
   onSeatClick,
 }: ConferenceTableProps) {
-  // Top row: seats 1-5, bottom row: seats 6-10 reversed for visual layout
-  const topSeats = seats.slice(0, 5);
-  const bottomSeats = [...seats.slice(5, 10)].reverse();
-
+  const hostSeat = seats.find((seat) => seat.seatId === 1);
+  const topSeats = seats.filter((seat) => seat.seatId >= 2 && seat.seatId <= 5);
+  const bottomSeats = seats.filter(
+    (seat) => seat.seatId >= 6 && seat.seatId <= 9,
+  );
   return (
     <div className="flex flex-col gap-5 select-none">
       {/* Legend */}
       <TableLegend />
-
-      {/* Top row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {topSeats.map((seat) => {
-          const isSpeaker = currentSpeaker === seat.seatId;
-          const status = deriveSeatStatus(seat, isSpeaker);
-          return (
-            <SeatVisualNode
-              key={seat.seatId}
-              seatId={seat.seatId}
-              name={seat.attendeeName}
-              status={status}
-              selected={activeSeat === seat.seatId}
-              onClick={() => onSeatClick?.(seat.seatId)}
-            />
-          );
-        })}
-      </div>
-
-      {/* Central table surface */}
-      <div className="relative flex items-center justify-center py-4">
+      <div className="grid grid-cols-[minmax(108px,0.24fr)_minmax(0,1fr)_minmax(36px,0.1fr)] items-center gap-3 sm:gap-5">
         <div
-          className="
-            w-full max-w-[420px]
-            rounded-[2rem]
-            bg-techSurface
-            border border-techBorder
-            shadow-cyan-glow
-            bg-tech-radial
-            h-28
-            flex items-center justify-center
-            overflow-hidden
-          "
+          data-testid="conference-host-edge"
+          className="flex items-center justify-center"
         >
-          <div className="text-center space-y-1">
-            <p className="text-sm font-bold text-techText tracking-wider">
-              SmartDesk
-            </p>
-            <p className="text-[10px] font-medium text-techMuted tracking-[0.2em] uppercase">
-              会议桌 / Meeting Table
-            </p>
-            <div className="flex items-center justify-center gap-1.5 mt-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-techGreen animate-pulse" />
-              <span className="text-[10px] font-semibold text-techGreen tracking-wide">
-                会议中
-              </span>
-              <span className="text-[8px] font-mono uppercase tracking-wider text-techGreen/60">
-                Active Meeting
-              </span>
+          {hostSeat && (
+            <SeatVisualNode
+              seatId={hostSeat.seatId}
+              name={hostSeat.attendeeName}
+              status={deriveSeatStatus(hostSeat, currentSpeaker === 1)}
+              selected={activeSeat === hostSeat.seatId}
+              onClick={() => onSeatClick?.(hostSeat.seatId)}
+              isHostSeat
+            />
+          )}
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-3">
+
+          {/* Top row */}
+          <div
+            data-testid="conference-top-edge"
+            className="grid grid-cols-4 gap-2 sm:gap-3"
+          >
+            {topSeats.map((seat) => {
+              const isSpeaker = currentSpeaker === seat.seatId;
+              const status = deriveSeatStatus(seat, isSpeaker);
+              return (
+                <SeatVisualNode
+                  key={seat.seatId}
+                  seatId={seat.seatId}
+                  name={seat.attendeeName}
+                  status={status}
+                  selected={activeSeat === seat.seatId}
+                  onClick={() => onSeatClick?.(seat.seatId)}
+                />
+              );
+            })}
+          </div>
+
+          {/* Central table surface */}
+          <div className="relative flex items-center justify-center py-1">
+            <div
+              className="
+                w-full
+                rounded-[2rem]
+                bg-techSurface
+                border border-techBorder
+                shadow-cyan-glow
+                bg-tech-radial
+                h-32 sm:h-36
+                flex items-center justify-center
+                overflow-hidden
+              "
+            >
+              <div className="text-center space-y-1">
+                <p className="text-sm font-bold text-techText tracking-wider sm:text-base">
+                  SmartDesk 会议桌
+                </p>
+                <p className="text-[10px] font-medium text-techMuted tracking-[0.2em] uppercase">
+                  Smart Conference Table
+                </p>
+                <div className="flex items-center justify-center gap-1.5 mt-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-techGreen animate-pulse" />
+                  <span className="text-[10px] font-semibold text-techGreen tracking-wide">
+                    会议中
+                  </span>
+                  <span className="text-[8px] font-mono uppercase tracking-wider text-techGreen/60">
+                    Active Meeting
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Bottom row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {bottomSeats.map((seat) => {
-          const isSpeaker = currentSpeaker === seat.seatId;
-          const status = deriveSeatStatus(seat, isSpeaker);
-          return (
-            <SeatVisualNode
-              key={seat.seatId}
-              seatId={seat.seatId}
-              name={seat.attendeeName}
-              status={status}
-              selected={activeSeat === seat.seatId}
-              onClick={() => onSeatClick?.(seat.seatId)}
-            />
-          );
-        })}
+          {/* Bottom row */}
+          <div
+            data-testid="conference-bottom-edge"
+            className="grid grid-cols-4 gap-2 sm:gap-3"
+          >
+            {bottomSeats.map((seat) => {
+              const isSpeaker = currentSpeaker === seat.seatId;
+              const status = deriveSeatStatus(seat, isSpeaker);
+              return (
+                <SeatVisualNode
+                  key={seat.seatId}
+                  seatId={seat.seatId}
+                  name={seat.attendeeName}
+                  status={status}
+                  selected={activeSeat === seat.seatId}
+                  onClick={() => onSeatClick?.(seat.seatId)}
+                />
+              );
+            })}
+          </div>
+        </div>
+        <div aria-hidden="true" />
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { AdminDashboard } from "../components/AdminDashboard";
 import { parseBackendDate, formatTranscriptTime, formatDuration } from "../components/shared";
 
@@ -102,7 +102,7 @@ describe("AdminDashboard - data loading", () => {
   it("shows loading state initially", () => {
     mockFetch.mockImplementation(() => new Promise(() => {}));
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
-    expect(screen.getByText("SmartDesk")).toBeInTheDocument();
+    expect(screen.getByText("SmartDesk 主持人控制台")).toBeInTheDocument();
   });
 
   it("loads and displays with active meeting", async () => {
@@ -156,6 +156,11 @@ describe("AdminDashboard - data loading", () => {
     // Overview workspace: conference table and attendees visible
     expect(screen.getByText(/Conference Room.*Seat Overview/i)).toBeInTheDocument();
     expect(screen.getAllByText("Alice Wang").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("设备状态 / DEVICES")).not.toBeInTheDocument();
+    expect(screen.queryByText("兼容席位控制器")).not.toBeInTheDocument();
+    expect(
+      mockFetch.mock.calls.some(([url]) => url === "/api/hardware/status"),
+    ).toBe(false);
 
     // Switch to agenda_vote workspace to check agenda and vote panels
     await act(async () => {
@@ -245,7 +250,7 @@ describe("AdminDashboard - error handling", () => {
     await waitFor(() => {
       expect(screen.getByText("Failed to load data")).toBeInTheDocument();
     });
-    expect(screen.getByText("Retry")).toBeInTheDocument();
+    expect(screen.getByText("重试 / Retry")).toBeInTheDocument();
   });
 });
 
@@ -428,9 +433,19 @@ describe("AdminDashboard - create vote", () => {
       // Section title should exist (use heading role to avoid button ambiguity)
       expect(screen.getByRole("heading", { name: /Create Vote/i })).toBeInTheDocument();
     });
-    expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Option 1")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Option 2")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toHaveValue(
+      "是否通过当前议题？ / Approve Current Agenda Item?",
+    );
+    expect(screen.getByPlaceholderText("选项 1 / Option 1")).toHaveValue("同意 / Approve");
+    expect(screen.getByPlaceholderText("选项 2 / Option 2")).toHaveValue("反对 / Reject");
+    expect(screen.getByPlaceholderText("选项 3 / Option 3")).toHaveValue("弃权 / Abstain");
+    expect(
+      mockFetch.mock.calls.some(
+        ([url, options]) =>
+          (url === "/api/votes" || url === "/api/meetings/1/agendas")
+          && options?.method === "POST",
+      ),
+    ).toBe(false);
   });
 
   it("calls create vote API with correct data when form is submitted", async () => {
@@ -441,7 +456,7 @@ describe("AdminDashboard - create vote", () => {
       if (url === "/api/votes" && opts?.method === "POST") {
         postUrl = url;
         postBody = opts.body ? JSON.parse(opts.body as string) : null;
-        return okResponse({ id: 99, meeting_id: 1, title: "Test Vote", options: ["Yes", "No"], status: "open", is_anonymous: false });
+        return okResponse({ id: 99, meeting_id: 1, title: "Test Vote", options: ["Yes", "No", "Abstain"], status: "open", is_anonymous: false });
       }
       if (url === "/api/meetings/active") {
         return okResponse({ id: 1, title: "Test", status: "active", started_at: "2026-01-01T10:00:00Z" });
@@ -469,21 +484,24 @@ describe("AdminDashboard - create vote", () => {
 
     // Wait for form
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toBeInTheDocument();
     });
 
     // Fill form using fireEvent
     const { fireEvent } = await import("@testing-library/react");
 
     await act(async () => {
-      const titleInput = screen.getByPlaceholderText("Vote title...");
+      const titleInput = screen.getByPlaceholderText("投票标题 / Vote title...");
       fireEvent.input(titleInput, { target: { value: "Test Vote" } });
 
-      const opt1Input = screen.getByPlaceholderText("Option 1");
+      const opt1Input = screen.getByPlaceholderText("选项 1 / Option 1");
       fireEvent.input(opt1Input, { target: { value: "Yes" } });
 
-      const opt2Input = screen.getByPlaceholderText("Option 2");
+      const opt2Input = screen.getByPlaceholderText("选项 2 / Option 2");
       fireEvent.input(opt2Input, { target: { value: "No" } });
+
+      const opt3Input = screen.getByPlaceholderText("选项 3 / Option 3");
+      fireEvent.input(opt3Input, { target: { value: "Abstain" } });
 
       await new Promise((r) => setTimeout(r, 50));
     });
@@ -500,9 +518,15 @@ describe("AdminDashboard - create vote", () => {
     expect(postBody).toEqual({
       meeting_id: 1,
       title: "Test Vote",
-      options: ["Yes", "No"],
+      options: ["Yes", "No", "Abstain"],
       is_anonymous: false,
     });
+    expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toHaveValue(
+      "是否通过当前议题？ / Approve Current Agenda Item?",
+    );
+    expect(screen.getByPlaceholderText("选项 1 / Option 1")).toHaveValue("同意 / Approve");
+    expect(screen.getByPlaceholderText("选项 2 / Option 2")).toHaveValue("反对 / Reject");
+    expect(screen.getByPlaceholderText("选项 3 / Option 3")).toHaveValue("弃权 / Abstain");
   });
 
   it("shows error when creating duplicate vote returns conflict", async () => {
@@ -539,20 +563,20 @@ describe("AdminDashboard - create vote", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toBeInTheDocument();
     });
 
     // Fill form and submit
     const { fireEvent } = await import("@testing-library/react");
 
     await act(async () => {
-      const titleInput = screen.getByPlaceholderText("Vote title...");
+      const titleInput = screen.getByPlaceholderText("投票标题 / Vote title...");
       fireEvent.input(titleInput, { target: { value: "Duplicate Vote" } });
 
-      const opt1Input = screen.getByPlaceholderText("Option 1");
+      const opt1Input = screen.getByPlaceholderText("选项 1 / Option 1");
       fireEvent.input(opt1Input, { target: { value: "A" } });
 
-      const opt2Input = screen.getByPlaceholderText("Option 2");
+      const opt2Input = screen.getByPlaceholderText("选项 2 / Option 2");
       fireEvent.input(opt2Input, { target: { value: "B" } });
 
       await new Promise((r) => setTimeout(r, 50));
@@ -2134,6 +2158,45 @@ describe("Transcript - live caption display", () => {
 });
 
 describe("Transcript - language labels", () => {
+  it("shows the newest final while older lyric history is still retained", async () => {
+    const { TranscriptPanel } = await import("../components/TranscriptPanel");
+
+    render(
+      <TranscriptPanel
+        entries={[]}
+        liveFinal={{
+          id: 202,
+          meeting_id: 1,
+          seat_id: 1,
+          utterance_id: "utt_current",
+          source_lang: "zh",
+          target_lang: "en",
+          source_text: "当前最终结果。",
+          translated_text: "Current final result.",
+          created_at: "2026-01-01T10:06:00Z",
+          source_type: "speech_ws",
+        }}
+        lyrics={[{
+          utteranceId: "utt_older",
+          sentenceId: "sentence_older",
+          sentenceSequence: 1,
+          seatId: 1,
+          revision: 1,
+          sourceLang: "zh",
+          targetLang: "en",
+          sourceText: "较早的实时字幕。",
+          translatedText: "Older live lyric.",
+          translationStatus: "ok",
+        }]}
+        seatNameMap={{ 1: "Alice Wang" }}
+        liveEnabled
+      />,
+    );
+
+    expect(screen.getByText("Current final result.")).toBeInTheDocument();
+    expect(screen.getByText("Older live lyric.")).toBeInTheDocument();
+  });
+
   it("TranscriptPanel renders the actual bilingual translation direction", async () => {
     const { TranscriptPanel } = await import("../components/TranscriptPanel");
 
@@ -2381,6 +2444,11 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
 
     await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    await act(async () => {
       wsSend(0, "translation_interim", 1, {
         utterance_id: "utt_admin_live_mt", seat_id: 1, revision: 6,
         source_lang: "zh", target_lang: "en", source_text: "管理员端最新实时识别",
@@ -2446,10 +2514,112 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
       expect(screen.getByTestId("live-final-target")).toHaveTextContent("Final old admin segment.");
     });
   });
+
+  it("replaces live lyrics with the authoritative final transcript", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+    });
+
+    act(() => wsSend(0, "translation_sentence", 1, {
+      utterance_id: "utt_admin_lyric_final", sentence_id: "sentence-1",
+      sentence_sequence: 1, seat_id: 1, revision: 2,
+      source_lang: "zh", target_lang: "en", source_text: "在线旧结果。",
+      translated_text: "Old online result.", translation_status: "ok",
+    }));
+    await waitFor(() => {
+      expect(screen.getByTestId("live-lyrics")).toHaveTextContent("在线旧结果。");
+    });
+
+    act(() => wsSend(0, "translation_final", 1, {
+      translation_id: 990, utterance_id: "utt_admin_lyric_final", seat_id: 1,
+      source_lang: "zh", target_lang: "en", source_text: "离线最终结果。",
+      translated_text: "Authoritative final result.", translation_status: "ok",
+      source_type: "speech_ws",
+    }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-lyrics")).not.toBeInTheDocument();
+      expect(screen.getByTestId("live-final-source")).toHaveTextContent("离线最终结果。");
+    });
+  });
+});
+
+describe("AdminDashboard - seat access control", () => {
+  it("shows the assigned attendee and calls manual-admit after confirmation", async () => {
+    const requested: Array<{ url: string; method?: string }> = [];
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockFetch.mockImplementation((url: string, options?: RequestInit) => {
+      requested.push({ url, method: options?.method });
+      if (url === "/api/meetings/active") {
+        return okResponse({
+          id: 1,
+          title: "Access Test",
+          status: "active",
+          started_at: "2026-01-01T10:00:00Z",
+        });
+      }
+      if (url === "/api/seats") {
+        return okResponse(Array.from({ length: 10 }, (_, index) => ({
+          seat_id: index + 1,
+          status: "vacant",
+          attendee_id: null,
+          updated_at: "2026-01-01T00:00:00Z",
+        })));
+      }
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      if (url === "/api/meetings/1/attendees") {
+        return okResponse([{
+          id: 7,
+          meeting_id: 1,
+          person_id: "person_007",
+          name: "测试人员",
+          title: "",
+          assigned_seat_id: 1,
+          seat_id: null,
+          checked_in: false,
+        }]);
+      }
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      if (url === "/api/votes/active") return okResponse(null);
+      if (url.startsWith("/api/votes?")) return okResponse([]);
+      if (url.startsWith("/api/service-calls")) return okResponse([]);
+      if (url.startsWith("/api/translations")) {
+        return okResponse({ meeting_id: 1, entries: [] });
+      }
+      if (url === "/api/seats/1/manual-admit") {
+        return okResponse({
+          seat_id: 1,
+          status: "checked_in",
+          attendee_id: 7,
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      return okResponse(null);
+    });
+
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("conference-seat-1"));
+
+    const selector = await screen.findByTestId("seat-assignment-select");
+    expect(selector).toHaveValue("7");
+    const admit = screen.getByTestId("manual-admit-button");
+    expect(admit).toBeEnabled();
+    fireEvent.click(admit);
+
+    await waitFor(() => {
+      expect(requested).toContainEqual({
+        url: "/api/seats/1/manual-admit",
+        method: "POST",
+      });
+    });
+    expect(window.confirm).toHaveBeenCalledWith("允许 测试人员 入座席位 1？");
+  });
 });
 
 describe("AdminDashboard - sentence lyric events", () => {
-  it("pairs a completed sentence translation and keeps it after final", async () => {
+  it("pairs a completed sentence translation until the final transcript replaces it", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/active") return okResponse({ id: 1, title: "Lyric Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
       if (url === "/api/seats") return okResponse([]);
@@ -2485,7 +2655,11 @@ describe("AdminDashboard - sentence lyric events", () => {
     act(() => wsSend(0, "translation_final", 1, {
       translation_id: 9, ...base, translated_text: "Final sentence display.",
     }));
-    await waitFor(() => expect(screen.getByTestId("live-lyric-translation")).toHaveTextContent("Sentence display."));
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-lyrics")).not.toBeInTheDocument();
+      expect(screen.getByTestId("live-final-source")).toHaveTextContent("逐句显示。");
+      expect(screen.getByTestId("live-final-target")).toHaveTextContent("Final sentence display.");
+    });
   });
 });
 
@@ -2543,6 +2717,12 @@ describe("AdminDashboard - ended meeting view", () => {
     expect(screen.getAllByText("Past Board Review").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Past Vote").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("5 votes cast").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Meeting ended")).not.toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
     expect(screen.getByText("Meeting ended")).toBeInTheDocument();
     expect(screen.getByText("会议结束")).toBeInTheDocument();
   });
@@ -2610,7 +2790,11 @@ describe("AdminDashboard - ended meeting view", () => {
     sessionStorage.setItem("endedMeetingTitle", "Review");
     mockEndedMeetingScenario(42);
 
-    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    render(
+      <AdminDashboard
+        hostTabletAccess={{ deviceId: "host-tablet-01", token: "device-token" }}
+      />,
+    );
 
     await waitFor(() => {
       expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
@@ -2618,7 +2802,14 @@ describe("AdminDashboard - ended meeting view", () => {
 
     expect(screen.getAllByText("Past Vote").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Meeting Results")).toBeInTheDocument();
+    expect(screen.getByText("参会人员")).toBeInTheDocument();
     expect(screen.getAllByText(/Coffee.*Seat 2/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Meeting ended")).not.toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
     expect(screen.getByText("Meeting ended")).toBeInTheDocument();
     expect(screen.getAllByText("Alice Wang").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Close Vote")).not.toBeInTheDocument();
@@ -2658,7 +2849,7 @@ describe("AdminDashboard - ended meeting view", () => {
     await waitFor(() => {
       expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
     });
-    expect(screen.getByText("Create Pending Meeting")).toBeInTheDocument();
+    expect(screen.getByText("创建待启动会议 / Create Pending Meeting")).toBeInTheDocument();
     expect(sessionStorage.getItem("endedMeetingId")).toBeNull();
     expect(sessionStorage.getItem("endedMeetingTitle")).toBeNull();
   });
@@ -2744,6 +2935,65 @@ describe("AdminDashboard - AdminWorkspace", () => {
     });
   }
 
+  it("keeps Set Speaker disabled for a vacant seat", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard />);
+
+    await screen.findByText("Test Meeting");
+    fireEvent.click(screen.getByTestId("conference-seat-1"));
+
+    const setSpeaker = await screen.findByRole("button", {
+      name: /设为发言/,
+    });
+    expect(setSpeaker).toBeDisabled();
+  });
+
+  it("reports an authenticated operational heartbeat from the host tablet", async () => {
+    mockActiveMeetingScenario();
+    const hostTabletAccess = {
+      deviceId: "host-tablet-01",
+      token: "device-token",
+      heartbeat: {
+        seatId: 1,
+        appVersion: "0.9.0",
+        cameraStatus: "READY" as const,
+        faceModelStatus: "READY" as const,
+        registeredTemplatesCount: 1,
+        microphoneStatus: "READY" as const,
+        diagnosticStatus: "READY" as const,
+        lastError: null,
+      },
+    };
+
+    render(<AdminDashboard hostTabletAccess={hostTabletAccess} />);
+
+    await waitFor(() => {
+      const heartbeatCall = mockFetch.mock.calls.find(([url, options]) => {
+        if (
+          url !== "/api/tablet-devices/host-tablet-01/heartbeat"
+          || typeof options?.body !== "string"
+        ) return false;
+        return JSON.parse(options.body).meetingWebsocketStatus === "CONNECTED";
+      });
+      expect(heartbeatCall).toBeDefined();
+      expect(heartbeatCall?.[1]?.headers).toEqual({
+        "Content-Type": "application/json",
+        "X-SmartDesk-Device-Token": "device-token",
+      });
+      expect(JSON.parse(heartbeatCall?.[1]?.body as string)).toEqual({
+        seatId: 1,
+        appVersion: "0.9.0",
+        cameraStatus: "READY",
+        faceModelStatus: "READY",
+        registeredTemplatesCount: 1,
+        microphoneStatus: "READY",
+        meetingWebsocketStatus: "CONNECTED",
+        diagnosticStatus: "READY",
+        lastError: null,
+      });
+    });
+  });
+
   it("does NOT show Current Phase selector when meeting is active", async () => {
     mockActiveMeetingScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
@@ -2788,6 +3038,130 @@ describe("AdminDashboard - AdminWorkspace", () => {
     expect(screen.getByText(/Conference Room.*Seat Overview/i)).toBeInTheDocument();
     expect(screen.getByText("参会人员")).toBeInTheDocument();
     expect(screen.getByText("ATTENDEES")).toBeInTheDocument();
+  });
+  it("prefills the agenda draft, submits edited text, and restores the template", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const agendaInput = screen.getByPlaceholderText("输入议题标题 / TOPIC TITLE");
+    expect(agendaInput).toHaveValue(
+      "会议开场与议题确认 / Opening and Agenda Confirmation",
+    );
+    expect(
+      mockFetch.mock.calls.some(
+        ([url, options]) =>
+          url === "/api/meetings/1/agendas" && options?.method === "POST",
+      ),
+    ).toBe(false);
+
+    fireEvent.input(agendaInput, {
+      target: { value: "董事会报告 / Board Report" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加 / ADD" }));
+
+    await waitFor(() => {
+      const call = mockFetch.mock.calls.find(
+        ([url, options]) =>
+          url === "/api/meetings/1/agendas" && options?.method === "POST",
+      );
+      expect(call).toBeDefined();
+      expect(JSON.parse(call?.[1]?.body as string)).toEqual({
+        title: "董事会报告 / Board Report",
+        sort_order: 1,
+      });
+    });
+    expect(agendaInput).toHaveValue(
+      "会议开场与议题确认 / Opening and Agenda Confirmation",
+    );
+  });
+
+
+  it("hides attendee management and uses a full-width host check-in row on the Seat 1 tablet", async () => {
+    mockActiveMeetingScenario();
+    render(
+      <AdminDashboard
+        hostTabletAccess={{ deviceId: "host-tablet-01", token: "device-token" }}
+        hostSeatCheckIn={<div data-testid="inline-host-checkin">HOST CHECK-IN</div>}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    const tableHeading = screen.getByText(/Conference Room.*Seat Overview/i);
+    expect(tableHeading.parentElement?.parentElement).toHaveClass("col-span-12");
+    expect(tableHeading.parentElement?.parentElement).not.toHaveClass("xl:col-span-8");
+    expect(screen.getByTestId("inline-host-checkin")).toBeInTheDocument();
+    expect(screen.queryByText("参会人员")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("参会人姓名 / Attendee name")).not.toBeInTheDocument();
+    expect(screen.getByTestId("host-checkin-layout-slot").parentElement).toHaveClass("flex", "flex-col");
+    expect(screen.getByTestId("host-checkin-layout-slot").parentElement).not.toHaveClass("xl:grid-cols-2");
+  });
+  it("places host speech controls only in the service_records workspace", async () => {
+    mockActiveMeetingScenario();
+    render(
+      <AdminDashboard
+        hostTabletAccess={{ deviceId: "host-tablet-01", token: "device-token" }}
+        hostSeatCheckIn={<div data-testid="inline-host-checkin">HOST CHECK-IN</div>}
+        hostSpeechControl={<div data-testid="host-speech-control">HOST SPEECH</div>}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("inline-host-checkin")).toBeInTheDocument();
+    expect(screen.queryByTestId("host-speech-control")).not.toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(screen.queryByTestId("inline-host-checkin")).not.toBeInTheDocument();
+    expect(screen.getByTestId("host-speech-control")).toBeInTheDocument();
+    expect(screen.getByText("会议记录", { exact: true })).toBeInTheDocument();
+  });
+
+
+  it("shows meeting records only in the service_records workspace", async () => {
+    mockActiveMeetingScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("会议记录", { exact: true })).not.toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByText("议程与投票").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(screen.queryByText("会议记录", { exact: true })).not.toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(screen.getByText("会议记录", { exact: true })).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByText("会议总览").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(screen.queryByText("会议记录", { exact: true })).not.toBeInTheDocument();
   });
 
   it("does not show workspace switcher when there is no active meeting", async () => {
@@ -2892,16 +3266,16 @@ describe("AdminDashboard - AdminWorkspace", () => {
 
     // Create vote form should be accessible in agenda_vote workspace
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Vote title...")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: /create vote/i })).toBeInTheDocument();
 
     // Fill and submit vote
     const { fireEvent } = await import("@testing-library/react");
     await act(async () => {
-      fireEvent.input(screen.getByPlaceholderText("Vote title..."), { target: { value: "Workspace Vote" } });
-      fireEvent.input(screen.getByPlaceholderText("Option 1"), { target: { value: "Yes" } });
-      fireEvent.input(screen.getByPlaceholderText("Option 2"), { target: { value: "No" } });
+      fireEvent.input(screen.getByPlaceholderText("投票标题 / Vote title..."), { target: { value: "Workspace Vote" } });
+      fireEvent.input(screen.getByPlaceholderText("选项 1 / Option 1"), { target: { value: "Yes" } });
+      fireEvent.input(screen.getByPlaceholderText("选项 2 / Option 2"), { target: { value: "No" } });
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3124,8 +3498,8 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
       expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(screen.getByText("张伟 · Seat 1")).toBeInTheDocument();
-    expect(screen.getByText("李娜 · Seat 2")).toBeInTheDocument();
+    expect(screen.getByText("张伟 · 座位 1 / Seat 1")).toBeInTheDocument();
+    expect(screen.getByText("李娜 · 座位 2 / Seat 2")).toBeInTheDocument();
   });
 
   // ── Test 3: Ended transcript uses snapshot name ─────────────────────────
@@ -3148,6 +3522,11 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     await waitFor(() => {
@@ -3176,6 +3555,11 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
+    });
+
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+      await new Promise((r) => setTimeout(r, 50));
     });
 
     await waitFor(() => {
@@ -4178,13 +4562,13 @@ describe("AdminDashboard - elapsed time display (Task 130)", () => {
       expect(screen.getByText("Time Test")).toBeInTheDocument();
     });
 
-    // The MetricCard "Meeting time" should show elapsed (with non-zero value from 5 min ago)
-    const meetingTime = screen.getByText("Meeting time");
-    expect(meetingTime).toBeInTheDocument();
+    // The bilingual MetricCard should show elapsed (with non-zero value from 5 min ago)
+    const meetingTime = screen.getByText("会议时长");
+    expect(screen.getByText("MEETING TIME")).toBeInTheDocument();
 
     // The MetricCard value (previous sibling inside the same container) should be a
     // formatted duration, not "--"
-    const elapsedValue = meetingTime.previousElementSibling;
+    const elapsedValue = meetingTime.parentElement?.previousElementSibling;
     expect(elapsedValue).toBeTruthy();
     expect(elapsedValue!.textContent).not.toBe("—");
     expect(elapsedValue!.textContent).toMatch(/^\d/); // starts with a digit
@@ -4254,8 +4638,9 @@ describe("AdminDashboard - elapsed time display (Task 130)", () => {
       expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
     });
 
-    // No Meeting time pill/header should exist
-    expect(screen.queryByText("Meeting time")).not.toBeInTheDocument();
+    // No bilingual Meeting Time metric should exist
+    expect(screen.queryByText("会议时长")).not.toBeInTheDocument();
+    expect(screen.queryByText("MEETING TIME")).not.toBeInTheDocument();
   });
 
   it("formatDuration handles exactly 1 hour", () => {

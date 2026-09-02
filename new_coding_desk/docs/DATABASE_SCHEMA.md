@@ -35,12 +35,25 @@ Only one active meeting is supported.
 Agenda state is backend persisted. Only one agenda item may be active for a
 meeting. Status mutation rules are documented in `API_SPEC.md`.
 
+### `people`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | string | Stable primary key returned by Android local identity recognition. |
+| `name` | string | Canonical display name. |
+| `active` | boolean | Whether identity may be used for check-in. |
+| `created_at` | datetime | Creation time. |
+
+A Person is stable across meetings. Face templates refer to `people.id`, never
+to a temporary attendee row.
+
 ### `attendees`
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | integer | Primary key. |
 | `meeting_id` | integer | FK to `meetings.id`. |
+| `person_id` | string nullable | Optional FK to `people.id`. Unique per meeting when present. |
 | `name` | string | Attendee name. |
 | `title` | string | Attendee title. |
 | `seat_id` | integer nullable | Bound seat. |
@@ -129,12 +142,43 @@ SQLite schema updates must be idempotent. Existing demo databases may be
 deleted during cleanup, but code-level migrations must preserve existing rows
 when users keep a local database.
 
+The Android identity migration adds nullable `attendees.person_id` without
+guessing mappings for historical attendees. Existing deployments receive a
+partial unique index on `(meeting_id, person_id)` for non-null values.
+Fresh and existing deployments create the following additional tables through startup
+metadata:
+
+- `tablet_devices`: stable device ID, unique bound seat, salted PBKDF2 token
+  hash, enable flag, version and last-seen/error operational fields, plus
+  camera/face-model/template-count/microphone/meeting-WebSocket/diagnostic
+  heartbeat status. Existing databases receive the added nullable columns
+  through the idempotent startup migration.
+- `identity_checkin_events`: durable native event ID, device/seat/person/
+  attendee evidence, similarity, verification level and model version.
+- `face_templates`: one encrypted AES-GCM template payload per stable
+  `people.id`, plus model hash/version, pipeline, dimension, sample counts,
+  revision and timestamps. Capacity is 81; pending/active assignments protect
+  templates from eviction.
+- `face_model_policies`: provisional threshold bound to an exact model hash and
+  pipeline version. A model/pipeline change cannot reuse an older policy.
+
+`meetings.face_template_set_revision` versions the distributed candidate set.
+`tablet_devices` also stores each Android transport public key and the target
+meeting, revision, count, result, and redacted error from its last template
+sync. The AES-GCM master key is outside SQLite at
+`.smartdesk-runtime/face-template-master.key`; database backup and migration
+must include it.
+
 ## Repository Ownership
 
 | Repository | Owns |
 |---|---|
 | `MeetingRepository` | `meetings`, `agendas` |
+| `PersonRepository` | `people` |
 | `AttendeeRepository` | `attendees` |
+| `TabletDeviceRepository` | `tablet_devices` |
+| `IdentityCheckInEventRepository` | `identity_checkin_events` |
+| `FaceTemplateRepository` | `face_templates`, `face_model_policies` |
 | `SeatRepository` | `seat_states`, `speaker_seat` |
 | `VoteRepository` | `votes`, `vote_records` |
 | `ServiceCallRepository` | `service_calls` |

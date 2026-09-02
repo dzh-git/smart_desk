@@ -351,6 +351,8 @@ class SpeechModule:
     def process_interim_array(
         self, audio: np.ndarray, session_key: str = "default",
         sample_rate: int = 16000,
+        *,
+        is_final: bool = False,
     ) -> str:
         """Transcribe audio array chunk, return accumulated full text.
 
@@ -362,8 +364,9 @@ class SpeechModule:
         (see Task 112 root cause: committed old full text + pending new full
         text that includes the old text = duplicated output).
 
-        The CIF encoder/decoder cache is kept alive across all chunks in a
-        session (is_final is always False here).
+        The CIF encoder/decoder cache is kept alive across normal chunks.
+        Set ``is_final=True`` exactly once at a confirmed speech pause to flush
+        the decoder's pending final token(s) into the live hypothesis.
         """
         state = self._ensure_session(session_key)
         processor = state["processor"]
@@ -372,14 +375,28 @@ class SpeechModule:
             from .audio_utils import resample_if_needed
             audio = resample_if_needed(audio, sample_rate, 16000)
 
-        # Never set is_final=True — CIF cache stays alive across chunks.
-        # Sentence boundaries are determined by text content, not VAD.
-        result = processor.process_chunk(audio, is_final=False)
+        result = processor.process_chunk(audio, is_final=is_final)
 
         # Task 112: return raw cumulative full_text directly.
         # Bypass SentenceMerger entirely to prevent committed + pending
         # duplication when cumulative text grows beyond flush thresholds.
         return result["full_text"]
+
+    def finish_chinese_interim(self, session_key: str = "default") -> str:
+        """Flush the Chinese online decoder without replaying speech audio.
+
+        Paraformer Streaming keeps a small CIF look-ahead cache.  At a real
+        pause the cache must be finalized, otherwise the final Chinese
+        character can remain buffered until the utterance is reset.  A short
+        zero tail supplies the explicit end marker without duplicating the
+        preceding speech frame.
+        """
+        tail = np.zeros(1600, dtype=np.float32)  # 100 ms at 16 kHz
+        return self.process_interim_array(
+            tail,
+            session_key,
+            is_final=True,
+        )
 
     def process_english_interim_array(
         self, audio: np.ndarray, session_key: str = "default",
@@ -441,6 +458,13 @@ class SpeechModule:
         if state is None:
             return ""
         return state["processor"].accumulated_text
+
+    def get_interim_debug(self, session_key: str = "default") -> dict:
+        """Return the most recent opt-in streaming decoder diagnostic."""
+        state = self._sessions.get(session_key)
+        if state is None:
+            return {}
+        return dict(getattr(state["processor"], "last_debug", {}) or {})
 
     # ── Session Context ────────────────────────────────────────────────────
 

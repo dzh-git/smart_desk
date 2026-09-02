@@ -23,7 +23,7 @@ meeting IDs from the frontend.
 
 | Service | Events |
 |---|---|
-| `MeetingService` | `meeting_started`, `meeting_ended`, `vote_closed` when ending a meeting closes an open vote |
+| `MeetingService` | `meeting_started`, `meeting_ended`, `seat_assignment_updated`, `vote_closed` when ending a meeting closes an open vote |
 | `MeetingService` | `agenda_updated` after agenda create/delete/set-current/advance/complete/skip |
 | `SeatService` | `seat_occupied`, `seat_vacant`, `checkin_prompt`, `check_in`, `speaker_seat_set`, `speaker_seat_clear`, `translation_interim_cancelled` on speaker switch |
 | `VoteService` | `vote_started`, `vote_updated`, `vote_closed` |
@@ -35,7 +35,7 @@ meeting IDs from the frontend.
 
 The WebSocket broadcaster forwards:
 
-- seat events: `seat_occupied`, `seat_vacant`, `checkin_prompt`, `check_in`
+- seat events: `seat_occupied`, `seat_vacant`, `checkin_prompt`, `check_in`, `seat_assignment_updated`
 - speaker events: `speaker_seat_set`, `speaker_seat_clear`
 - meeting events: `meeting_started`, `meeting_ended`
 - agenda events: `agenda_updated`

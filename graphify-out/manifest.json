@@ -1,1442 +1,3224 @@
 {
   "arduino_nano_controller/smartdesk_lighting_controller/SmartDeskLighting.cpp": {
     "mtime": 1783936612.5913465,
+    "seen": 1787673287.5388656,
     "ast_hash": "ee75288e55e62f3e140f7b418424f9b7",
     "semantic_hash": "ee75288e55e62f3e140f7b418424f9b7"
   },
   "arduino_nano_controller/smartdesk_lighting_controller/SmartDeskLighting.h": {
     "mtime": 1783936591.96869,
+    "seen": 1787673287.5388656,
     "ast_hash": "113aad6d5ea2c2960ff51c24372928e4",
     "semantic_hash": "113aad6d5ea2c2960ff51c24372928e4"
   },
   "arduino_nano_controller/smartdesk_lighting_controller/sim_test_brightness.py": {
     "mtime": 1783936633.9129162,
+    "seen": 1787673287.5388656,
     "ast_hash": "76a0ef553d7f29f662c4a030943a3303",
     "semantic_hash": "76a0ef553d7f29f662c4a030943a3303"
   },
-  "config/smartdesk.integration.json": {
-    "mtime": 1784018587.0124657,
-    "ast_hash": "2128eefae991e8ddad58503987c41ab5",
-    "semantic_hash": "2128eefae991e8ddad58503987c41ab5"
-  },
   "new_coding_desk/backend/__init__.py": {
     "mtime": 1780284072.1609843,
+    "seen": 1787673287.5388656,
     "ast_hash": "7d0361b0d081c1494fd57f00604267e6",
     "semantic_hash": "7d0361b0d081c1494fd57f00604267e6"
   },
   "new_coding_desk/backend/api/__init__.py": {
     "mtime": 1780284176.1205845,
+    "seen": 1787673287.5388656,
     "ast_hash": "dea7b6a79af49c3a4efb0d222f1d0e0c",
     "semantic_hash": "dea7b6a79af49c3a4efb0d222f1d0e0c"
   },
   "new_coding_desk/backend/api/dashboard.py": {
     "mtime": 1780284177.8498583,
+    "seen": 1787673287.5388656,
     "ast_hash": "19e23f9f39f0b79eb073917de5a0d268",
     "semantic_hash": "19e23f9f39f0b79eb073917de5a0d268"
   },
   "new_coding_desk/backend/api/dev.py": {
     "mtime": 1780584315.7039857,
+    "seen": 1787673287.5388656,
     "ast_hash": "3c804fcd0250f2364d93343ed4c22a72",
     "semantic_hash": "3c804fcd0250f2364d93343ed4c22a72"
   },
   "new_coding_desk/backend/api/hardware.py": {
-    "mtime": 1784022584.1439302,
-    "ast_hash": "9d73c49534ae3371bd98496499e53bb1",
-    "semantic_hash": "9d73c49534ae3371bd98496499e53bb1"
+    "mtime": 1787393251.3032548,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f94ef9395abe3524fb53d1a130839d17",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/api/host_display.py": {
-    "mtime": 1781786128.8876235,
-    "ast_hash": "73c11efdc9ddecab311180043b90b144",
-    "semantic_hash": "73c11efdc9ddecab311180043b90b144"
+    "mtime": 1787469722.094572,
+    "seen": 1787673287.5388656,
+    "ast_hash": "05dfd2122c6e8b312afeb945a946611d",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/api/meetings.py": {
-    "mtime": 1781361679.9498038,
-    "ast_hash": "64f6eecf1d01aeae2c3ef63f9d39e2f0",
-    "semantic_hash": "64f6eecf1d01aeae2c3ef63f9d39e2f0"
+    "mtime": 1786887218.1312685,
+    "seen": 1787673287.5388656,
+    "ast_hash": "72227229bcc215f7825ed35f9e46a9d2",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/api/seat_ws.py": {
-    "mtime": 1784018697.8314333,
-    "ast_hash": "3c876e81100b4c1de1758c0514d37ede",
-    "semantic_hash": "3c876e81100b4c1de1758c0514d37ede"
+    "mtime": 1786781118.0243018,
+    "seen": 1787673287.5388656,
+    "ast_hash": "88b2a67db2c6c59e02e0db0bfc4e64dd",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/api/seats.py": {
-    "mtime": 1780584306.6785717,
-    "ast_hash": "dd063bf8d1b94b9f1a244f256e45d29a",
-    "semantic_hash": "dd063bf8d1b94b9f1a244f256e45d29a"
+    "mtime": 1788003681.3378835,
+    "seen": 1788005506.323575,
+    "ast_hash": "f8e1e3e3de416c9261026da99fd406aa",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/api/service_calls.py": {
     "mtime": 1784019321.5413735,
+    "seen": 1787673287.5388656,
     "ast_hash": "fed7ada798364dcd18baef9b15077928",
     "semantic_hash": "fed7ada798364dcd18baef9b15077928"
   },
   "new_coding_desk/backend/api/speech.py": {
     "mtime": 1784470107.8715467,
+    "seen": 1787673287.5388656,
     "ast_hash": "31a75fa09a25ba021e195ca6ccf2364c",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/api/translations.py": {
-    "mtime": 1780303160.5251591,
-    "ast_hash": "003f9755d4322aa15dbcacf52c00de61",
-    "semantic_hash": "003f9755d4322aa15dbcacf52c00de61"
+    "mtime": 1786259203.0671072,
+    "seen": 1787673287.5388656,
+    "ast_hash": "86a1342006b920bec1553717a6887199",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/api/votes.py": {
     "mtime": 1781107609.7912784,
+    "seen": 1787673287.5388656,
     "ast_hash": "c10d3f16848082b61f6a7a065a446ead",
     "semantic_hash": "c10d3f16848082b61f6a7a065a446ead"
   },
   "new_coding_desk/backend/database.py": {
-    "mtime": 1780284075.787231,
-    "ast_hash": "91e3a5ead3f40a2dc668567c63db5c18",
-    "semantic_hash": "91e3a5ead3f40a2dc668567c63db5c18"
+    "mtime": 1785340077.7517333,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f7f1e2a5d54a4f58b14c2f056621bc17",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/events/__init__.py": {
-    "mtime": 1784459522.4895945,
-    "ast_hash": "82db14ca194db7d9f7b68c3b527c4b51",
+    "mtime": 1786977708.1324806,
+    "seen": 1787673287.5388656,
+    "ast_hash": "24847d3c37cbb0e11c4db27a2aed5bed",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/events/agenda_events.py": {
     "mtime": 1781360517.1343887,
+    "seen": 1787673287.5388656,
     "ast_hash": "67fe775aaf9effe471659c5ade6bebaa",
     "semantic_hash": "67fe775aaf9effe471659c5ade6bebaa"
   },
   "new_coding_desk/backend/events/base_event.py": {
     "mtime": 1780284091.8147528,
+    "seen": 1787673287.5388656,
     "ast_hash": "7b5cdf41d2c32e4614e97e8cb5797ee7",
     "semantic_hash": "7b5cdf41d2c32e4614e97e8cb5797ee7"
   },
   "new_coding_desk/backend/events/event_bus.py": {
     "mtime": 1780286417.6714163,
+    "seen": 1787673287.5388656,
     "ast_hash": "e897df45b486dcbb542da098f3cb3730",
     "semantic_hash": "e897df45b486dcbb542da098f3cb3730"
   },
   "new_coding_desk/backend/events/meeting_events.py": {
     "mtime": 1780284107.5184069,
+    "seen": 1787673287.5388656,
     "ast_hash": "3e933643de176b32b8a59db3058b702c",
     "semantic_hash": "3e933643de176b32b8a59db3058b702c"
   },
   "new_coding_desk/backend/events/seat_events.py": {
-    "mtime": 1780284105.6199694,
-    "ast_hash": "ff7d4d3a44b88ccfaae45a0d102183da",
-    "semantic_hash": "ff7d4d3a44b88ccfaae45a0d102183da"
+    "mtime": 1786977707.8733985,
+    "seen": 1787673287.5388656,
+    "ast_hash": "396f0f6f99377671672397cbd75be636",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/events/service_call_events.py": {
     "mtime": 1780284111.9951453,
+    "seen": 1787673287.5388656,
     "ast_hash": "f1a4983d43337c2d75cbeb88055924c0",
     "semantic_hash": "f1a4983d43337c2d75cbeb88055924c0"
   },
   "new_coding_desk/backend/events/speech_events.py": {
     "mtime": 1783671869.4855168,
+    "seen": 1787673287.5388656,
     "ast_hash": "144602f99dd876f9b7339fcf09dfce3a",
     "semantic_hash": "144602f99dd876f9b7339fcf09dfce3a"
   },
   "new_coding_desk/backend/events/translation_events.py": {
     "mtime": 1784459521.978064,
+    "seen": 1787673287.5388656,
     "ast_hash": "6c4090bf36ab583c32b56239f90bb223",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/events/vote_events.py": {
     "mtime": 1780284109.6753352,
+    "seen": 1787673287.5388656,
     "ast_hash": "fa129e445852159ba35aaf9bfdf2a8fa",
     "semantic_hash": "fa129e445852159ba35aaf9bfdf2a8fa"
   },
   "new_coding_desk/backend/exceptions.py": {
     "mtime": 1780286340.7922578,
+    "seen": 1787673287.5388656,
     "ast_hash": "0dd1ab5bc583eccf039b43a50cb46aa6",
     "semantic_hash": "0dd1ab5bc583eccf039b43a50cb46aa6"
   },
   "new_coding_desk/backend/hardware/__init__.py": {
-    "mtime": 1784123411.8364656,
-    "ast_hash": "bd2355e5666775f1d3042f545770d87e",
-    "semantic_hash": "bd2355e5666775f1d3042f545770d87e"
+    "mtime": 1787405075.8672252,
+    "seen": 1787673287.5388656,
+    "ast_hash": "35c577d47cca66c34d6baa1a81ba12a1",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/hardware/arduino_manager.py": {
     "mtime": 1784034930.791871,
+    "seen": 1787673287.5388656,
     "ast_hash": "e6efef1479cca0022e185c3e03eee7fb",
     "semantic_hash": "e6efef1479cca0022e185c3e03eee7fb"
   },
   "new_coding_desk/backend/hardware/lighting_manager.py": {
-    "mtime": 1784022625.2491457,
-    "ast_hash": "1665454855a7849306e9bdaf922d336f",
-    "semantic_hash": "1665454855a7849306e9bdaf922d336f"
+    "mtime": 1786780028.2203763,
+    "seen": 1787673287.5388656,
+    "ast_hash": "00894c52b511b91b0917edc454e3f65a",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/hardware/lighting_modes.py": {
     "mtime": 1783605702.8108897,
+    "seen": 1787673287.5388656,
     "ast_hash": "78bde4f62557eaaa663150744d21917b",
     "semantic_hash": "78bde4f62557eaaa663150744d21917b"
   },
   "new_coding_desk/backend/hardware/seat_gateway.py": {
-    "mtime": 1784018697.8272648,
-    "ast_hash": "2b93ac13226ce6e581e6d0bf1dff5a45",
-    "semantic_hash": "2b93ac13226ce6e581e6d0bf1dff5a45"
+    "mtime": 1786781115.342805,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8d4ba2605885390f9ee2414c3f60da3e",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/hardware/seat_hardware.py": {
     "mtime": 1784022673.2443955,
+    "seen": 1787673287.5388656,
     "ast_hash": "cd3fa4a0670c6eecb38bada67fb86fd9",
     "semantic_hash": "cd3fa4a0670c6eecb38bada67fb86fd9"
   },
   "new_coding_desk/backend/main.py": {
-    "mtime": 1784019321.5424163,
-    "ast_hash": "45f05aec18cb3b4f84ce23499d0c33c7",
-    "semantic_hash": "45f05aec18cb3b4f84ce23499d0c33c7"
+    "mtime": 1787392510.0763943,
+    "seen": 1787673287.5388656,
+    "ast_hash": "bf1b3b3fad119b3f048a5c1cbb1a0b38",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/migrations.py": {
-    "mtime": 1781360509.949751,
-    "ast_hash": "dd5113e6a31c24b4b152c48dee1629ea",
-    "semantic_hash": "dd5113e6a31c24b4b152c48dee1629ea"
+    "mtime": 1787392532.5008397,
+    "seen": 1787673287.5388656,
+    "ast_hash": "396b6dc0d87cc54e40e70d8103ce6b9f",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/__init__.py": {
     "mtime": 1780306671.3939335,
+    "seen": 1787673287.5388656,
     "ast_hash": "bccb8912c7085c9b346635800ccd8eb5",
     "semantic_hash": "bccb8912c7085c9b346635800ccd8eb5"
   },
   "new_coding_desk/backend/repositories/attendee_repository.py": {
-    "mtime": 1780286312.3975534,
-    "ast_hash": "4c18482348f163791febe7f1a3c02cd6",
-    "semantic_hash": "4c18482348f163791febe7f1a3c02cd6"
+    "mtime": 1786887215.5730574,
+    "seen": 1787673287.5388656,
+    "ast_hash": "bf3c36072952974677b33bd2bcab14fd",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/base.py": {
-    "mtime": 1780286778.3493037,
-    "ast_hash": "1e435e3c81c43289a43b42b21717eaba",
-    "semantic_hash": "1e435e3c81c43289a43b42b21717eaba"
+    "mtime": 1785193032.5965059,
+    "seen": 1787673287.5388656,
+    "ast_hash": "7849b0f9f93a1697a38a530b27948820",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/meeting_repository.py": {
     "mtime": 1781360535.8999088,
+    "seen": 1787673287.5388656,
     "ast_hash": "7aa710f22fc4f178bc65e245dd73e08c",
     "semantic_hash": "7aa710f22fc4f178bc65e245dd73e08c"
   },
   "new_coding_desk/backend/repositories/seat_repository.py": {
-    "mtime": 1784019321.5379581,
-    "ast_hash": "6f414c0e23432d7f5f81a296bc2503ce",
-    "semantic_hash": "6f414c0e23432d7f5f81a296bc2503ce"
+    "mtime": 1785193032.8008091,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3a88ac48d95406f017ff91ec3b3488e7",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/repositories/service_call_repository.py": {
     "mtime": 1780301895.958617,
+    "seen": 1787673287.5388656,
     "ast_hash": "89ddbb99fc1e1da4f27c7fb1bacbbb99",
     "semantic_hash": "89ddbb99fc1e1da4f27c7fb1bacbbb99"
   },
   "new_coding_desk/backend/repositories/translation_repository.py": {
     "mtime": 1784038896.018539,
+    "seen": 1787673287.5388656,
     "ast_hash": "c7aebf23f1ca2cb5d14306d00dd1a445",
     "semantic_hash": "c7aebf23f1ca2cb5d14306d00dd1a445"
   },
   "new_coding_desk/backend/repositories/vote_repository.py": {
     "mtime": 1781107532.611497,
+    "seen": 1787673287.5388656,
     "ast_hash": "30b6a8beae288cb11fb014dcd265b936",
     "semantic_hash": "30b6a8beae288cb11fb014dcd265b936"
   },
   "new_coding_desk/backend/schemas/__init__.py": {
     "mtime": 1780286270.4738183,
+    "seen": 1787673287.5388656,
     "ast_hash": "84f28324f236083053817839e78737f3",
     "semantic_hash": "84f28324f236083053817839e78737f3"
   },
   "new_coding_desk/backend/schemas/meeting.py": {
-    "mtime": 1781360525.0454211,
-    "ast_hash": "b4ce648cae6e476545821431e926bb69",
-    "semantic_hash": "b4ce648cae6e476545821431e926bb69"
+    "mtime": 1786887213.0755377,
+    "seen": 1787673287.5388656,
+    "ast_hash": "2be0711ecdad98bcacb6b024b9d08ece",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/schemas/seat.py": {
-    "mtime": 1784019321.5403244,
-    "ast_hash": "de3ba06985cac2b24a92b8756340dbc3",
-    "semantic_hash": "de3ba06985cac2b24a92b8756340dbc3"
+    "mtime": 1787404569.9115117,
+    "seen": 1787673287.5388656,
+    "ast_hash": "bdcfb31b48372b9f9838565abde3e9b4",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/schemas/service_call.py": {
     "mtime": 1780301890.980089,
+    "seen": 1787673287.5388656,
     "ast_hash": "a652d3d8960684d3c757a29dcc96b2e8",
     "semantic_hash": "a652d3d8960684d3c757a29dcc96b2e8"
   },
   "new_coding_desk/backend/schemas/translation.py": {
     "mtime": 1784300508.457892,
+    "seen": 1787673287.5388656,
     "ast_hash": "a5e6c08c2bb435607f7ba7876c0f068b",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/schemas/vote.py": {
     "mtime": 1780299961.112575,
+    "seen": 1787673287.5388656,
     "ast_hash": "50261079bcf6665664e420b4ac4439cd",
     "semantic_hash": "50261079bcf6665664e420b4ac4439cd"
   },
   "new_coding_desk/backend/scripts/benchmark_real_speech_dataset.py": {
     "mtime": 1781518907.778,
+    "seen": 1787673287.5388656,
     "ast_hash": "62c89b8d02740d7ecd81c8643692f57d",
     "semantic_hash": "62c89b8d02740d7ecd81c8643692f57d"
   },
   "new_coding_desk/backend/scripts/generate_device_report.py": {
     "mtime": 1781508358.377233,
+    "seen": 1787673287.5388656,
     "ast_hash": "b12a0ae4dd1b8b308666f8c33eebac34",
     "semantic_hash": "b12a0ae4dd1b8b308666f8c33eebac34"
   },
   "new_coding_desk/backend/scripts/generate_latency_report.py": {
     "mtime": 1784471018.9430647,
+    "seen": 1787673287.5388656,
     "ast_hash": "d97f6970e7ff1609782a62ecfd266ae7",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/seed_demo.py": {
     "mtime": 1780712563.995727,
+    "seen": 1787673287.5388656,
     "ast_hash": "fcdc90e5926e684285c2bff422e7d534",
     "semantic_hash": "fcdc90e5926e684285c2bff422e7d534"
   },
   "new_coding_desk/backend/services/__init__.py": {
     "mtime": 1780306676.066465,
+    "seen": 1787673287.5388656,
     "ast_hash": "7be1b72ab7478df14692ffe08fbf30d8",
     "semantic_hash": "7be1b72ab7478df14692ffe08fbf30d8"
   },
   "new_coding_desk/backend/services/base.py": {
     "mtime": 1780284132.0735817,
+    "seen": 1787673287.5388656,
     "ast_hash": "76b0de41a896a292836b198289058136",
     "semantic_hash": "76b0de41a896a292836b198289058136"
   },
   "new_coding_desk/backend/services/meeting_service.py": {
-    "mtime": 1781361676.7673836,
-    "ast_hash": "23fd26251aed74cedf5de7b377654faa",
-    "semantic_hash": "23fd26251aed74cedf5de7b377654faa"
+    "mtime": 1788006792.1567597,
+    "seen": 1788007020.786648,
+    "ast_hash": "fb2851874ad6d23812f97583d24a1039",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/services/seat_service.py": {
-    "mtime": 1784019321.5460494,
-    "ast_hash": "0c6042dfe040cc726915b8775f9b925b",
-    "semantic_hash": "0c6042dfe040cc726915b8775f9b925b"
+    "mtime": 1788006792.1567597,
+    "seen": 1788007020.786648,
+    "ast_hash": "789f65182a68cf38d08a62a142db88c6",
+    "semantic_hash": ""
   },
   "new_coding_desk/backend/services/service_call_service.py": {
     "mtime": 1784018587.0208764,
+    "seen": 1787673287.5388656,
     "ast_hash": "391405b838f8cf2beefe4dd339a63ee5",
     "semantic_hash": "391405b838f8cf2beefe4dd339a63ee5"
   },
   "new_coding_desk/backend/services/speech_finalization_service.py": {
-    "mtime": 1784477098.4530852,
-    "ast_hash": "aac1dc00daf80ec35ba9d41d967ff262",
+    "mtime": 1786167270.0475516,
+    "seen": 1787673287.5388656,
+    "ast_hash": "594408c00d44bee125f752146a88c5fb",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/speech_stream_service.py": {
-    "mtime": 1784697750.2425208,
-    "ast_hash": "080bed8f76ef6a3849e9f6bacb45f718",
+    "mtime": 1786168560.900872,
+    "seen": 1787673287.5388656,
+    "ast_hash": "dd2185146760411e74b2fae7083a619c",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/translation_model_service.py": {
     "mtime": 1784475790.8062055,
+    "seen": 1787673287.5388656,
     "ast_hash": "e7307f455b5c11b902710b6e47d5fd53",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/translation_service.py": {
     "mtime": 1784475744.141997,
+    "seen": 1787673287.5388656,
     "ast_hash": "b96ced55f861845099bab17f1bed4d80",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/vote_service.py": {
     "mtime": 1781107541.683453,
+    "seen": 1787673287.5388656,
     "ast_hash": "2af0db5c0823c5c244a41d36cf88aa5e",
     "semantic_hash": "2af0db5c0823c5c244a41d36cf88aa5e"
   },
   "new_coding_desk/backend/speech_module/__init__.py": {
     "mtime": 1780306794.8980708,
+    "seen": 1787673287.5388656,
     "ast_hash": "46411d28d704717b02b329658350fd47",
     "semantic_hash": "46411d28d704717b02b329658350fd47"
   },
   "new_coding_desk/backend/speech_module/audio_utils.py": {
     "mtime": 1780306794.9250994,
+    "seen": 1787673287.5388656,
     "ast_hash": "df1a2590e5fc7582a9f9503ef73529f4",
     "semantic_hash": "df1a2590e5fc7582a9f9503ef73529f4"
   },
   "new_coding_desk/backend/speech_module/caption_formatter.py": {
     "mtime": 1784549447.9511986,
+    "seen": 1787673287.5388656,
     "ast_hash": "1a9557cb1827c04185ddc6b6e17d04c2",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/fsmn_vad.py": {
     "mtime": 1784305237.6636434,
+    "seen": 1787673287.5388656,
     "ast_hash": "d3bee228bd6a4126ce15c05286945c29",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/punctuation.py": {
-    "mtime": 1784537752.2349756,
-    "ast_hash": "14008ba7f2d5df48e669031aaaa4eb31",
+    "mtime": 1785198142.507253,
+    "seen": 1787673287.5388656,
+    "ast_hash": "cfaa067baf816fe4e28710939851e245",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/sentence_merge.py": {
     "mtime": 1780743362.318888,
+    "seen": 1787673287.5388656,
     "ast_hash": "4e46a247adfcf11f300a62b95a3a589a",
     "semantic_hash": "4e46a247adfcf11f300a62b95a3a589a"
   },
   "new_coding_desk/backend/speech_module/speech_module.py": {
-    "mtime": 1784692078.724906,
-    "ast_hash": "5773632ecf668ffc6c1a74a29e94f8f5",
+    "mtime": 1786167202.0408258,
+    "seen": 1787673287.5388656,
+    "ast_hash": "2160e20e1f9b3a33dfccfc9f2e2afafd",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/stt_streaming.py": {
-    "mtime": 1784537751.6647007,
-    "ast_hash": "a385bb6a713cd701b75294a56a60edfd",
+    "mtime": 1786167188.2534256,
+    "seen": 1787673287.5388656,
+    "ast_hash": "dc5c0e80a15e7edd065d3e49d3a3a80c",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/text_utils.py": {
     "mtime": 1784687596.657652,
+    "seen": 1787673287.5388656,
     "ast_hash": "038ba725629ca5fefe36108dd9ea9fb3",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/utils/__init__.py": {
     "mtime": 1780460720.993514,
+    "seen": 1787673287.5388656,
     "ast_hash": "e5d148edb1692d98db6a55d1a8a6fcd1",
     "semantic_hash": "e5d148edb1692d98db6a55d1a8a6fcd1"
   },
   "new_coding_desk/backend/websocket/__init__.py": {
     "mtime": 1780284137.6398916,
+    "seen": 1787673287.5388656,
     "ast_hash": "9a0a57bc5c8848d8e7d621d9699ed1a3",
     "semantic_hash": "9a0a57bc5c8848d8e7d621d9699ed1a3"
   },
   "new_coding_desk/backend/websocket/event_handler.py": {
-    "mtime": 1784459522.9572637,
-    "ast_hash": "7a605dd5574802b857abb656fcd520ac",
+    "mtime": 1786977708.6685865,
+    "seen": 1787673287.5388656,
+    "ast_hash": "4d73c4e5631a903027abd324bae58711",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/websocket/speech_registry.py": {
     "mtime": 1780670739.2108982,
+    "seen": 1787673287.5388656,
     "ast_hash": "9b815a0c629b9ad2286a807b13355e06",
     "semantic_hash": "9b815a0c629b9ad2286a807b13355e06"
   },
   "new_coding_desk/backend/websocket/speech_trace.py": {
     "mtime": 1784469990.3137255,
+    "seen": 1787673287.5388656,
     "ast_hash": "d5e887ee50fea6c8136af1be7d5bdaf8",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/websocket/speech_ws.py": {
-    "mtime": 1784687662.3683054,
-    "ast_hash": "099c7f9750241abb911e7712ade51373",
+    "mtime": 1786112919.216997,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f4404f07a960a34b995aae953f1600df",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/websocket/ws_service.py": {
     "mtime": 1780285716.8260374,
+    "seen": 1787673287.5388656,
     "ast_hash": "2682c143cf47d5014fd6aab7e0bb7d4b",
     "semantic_hash": "2682c143cf47d5014fd6aab7e0bb7d4b"
   },
   "new_coding_desk/frontend/e2e/deterministic-caption.spec.ts": {
-    "mtime": 1781057730.5423589,
-    "ast_hash": "1d64ccc2b5708e6531b4d359a3ead298",
-    "semantic_hash": "1d64ccc2b5708e6531b4d359a3ead298"
+    "mtime": 1788275898.6016474,
+    "seen": 1788353881.342458,
+    "ast_hash": "dfdcf45a795e425cd4a3c9b16bdddce8",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/screen-stream-review.spec.ts": {
     "mtime": 1781837430.126235,
+    "seen": 1787673287.5388656,
     "ast_hash": "0fb97a64bd318f61905318c39606ad8e",
     "semantic_hash": "0fb97a64bd318f61905318c39606ad8e"
   },
   "new_coding_desk/frontend/e2e/speech-consistency.spec.ts": {
-    "mtime": 1781077598.1029582,
-    "ast_hash": "80fae20e781cb877eaea8c258f5267dd",
-    "semantic_hash": "80fae20e781cb877eaea8c258f5267dd"
+    "mtime": 1788351731.3937368,
+    "seen": 1788353881.342458,
+    "ast_hash": "1b265448c445c59e8ad318f2a05be1fc",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/task1-ended-meeting.spec.ts": {
     "mtime": 1781181409.6631787,
+    "seen": 1787673287.5388656,
     "ast_hash": "fcaad0da83596fe2c451f004b191a56f",
     "semantic_hash": "fcaad0da83596fe2c451f004b191a56f"
   },
   "new_coding_desk/frontend/e2e/task2-ended-meeting-display.spec.ts": {
     "mtime": 1781184010.777176,
+    "seen": 1787673287.5388656,
     "ast_hash": "0143f03b9b22e1a27df4f284d99acd63",
     "semantic_hash": "0143f03b9b22e1a27df4f284d99acd63"
   },
   "new_coding_desk/frontend/e2e/task3-admin-ui-phase.spec.ts": {
     "mtime": 1781438934.9332068,
+    "seen": 1787673287.5388656,
     "ast_hash": "87106f3e63520cfed5dae23d16918baf",
     "semantic_hash": "87106f3e63520cfed5dae23d16918baf"
   },
   "new_coding_desk/frontend/e2e/task4-button-rules.spec.ts": {
     "mtime": 1781190670.709178,
+    "seen": 1787673287.5388656,
     "ast_hash": "ca989802a933bb60270d9e6268d4028d",
     "semantic_hash": "ca989802a933bb60270d9e6268d4028d"
   },
   "new_coding_desk/frontend/e2e/task5-full-meeting-flow.spec.ts": {
     "mtime": 1781192459.635339,
+    "seen": 1787673287.5388656,
     "ast_hash": "4769c940736324d8ea8a067fe3837fcf",
     "semantic_hash": "4769c940736324d8ea8a067fe3837fcf"
   },
   "new_coding_desk/frontend/e2e/task6-low-priority-fixes.spec.ts": {
     "mtime": 1781232129.9507284,
+    "seen": 1787673287.5388656,
     "ast_hash": "37bf3aa738df214950030be22dc087ff",
     "semantic_hash": "37bf3aa738df214950030be22dc087ff"
   },
   "new_coding_desk/frontend/e2e/task7-transcript-visibility-order.spec.ts": {
     "mtime": 1781232231.6098173,
+    "seen": 1787673287.5388656,
     "ast_hash": "aaf9cad45c7f6ba71c95353140127525",
     "semantic_hash": "aaf9cad45c7f6ba71c95353140127525"
   },
   "new_coding_desk/frontend/e2e/task8-admin-workspace.spec.ts": {
     "mtime": 1781438917.1460762,
+    "seen": 1787673287.5388656,
     "ast_hash": "a993a02f3c50a007d7febee0ddcc25fa",
     "semantic_hash": "a993a02f3c50a007d7febee0ddcc25fa"
   },
   "new_coding_desk/frontend/e2e/visual-smoke.spec.ts": {
-    "mtime": 1781340773.321283,
-    "ast_hash": "7631c943c753e088e11775cacd20f0e9",
-    "semantic_hash": "7631c943c753e088e11775cacd20f0e9"
+    "mtime": 1785946057.1395576,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c4cddad0cc46799ab63b84588ce96e20",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/eslint.config.js": {
     "mtime": 1780586002.5433004,
+    "seen": 1787673287.5388656,
     "ast_hash": "bd92fafa5ef833aac5d7de4160cadbe4",
     "semantic_hash": "bd92fafa5ef833aac5d7de4160cadbe4"
   },
   "new_coding_desk/frontend/package.json": {
-    "mtime": 1781104975.659271,
-    "ast_hash": "142ae85573ac021108e821ba23cecb60",
-    "semantic_hash": "142ae85573ac021108e821ba23cecb60"
+    "mtime": 1788273400.2805781,
+    "seen": 1788353881.342458,
+    "ast_hash": "804a94919bb04f5a16f4f23e25cbd3ef",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/playwright.config.ts": {
-    "mtime": 1781249432.315255,
-    "ast_hash": "cefdd37903762a1380b727a5968f7e11",
-    "semantic_hash": "cefdd37903762a1380b727a5968f7e11"
+    "mtime": 1785342898.2337606,
+    "seen": 1787673287.5388656,
+    "ast_hash": "238fb3945ce2d9c6478b03d1b7b06cec",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/postcss.config.js": {
     "mtime": 1780576921.914652,
+    "seen": 1787673287.5388656,
     "ast_hash": "33fad9c02cb0ec6d6030369ef6347d57",
     "semantic_hash": "33fad9c02cb0ec6d6030369ef6347d57"
   },
   "new_coding_desk/frontend/public/app-config.js": {
     "mtime": 1783677498.340853,
+    "seen": 1787673287.5388656,
     "ast_hash": "ad0d80822b2c7d2b81a9eb4ef0aabf18",
     "semantic_hash": "ad0d80822b2c7d2b81a9eb4ef0aabf18"
   },
   "new_coding_desk/frontend/src/App.tsx": {
-    "mtime": 1781830104.7488022,
-    "ast_hash": "99c6d8f4c6d487155941c1f7e3b26a45",
-    "semantic_hash": "99c6d8f4c6d487155941c1f7e3b26a45"
+    "mtime": 1787467645.8953068,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6c5a1014c6f79a6661a11e2c5cca8252",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/App.test.tsx": {
-    "mtime": 1781364671.2869837,
-    "ast_hash": "db43b361e0db62f0e3bde62d69b11644",
-    "semantic_hash": "db43b361e0db62f0e3bde62d69b11644"
+    "mtime": 1787467646.1572616,
+    "seen": 1787673287.5388656,
+    "ast_hash": "5b4fe35d039460fb4053d623a3f3cbd3",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/DisplayView.test.tsx": {
-    "mtime": 1781365103.7724326,
-    "ast_hash": "bcf06a54c6dc4a141d7cdf6177d83ca0",
-    "semantic_hash": "bcf06a54c6dc4a141d7cdf6177d83ca0"
+    "mtime": 1785945916.7335832,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ce79baaadf90e140b41bbf345e885609",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/admin.test.tsx": {
-    "mtime": 1784460482.2557056,
-    "ast_hash": "34c91b8718fc09da13ea214ee6806a46",
+    "mtime": 1788351316.5836225,
+    "seen": 1788353881.3432188,
+    "ast_hash": "fc54d0333185daabe20f4d6b28ad2ebd",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/host-display-control-review.test.tsx": {
-    "mtime": 1781838122.7987113,
-    "ast_hash": "ce03de68e8fb0c5bfa3ea4241554d42b",
-    "semantic_hash": "ce03de68e8fb0c5bfa3ea4241554d42b"
+    "mtime": 1787467886.1453302,
+    "seen": 1787673287.5388656,
+    "ast_hash": "75f499f263dfa73a2b668d53a858970b",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/resources-control.test.ts": {
     "mtime": 1781108052.428771,
+    "seen": 1787673287.5388656,
     "ast_hash": "b6f34932a3a385dbe3fc18c3727aeeef",
     "semantic_hash": "b6f34932a3a385dbe3fc18c3727aeeef"
   },
   "new_coding_desk/frontend/src/__tests__/screen-view-review.test.tsx": {
-    "mtime": 1781838169.9724884,
-    "ast_hash": "edbc8460e9c7ebd408be894c9e00472c",
-    "semantic_hash": "edbc8460e9c7ebd408be894c9e00472c"
+    "mtime": 1787468044.4575033,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e8309783b52a8ebb2c5326c46b815dd6",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/seat.test.tsx": {
-    "mtime": 1784695851.5135434,
-    "ast_hash": "9321107978e709ab40513fc5db31ea23",
+    "mtime": 1787761617.9606333,
+    "seen": 1787761813.312238,
+    "ast_hash": "6efa42f1d8d8cf831f704c3d9342f7a8",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/speechTrace.test.ts": {
     "mtime": 1781509978.8092713,
+    "seen": 1787673287.5388656,
     "ast_hash": "b316e91176e8cc9d4dc4c88e5267d100",
     "semantic_hash": "b316e91176e8cc9d4dc4c88e5267d100"
   },
   "new_coding_desk/frontend/src/api/__tests__/adapters.test.ts": {
-    "mtime": 1784019721.7390306,
-    "ast_hash": "0a103977261628aa514ad673a509714b",
-    "semantic_hash": "0a103977261628aa514ad673a509714b"
+    "mtime": 1786889158.2989223,
+    "seen": 1787673287.5388656,
+    "ast_hash": "df13686e026e45e35fdeeb5319e08542",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/api/__tests__/client.test.ts": {
     "mtime": 1780583790.987857,
+    "seen": 1787673287.5388656,
     "ast_hash": "84c8f388134b3e7caef61656d30be2e2",
     "semantic_hash": "84c8f388134b3e7caef61656d30be2e2"
   },
   "new_coding_desk/frontend/src/api/__tests__/resources.test.ts": {
     "mtime": 1781194437.5988126,
+    "seen": 1787673287.5388656,
     "ast_hash": "18398ac9207ad8df88f9615a9143446c",
     "semantic_hash": "18398ac9207ad8df88f9615a9143446c"
   },
   "new_coding_desk/frontend/src/api/adapters.ts": {
     "mtime": 1784019026.5694008,
+    "seen": 1787673287.5388656,
     "ast_hash": "c1be3b5f73c2673b35b80fb05636d7c0",
     "semantic_hash": "c1be3b5f73c2673b35b80fb05636d7c0"
   },
   "new_coding_desk/frontend/src/api/client.ts": {
-    "mtime": 1783677519.3366845,
-    "ast_hash": "8489b7202b7d897006c4c51264e130c0",
-    "semantic_hash": "8489b7202b7d897006c4c51264e130c0"
+    "mtime": 1787394419.7506237,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3d3fe6193fa918fe1e172b79ce21010b",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/api/resources.ts": {
-    "mtime": 1781836991.6555884,
-    "ast_hash": "20bf4cd0263b3f023ab918b55ccea784",
-    "semantic_hash": "20bf4cd0263b3f023ab918b55ccea784"
+    "mtime": 1787466631.5065575,
+    "seen": 1787673287.5388656,
+    "ast_hash": "0794d4b6d6e7682550ef20ac896733c1",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/api/types.ts": {
-    "mtime": 1784692849.343624,
-    "ast_hash": "eba4dd5988db0017e32cb35d0fe943ba",
+    "mtime": 1787466631.2410548,
+    "seen": 1787673287.5388656,
+    "ast_hash": "fb40b1ded11a0e1e2d5094ef7c3f8c02",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/app-config.ts": {
-    "mtime": 1783677492.402867,
-    "ast_hash": "77a1589c55a42c06cb60aa510e606594",
-    "semantic_hash": "77a1589c55a42c06cb60aa510e606594"
+    "mtime": 1785166492.2861307,
+    "seen": 1787673287.5388656,
+    "ast_hash": "4dd927c2e71e4c6f7672d4be5b2e7543",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/audio/microphone.ts": {
-    "mtime": 1784018978.0095963,
-    "ast_hash": "90fca9b3092fd8a3a24e1122dfac5809",
-    "semantic_hash": "90fca9b3092fd8a3a24e1122dfac5809"
+    "mtime": 1786277382.8567495,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3f126ed57d9498ba9f8c68eabaece0bf",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/audio/speechTrace.ts": {
     "mtime": 1784469990.8426633,
+    "seen": 1787673287.5388656,
     "ast_hash": "023a4211542a14ac75edd3239dc47b13",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/audio/speechWsClient.ts": {
     "mtime": 1784475991.1782124,
+    "seen": 1787673287.5388656,
     "ast_hash": "4d538274a690a97b92895a5e8218798d",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/audio/types.ts": {
     "mtime": 1780673317.8562684,
+    "seen": 1787673287.5388656,
     "ast_hash": "ed481375583d9fc714522d23688e19a6",
     "semantic_hash": "ed481375583d9fc714522d23688e19a6"
   },
   "new_coding_desk/frontend/src/components/AdminDashboard.tsx": {
-    "mtime": 1784459849.0216994,
-    "ast_hash": "ce7d1f1e90425236abe3a45edabf3ac8",
+    "mtime": 1788048474.6705914,
+    "seen": 1788048793.0305107,
+    "ast_hash": "3733326e379f20e3ff00ae0a82fea112",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AdminHeader.tsx": {
-    "mtime": 1781276220.3220632,
-    "ast_hash": "8b0a51599ab5c29bc6558cc2198dfada",
-    "semantic_hash": "8b0a51599ab5c29bc6558cc2198dfada"
+    "mtime": 1785944714.8453188,
+    "seen": 1787673287.5388656,
+    "ast_hash": "5f1ffe3130c87e21612953d3d995a561",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AgendaPanel.tsx": {
-    "mtime": 1781363214.6363814,
-    "ast_hash": "02e0d14233b60a4dbab19f977b5e21a3",
-    "semantic_hash": "02e0d14233b60a4dbab19f977b5e21a3"
+    "mtime": 1788048474.6705914,
+    "seen": 1788048793.0305107,
+    "ast_hash": "a0bff6148057c04c476a3fea37c9f07d",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ConferenceTable.tsx": {
-    "mtime": 1781277558.878495,
-    "ast_hash": "b0188fa1d464ea69884f95ffd8c23dd4",
-    "semantic_hash": "b0188fa1d464ea69884f95ffd8c23dd4"
+    "mtime": 1788005371.3605306,
+    "seen": 1788005506.3319752,
+    "ast_hash": "20e5907e1296781d39e6f3fe5ed54a21",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/DisplayView.tsx": {
-    "mtime": 1781364675.0013728,
-    "ast_hash": "83d7e8d3f45cc1e507baa82f6a1bec32",
-    "semantic_hash": "83d7e8d3f45cc1e507baa82f6a1bec32"
+    "mtime": 1785945594.6156516,
+    "seen": 1787673287.5388656,
+    "ast_hash": "fcfe2ab0cc62dcd7c869778190e5830d",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HardwareStatus.tsx": {
-    "mtime": 1784019026.570438,
-    "ast_hash": "9d96c2c0b64f0772106b4248cc84fa9b",
-    "semantic_hash": "9d96c2c0b64f0772106b4248cc84fa9b"
+    "mtime": 1786190664.3668065,
+    "seen": 1787673287.5388656,
+    "ast_hash": "56d3c4ee8fd1f66dbb390953ceb89605",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HostDisplayControl.tsx": {
-    "mtime": 1781837009.78097,
-    "ast_hash": "85e842ef940baa334c1fa9398fb6f7e2",
-    "semantic_hash": "85e842ef940baa334c1fa9398fb6f7e2"
+    "mtime": 1787466654.1253035,
+    "seen": 1787673287.5388656,
+    "ast_hash": "59d5b9e170a220e3dfe3b6c8e5999073",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/MeetingResultPanel.tsx": {
     "mtime": 1781279582.3418465,
+    "seen": 1787673287.5388656,
     "ast_hash": "5bd5b9ba073ee92cb3e5346163895c5c",
     "semantic_hash": "5bd5b9ba073ee92cb3e5346163895c5c"
   },
   "new_coding_desk/frontend/src/components/ScreenView.tsx": {
     "mtime": 1781830090.8093941,
+    "seen": 1787673287.5388656,
     "ast_hash": "f1431706b856364588900ed6a296f8a5",
     "semantic_hash": "f1431706b856364588900ed6a296f8a5"
   },
   "new_coding_desk/frontend/src/components/SeatTablet.tsx": {
-    "mtime": 1784695698.3601096,
-    "ast_hash": "e421ed98b96e2fae7b125c45986d9d43",
+    "mtime": 1787761310.3345141,
+    "seen": 1787761813.312238,
+    "ast_hash": "a0dabb3727147a3c2617574a00a00bfa",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ServicePanel.tsx": {
     "mtime": 1781279498.3130531,
+    "seen": 1787673287.5388656,
     "ast_hash": "8b8a59b2321d2a35d74bda2fe18ba7c1",
     "semantic_hash": "8b8a59b2321d2a35d74bda2fe18ba7c1"
   },
   "new_coding_desk/frontend/src/components/TranscriptPanel.tsx": {
-    "mtime": 1784697750.7075856,
-    "ast_hash": "d2889e83d4269fe5231cf543c66ea79b",
+    "mtime": 1788351378.0403373,
+    "seen": 1788353881.3432188,
+    "ast_hash": "ea0a93edd198872af00c8c7ebd0a4c68",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/VotePanel.tsx": {
     "mtime": 1781279322.9342108,
+    "seen": 1787673287.5388656,
     "ast_hash": "9ef4fe7c645da1a12dffc82b2a605a4f",
     "semantic_hash": "9ef4fe7c645da1a12dffc82b2a605a4f"
   },
   "new_coding_desk/frontend/src/components/__tests__/TranscriptPanel.test.tsx": {
-    "mtime": 1784697753.0177064,
-    "ast_hash": "3b15f8d1db8b8063af67be4004075c80",
+    "mtime": 1788351829.885267,
+    "seen": 1788353881.3432188,
+    "ast_hash": "cfade0aa1dc0156640a3ef34c9f95baa",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/shared.tsx": {
     "mtime": 1781838022.9474566,
+    "seen": 1787673287.5388656,
     "ast_hash": "112843ab875b7592ccb7d79ec1d28a7e",
     "semantic_hash": "112843ab875b7592ccb7d79ec1d28a7e"
   },
   "new_coding_desk/frontend/src/hooks/__tests__/useSpeechStream.test.tsx": {
-    "mtime": 1784476494.8988595,
-    "ast_hash": "d611dec3277fba4346366b7ac7a74f50",
+    "mtime": 1785174084.910138,
+    "seen": 1787673287.5388656,
+    "ast_hash": "d10d97aee0a9624af1d0ce16ab30c079",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/hooks/useAdminData.ts": {
-    "mtime": 1784687755.5031323,
-    "ast_hash": "3081e4238f04df3096adbe1162e3f387",
+    "mtime": 1788276360.4495091,
+    "seen": 1788353881.3432188,
+    "ast_hash": "ef2c693c092f735e44ce2a9f1c1ea2fb",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/hooks/useSeatData.ts": {
-    "mtime": 1784687754.960954,
-    "ast_hash": "1b68250ac79166aac23a5d27db655fe5",
+    "mtime": 1788276360.4495091,
+    "seen": 1788353881.3432188,
+    "ast_hash": "c539b9b74b3a5bb8b3ff5bb857ec2dc7",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/hooks/useSpeechStream.ts": {
-    "mtime": 1784476011.7924902,
-    "ast_hash": "f22c4026d8e1ff9b462548c0b6363ff0",
+    "mtime": 1785174237.0518963,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3e79d3a5cc13d0712d2230d8561d03ce",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/hooks/useWebSocket.ts": {
     "mtime": 1783677540.8484228,
+    "seen": 1787673287.5388656,
     "ast_hash": "e4f475d6e903e04ff241f8b7d7b7663c",
     "semantic_hash": "e4f475d6e903e04ff241f8b7d7b7663c"
   },
   "new_coding_desk/frontend/src/main.tsx": {
     "mtime": 1780576921.9297502,
+    "seen": 1787673287.5388656,
     "ast_hash": "5539db94cfd8fad79e48b35f3ea25429",
     "semantic_hash": "5539db94cfd8fad79e48b35f3ea25429"
   },
   "new_coding_desk/frontend/src/mockData.ts": {
     "mtime": 1784022610.159716,
+    "seen": 1787673287.5388656,
     "ast_hash": "2ffc2aafcd8264a054ddb001b9e5c945",
     "semantic_hash": "2ffc2aafcd8264a054ddb001b9e5c945"
   },
   "new_coding_desk/frontend/src/test-setup.ts": {
     "mtime": 1780673402.937203,
+    "seen": 1787673287.5388656,
     "ast_hash": "8abaed62bcfa8b7603057b57b672728f",
     "semantic_hash": "8abaed62bcfa8b7603057b57b672728f"
   },
   "new_coding_desk/frontend/src/types.ts": {
     "mtime": 1784687736.4557374,
+    "seen": 1787673287.5388656,
     "ast_hash": "6d105c3b1dae5187617e6c5f361e9b47",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/utils/agendaState.ts": {
     "mtime": 1781362051.4255826,
+    "seen": 1787673287.5388656,
     "ast_hash": "9f398a8901366deff7de7a9fda203e5f",
     "semantic_hash": "9f398a8901366deff7de7a9fda203e5f"
   },
   "new_coding_desk/frontend/src/utils/uiState.ts": {
     "mtime": 1781191449.4792516,
+    "seen": 1787673287.5388656,
     "ast_hash": "673bd2467a2f1a5096cc150b600e2044",
     "semantic_hash": "673bd2467a2f1a5096cc150b600e2044"
   },
   "new_coding_desk/frontend/src/vite-env.d.ts": {
     "mtime": 1780576921.9337497,
+    "seen": 1787673287.5388656,
     "ast_hash": "8f68c27c3fc38817b2726b20e2d4f1ee",
     "semantic_hash": "8f68c27c3fc38817b2726b20e2d4f1ee"
   },
   "new_coding_desk/frontend/tailwind.config.js": {
     "mtime": 1781247356.2873094,
+    "seen": 1787673287.5388656,
     "ast_hash": "47fd75841b90317001ee8ec9949f8246",
     "semantic_hash": "47fd75841b90317001ee8ec9949f8246"
   },
   "new_coding_desk/frontend/tsconfig.app.json": {
     "mtime": 1781230572.6445746,
+    "seen": 1787673287.5388656,
     "ast_hash": "71ee780628627772cdd6bbd686ac745b",
     "semantic_hash": "71ee780628627772cdd6bbd686ac745b"
   },
   "new_coding_desk/frontend/tsconfig.json": {
     "mtime": 1780576921.936746,
+    "seen": 1787673287.5388656,
     "ast_hash": "852c3a5df14a4b43ac28e9554ebedf4a",
     "semantic_hash": "852c3a5df14a4b43ac28e9554ebedf4a"
   },
   "new_coding_desk/frontend/tsconfig.node.json": {
     "mtime": 1780576921.9377465,
+    "seen": 1787673287.5388656,
     "ast_hash": "e980c1dd3d183c0e364644efa7aaf82f",
     "semantic_hash": "e980c1dd3d183c0e364644efa7aaf82f"
   },
   "new_coding_desk/frontend/vite.config.ts": {
     "mtime": 1780708802.7368183,
+    "seen": 1787673287.5388656,
     "ast_hash": "957e5419adc65aa5dc565beeb9c64cf1",
     "semantic_hash": "957e5419adc65aa5dc565beeb9c64cf1"
   },
   "new_coding_desk/host_services/display_agent/agent.py": {
-    "mtime": 1781785386.7651596,
-    "ast_hash": "938338ec6e20de648de55f6463187c4a",
-    "semantic_hash": "938338ec6e20de648de55f6463187c4a"
+    "mtime": 1785343750.9340782,
+    "seen": 1787673287.5388656,
+    "ast_hash": "a893a859b20f4622e5aed4106ba2031d",
+    "semantic_hash": ""
   },
   "new_coding_desk/host_services/display_agent/config.json": {
     "mtime": 1781757149.6316144,
+    "seen": 1787673287.5388656,
     "ast_hash": "cada7aa9ff504ae2fcda05b511440e41",
     "semantic_hash": "cada7aa9ff504ae2fcda05b511440e41"
   },
   "new_coding_desk/host_services/display_agent/config.py": {
     "mtime": 1781784599.7609293,
+    "seen": 1787673287.5388656,
     "ast_hash": "413952793f78cb1684808cb9afab6818",
     "semantic_hash": "413952793f78cb1684808cb9afab6818"
   },
   "new_coding_desk/host_services/display_agent/powerpoint_control.py": {
-    "mtime": 1781757220.0052526,
-    "ast_hash": "100c99dd9ada11322307a2a8d0e30f04",
-    "semantic_hash": "100c99dd9ada11322307a2a8d0e30f04"
+    "mtime": 1788273376.2834704,
+    "seen": 1788353881.3432188,
+    "ast_hash": "02ac95134ee307a157b1a930517bc7c0",
+    "semantic_hash": ""
   },
   "new_coding_desk/host_services/display_agent/win32_windows.py": {
-    "mtime": 1781785024.2985852,
-    "ast_hash": "def8f242b3da29fbdc6f0ec895d5c5ca",
-    "semantic_hash": "def8f242b3da29fbdc6f0ec895d5c5ca"
+    "mtime": 1785343840.019577,
+    "seen": 1787673287.5388656,
+    "ast_hash": "27746dc1423b4d27ff8014fba6b971ae",
+    "semantic_hash": ""
   },
   "new_coding_desk/host_services/screen_stream/config.json": {
     "mtime": 1781842219.4158058,
+    "seen": 1787673287.5388656,
     "ast_hash": "8e404c1dd2a5fee7e53b6c5564f56310",
     "semantic_hash": "8e404c1dd2a5fee7e53b6c5564f56310"
   },
   "new_coding_desk/host_services/screen_stream/display_probe.py": {
     "mtime": 1781783701.2224474,
+    "seen": 1787673287.5388656,
     "ast_hash": "6275856dbdebbfbd05b7396c361a7096",
     "semantic_hash": "6275856dbdebbfbd05b7396c361a7096"
   },
   "new_coding_desk/host_services/screen_stream/encoder_probe.py": {
     "mtime": 1782009873.1439285,
+    "seen": 1787673287.5388656,
     "ast_hash": "76a82caa8bc13e0c367a30042deb2d94",
     "semantic_hash": "76a82caa8bc13e0c367a30042deb2d94"
   },
   "new_coding_desk/host_services/screen_stream/supervisor.py": {
     "mtime": 1782009886.0761912,
+    "seen": 1787673287.5388656,
     "ast_hash": "c001b1df5447f2ce4c0dc9af6b9d2d58",
     "semantic_hash": "c001b1df5447f2ce4c0dc9af6b9d2d58"
   },
   "new_coding_desk/seat_agent/__init__.py": {
     "mtime": 1783674376.3954847,
+    "seen": 1787673287.5388656,
     "ast_hash": "0529fcb92c21eed6fa84e6df1787484b",
     "semantic_hash": "0529fcb92c21eed6fa84e6df1787484b"
   },
   "new_coding_desk/seat_agent/agent.py": {
     "mtime": 1784019321.5481853,
+    "seen": 1787673287.5388656,
     "ast_hash": "82ce2b0b45a50541dd073240a7855781",
     "semantic_hash": "82ce2b0b45a50541dd073240a7855781"
   },
   "new_coding_desk/seat_agent/config.py": {
     "mtime": 1783674389.7276118,
+    "seen": 1787673287.5388656,
     "ast_hash": "0845f5443bbc4327f4846e11208eeb11",
     "semantic_hash": "0845f5443bbc4327f4846e11208eeb11"
   },
   "new_coding_desk/seat_agent/seat_agent_config.example.json": {
     "mtime": 1783674426.9453452,
+    "seen": 1787673287.5388656,
     "ast_hash": "45e35b5f601fd295bcf5472e6ba08c3b",
     "semantic_hash": "45e35b5f601fd295bcf5472e6ba08c3b"
   },
   "new_coding_desk/tests/__init__.py": {
     "mtime": 1780286633.3596904,
+    "seen": 1787673287.5388656,
     "ast_hash": "d7db8e2e3f49edf2e3b2385ba36d8f25",
     "semantic_hash": "d7db8e2e3f49edf2e3b2385ba36d8f25"
   },
   "new_coding_desk/tests/_fake_speech_dataset_test_missing.json": {
-    "mtime": 1784693593.7542717,
+    "mtime": 1785198088.9770782,
+    "seen": 1787673287.5388656,
     "ast_hash": "3aa93b4ce2fb1cae1ba3aa0cf09522e1",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/_fake_speech_dataset_test_output.json": {
-    "mtime": 1784693593.7542717,
+    "mtime": 1785198088.9770782,
+    "seen": 1787673287.5388656,
     "ast_hash": "9292b174cd90b9c0e5d57e2ae4a11983",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/conftest.py": {
-    "mtime": 1784019721.735809,
-    "ast_hash": "21154aaa63529ec5158a110d1c8b9f24",
-    "semantic_hash": "21154aaa63529ec5158a110d1c8b9f24"
+    "mtime": 1785173086.7238548,
+    "seen": 1787673287.5388656,
+    "ast_hash": "a93d6f924b3c705ce5a3346c0317a49f",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_adaptive_voice_gate.py": {
-    "mtime": 1784477866.2768433,
-    "ast_hash": "b00238026bc901b73c43615f427e6822",
+    "mtime": 1786168593.447374,
+    "seen": 1787673287.5388656,
+    "ast_hash": "80ec11816c67e345f3c37ed6cec74fcf",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_agenda_state_machine.py": {
     "mtime": 1781360720.8643432,
+    "seen": 1787673287.5388656,
     "ast_hash": "cf1ec5cabb5f0a5120e5a81ff1af894b",
     "semantic_hash": "cf1ec5cabb5f0a5120e5a81ff1af894b"
   },
   "new_coding_desk/tests/test_caption_formatter.py": {
-    "mtime": 1784549510.6305914,
-    "ast_hash": "6c92f6416cdb323b4119bc4f0b4d8ccf",
+    "mtime": 1788189093.8886385,
+    "seen": 1788192701.222785,
+    "ast_hash": "7d143a63f8f0f44553d64efacd289ce7",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_dev_api.py": {
     "mtime": 1784022396.0858788,
+    "seen": 1787673287.5388656,
     "ast_hash": "6042f9c35b1a815b116c506cb1ca0c19",
     "semantic_hash": "6042f9c35b1a815b116c506cb1ca0c19"
   },
   "new_coding_desk/tests/test_display_agent.py": {
-    "mtime": 1781785582.585642,
-    "ast_hash": "690b524d36c1b8b50fb096b4bf94d4d6",
-    "semantic_hash": "690b524d36c1b8b50fb096b4bf94d4d6"
+    "mtime": 1785344254.0129232,
+    "seen": 1787673287.5388656,
+    "ast_hash": "094efea97bd645d3c70229f164a76954",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_display_agent_review_contract.py": {
     "mtime": 1781764818.1364877,
+    "seen": 1787673287.5388656,
     "ast_hash": "298f9b8f1365173dfd5446cc0952d1b6",
     "semantic_hash": "298f9b8f1365173dfd5446cc0952d1b6"
   },
   "new_coding_desk/tests/test_host_display_api.py": {
-    "mtime": 1781829918.0506873,
-    "ast_hash": "9af5318209149c0deb29f116c8929aae",
-    "semantic_hash": "9af5318209149c0deb29f116c8929aae"
+    "mtime": 1787467145.3842335,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ca8f6445d2ce0b3a6bd0b8f50ff406aa",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_host_display_review_contract.py": {
-    "mtime": 1781766246.890929,
-    "ast_hash": "c9163778688531ee64e1ea92def04c61",
-    "semantic_hash": "c9163778688531ee64e1ea92def04c61"
+    "mtime": 1787467145.012666,
+    "seen": 1787673287.5388656,
+    "ast_hash": "2230bd76f31f14903715ccfed891a0e7",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_lighting_state_resolver.py": {
-    "mtime": 1784034930.8308847,
-    "ast_hash": "3907e57d7a35e7c9cff20700a0f07a6e",
-    "semantic_hash": "3907e57d7a35e7c9cff20700a0f07a6e"
+    "mtime": 1786783198.7453954,
+    "seen": 1787673287.5388656,
+    "ast_hash": "cff0d68bbcdbc6c66c13e0ce311aed4a",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_long_speech_rollover.py": {
     "mtime": 1784477193.2913208,
+    "seen": 1787673287.5388656,
     "ast_hash": "81ae6c0d0a2bd877030bb285d82d6699",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_meeting_service.py": {
-    "mtime": 1781360784.8657918,
-    "ast_hash": "d8705158420aa906a70b0e32b20714a8",
-    "semantic_hash": "d8705158420aa906a70b0e32b20714a8"
+    "mtime": 1788006677.3811278,
+    "seen": 1788007020.786648,
+    "ast_hash": "b422c9694e4ba8f3bcb93a79c041c8e4",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_screen_stream_config.py": {
     "mtime": 1782009917.665685,
+    "seen": 1787673287.5388656,
     "ast_hash": "076d61ce6731d4bb5c4b2116f2e91726",
     "semantic_hash": "076d61ce6731d4bb5c4b2116f2e91726"
   },
   "new_coding_desk/tests/test_screen_stream_phase1_contract.py": {
-    "mtime": 1782009934.8544798,
-    "ast_hash": "ab42cc8e2928403589b3417e71675a1b",
-    "semantic_hash": "ab42cc8e2928403589b3417e71675a1b"
+    "mtime": 1785343163.3480644,
+    "seen": 1787673287.5388656,
+    "ast_hash": "d84c7c43af409bed76ee6f195ec69ab5",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_screen_stream_phase6_contract.py": {
-    "mtime": 1784123098.6933172,
+    "mtime": 1786275371.56261,
+    "seen": 1787673287.5388656,
     "ast_hash": "70d4d34de0c96f4d07dc0462e9a56885",
     "semantic_hash": "70d4d34de0c96f4d07dc0462e9a56885"
   },
   "new_coding_desk/tests/test_screen_stream_phase6_launch_contract.py": {
     "mtime": 1784123098.6943462,
+    "seen": 1787673287.5388656,
     "ast_hash": "b4bb0177c61bd9ea1f4d7f953ff12c2a",
     "semantic_hash": "b4bb0177c61bd9ea1f4d7f953ff12c2a"
   },
   "new_coding_desk/tests/test_seat_service.py": {
-    "mtime": 1784019721.7379854,
-    "ast_hash": "a63a14d8b091308a9ec39d04b9ca6235",
-    "semantic_hash": "a63a14d8b091308a9ec39d04b9ca6235"
+    "mtime": 1788006792.1567597,
+    "seen": 1788007020.786648,
+    "ast_hash": "0698d8edcae04f7f0bc841abca2a5bb0",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_service_calls_router.py": {
     "mtime": 1780588419.4866717,
+    "seen": 1787673287.5388656,
     "ast_hash": "9e0ea03afb992c75fa4023b4dfea5092",
     "semantic_hash": "9e0ea03afb992c75fa4023b4dfea5092"
   },
   "new_coding_desk/tests/test_speech_lifecycle_stability.py": {
     "mtime": 1784084791.2048345,
+    "seen": 1787673287.5388656,
     "ast_hash": "ed00e1d820fe6b251f01281e641d8a9b",
     "semantic_hash": "ed00e1d820fe6b251f01281e641d8a9b"
   },
   "new_coding_desk/tests/test_speech_model_smoke.py": {
     "mtime": 1780675842.8209224,
+    "seen": 1787673287.5388656,
     "ast_hash": "4ab85f02827c40c4d1ba478940c77fd5",
     "semantic_hash": "4ab85f02827c40c4d1ba478940c77fd5"
   },
   "new_coding_desk/tests/test_speech_real_dataset_benchmark.py": {
-    "mtime": 1781519092.2197158,
-    "ast_hash": "9077beec35d26e10c81ee8dbe5cede93",
-    "semantic_hash": "9077beec35d26e10c81ee8dbe5cede93"
+    "mtime": 1785198035.1779344,
+    "seen": 1787673287.5388656,
+    "ast_hash": "0c3830813c581c73101a38f2dea3670f",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_stream_service.py": {
-    "mtime": 1784476692.2569582,
-    "ast_hash": "c6560a9f6177d9ede573a3bc7cb67c4e",
+    "mtime": 1788189093.8876374,
+    "seen": 1788192701.222785,
+    "ast_hash": "628e8de83ff39fbacca96a48884b3b94",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_trace.py": {
     "mtime": 1784477866.7853935,
+    "seen": 1787673287.5388656,
     "ast_hash": "3de5ece992459ee0508c1057f66abab2",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_websocket_blackbox.py": {
-    "mtime": 1784089661.7297833,
-    "ast_hash": "bacbdeee0cfd0858e428103bbd2f2bc4",
-    "semantic_hash": "bacbdeee0cfd0858e428103bbd2f2bc4"
+    "mtime": 1788280198.094591,
+    "seen": 1788353881.3432188,
+    "ast_hash": "28177ad6e1ffa63356f024d92bff04f2",
+    "semantic_hash": ""
   },
   "new_coding_desk/tests/test_task119_status.py": {
-    "mtime": 1784695997.9998205,
-    "ast_hash": "0501583182ca290da08d568dec1edd5d",
+    "mtime": 1785073218.19887,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ad519debc92ba528e21c380522284a4f",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_text_merging.py": {
     "mtime": 1784686368.4238994,
+    "seen": 1787673287.5388656,
     "ast_hash": "3de140e75ed76b9516d99ec6649741e3",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_translation_model_service.py": {
     "mtime": 1784020074.5606742,
+    "seen": 1787673287.5388656,
     "ast_hash": "a283bf32efacad43f638728d8ea1c3c0",
     "semantic_hash": "a283bf32efacad43f638728d8ea1c3c0"
   },
   "new_coding_desk/tests/test_translation_service.py": {
     "mtime": 1781068925.0810227,
+    "seen": 1787673287.5388656,
     "ast_hash": "cb748e1e2a04d15ee3e40f2145c89743",
     "semantic_hash": "cb748e1e2a04d15ee3e40f2145c89743"
   },
   "new_coding_desk/tests/test_votes_router.py": {
     "mtime": 1781108037.5296896,
+    "seen": 1787673287.5388656,
     "ast_hash": "a7ed0b3799baa152e89039cd2691a690",
     "semantic_hash": "a7ed0b3799baa152e89039cd2691a690"
   },
   "new_coding_desk/tests/test_websocket_integration.py": {
-    "mtime": 1780588427.7089484,
-    "ast_hash": "e6db0393df59109665d4708a6525c17f",
-    "semantic_hash": "e6db0393df59109665d4708a6525c17f"
-  },
-  "new_coding_desk/tests/test_windows_launcher_contract.py": {
-    "mtime": 1784302910.933822,
-    "ast_hash": "0af69f43b5da06473b949391830d00d6",
+    "mtime": 1785165296.6292892,
+    "seen": 1787673287.5388656,
+    "ast_hash": "4a661333784f0a17050a5ec00e5adf6f",
     "semantic_hash": ""
   },
-  "scripts/repack_deploy.ps1": {
-    "mtime": 1783686482.7552931,
-    "ast_hash": "045d8ba70a1556e2a41360d162c38deb",
-    "semantic_hash": "045d8ba70a1556e2a41360d162c38deb"
+  "new_coding_desk/tests/test_windows_launcher_contract.py": {
+    "mtime": 1788347641.9154582,
+    "seen": 1788353881.3432188,
+    "ast_hash": "bef85cd1f26a0b718e475420f8c9b3f5",
+    "semantic_hash": ""
   },
   "skills-lock.json": {
     "mtime": 1779765211.270533,
+    "seen": 1787673287.5388656,
     "ast_hash": "cbb6a636b79c621755cf1b7296ee683f",
     "semantic_hash": "cbb6a636b79c621755cf1b7296ee683f"
   },
   "smartdesk_gesture_controller/hands/__init__.py": {
     "mtime": 1781709887.9549837,
+    "seen": 1787673287.5388656,
     "ast_hash": "03fdf923d9eabd44e719d55d9090e364",
     "semantic_hash": "03fdf923d9eabd44e719d55d9090e364"
   },
   "smartdesk_gesture_controller/hands/display_agent_client.py": {
     "mtime": 1784122831.6528163,
+    "seen": 1787673287.5388656,
     "ast_hash": "ead03432b56ed6fb40250d5073c0b8aa",
     "semantic_hash": "ead03432b56ed6fb40250d5073c0b8aa"
   },
   "smartdesk_gesture_controller/hands/frontend/app.js": {
     "mtime": 1784122730.16268,
+    "seen": 1787673287.5388656,
     "ast_hash": "a6db290a42b1b8308b7362227bf49121",
     "semantic_hash": "a6db290a42b1b8308b7362227bf49121"
   },
   "smartdesk_gesture_controller/hands/gesture_actions.py": {
     "mtime": 1784123551.416227,
+    "seen": 1787673287.5388656,
     "ast_hash": "8132f47faeff14d8b7f65a046c5ed564",
     "semantic_hash": "8132f47faeff14d8b7f65a046c5ed564"
   },
   "smartdesk_gesture_controller/hands/gesture_camera.py": {
     "mtime": 1782824879.9448361,
+    "seen": 1787673287.5388656,
     "ast_hash": "518875f2ac88c1f0e4ab6abee17a91c7",
     "semantic_hash": "518875f2ac88c1f0e4ab6abee17a91c7"
   },
   "smartdesk_gesture_controller/hands/gesture_config.py": {
     "mtime": 1784123551.4175782,
+    "seen": 1787673287.5388656,
     "ast_hash": "c13609e8fb57bc9a79b1afd87cb582d6",
     "semantic_hash": "c13609e8fb57bc9a79b1afd87cb582d6"
   },
   "smartdesk_gesture_controller/hands/gesture_controller.py": {
     "mtime": 1784122730.1580932,
+    "seen": 1787673287.5388656,
     "ast_hash": "5401aff86842d94beac91e81a9d97088",
     "semantic_hash": "5401aff86842d94beac91e81a9d97088"
   },
   "smartdesk_gesture_controller/hands/gesture_intent_tracker.py": {
     "mtime": 1782733875.0508983,
+    "seen": 1787673287.5388656,
     "ast_hash": "6a63efb15821abaeddd46997691c9877",
     "semantic_hash": "6a63efb15821abaeddd46997691c9877"
   },
   "smartdesk_gesture_controller/hands/gesture_overlay.py": {
     "mtime": 1784122831.653962,
+    "seen": 1787673287.5388656,
     "ast_hash": "8c3be377cb807b5e71120a54531c169e",
     "semantic_hash": "8c3be377cb807b5e71120a54531c169e"
   },
   "smartdesk_gesture_controller/hands/gesture_recognition.py": {
     "mtime": 1784123551.4175782,
+    "seen": 1787673287.5388656,
     "ast_hash": "7ccedcdd3dc54ea3b056d7eb37302108",
     "semantic_hash": "7ccedcdd3dc54ea3b056d7eb37302108"
   },
   "smartdesk_gesture_controller/hands/gesture_replay.py": {
     "mtime": 1782371183.9938035,
+    "seen": 1787673287.5388656,
     "ast_hash": "597a619e0bf0f894e47f5923bff45def",
     "semantic_hash": "597a619e0bf0f894e47f5923bff45def"
   },
   "smartdesk_gesture_controller/hands/gesture_state.py": {
     "mtime": 1784125475.393119,
+    "seen": 1787673287.5388656,
     "ast_hash": "bcdca6f4ba95e347b91f06a96e9d92bf",
     "semantic_hash": ""
   },
   "smartdesk_gesture_controller/hands/gesture_status_server.py": {
     "mtime": 1784122730.1591523,
+    "seen": 1787673287.5388656,
     "ast_hash": "9c3162a51d4730c05228959b94df3a81",
     "semantic_hash": "9c3162a51d4730c05228959b94df3a81"
   },
   "smartdesk_gesture_controller/hands/sendinput_utils.py": {
     "mtime": 1782721635.040443,
+    "seen": 1787673287.5388656,
     "ast_hash": "ebce64b3fb378d9b420c13d55c40bdb0",
     "semantic_hash": "ebce64b3fb378d9b420c13d55c40bdb0"
   },
   "smartdesk_gesture_controller/tests/test_display_agent_client.py": {
     "mtime": 1784122831.65511,
+    "seen": 1787673287.5388656,
     "ast_hash": "5ac8d2f2ffb74634c315c872ffd47322",
     "semantic_hash": "5ac8d2f2ffb74634c315c872ffd47322"
   },
   "smartdesk_gesture_controller/tests/test_gesture_actions.py": {
     "mtime": 1784123551.4175782,
+    "seen": 1787673287.5388656,
     "ast_hash": "f186b7a5ee88a7d16546dc5feba1a5c5",
     "semantic_hash": "f186b7a5ee88a7d16546dc5feba1a5c5"
   },
   "smartdesk_gesture_controller/tests/test_gesture_camera_driver.py": {
     "mtime": 1782821842.8074782,
+    "seen": 1787673287.5388656,
     "ast_hash": "f2eb04cefdff8f4fc082fa86e5d333aa",
     "semantic_hash": "f2eb04cefdff8f4fc082fa86e5d333aa"
   },
   "smartdesk_gesture_controller/tests/test_gesture_controller.py": {
-    "mtime": 1784122858.4628773,
-    "ast_hash": "4eb40b28cf0280434f06cc96375fa3f4",
-    "semantic_hash": "4eb40b28cf0280434f06cc96375fa3f4"
+    "mtime": 1785340077.3313098,
+    "seen": 1787673287.5388656,
+    "ast_hash": "9ea3e49b14b1888e81ce37b130090103",
+    "semantic_hash": ""
   },
   "smartdesk_gesture_controller/tests/test_gesture_intent_tracker.py": {
     "mtime": 1782371408.3217444,
+    "seen": 1787673287.5388656,
     "ast_hash": "02eb8778fb37ca29a77a86fc8cdd92de",
     "semantic_hash": "02eb8778fb37ca29a77a86fc8cdd92de"
   },
   "smartdesk_gesture_controller/tests/test_gesture_intent_tracker_phase2.py": {
     "mtime": 1782214657.5031097,
+    "seen": 1787673287.5388656,
     "ast_hash": "069c56c84a1248b1e3690dc6a1ab50c3",
     "semantic_hash": "069c56c84a1248b1e3690dc6a1ab50c3"
   },
   "smartdesk_gesture_controller/tests/test_gesture_overlay.py": {
     "mtime": 1784122880.823705,
+    "seen": 1787673287.5388656,
     "ast_hash": "d423cffe381b673db5b21a56679a460e",
     "semantic_hash": "d423cffe381b673db5b21a56679a460e"
   },
   "smartdesk_gesture_controller/tests/test_gesture_recognition.py": {
     "mtime": 1782185450.9842193,
+    "seen": 1787673287.5388656,
     "ast_hash": "4347872185b28d335a90ee2eb8d888da",
     "semantic_hash": "4347872185b28d335a90ee2eb8d888da"
   },
   "smartdesk_gesture_controller/tests/test_gesture_replay.py": {
     "mtime": 1782371340.8927345,
+    "seen": 1787673287.5388656,
     "ast_hash": "15d26dea6900be8664070b240e98b714",
     "semantic_hash": "15d26dea6900be8664070b240e98b714"
   },
   "smartdesk_gesture_controller/tests/test_gesture_state.py": {
     "mtime": 1784125475.3984125,
+    "seen": 1787673287.5388656,
     "ast_hash": "9becc9a6144eef785e3dbc1ed9766573",
     "semantic_hash": ""
   },
   "smartdesk_gesture_controller/tests/test_gesture_status_server.py": {
     "mtime": 1784122858.463902,
+    "seen": 1787673287.5388656,
     "ast_hash": "64f1a9eaa3755766a95654accf677dfe",
     "semantic_hash": "64f1a9eaa3755766a95654accf677dfe"
   },
   "AGENTS.md": {
     "mtime": 1784691423.112582,
+    "seen": 1787673287.5388656,
     "ast_hash": "bf6d148d41f552aeece2af5e517f6143",
     "semantic_hash": ""
   },
   "DOCUMENTATION_INDEX.md": {
-    "mtime": 1784123258.7398715,
-    "ast_hash": "acc8a3a73f0886ed0683bc1a7539a149",
-    "semantic_hash": "acc8a3a73f0886ed0683bc1a7539a149"
+    "mtime": 1785341612.9533625,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ef60615f7199e192ababf6b20b2f8117",
+    "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1784691423.6434586,
-    "ast_hash": "a36964eb9c7e3f8d1f6eb4e7f8655ac9",
+    "mtime": 1786195886.4280257,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e77d42f9ca93038f6649fb38f02f8fb2",
     "semantic_hash": ""
   },
   "arduino_nano_controller/protocol.md": {
     "mtime": 1783668538.4936268,
+    "seen": 1787673287.5388656,
     "ast_hash": "b59b55a20eaa04f9fe337c00ff57c380",
     "semantic_hash": "b59b55a20eaa04f9fe337c00ff57c380"
   },
-  "docs/deployment/\u667a\u80fd\u4f1a\u8bae\u684c\u786c\u4ef6\u96c6\u6210-\u90e8\u7f72\u4e0e\u8054\u8c03.md": {
-    "mtime": 1783999924.2070014,
-    "ast_hash": "d874a67ab9901bf0cf1efb523541d48e",
-    "semantic_hash": "d874a67ab9901bf0cf1efb523541d48e"
-  },
   "docs/product/project-goals.md": {
     "mtime": 1783999879.3369803,
+    "seen": 1787673287.5388656,
     "ast_hash": "6f94a7bcc88445204a18e4da84ec0842",
     "semantic_hash": "6f94a7bcc88445204a18e4da84ec0842"
   },
   "docs/product/\u667a\u80fd\u4f1a\u8bae\u684c\u5b9e\u4f53\u96c6\u6210\u9700\u6c42.md": {
     "mtime": 1784001105.3121567,
+    "seen": 1787673287.5388656,
     "ast_hash": "1bb95e735bc37941e53851fc264918e7",
     "semantic_hash": "1bb95e735bc37941e53851fc264918e7"
   },
   "new_coding_desk/AGENTS.md": {
     "mtime": 1781184288.3696082,
+    "seen": 1787673287.5388656,
     "ast_hash": "dcd829a94300a82a873fc266ba20a80b",
     "semantic_hash": "dcd829a94300a82a873fc266ba20a80b"
   },
   "new_coding_desk/README.md": {
-    "mtime": 1784697816.2773485,
-    "ast_hash": "69b34ceea5fd099b52d96e21e8e8b26b",
+    "mtime": 1787385920.9285529,
+    "seen": 1787673287.5388656,
+    "ast_hash": "30a18dae25ea022d67eea05644c0c679",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/API_SPEC.md": {
-    "mtime": 1784692850.4336033,
-    "ast_hash": "3e41bdfde7592b6fcfa15dfed40895cb",
+    "mtime": 1787467574.9644735,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f13e3ad7b3b10fe35b2c3e494720a2a2",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/DATABASE_SCHEMA.md": {
-    "mtime": 1783999883.8386078,
-    "ast_hash": "93f368644df40e9404362f3c115e3d72",
-    "semantic_hash": "93f368644df40e9404362f3c115e3d72"
+    "mtime": 1787393993.0820663,
+    "seen": 1787673287.5388656,
+    "ast_hash": "cb43fde100d5820cf4d94059b03dab8f",
+    "semantic_hash": ""
   },
   "new_coding_desk/docs/DEFERRED_ISSUES.md": {
     "mtime": 1784001189.7886975,
+    "seen": 1787673287.5388656,
     "ast_hash": "7a380495b6b2862564d3e278b1478f24",
     "semantic_hash": "7a380495b6b2862564d3e278b1478f24"
   },
   "new_coding_desk/docs/DEMO_RUNBOOK.md": {
-    "mtime": 1784123551.4118974,
-    "ast_hash": "f1854ac971fb3bc28308f9e8860e606a",
-    "semantic_hash": "f1854ac971fb3bc28308f9e8860e606a"
+    "mtime": 1786195306.570839,
+    "seen": 1787673287.5388656,
+    "ast_hash": "037abb9f438b048d663dd1cb428fad69",
+    "semantic_hash": ""
   },
   "new_coding_desk/docs/EVENT_BUS_SPEC.md": {
-    "mtime": 1784692850.9506187,
-    "ast_hash": "3342155a48a622cf9525f4b0fc3c0cf9",
+    "mtime": 1786977709.2407017,
+    "seen": 1787673287.5388656,
+    "ast_hash": "59b022e053fc7169856e5af98d2ad0d3",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/FRONTEND_INTERACTION_SPEC.md": {
-    "mtime": 1784000018.3495307,
-    "ast_hash": "119fdbbf6d738bf107d69deb9b928c93",
-    "semantic_hash": "119fdbbf6d738bf107d69deb9b928c93"
+    "mtime": 1787467575.2208557,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6b9bdfdabb893d8ff936a7a8011bbe7a",
+    "semantic_hash": ""
   },
   "new_coding_desk/docs/FRONTEND_STATE_SPEC.md": {
     "mtime": 1781713575.533531,
+    "seen": 1787673287.5388656,
     "ast_hash": "1ef271acac7fe0a4b327ae209245c11d",
     "semantic_hash": "1ef271acac7fe0a4b327ae209245c11d"
   },
   "new_coding_desk/docs/FRONTEND_VISUAL_SPEC.md": {
     "mtime": 1783602168.8659623,
+    "seen": 1787673287.5388656,
     "ast_hash": "cef74562dcdb2f9f0c2a5eea9c086855",
     "semantic_hash": "cef74562dcdb2f9f0c2a5eea9c086855"
   },
   "new_coding_desk/docs/HOST_DISPLAY_CONTRACT.md": {
-    "mtime": 1784123411.8344612,
-    "ast_hash": "e476495394c502f7ee6ffdb4d7264f44",
-    "semantic_hash": "e476495394c502f7ee6ffdb4d7264f44"
+    "mtime": 1787467594.484055,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6ac91202d40cd04b71febfa669a161e7",
+    "semantic_hash": ""
   },
   "new_coding_desk/docs/TECH_OVERVIEW.md": {
     "mtime": 1784123411.8289814,
+    "seen": 1787673287.5437822,
     "ast_hash": "765442c0cbfc583c8383401e68913349",
     "semantic_hash": "765442c0cbfc583c8383401e68913349"
   },
   "new_coding_desk/docs/WEBSOCKET_PROTOCOL.md": {
-    "mtime": 1784697816.7557044,
-    "ast_hash": "2ba91cbbedf16b7c6fc078f9f7ae569a",
+    "mtime": 1786977709.5093305,
+    "seen": 1787673287.5437822,
+    "ast_hash": "d247be21e30e69cdfa03cd3b373a49b8",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/adr/0001-ws-audio-streaming.md": {
     "mtime": 1780647762.3546274,
+    "seen": 1787673287.5437822,
     "ast_hash": "5380313d5120ffc60b2e7c6768da96cb",
     "semantic_hash": "5380313d5120ffc60b2e7c6768da96cb"
   },
   "new_coding_desk/docs/adr/0002-final-audio-source.md": {
     "mtime": 1780647762.3546274,
+    "seen": 1787673287.5437822,
     "ast_hash": "144ca26200806344a03a17bfe14d0a33",
     "semantic_hash": "144ca26200806344a03a17bfe14d0a33"
   },
   "new_coding_desk/docs/adr/0003-utterance-id-backend.md": {
     "mtime": 1780647762.3546274,
+    "seen": 1787673287.5437822,
     "ast_hash": "4776d860bd56cde7b3d1b57fb81e5976",
     "semantic_hash": "4776d860bd56cde7b3d1b57fb81e5976"
   },
   "new_coding_desk/docs/adr/0004-speaker-seat-switch.md": {
     "mtime": 1780647762.3546274,
+    "seen": 1787673287.5437822,
     "ast_hash": "98ad9453bfaa09338e55be3e045dba48",
     "semantic_hash": "98ad9453bfaa09338e55be3e045dba48"
   },
   "new_coding_desk/docs/system_architecture.md": {
-    "mtime": 1784123411.8339546,
-    "ast_hash": "adb2ea7efc88a579705fec51edb5c8e5",
-    "semantic_hash": "adb2ea7efc88a579705fec51edb5c8e5"
+    "mtime": 1787467575.9807758,
+    "seen": 1787673287.5437822,
+    "ast_hash": "8ed41f4a754854bf5886ee7c48554917",
+    "semantic_hash": ""
   },
   "new_coding_desk/frontend/README.md": {
     "mtime": 1784000021.5216088,
+    "seen": 1787673287.5437822,
     "ast_hash": "5a0b432401ea1421744acb372b756b15",
     "semantic_hash": "5a0b432401ea1421744acb372b756b15"
   },
   "new_coding_desk/frontend/index.html": {
     "mtime": 1783677512.7462468,
+    "seen": 1787673287.5437822,
     "ast_hash": "585f5e83933f38092404981f536f51df",
     "semantic_hash": "585f5e83933f38092404981f536f51df"
   },
   "new_coding_desk/host_services/display_agent/README.md": {
     "mtime": 1784123551.4152188,
+    "seen": 1787673287.5437822,
     "ast_hash": "2bde812607b1ed817efbe341ed33cfbd",
     "semantic_hash": "2bde812607b1ed817efbe341ed33cfbd"
   },
   "new_coding_desk/host_services/screen_stream/README.md": {
-    "mtime": 1782010824.2434473,
-    "ast_hash": "bd04784eb32bf36b152246c9263ef049",
-    "semantic_hash": "bd04784eb32bf36b152246c9263ef049"
+    "mtime": 1785344785.9296606,
+    "seen": 1787673287.5437822,
+    "ast_hash": "af11f0ad3b039e8ac1988a73a5ee6eaf",
+    "semantic_hash": ""
   },
   "new_coding_desk/host_services/screen_stream/mediamtx.template.yml": {
-    "mtime": 1781783603.8527007,
-    "ast_hash": "3455fdcb8a01a59e07afa559456e808e",
-    "semantic_hash": "3455fdcb8a01a59e07afa559456e808e"
+    "mtime": 1785343163.0665524,
+    "seen": 1787673287.5437822,
+    "ast_hash": "582ed8071ba82ee0ab46f17095149f81",
+    "semantic_hash": ""
   },
   "new_coding_desk/requirements.txt": {
-    "mtime": 1784548322.0280907,
-    "ast_hash": "47703727ab1612005d13019a40762acc",
+    "mtime": 1787392293.9453616,
+    "seen": 1787673287.5437822,
+    "ast_hash": "8f66b9c197f989201ae116624e724091",
     "semantic_hash": ""
   },
   "new_coding_desk/seat_agent/README.md": {
     "mtime": 1783999889.9918656,
+    "seen": 1787673287.5437822,
     "ast_hash": "045216e0785acc5e04fee483b7ada9db",
     "semantic_hash": "045216e0785acc5e04fee483b7ada9db"
   },
   "smartdesk_gesture_controller/README.md": {
-    "mtime": 1784123312.751426,
-    "ast_hash": "71cfc23bda6ee73ac337606901ffdb94",
-    "semantic_hash": "71cfc23bda6ee73ac337606901ffdb94"
+    "mtime": 1786195294.1300838,
+    "seen": 1787673287.5437822,
+    "ast_hash": "921c70d4ae3679dcd3b449cff97cd88c",
+    "semantic_hash": ""
   },
   "smartdesk_gesture_controller/docs/CONFIG_AND_STATUS_SPEC.md": {
     "mtime": 1784123312.75378,
+    "seen": 1787673287.5437822,
     "ast_hash": "014951bdc31030edb49d0bb487ae0552",
     "semantic_hash": "014951bdc31030edb49d0bb487ae0552"
   },
   "smartdesk_gesture_controller/docs/GESTURE_AND_DISPLAY_SPEC.md": {
     "mtime": 1784123312.7534301,
+    "seen": 1787673287.5437822,
     "ast_hash": "8f34ce6b61f9cd07e57570148c7b7ddc",
     "semantic_hash": "8f34ce6b61f9cd07e57570148c7b7ddc"
   },
   "smartdesk_gesture_controller/docs/OPERATIONS_AND_ACCEPTANCE.md": {
-    "mtime": 1784123312.75378,
-    "ast_hash": "2f6df5848018971d058bea0d069dfafd",
-    "semantic_hash": "2f6df5848018971d058bea0d069dfafd"
+    "mtime": 1786195295.7251127,
+    "seen": 1787673287.5437822,
+    "ast_hash": "00ba8c2e92c66ff00537326148b4da2f",
+    "semantic_hash": ""
   },
   "smartdesk_gesture_controller/hands/frontend/index.html": {
     "mtime": 1783081825.629982,
+    "seen": 1787673287.5437822,
     "ast_hash": "cf1f688e0de1310a666921ff6393dee3",
     "semantic_hash": "cf1f688e0de1310a666921ff6393dee3"
   },
   "smartdesk_gesture_controller/requirements.txt": {
-    "mtime": 1783590559.3017714,
-    "ast_hash": "53aecb2474f67b40da0f839f10ddb05d",
-    "semantic_hash": "53aecb2474f67b40da0f839f10ddb05d"
+    "mtime": 1785167424.593642,
+    "seen": 1787673287.5437822,
+    "ast_hash": "cb1d248127a0f5e44bcac8927853f551",
+    "semantic_hash": ""
   },
   "smartdesk_gesture_controller/hands/frontend/radar.svg": {
     "mtime": 1783081825.629982,
+    "seen": 1787673287.5437822,
     "ast_hash": "412285febaf1f92f66be358e0584a74b",
     "semantic_hash": "412285febaf1f92f66be358e0584a74b"
   },
   "new_coding_desk/backend/scripts/benchmark_bilingual_translation.py": {
     "mtime": 1784305448.919791,
+    "seen": 1787673287.5388656,
     "ast_hash": "390a3187db6b9cfb197dfcb9dbd9b8b9",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/scripts/prepare_bilingual_models.py": {
-    "mtime": 1784692848.8388665,
-    "ast_hash": "41e53ecced29a9aa152d4cd033efdcb9",
+    "mtime": 1785073218.0729623,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6105cbbe2f31a9c458886cc60eb98339",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/bilingual_asr.py": {
     "mtime": 1784475207.2704713,
+    "seen": 1787673287.5388656,
     "ast_hash": "3055d4acaead2284806c76ba935c25d8",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_bidirectional_translation.py": {
     "mtime": 1784300769.2491496,
+    "seen": 1787673287.5388656,
     "ast_hash": "d7b5d0fb28f96ab66107aad1e02a9f94",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_bilingual_asr.py": {
     "mtime": 1784304136.5593479,
+    "seen": 1787673287.5388656,
     "ast_hash": "def304e58a80bde0c246b944c3d9ea82",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/interim_translation_service.py": {
     "mtime": 1784687639.1091373,
+    "seen": 1787673287.5388656,
     "ast_hash": "5fd83beaf25e6f5ea1c868c57e89d604",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_interim_translation_service.py": {
     "mtime": 1784687937.3967366,
+    "seen": 1787673287.5388656,
     "ast_hash": "6352d9d95e8cc79a87a17e9a2278a434",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/hooks/__tests__/liveLyrics.test.ts": {
     "mtime": 1784687874.121241,
+    "seen": 1787673287.5388656,
     "ast_hash": "ddb5eb26b168adaf7dbf202a4e760f6f",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/hooks/liveLyrics.ts": {
     "mtime": 1784687769.8864803,
+    "seen": 1787673287.5388656,
     "ast_hash": "4721784bc3473502e4633ed5cbc37de0",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_semantic_sentence_tracking.py": {
     "mtime": 1784460576.4120347,
+    "seen": 1787673287.5388656,
     "ast_hash": "053ce8522c1118081d8df00d944d0465",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_translation_model_safety.py": {
     "mtime": 1784462948.435107,
+    "seen": 1787673287.5388656,
     "ast_hash": "4460c150981945ea68a7715137842790",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_diagnostics_metrics.py": {
     "mtime": 1784470883.4257393,
+    "seen": 1787673287.5388656,
     "ast_hash": "955e8ad0df20d3f091cd73f105ea3887",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/services/speech_inference_runtime.py": {
     "mtime": 1784476748.0813391,
+    "seen": 1787673287.5388656,
     "ast_hash": "800a185daf5779d90f4b2cee8da33cea",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_live_asr_routing.py": {
-    "mtime": 1784697815.7600718,
-    "ast_hash": "33b4a3ab7ae8e04d15aa22dd30c564be",
+    "mtime": 1785073218.190329,
+    "seen": 1787673287.5388656,
+    "ast_hash": "16eafc335575542d9aea8818d4c2d9eb",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/scripts/prepare_open_speech_latency_dataset.py": {
     "mtime": 1784536019.571388,
+    "seen": 1787673287.5388656,
     "ast_hash": "b710049daefea89395a212eaf94ffd83",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/scripts/prepare_speech_latency_stress_sessions.py": {
     "mtime": 1784536165.513403,
+    "seen": 1787673287.5388656,
     "ast_hash": "6ce5bbc271b9f910b2762bc788f561b8",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_speech_latency_stress_sessions.py": {
     "mtime": 1784536199.525411,
+    "seen": 1787673287.5388656,
     "ast_hash": "38c88a8a660ac7fbaa6b3bc40aadcefd",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/scripts/benchmark_bilingual_speech_accuracy.py": {
     "mtime": 1784538827.004571,
+    "seen": 1787673287.5388656,
     "ast_hash": "31b2b5181398a7b102e9b2c7c8217bda",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/scripts/benchmark_streaming_speech_latency.py": {
     "mtime": 1784539058.8747294,
+    "seen": 1787673287.5388656,
     "ast_hash": "aa4e9e2e0481386e2db35dd5699a7ef4",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_streaming_speech_latency_benchmark.py": {
     "mtime": 1784539083.1018953,
+    "seen": 1787673287.5388656,
     "ast_hash": "898196cd7a95a29c2311bf303ee45c95",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/english_streaming.py": {
     "mtime": 1784549009.8200307,
+    "seen": 1787673287.5388656,
     "ast_hash": "cb1ca8c26e0053b19554fc7fb6666a06",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_english_streaming.py": {
     "mtime": 1784684110.1124709,
+    "seen": 1787673287.5388656,
     "ast_hash": "398227b5bd21844d6957ac8fe7c27bfa",
     "semantic_hash": ""
   },
   "new_coding_desk/backend/speech_module/english_punctuation.py": {
-    "mtime": 1784692521.5126734,
-    "ast_hash": "0151c1fcfa1405dafbb271f5e342459d",
+    "mtime": 1785073218.0976527,
+    "seen": 1787673287.5388656,
+    "ast_hash": "4a9cadb20524d94fbd22af335077d4b2",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_english_online_punctuation.py": {
-    "mtime": 1784693534.6982431,
-    "ast_hash": "e18f8e90a0044a921dd67e5c564c9876",
+    "mtime": 1785073218.1845484,
+    "seen": 1787673287.5388656,
+    "ast_hash": "d5eccecb948bbf16e5576e52477501fc",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/build.gradle.kts": {
+    "mtime": 1787393389.4527228,
+    "seen": 1787673287.5388656,
+    "ast_hash": "b722a5bfa25e178b10e28f59272be025",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/assets/models/face_model_config.json": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "88a28bfd027f7417eff72dd79cef9435",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/MainActivity.kt": {
+    "mtime": 1788273517.4099293,
+    "seen": 1788353881.342458,
+    "ast_hash": "54d69a17890b8c357f5988954575dd5f",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/bridge/AndroidBridge.kt": {
+    "mtime": 1787466230.4775836,
+    "seen": 1787673287.5388656,
+    "ast_hash": "db803c4a172b3440850e865dea54c323",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/camera/CameraController.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3aafdef90b0f25e71dbe27fa74fc5284",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/camera/FaceFrameAnalyzer.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "a9f629f46305c5e45aaca60bb172b40f",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/camera/FaceGuideView.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "39ecf48ab7a1952f7d4c66f4a92447ef",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/camera/FillLightOverlayView.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8be493726f0e43f4d9a58388391cc516",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/config/DeviceConfig.kt": {
+    "mtime": 1787466229.7609365,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e5c60505c8ed6cd7201ee37f2f136eff",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/config/DeviceConfigStore.kt": {
+    "mtime": 1785190739.8859172,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e90da6caf36bfa993b2c49af91fd45b7",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/face/FaceCropper.kt": {
+    "mtime": 1786802483.9788754,
+    "seen": 1787673287.5388656,
+    "ast_hash": "af1bb28bc7e1bdf1408406fbf4921bc2",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/face/FaceDetectorManager.kt": {
+    "mtime": 1786802485.4110067,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ccefbb9f6012660768318b02d2aadde5",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/face/FaceGuideGeometry.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e067554fbd1a767e73555c9f000a9902",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/face/FaceGuideSelector.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ce03e90b7bba0c00b384da700672626a",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/face/FaceQualityEvaluator.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "55d9d980d1fb26b0210c2594d1cb7f23",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/model/AndroidEvent.kt": {
+    "mtime": 1786802580.1434417,
+    "seen": 1787673287.5388656,
+    "ast_hash": "9e5cd2584fcfc8a91882f16930a4afb2",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/model/ErrorCode.kt": {
+    "mtime": 1786802581.5928738,
+    "seen": 1787673287.5388656,
+    "ast_hash": "7340d0dd51b8572d07cbf3313f01993a",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/model/FaceDetectionResult.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "7bd2777acc1284bae0cff7f8f9379fd7",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/model/IdentityStatus.kt": {
+    "mtime": 1785164131.7347069,
+    "seen": 1787673287.5388656,
+    "ast_hash": "df381fc1f65d4d7ace46c8c931cbfe60",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/EmbeddingAggregator.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "a94255e593c3d0b5ab5d83d1cab8a5eb",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/ExposureStabilityGate.kt": {
+    "mtime": 1786983129.9155543,
+    "seen": 1787673287.5388656,
+    "ast_hash": "442779b67dfb4818260e03fbcba65859",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FaceDiagnostics.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "846712c2f13a4ba7ae72816a88b9a270",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FaceMatcher.kt": {
+    "mtime": 1788051107.0035741,
+    "seen": 1788052290.622381,
+    "ast_hash": "b52c0f837efbcda8c211b35d121c7f9e",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FaceModelConfig.kt": {
+    "mtime": 1785077083.831277,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f8edc1eca77f409245502a731e26fdc0",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FaceRecognitionManager.kt": {
+    "mtime": 1788051263.6284754,
+    "seen": 1788052290.622381,
+    "ast_hash": "dc6e6c25a1e708e634ea322d90ac3835",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FaceTemplateStore.kt": {
+    "mtime": 1787466229.2959113,
+    "seen": 1787673287.5388656,
+    "ast_hash": "b4d5f6599a3b2cfbc60ba3d57c679074",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/MobileFaceNetEngine.kt": {
+    "mtime": 1785077083.8467739,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f760a8463ddbf32d3f248316405e849e",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/RecognitionMath.kt": {
+    "mtime": 1785077083.8467739,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3c28b3295d7737fa0254c1fb7c42689b",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/DeviceConfigTest.kt": {
+    "mtime": 1787467420.6191368,
+    "seen": 1787673287.5388656,
+    "ast_hash": "50805e447cde5009b483e6310bbbf68f",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/face/FaceGuideGeometryTest.kt": {
+    "mtime": 1785077083.8521926,
+    "seen": 1787673287.5388656,
+    "ast_hash": "934ba9cf273a800afb71b38a1cd484eb",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/EmbeddingAggregatorTest.kt": {
+    "mtime": 1785077083.8521926,
+    "seen": 1787673287.5388656,
+    "ast_hash": "680d14c7703f063a6825a0296f241a58",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/ExposureStabilityGateTest.kt": {
+    "mtime": 1786983130.4578679,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f1b7f19a5df6f4fd610b9b2620c8f470",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/FaceMatcherTest.kt": {
+    "mtime": 1788050678.8593428,
+    "seen": 1788052290.622381,
+    "ast_hash": "a1b65b8057c74137ba1f6763154cab13",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/FaceModelConfigTest.kt": {
+    "mtime": 1785077083.8521926,
+    "seen": 1787673287.5388656,
+    "ast_hash": "11d6aa95879ad314173f5cdbc6694171",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/FaceTemplateCollectionTest.kt": {
+    "mtime": 1785077083.8521926,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e2ee1162b4077665e59ada7df449d23a",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/RecognitionMathTest.kt": {
+    "mtime": 1785077083.8521926,
+    "seen": 1787673287.5388656,
+    "ast_hash": "17fde9c3398e2bb6e04c3d80e47c7b92",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/build.gradle.kts": {
+    "mtime": 1785077083.8521926,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e4b4a940f698fe15aba2988dba4aaa04",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/settings.gradle.kts": {
+    "mtime": 1785162227.9568698,
+    "seen": 1787673287.5388656,
+    "ast_hash": "7086e7fba8decd030f7cc1672107db10",
+    "semantic_hash": ""
+  },
+  "android_tablet/build-debug.ps1": {
+    "mtime": 1785175028.0907986,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3b3b4b779e46de346a17fbc1ffffe9de",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/package.json": {
+    "mtime": 1786802796.513054,
+    "seen": 1787673287.5388656,
+    "ast_hash": "2a5ac7f0ef7457e4a31d3b25783121f4",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/scripts/copy-to-android.mjs": {
+    "mtime": 1785077083.8607373,
+    "seen": 1787673287.5388656,
+    "ast_hash": "a6a1d0ff9345d400be73837cc3c2536b",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/App.jsx": {
+    "mtime": 1788273474.4781275,
+    "seen": 1788353881.342458,
+    "ast_hash": "459692d965d5a16b3db1d27f3a18cbda",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/androidBridge.js": {
+    "mtime": 1787450145.5790098,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ac00a7e582f521a32b2ce396f0214bb4",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/main.jsx": {
+    "mtime": 1785077083.864494,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e36f64adf9b4c7eec5d0747b01d01e5a",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/vite.config.js": {
+    "mtime": 1785077083.864494,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3311d7d27235b500ac566cb87ab1130e",
+    "semantic_hash": ""
+  },
+  "android_tablet/model-tools/conversion-report.json": {
+    "mtime": 1785077083.8567138,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f0287449ab1892f0fdf741f435419838",
+    "semantic_hash": ""
+  },
+  "android_tablet/model-tools/convert_se_mobilefacenet.py": {
+    "mtime": 1785077083.8587258,
+    "seen": 1787673287.5388656,
+    "ast_hash": "19a65bf0ac50fbdde3e2e6b76bbf76ba",
+    "semantic_hash": ""
+  },
+  "android_tablet/model-tools/proxy-image-manifest.json": {
+    "mtime": 1785077083.8587258,
+    "seen": 1787673287.5388656,
+    "ast_hash": "2e4c7d4542c0c017e7f2f3d7a9f9f3a8",
+    "semantic_hash": ""
+  },
+  "android_tablet/model-tools/static_face_diagnostic.py": {
+    "mtime": 1785077083.8587258,
+    "seen": 1787673287.5388656,
+    "ast_hash": "adade172f4361bbc37e884d4f7bf23f8",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/camera-preview-smoke.mjs": {
+    "mtime": 1785162337.81855,
+    "seen": 1787673287.5388656,
+    "ast_hash": "61a74061a8df85715e15d5d56a5961a0",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/identity-smoke.mjs": {
+    "mtime": 1787450618.6530478,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f7d0fbfc660c992b58e79e9ab38b80fa",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/verify-webview-bridge.mjs": {
+    "mtime": 1786191257.9277604,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f846d2848105f2a5635f038ac294d1a2",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/api/people.py": {
+    "mtime": 1785163795.7516418,
+    "seen": 1787673287.5388656,
+    "ast_hash": "fbdfe80d0ac8eee204cbcff626d41f57",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/repositories/person_repository.py": {
+    "mtime": 1785163794.7215905,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c7b4f2f2c37de09b47b44c842a4ab858",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/schemas/person.py": {
+    "mtime": 1785163795.0537093,
+    "seen": 1787673287.5388656,
+    "ast_hash": "717c43af10b1ee8179dadad40a13f6a2",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/services/person_service.py": {
+    "mtime": 1785163795.378996,
+    "seen": 1787673287.5388656,
+    "ast_hash": "78e5bb9bc7bd5b269c465c0f1b98fda0",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/native/AndroidNativeBridge.ts": {
+    "mtime": 1787466529.8148942,
+    "seen": 1787673287.5388656,
+    "ast_hash": "fb7303af7a1ff8640d15e6736e25d965",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/native/NativeBridge.ts": {
+    "mtime": 1787466529.574222,
+    "seen": 1787673287.5388656,
+    "ast_hash": "468e6a50e9c80478e11ba6cdf7e7e756",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/native/WebNativeBridge.ts": {
+    "mtime": 1787466530.0796762,
+    "seen": 1787673287.5388656,
+    "ast_hash": "b66037943f67610ed95c7addee93a747",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/native/__tests__/NativeBridge.test.ts": {
+    "mtime": 1787450300.158303,
+    "seen": 1787673287.5388656,
+    "ast_hash": "1c233c450c7dffcdd6ca3f41048ea2d5",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/native/nativeEvents.ts": {
+    "mtime": 1788051140.1987941,
+    "seen": 1788052290.6229808,
+    "ast_hash": "9ea23045649908bd441a477ce428992f",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_identity_checkin.py": {
+    "mtime": 1787405103.0335433,
+    "seen": 1787673287.5388656,
+    "ast_hash": "faab64ef2e059227cb752a8ba02aa407",
+    "semantic_hash": ""
+  },
+  "android_tablet/README.md": {
+    "mtime": 1788186919.4985912,
+    "seen": 1788192701.222785,
+    "ast_hash": "e6dbbc91b8aaa83fc7e64522f5af2775",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/assets/models/MODEL_CARD.md": {
+    "mtime": 1785193337.7112408,
+    "seen": 1787673287.5388656,
+    "ast_hash": "4e666fac8558e31c22c7377703b35c35",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/index.html": {
+    "mtime": 1785077083.8587258,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c9f5ed76ef4be9d4cd6ed6703d12b288",
+    "semantic_hash": ""
+  },
+  "android_tablet/docs/CALIBRATION.md": {
+    "mtime": 1787450488.334401,
+    "seen": 1787673287.5388656,
+    "ast_hash": "308c3a3eb18d1859cb4e7e47f0cae33f",
+    "semantic_hash": ""
+  },
+  "android_tablet/model-tools/README.md": {
+    "mtime": 1785077121.4923017,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ad3443095842ee97b82e09bce5846953",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/__tests__/app-config.test.ts": {
+    "mtime": 1785166492.5752423,
+    "seen": 1787673287.5388656,
+    "ast_hash": "72af858d9fc410e60565563647215a30",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/security/SecureStringStore.kt": {
+    "mtime": 1785190692.1876523,
+    "seen": 1787673287.5388656,
+    "ast_hash": "2f03dbdc8f2c47661c03bb7522d1c8c9",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/api/tablet_devices.py": {
+    "mtime": 1787405460.8513024,
+    "seen": 1787673287.5388656,
+    "ast_hash": "403e78ff489bb7a057c898762e98f0e7",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/repositories/identity_checkin_event_repository.py": {
+    "mtime": 1785193033.0026407,
+    "seen": 1787673287.5388656,
+    "ast_hash": "807a507ad537e703339766e958bddac0",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/repositories/tablet_device_repository.py": {
+    "mtime": 1785168103.7503948,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e2a44b58922a85b9d11c044f3e318cb6",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/schemas/tablet_device.py": {
+    "mtime": 1787404569.606024,
+    "seen": 1787673287.5388656,
+    "ast_hash": "74a57c0d3f5aa120ffa3da7c2687410d",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/services/tablet_device_service.py": {
+    "mtime": 1786189336.2318406,
+    "seen": 1787673287.5388656,
+    "ast_hash": "31ce7c5e23fad6918171ec8b1ce0f229",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_tablet_devices.py": {
+    "mtime": 1787405479.8193183,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e9e952614ca57a8846f7119c86fa4b9d",
+    "semantic_hash": ""
+  },
+  "config/smartdesk.integration.esp32.example.json": {
+    "mtime": 1787406093.9362516,
+    "seen": 1787673287.5388656,
+    "ast_hash": "83e6ba389a51ce6e5131649af3382afa",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/firmware/include/DeviceConfig.example.h": {
+    "mtime": 1786780918.4125726,
+    "seen": 1787673287.5388656,
+    "ast_hash": "43cb0fdfd71d5a63a612ef3053abdc33",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/firmware/src/main.cpp": {
+    "mtime": 1786780915.4205205,
+    "seen": 1787673287.5388656,
+    "ast_hash": "241f995b0f801ee71c0cf000d8a81598",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/simulator/__init__.py": {
+    "mtime": 1785171773.7629035,
+    "seen": 1787673287.5388656,
+    "ast_hash": "d9cace840346795c1f3c366654912655",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/simulator/esp32_simulator.py": {
+    "mtime": 1785193950.9274578,
+    "seen": 1787673287.5388656,
+    "ast_hash": "5a7fb25dd334b4d0820aa9c5ef20f0cd",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/simulator/tests/conftest.py": {
+    "mtime": 1785171774.5691142,
+    "seen": 1787673287.5388656,
+    "ast_hash": "0f88061cb0a74f694c1e0e3a37490959",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/simulator/tests/test_firmware_contract.py": {
+    "mtime": 1786780945.0473504,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c8b9d020222c258a252f72731f7ae0bb",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/simulator/tests/test_simulator.py": {
+    "mtime": 1785193815.2931845,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6e55f5007fc81c69a3bdb5dadee3daf3",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/hardware/esp32_protocol.py": {
+    "mtime": 1785171382.8090243,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f2411f50359b8e1796ab3bfd91ea1996",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_esp32_protocol.py": {
+    "mtime": 1786781119.5884738,
+    "seen": 1787673287.5388656,
+    "ast_hash": "9db375e2568d07c1e95f408b09c986ba",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_esp32_websocket.py": {
+    "mtime": 1785193214.8648229,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e9ea71db8609c8a7462049dcd9ee4f2b",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/README.md": {
+    "mtime": 1786780967.3045683,
+    "seen": 1787673287.5388656,
+    "ast_hash": "1f31a7f322181d01e0ae43aab8b001bb",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/protocol.md": {
+    "mtime": 1786781121.791099,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e9b2a3e57b076c99868ea4551465a9e3",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/simulator/requirements.txt": {
+    "mtime": 1785171774.1997628,
+    "seen": 1787673287.5388656,
+    "ast_hash": "388690835e456dfc7bd26947cf8e2c0f",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/fixtures/android_identity_verified.json": {
+    "mtime": 1785173040.07643,
+    "seen": 1787673287.5388656,
+    "ast_hash": "207136e2cfddb0be3d31a77d3b217f53",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_one_seat_integration.py": {
+    "mtime": 1787407820.5409293,
+    "seen": 1787673287.5388656,
+    "ast_hash": "35128a1f4e235d08fd20e28750f17136",
+    "semantic_hash": ""
+  },
+  "scripts/run_seat1_integration_test.ps1": {
+    "mtime": 1786195385.7044315,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6fd084b478beddc9d352b4847032319e",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/BackendHealthChecker.kt": {
+    "mtime": 1785174957.0794764,
+    "seen": 1787673287.5388656,
+    "ast_hash": "21722d88fc128baccf587681d9784ee7",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/SeatPageLoadState.kt": {
+    "mtime": 1787404668.7323813,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f454b9092e11bd6f247babf5607ff53f",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/WebViewAccessPolicy.kt": {
+    "mtime": 1787922090.264655,
+    "seen": 1787923664.8736367,
+    "ast_hash": "c269e5b262958b77620498b6a5f3caf2",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/DeviceConfigStoreTest.kt": {
+    "mtime": 1786262055.386,
+    "seen": 1787673287.5388656,
+    "ast_hash": "69e95a5a1f86f2a5218ebd3e0c45ec2a",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/SeatPageLoadStateTest.kt": {
+    "mtime": 1787405192.0814948,
+    "seen": 1787673287.5388656,
+    "ast_hash": "9c4127b4a5926aeef073b039df9b11e6",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/WebViewAccessPolicyTest.kt": {
+    "mtime": 1787921977.7699575,
+    "seen": 1787923664.8736367,
+    "ast_hash": "dbf47569f8f114300447e832511bdce3",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/components/__tests__/HardwareStatus.test.tsx": {
+    "mtime": 1785191669.5679927,
+    "seen": 1787673287.5388656,
+    "ast_hash": "627792c82e6962a4e9bc88dd39aff54d",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/assets/models/model-license-gate.json": {
+    "mtime": 1785193337.4985242,
+    "seen": 1787673287.5388656,
+    "ast_hash": "b61efeaed9dce40550ca6c1bb4e0b550",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/__init__.py": {
+    "mtime": 1785192531.032948,
+    "seen": 1787673287.5388656,
+    "ast_hash": "41732294cd9efeb1005268da71d1e5da",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/device_auth.py": {
+    "mtime": 1785340078.41145,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6e6a30b17115db15b34816b70b272836",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/rate_limit.py": {
+    "mtime": 1785192762.2132964,
+    "seen": 1787673287.5388656,
+    "ast_hash": "a8caf73520bb46781b5241db076f4b13",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/structured_log.py": {
+    "mtime": 1785192762.4188745,
+    "seen": 1787673287.5388656,
+    "ast_hash": "72927ee8d2b45a3d0a507ec45d821273",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/version_compat.py": {
+    "mtime": 1785193968.9340723,
+    "seen": 1787673287.5388656,
+    "ast_hash": "44f0201ebeb958f5291d584d0638196c",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_security_controls.py": {
+    "mtime": 1785193950.7245522,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8329a6f77f3b0b58a93bf62bd7a87884",
+    "semantic_hash": ""
+  },
+  "scripts/check_model_license_gate.py": {
+    "mtime": 1785193338.124379,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8a03166367739b645ae483851b958103",
+    "semantic_hash": ""
+  },
+  "docs/integration/MODEL_LICENSE_GATE.md": {
+    "mtime": 1785193625.2040782,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c8bc3f81dae13d6bf05cd4ea52b33b30",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_punctuation.py": {
+    "mtime": 1785197285.6257083,
+    "seen": 1787673287.5388656,
+    "ast_hash": "46ff5e4819894e43d0305ab79581fa12",
+    "semantic_hash": ""
+  },
+  "scripts/check_python_sources.py": {
+    "mtime": 1785197810.4712949,
+    "seen": 1787673287.5388656,
+    "ast_hash": "22b9de360131f4fd4c62a90e00bfd105",
+    "semantic_hash": ""
+  },
+  "scripts/validate_repository_contracts.py": {
+    "mtime": 1786811666.1685753,
+    "seen": 1787673287.5388656,
+    "ast_hash": "432c279be2a4d1cd0a1c2d571e05f4c5",
+    "semantic_hash": ""
+  },
+  "scripts/verify_all_software.ps1": {
+    "mtime": 1788190041.209478,
+    "seen": 1788192701.222785,
+    "ast_hash": "d7b49bbf25bfce2e4169c8e012473246",
+    "semantic_hash": ""
+  },
+  ".github/workflows/software-verification.yml": {
+    "mtime": 1786195749.9741652,
+    "seen": 1787673287.5388656,
+    "ast_hash": "1d3b09b92456c799e4a107617dd335db",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/requirements-ci.txt": {
+    "mtime": 1785340076.6408648,
+    "seen": 1787673287.5437822,
+    "ast_hash": "acbb582fef53622faa2a523d3ea41c42",
+    "semantic_hash": ""
+  },
+  "docs/integration/ANDROID_BRIDGE_CONTRACT.md": {
+    "mtime": 1787467575.4804354,
+    "seen": 1787673287.5388656,
+    "ast_hash": "917c6fb9a4caab6b67d8e03d460fb0b2",
+    "semantic_hash": ""
+  },
+  "docs/integration/ARCHITECTURE.md": {
+    "mtime": 1787476123.4378412,
+    "seen": 1787673287.5388656,
+    "ast_hash": "4fabe997d459f23fcee0f7084b6f8b9f",
+    "semantic_hash": ""
+  },
+  "docs/integration/ESP32_PROTOCOL.md": {
+    "mtime": 1786782900.0138712,
+    "seen": 1787673287.5388656,
+    "ast_hash": "37fdf481aa6188de2ae9a45c325fface",
+    "semantic_hash": ""
+  },
+  "docs/integration/HUMAN_VALIDATION_REQUIRED.md": {
+    "mtime": 1787478966.8191404,
+    "seen": 1787673287.5388656,
+    "ast_hash": "5a0f8984beae0cf2377f57b299174e92",
+    "semantic_hash": ""
+  },
+  "docs/integration/IDENTITY_CHECKIN_CONTRACT.md": {
+    "mtime": 1787476123.1692505,
+    "seen": 1787673287.5388656,
+    "ast_hash": "55778933c5edeeb43dffafea4cc94147",
+    "semantic_hash": ""
+  },
+  "docs/integration/NINE_SEAT_DEPLOYMENT.md": {
+    "mtime": 1787467618.5774274,
+    "seen": 1787673287.5388656,
+    "ast_hash": "52e96ca41c94c84c54acd4090474e595",
+    "semantic_hash": ""
+  },
+  "docs/integration/ONE_SEAT_RUNBOOK.md": {
+    "mtime": 1786782806.426768,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e86b01af80da280c2a73e5a86cd6fdac",
+    "semantic_hash": ""
+  },
+  "docs/integration/RELEASE_READINESS.md": {
+    "mtime": 1788353731.6306458,
+    "seen": 1788353881.3432188,
+    "ast_hash": "2cc41d392bd6b8205706c2eb73fb376b",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/__init__.py": {
+    "mtime": 1787392292.8872528,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ee23a84fabc06c995a4acb55d8137da9",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/agenda.py": {
+    "mtime": 1781360502.5582385,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8e8c75aec3ff0a80a06d858e52b87ea2",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/attendee.py": {
+    "mtime": 1786889378.8867638,
+    "seen": 1787673287.5388656,
+    "ast_hash": "a684e806090f3654db21a2ce62378660",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/identity_checkin_event.py": {
+    "mtime": 1785168103.5296018,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f768e0f7f47ec45607b852373e1bf68d",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/meeting.py": {
+    "mtime": 1787392293.1669185,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e5df99791ac74c935f0e76213c20d899",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/person.py": {
+    "mtime": 1785163794.3870513,
+    "seen": 1787673287.5388656,
+    "ast_hash": "17af9524f392e6475615ae462a54e90e",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/seat_state.py": {
+    "mtime": 1780306725.3032684,
+    "seen": 1787673287.5388656,
+    "ast_hash": "4ee279d87bc025c0e97e8767e2a173ae",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/service_call.py": {
+    "mtime": 1780306746.546132,
+    "seen": 1787673287.5388656,
+    "ast_hash": "08f54f858c37a472202cea58059418a4",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/speaker_seat.py": {
+    "mtime": 1780285750.175004,
+    "seen": 1787673287.5388656,
+    "ast_hash": "17db078ee57dfc2474f34d8aa9868302",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/tablet_device.py": {
+    "mtime": 1787392532.2426512,
+    "seen": 1787673287.5388656,
+    "ast_hash": "aaa12a69dc2fb668c7748f596b29646e",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/translation_record.py": {
+    "mtime": 1780668681.6027648,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f309d1ed5925bc4039dd5cc5e419533f",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/vote.py": {
+    "mtime": 1780306739.2446244,
+    "seen": 1787673287.5388656,
+    "ast_hash": "339bd007f1f8387b71ebb23d3f94b4a2",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/vote_record.py": {
+    "mtime": 1780306765.0745294,
+    "seen": 1787673287.5388656,
+    "ast_hash": "b7c99294c24f5143e35a9c1334878f13",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/WebViewPageAccessState.kt": {
+    "mtime": 1787466230.2423537,
+    "seen": 1787673287.5388656,
+    "ast_hash": "b87cf9edb54a451f93837d4582ec14c8",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/WebViewPageAccessStateTest.kt": {
+    "mtime": 1787381517.5450568,
+    "seen": 1787673287.5388656,
+    "ast_hash": "97a171760a324de8c798006e83557155",
+    "semantic_hash": ""
+  },
+  "config/smartdesk.integration.arduino.example.json": {
+    "mtime": 1787406094.2592163,
+    "seen": 1787673287.5388656,
+    "ast_hash": "20144c7121affe3663c710290f15e611",
+    "semantic_hash": ""
+  },
+  "deployment/portable/build-portable.ps1": {
+    "mtime": 1788185444.9398334,
+    "seen": 1788192701.2217855,
+    "ast_hash": "9969b59cc3f7552d9345e968cae4285f",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/scripts/DOCTOR.ps1": {
+    "mtime": 1785342570.7893982,
+    "seen": 1787673287.5388656,
+    "ast_hash": "159dd282dbd52cbf7926d6c9fdf7cbb2",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/scripts/INSTALL.ps1": {
+    "mtime": 1786195526.2690363,
+    "seen": 1787673287.5388656,
+    "ast_hash": "63db50491048442db95ba76751d22816",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/scripts/START.ps1": {
+    "mtime": 1786195482.529872,
+    "seen": 1787673287.5388656,
+    "ast_hash": "cd74c5e4349ec8b99a380279265a08c2",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/scripts/UNINSTALL.ps1": {
+    "mtime": 1785341120.2744236,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3e4a80085acf3a80b357dd4c46ddbec5",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/database_maintenance.py": {
+    "mtime": 1786157607.5621154,
+    "seen": 1787673287.5388656,
+    "ast_hash": "cd4fa5cc1f079687d348c7b54b7aa5ce",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/schema.py": {
+    "mtime": 1787392532.774974,
+    "seen": 1787673287.5388656,
+    "ast_hash": "41ce2f1a4a49b9b72200b4f1d963fb74",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/e2e/screen-stream-live.spec.ts": {
+    "mtime": 1785343195.3515515,
+    "seen": 1787673287.5388656,
+    "ast_hash": "04be19590a23caf5e3bf44616569c63d",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/playwright.live.config.ts": {
+    "mtime": 1785342897.3738954,
+    "seen": 1787673287.5388656,
+    "ast_hash": "21ca4d908f3b632cbc64f31d332be76c",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend_server.py": {
+    "mtime": 1785340173.179564,
+    "seen": 1787673287.5388656,
+    "ast_hash": "11ed2861f6c8393fc352f00d715e14e4",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/migrate_database.py": {
+    "mtime": 1785340950.6699524,
+    "seen": 1787673287.5388656,
+    "ast_hash": "b2b0469048d894bcf91914fbd0f1c807",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_database_maintenance.py": {
+    "mtime": 1785340632.0894146,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e13434d89467eed34176535e8a589407",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_frontend_server.py": {
+    "mtime": 1785340174.1555328,
+    "seen": 1787673287.5388656,
+    "ast_hash": "bfc45beadde7c8965217d9c287167623",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_nine_seat_integration.py": {
+    "mtime": 1785340747.782817,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e58bfde33c024f891ac2534c82567761",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_runtime_configuration.py": {
+    "mtime": 1787405076.1724408,
+    "seen": 1787673287.5388656,
+    "ast_hash": "2e8522719122cb162bde3087e13f3f2d",
+    "semantic_hash": ""
+  },
+  "scripts/check_repository_hygiene.py": {
+    "mtime": 1785340790.1825075,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8136010a2a3c8ff7f5a07085364ac02c",
+    "semantic_hash": ""
+  },
+  "scripts/run_nine_seat_simulation.ps1": {
+    "mtime": 1786195383.9872108,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8dc20c91cdd45cb673c0c98fa0ed13cd",
+    "semantic_hash": ""
+  },
+  "scripts/test_portable_lifecycle.ps1": {
+    "mtime": 1786262269.1441412,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8bb81f23015db8bf175b8319deefe3ca",
+    "semantic_hash": ""
+  },
+  "scripts/validate_portable_package.py": {
+    "mtime": 1785344667.7591403,
+    "seen": 1787673287.5388656,
+    "ast_hash": "0f87bafbed05bce24993f6928a85c6a4",
+    "semantic_hash": ""
+  },
+  "scripts/verify_android_device.ps1": {
+    "mtime": 1788186449.703613,
+    "seen": 1788192701.222785,
+    "ast_hash": "514290114f721d72fca964b67dcf2aeb",
+    "semantic_hash": ""
+  },
+  "scripts/verify_powerpoint_switch.ps1": {
+    "mtime": 1788273889.960891,
+    "seen": 1788353881.3432188,
+    "ast_hash": "40ee0a419a28b3a8898e6efa3405e274",
+    "semantic_hash": ""
+  },
+  "scripts/verify_screen_stream_live.ps1": {
+    "mtime": 1786195380.4928904,
+    "seen": 1787673287.5388656,
+    "ast_hash": "976f2bbe3d53dc3824f7426c6470e88a",
+    "semantic_hash": ""
+  },
+  "deployment/portable/README.md": {
+    "mtime": 1786195537.9275196,
+    "seen": 1787673287.5388656,
+    "ast_hash": "1dadf53549aa956204504f56b6f24ce8",
+    "semantic_hash": ""
+  },
+  "deployment/portable/package/INTERNAL_DEMO.txt": {
+    "mtime": 1785341118.79693,
+    "seen": 1787673287.5388656,
+    "ast_hash": "41b2c49b1d892d36d58f41a802b9eaf8",
+    "semantic_hash": ""
+  },
+  "docs/integration/COMPATIBILITY.md": {
+    "mtime": 1785341584.682177,
+    "seen": 1787673287.5388656,
+    "ast_hash": "cd6026b94f12f597c8f1a25066b60561",
+    "semantic_hash": ""
+  },
+  "docs/integration/FIELD_VALIDATION_QUICKSTART.md": {
+    "mtime": 1786191057.06194,
+    "seen": 1787673287.5388656,
+    "ast_hash": "01704f5d382ac53b1ea3a4e641073ba0",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/services/speech_debug_capture.py": {
+    "mtime": 1786167169.5827825,
+    "seen": 1787673287.5388656,
+    "ast_hash": "be6fbb1f64c0e326fdeb42f60b8a51df",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_speech_debug_capture.py": {
+    "mtime": 1786167122.2605407,
+    "seen": 1787673287.5388656,
+    "ast_hash": "9333a0e1c916b0f7c714087848a31776",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/config/DeviceIdentityStore.kt": {
+    "mtime": 1786189637.4711306,
+    "seen": 1787673287.5388656,
+    "ast_hash": "32a985a015ffce1b71c6eff0bc8e0e60",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/config/HostConfiguration.kt": {
+    "mtime": 1786189635.945973,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6e48cc80681e88778a622f759f9df37b",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/config/MaintenancePinStore.kt": {
+    "mtime": 1786190351.2813993,
+    "seen": 1787673287.5388656,
+    "ast_hash": "5bb8b04e21e4dd20ae7cf153db0b2721",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/config/ProvisioningRequest.kt": {
+    "mtime": 1786189640.5060043,
+    "seen": 1787673287.5388656,
+    "ast_hash": "64a980073906aefa03e16792c6bbeca7",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/provisioning/DeviceTokenGenerator.kt": {
+    "mtime": 1786190352.7392545,
+    "seen": 1787673287.5388656,
+    "ast_hash": "23b678e19c33fcdf9261d6c822d29615",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/provisioning/TabletDeviceClient.kt": {
+    "mtime": 1787404668.4297867,
+    "seen": 1787673287.5388656,
+    "ast_hash": "7deb51d8552fbcde4209056b60eed49f",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/DeviceIdentityStoreTest.kt": {
+    "mtime": 1786190452.0312588,
+    "seen": 1787673287.5388656,
+    "ast_hash": "46657a20f2f5805187c983b6cc66da3f",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/HostConfigurationTest.kt": {
+    "mtime": 1786190450.5594497,
+    "seen": 1787673287.5388656,
+    "ast_hash": "efdb52920142e895b6f4aaccb9abb260",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/MaintenancePinStoreTest.kt": {
+    "mtime": 1786190453.5889463,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3672f12f92702fe8ab04b402e4a5da3f",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/ProvisioningRequestTest.kt": {
+    "mtime": 1786190455.0970943,
+    "seen": 1787673287.5388656,
+    "ast_hash": "317f896d75a4f3fcb1664cab943a7fed",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/provisioning/DeviceTokenGeneratorTest.kt": {
+    "mtime": 1786190457.6129265,
+    "seen": 1787673287.5388656,
+    "ast_hash": "14daa6b4c87b2d71caab61635c4e11ad",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/configWorkflow.js": {
+    "mtime": 1788273474.4781275,
+    "seen": 1788353881.342458,
+    "ast_hash": "5980cfbcda3cc170d105ddb05ab2231a",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/configWorkflow.test.js": {
+    "mtime": 1788354216.6653888,
+    "seen": 1788354298.3189712,
+    "ast_hash": "601f7a55cbba8cebc3ff1a9ba739eb65",
+    "semantic_hash": ""
+  },
+  "scripts/check_python_runtime.py": {
+    "mtime": 1786195111.869274,
+    "seen": 1787673287.5388656,
+    "ast_hash": "0879ed2bf2b6cbb2917e045a1daa00cb",
+    "semantic_hash": ""
+  },
+  "scripts/setup_python.ps1": {
+    "mtime": 1786195838.66789,
+    "seen": 1787673287.5388656,
+    "ast_hash": "d89c67f70a88d0033ebcc88c53d753dd",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/ManifestPermissionContractTest.kt": {
+    "mtime": 1786257129.6679773,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c9300a5cd13ae4248cbe4ebf75a2e179",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_translation_api_serialization.py": {
+    "mtime": 1786259204.4617107,
+    "seen": 1787673287.5388656,
+    "ast_hash": "20096eb824aaea93889f233cb891cfda",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/verify-maintenance-entry.mjs": {
+    "mtime": 1786271547.8016725,
+    "seen": 1787673287.5388656,
+    "ast_hash": "67f705c412e51a00aca44755360a3638",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/verify-diagnostic-retry.mjs": {
+    "mtime": 1786275251.4181871,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f9e4c01b2eefcfee3cadf04fbb1e79b5",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/audio/NativeMicrophoneCapture.kt": {
+    "mtime": 1786277219.4232366,
+    "seen": 1787673287.5388656,
+    "ast_hash": "3d971f6f9494b3d6646b02baa3760998",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/audio/Pcm16FrameEncoder.kt": {
+    "mtime": 1786277217.9011343,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e06d9c903c467a46e3ce7fa9d9b2f5a4",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/audio/Pcm16FrameEncoderTest.kt": {
+    "mtime": 1786277221.9953947,
+    "seen": 1787673287.5388656,
+    "ast_hash": "75df2e8408031c0fdb620696d79de323",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/inspect-seat-runtime.mjs": {
+    "mtime": 1786278128.927963,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ab584bb7a3442a21a3a953f6a824e8bd",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/verify-native-microphone.mjs": {
+    "mtime": 1786277556.339841,
+    "seen": 1787673287.5388656,
+    "ast_hash": "8f8868c6d500d2adbe821ca61b44f88d",
+    "semantic_hash": ""
+  },
+  "android_tablet/scripts/verify-seat-speech-runtime.mjs": {
+    "mtime": 1786278194.3402553,
+    "seen": 1787673287.5388656,
+    "ast_hash": "d8b023863aec84ac1a0e1b0908df85b3",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/audio/androidNativeMicrophone.test.ts": {
+    "mtime": 1786277440.7077546,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c8e9514dc8723dd23be8555cb6430645",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/audio/androidNativeMicrophone.ts": {
+    "mtime": 1786277381.2984462,
+    "seen": 1787673287.5388656,
+    "ast_hash": "08ddc4a4b88fb66839b4eb0b48147ad1",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/firmware/include/SmartDeskLighting.h": {
+    "mtime": 1786290753.3640523,
+    "seen": 1787673287.5388656,
+    "ast_hash": "0c99c6d760776a629e3a56331e81e6e0",
+    "semantic_hash": ""
+  },
+  "esp32_seat_controller/firmware/src/SmartDeskLighting.cpp": {
+    "mtime": 1786290754.683919,
+    "seen": 1787673287.5388656,
+    "ast_hash": "725d7872b378ddc78c37682886c618c9",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/LauncherManifestContractTest.kt": {
+    "mtime": 1787922177.3089993,
+    "seen": 1787923664.8736367,
+    "ast_hash": "96397450919e7097110381351c64400b",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FacePhotoImport.kt": {
+    "mtime": 1786802575.6144414,
+    "seen": 1787673287.5388656,
+    "ast_hash": "5a1ee0cf6171eddfc023f3e9a100b475",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FacePhotoImporter.kt": {
+    "mtime": 1787392631.5247924,
+    "seen": 1787673287.5388656,
+    "ast_hash": "e328f951dc8f9655c7837d98644309ee",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/FacePhotoTemplateSelectorTest.kt": {
+    "mtime": 1786802829.267859,
+    "seen": 1787673287.5388656,
+    "ast_hash": "60493d6dd3fa515ac4a9943e22d9f64d",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/AppEventRouting.test.js": {
+    "mtime": 1787414641.0162792,
+    "seen": 1787673287.5388656,
+    "ast_hash": "1afe9fa295793d14035c3a28da6df5d4",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/facePhotoImport.js": {
+    "mtime": 1786802793.4909365,
+    "seen": 1787673287.5388656,
+    "ast_hash": "ea2cca3a1b2090992c39161f7a1c4e26",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/facePhotoImport.test.js": {
+    "mtime": 1786802795.0006046,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c2dea8896b200382020205d04098aff3",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/IdentityCameraOverlayPolicy.kt": {
+    "mtime": 1786980368.0921898,
+    "seen": 1787673287.5388656,
+    "ast_hash": "251cb3eefabf8375d47c15ba936894e4",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/IdentityCameraOverlayPolicyTest.kt": {
+    "mtime": 1786980368.6746435,
+    "seen": 1787673287.5388656,
+    "ast_hash": "4662723b83f73086491b07662c468cec",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/smartdesk_control.ps1": {
+    "mtime": 1787385920.153237,
+    "seen": 1787673287.5388656,
+    "ast_hash": "1f06cf905b1506f12fbb6e03964dacdd",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_control_launcher_contract.py": {
+    "mtime": 1787919831.7399917,
+    "seen": 1787920045.3706725,
+    "ast_hash": "880ca19369708dfbfa1af96440b851f1",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/assets/SmartDeskControl.png": {
+    "mtime": 1787385721.453195,
+    "seen": 1787673287.5437822,
+    "ast_hash": "91e117ed2ddfad1311426d8f3af00f74",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FaceTemplateSyncClient.kt": {
+    "mtime": 1787450105.4909625,
+    "seen": 1787673287.5388656,
+    "ast_hash": "707a7672511df4f37b0582dcdae3bc68",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/recognition/FaceTransportCrypto.kt": {
+    "mtime": 1787476122.1772678,
+    "seen": 1787673287.5388656,
+    "ast_hash": "7bb9fb382b8f03a87ac39bf63104e916",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/api/face_templates.py": {
+    "mtime": 1787392509.797304,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c7ae2afd021193c504f8fb6cc5088a39",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/models/face_template.py": {
+    "mtime": 1787392292.6343808,
+    "seen": 1787673287.5388656,
+    "ast_hash": "41239e7057d323a67b184db079214804",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/repositories/face_template_repository.py": {
+    "mtime": 1787392348.9476957,
+    "seen": 1787673287.5388656,
+    "ast_hash": "1b6262297a0c034b234e249cae5dbd65",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/schemas/face_template.py": {
+    "mtime": 1787450049.5050726,
+    "seen": 1787673287.5388656,
+    "ast_hash": "830e23d2b146655f1410bb3f3f32dc42",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/security/face_template_crypto.py": {
+    "mtime": 1787476181.6960258,
+    "seen": 1787673287.5388656,
+    "ast_hash": "fd46d7adf44725bd121c840f84982b6b",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/backend/services/face_template_service.py": {
+    "mtime": 1787450049.7462766,
+    "seen": 1787673287.5388656,
+    "ast_hash": "af1ed9778fe363388e5b6bf055b1a6a6",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/__tests__/face-template-manager.test.tsx": {
+    "mtime": 1787672732.8248649,
+    "seen": 1787673287.5388656,
+    "ast_hash": "b35934010a82abf768bf987ba9670253",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/api/faceTemplates.ts": {
+    "mtime": 1787393120.8731177,
+    "seen": 1787673287.5388656,
+    "ast_hash": "c6f65bc92793cd4fb7e0100ef0408425",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/components/FaceTemplateManager.tsx": {
+    "mtime": 1787672689.6969342,
+    "seen": 1787673287.5388656,
+    "ast_hash": "48e4cbb43266d295d2f95462ffab0cdd",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_face_template_sync.py": {
+    "mtime": 1787476122.921193,
+    "seen": 1787673287.5388656,
+    "ast_hash": "664e2512c70599b346f5aa5b83e0b498",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/connectionWorkflow.js": {
+    "mtime": 1787405355.709101,
+    "seen": 1787673287.5388656,
+    "ast_hash": "aa74b10352b734a2b080e3342177c6f0",
+    "semantic_hash": ""
+  },
+  "android_tablet/diagnostic-web/src/connectionWorkflow.test.js": {
+    "mtime": 1787405355.9933681,
+    "seen": 1787673287.5388656,
+    "ast_hash": "fd1f83c0734ec9049b40eac1b662d802",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/FaceTemplateThresholdContractTest.kt": {
+    "mtime": 1787448244.5681832,
+    "seen": 1787673287.5388656,
+    "ast_hash": "f7ce4d2794b1fed96c4ce7a009a03632",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/HostIdentityDefaultPolicyTest.kt": {
+    "mtime": 1787467444.3840685,
+    "seen": 1787673287.5388656,
+    "ast_hash": "7bf7a850fca4aa29f13344837f41d8a9",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/__tests__/host-tablet-console.test.tsx": {
+    "mtime": 1788051196.4582748,
+    "seen": 1788052290.6229808,
+    "ast_hash": "91484f3c23ca0becfdd9767070700f6a",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/components/HostTabletConsole.tsx": {
+    "mtime": 1788051169.8537915,
+    "seen": 1788052290.6229808,
+    "ast_hash": "0bb574558bd78821d054745388a8d60e",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_host_display_activation.py": {
+    "mtime": 1787470024.8342788,
+    "seen": 1787673287.5388656,
+    "ast_hash": "6f62ee3a296137934506114efa1bcede",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/ImmersiveNavigationContractTest.kt": {
+    "mtime": 1787922177.3089993,
+    "seen": 1787923664.8736367,
+    "ast_hash": "6deee5dc374f33a8123909fecba125b8",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/recognition/FaceTransportCryptoContractTest.kt": {
+    "mtime": 1787476122.4168217,
+    "seen": 1787673287.5388656,
+    "ast_hash": "86b9d7cb52947c3f5dd8d6b3eb13564a",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/config/HostConsoleAccessStore.kt": {
+    "mtime": 1787921651.7819693,
+    "seen": 1787923664.8736367,
+    "ast_hash": "f258c403d12a19abf3432385e40d56c3",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/HostConsoleAccessActivityContractTest.kt": {
+    "mtime": 1787921768.986687,
+    "seen": 1787923664.8736367,
+    "ast_hash": "beace02bf7193f289e130d2b07799ac9",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/NativeMicrophoneAccessContractTest.kt": {
+    "mtime": 1787924743.088051,
+    "seen": 1787924993.5259655,
+    "ast_hash": "9f55b5311f3317fe6b330de97e69b4a3",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/HostConsoleAccessStoreTest.kt": {
+    "mtime": 1787921584.1243494,
+    "seen": 1787923664.8736367,
+    "ast_hash": "c4d005acba07f8118c4ea6364a2b5d9c",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/components/__tests__/ConferenceTable.test.tsx": {
+    "mtime": 1788003083.9293542,
+    "seen": 1788005506.3319752,
+    "ast_hash": "f0fb41f0a07eb93a2c2889c5d36e12f2",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/web/WebViewPageHealthWatchdog.kt": {
+    "mtime": 1788020455.8335595,
+    "seen": 1788022067.9811854,
+    "ast_hash": "81fa0d777dc589249a9eca57046609f0",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/WebViewPageHealthActivityContractTest.kt": {
+    "mtime": 1788023216.9744422,
+    "seen": 1788023310.5336158,
+    "ast_hash": "89a8b9db556b921055613385eac66987",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/web/WebViewPageHealthWatchdogTest.kt": {
+    "mtime": 1788019834.4641218,
+    "seen": 1788022067.9811854,
+    "ast_hash": "9c1a8c65b9844c3a58fdc3abe53fcfcc",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_esp32_provisioning_script.py": {
+    "mtime": 1788190041.2104816,
+    "seen": 1788192701.222785,
+    "ast_hash": "6e73f1110b17c55bd42dbcfb26be9a4f",
+    "semantic_hash": ""
+  },
+  "scripts/provision_esp32.ps1": {
+    "mtime": 1788102538.5633528,
+    "seen": 1788102858.8735876,
+    "ast_hash": "af5408b1a3726228ab406b85c5ac654b",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_android_tablet_fleet_script.py": {
+    "mtime": 1788273571.697834,
+    "seen": 1788353881.3432188,
+    "ast_hash": "c3a1a77ccd053da520ce6855309d5ff0",
+    "semantic_hash": ""
+  },
+  "scripts/manage_android_tablet.ps1": {
+    "mtime": 1788273630.9368165,
+    "seen": 1788353881.3432188,
+    "ast_hash": "9ee9fcd2de62e472470a026f84036797",
+    "semantic_hash": ""
+  },
+  ".agents/skills/deploying-smartdesk-tablets/SKILL.md": {
+    "mtime": 1788186988.6134217,
+    "seen": 1788192701.222785,
+    "ast_hash": "262852b4a3ac3282df790cdcaf03bed5",
+    "semantic_hash": ""
+  },
+  "docs/integration/TABLET_FLEET_DEPLOYMENT.md": {
+    "mtime": 1788276533.1527753,
+    "seen": 1788353881.3432188,
+    "ast_hash": "9dc55d94d9e6e5b598e57e21cb247b9e",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/main/java/com/smartdesk/tablet/config/DeploymentPrefill.kt": {
+    "mtime": 1788273517.3986244,
+    "seen": 1788353881.342458,
+    "ast_hash": "4a037b52cf2238eea4c43e86157712f2",
+    "semantic_hash": ""
+  },
+  "android_tablet/android-app/app/src/test/java/com/smartdesk/tablet/config/DeploymentPrefillTest.kt": {
+    "mtime": 1788273272.3070443,
+    "seen": 1788353881.342458,
+    "ast_hash": "a9916da31b9b4d633d275f2d04641172",
+    "semantic_hash": ""
+  },
+  "deployment/tablet/build-tablet-deploy.ps1": {
+    "mtime": 1788350809.586546,
+    "seen": 1788353881.342458,
+    "ast_hash": "7b7d3348e006b9ac14c3b1f939484ce7",
+    "semantic_hash": ""
+  },
+  "deployment/tablet/package/scripts/DEPLOY_TABLET.ps1": {
+    "mtime": 1788351644.326114,
+    "seen": 1788353881.342458,
+    "ast_hash": "2b0624f1c17aa4c96511d4ec61743e8d",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_powerpoint_control.py": {
+    "mtime": 1788273331.2622125,
+    "seen": 1788353881.3432188,
+    "ast_hash": "d0650ab5ee1f54296b2b554abfee299a",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_speech_e2e_command.py": {
+    "mtime": 1788273426.6133184,
+    "seen": 1788353881.3432188,
+    "ast_hash": "4c4a758c941f61523eed3367cc98ebd5",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/tests/test_tablet_deploy_package.py": {
+    "mtime": 1788351548.977501,
+    "seen": 1788353881.3432188,
+    "ast_hash": "6d10db1ea5159845eb037c61284a190d",
+    "semantic_hash": ""
+  },
+  "deployment/tablet/README.md": {
+    "mtime": 1788273754.6740386,
+    "seen": 1788353881.3432188,
+    "ast_hash": "dea892b2aae17ac30d36fc35e19f00b0",
+    "semantic_hash": ""
+  },
+  "deployment/tablet/package/QUICK_START.txt": {
+    "mtime": 1788273754.6740386,
+    "seen": 1788353881.3432188,
+    "ast_hash": "7e07e9401c2ad62c4db52008a4e54b15",
+    "semantic_hash": ""
+  },
+  "docs/integration/FULL_TABLE_COMPLETION_ROADMAP.md": {
+    "mtime": 1788348885.6602197,
+    "seen": 1788353881.3432188,
+    "ast_hash": "5afa2c2243ca56938569a4d66556ec18",
     "semantic_hash": ""
   }
 }

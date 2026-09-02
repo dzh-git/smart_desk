@@ -15,7 +15,7 @@
 ## 自动测试
 
 ```powershell
-.venv\Scripts\python -m pytest tests -q
+..\..\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
 测试不得操作真实鼠标键盘，统一使用 FakeDriver 和假的 Display Agent 客户端。

@@ -25,7 +25,9 @@ from fastapi import FastAPI, WebSocket, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-from backend.database import engine, Base, SessionLocal
+from backend.database import engine, SessionLocal
+from backend.database_maintenance import apply_schema_with_backup
+from backend.schema import upgrade_database_schema
 from backend.events import event_bus
 from backend.repositories.seat_repository import SeatRepository
 from backend.websocket import ws_service, WebSocketEventHandler
@@ -54,6 +56,9 @@ from backend.api import (
     speech,
     host_display,
     hardware,
+    people,
+    tablet_devices,
+    face_templates,
 )
 from backend.api import seat_ws
 
@@ -211,14 +216,12 @@ async def lifespan(app: FastAPI):
     # Phase 8: dependency and model checks
     _run_startup_checks()
 
-    # DB: create all tables declared on Base
-    Base.metadata.create_all(bind=engine)
-
-    # Phase 4: idempotent column additions for translation_records
-    from backend.migrations import ensure_translation_record_columns, ensure_agenda_columns
-    ensure_translation_record_columns(engine)
-    # Phase 1: idempotent column additions for agenda state machine
-    ensure_agenda_columns(engine)
+    # File databases are backed up before schema work. A failed upgrade restores
+    # the original file and aborts startup rather than serving a partial schema.
+    apply_schema_with_backup(
+        engine,
+        lambda: upgrade_database_schema(engine),
+    )
 
     # Seed: initialize seat_states (1..9), speaker_seat (id=1), and demo data
     db = SessionLocal()
@@ -304,9 +307,13 @@ app.include_router(translations.router)
 app.include_router(speech.router)
 app.include_router(host_display.router)
 app.include_router(hardware.router)
+app.include_router(people.router)
+app.include_router(tablet_devices.router)
+app.include_router(face_templates.router)
+app.include_router(face_templates.device_router)
 
-# Distributed mode only: Seat Edge Agent WebSocket channel.
-if deploy_mode == "distributed":
+# Network hardware modes: legacy Windows Seat Agent or direct ESP32 channel.
+if deploy_mode in {"distributed", "esp32"}:
     app.include_router(seat_ws.router)
 
 

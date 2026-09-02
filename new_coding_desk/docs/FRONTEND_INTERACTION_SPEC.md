@@ -9,7 +9,9 @@
 | `/` | 默认入口 | 自动跳转到 `/admin`。 |
 | `/?seat=N` | 旧座位入口 | 自动跳转到 `/seat/N`。 |
 | `/admin` | 主持人端 | 会议创建、启动、结束、议程、投票、服务、发言席、会议记录和结果查看。 |
-| `/seat/:seatId` | 座位端 | 1 到 9 号座位平板；seat 1 为主持人位，非法座位显示错误。 |
+| `/host` | Seat 1 主持人平板 | 仅已绑定 Seat 1 Android App 可用；每次冷启动先由原生维护 PIN 解锁，再显示主持人控制台。 |
+| `/seat/1` | 兼容入口 | 重定向到 `/host`，不再渲染普通座位页面。 |
+| `/seat/:seatId` | 参会者座位端 | Seat 2 到 9；非法座位显示错误。 |
 | `/display` | 大屏端 | 会议状态、当前议题、议程进度、当前或最近投票结果。 |
 | `/screen` | 大屏视频流端 | 只读全屏 WebRTC 视频流（嵌入中央主机 MediaMTX 中继）；自动轮询 host-display 状态；含 Refresh；无写操作。 |
 
@@ -19,6 +21,12 @@ demo 模式：
 - `VITE_ENABLE_DEMO_CONTROLS=true` 时，座位端显示返回主持人端和 demo 占座/离座入口。
 
 ## 2. 主持人端流程
+
+Seat 1 Android App 启动进入 `/host`；PIN 解锁前不渲染控制台。解锁后使用与
+`/admin` 相同的 `AdminDashboard`，无会议时可直接创建和启动会议。Seat 1 签到是
+独立卡片：只有主持人点击后才在 formal 模式打开人脸层，debug 模式调用设备认证
+放行接口；签到成功仍停留在控制台。长按维护入口 5 秒进入模板管理页，返回后仍为
+`/host`。电脑浏览器 `/admin` 的既有入口不变。
 
 1. 进入 `/admin` 后，前端加载 active meeting、座位、发言席、投票、服务请求、字幕记录、议程和参会人。
 2. 无 active meeting 时，显示创建 pending meeting 表单。
@@ -46,7 +54,7 @@ demo 模式：
 
 ## 3. 座位端流程
 
-1. 进入 `/seat/:seatId` 后，前端校验座位号必须为 1 到 9；seat 1 为主持人位。
+1. 进入 `/seat/:seatId` 后，前端校验座位号；Seat 2–9 渲染参会者页，Seat 1 重定向主持人入口。
 2. 座位端加载 active meeting、座位、发言席、投票、服务请求、字幕记录、议程和参会人。
 3. 无 active meeting 时显示等待会议。
 4. demo 模式下，空座可占座，已占用座位可离座。

@@ -33,6 +33,7 @@ from fastapi.testclient import TestClient
 from backend.main import app
 from backend.database import Base
 from backend.models.translation_record import TranslationRecord
+from backend.models.seat_state import SeatState
 from backend.services.speech_stream_service import (
     stream_service,
     VAD_SILENCE_DURATION_S,
@@ -52,6 +53,7 @@ _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 _PCM_FIXTURE = os.path.join(_FIXTURE_DIR, "speech_sample.pcm")
 # 100ms @ 16kHz s16le mono = 3200 bytes
 _FRAME_SIZE = 3200
+_FIXTURE_GAIN = 2.0
 
 
 def _load_pcm16_frames(
@@ -89,7 +91,18 @@ def _load_pcm16_frames(
         end = start + _FRAME_SIZE
         if end > len(raw):
             break  # not enough data
-        frames.append(raw[start:end])
+        # The archived recording is quieter than the current adaptive-gate
+        # acceptance floor in several consecutive frames.  Normalize the
+        # fixture to a stable microphone level so this remains a real-ASR
+        # black-box test instead of waiting forever for an interim that the
+        # gate correctly suppresses.
+        samples = np.frombuffer(raw[start:end], dtype=np.int16).astype(np.float32)
+        normalized = np.clip(
+            samples * _FIXTURE_GAIN,
+            np.iinfo(np.int16).min,
+            np.iinfo(np.int16).max,
+        ).astype(np.int16)
+        frames.append(normalized.tobytes())
 
     return frames
 
@@ -129,8 +142,54 @@ def _create_meeting(client: TestClient) -> int:
     return mid
 
 
+def _ensure_seat_checked_in(client: TestClient, seat_id: int) -> None:
+    """Prepare the real business precondition for choosing a speaker seat."""
+    seats_response = client.get("/api/seats")
+    assert seats_response.status_code == 200
+    seat = next(
+        item
+        for item in seats_response.json()["data"]
+        if item["seat_id"] == seat_id
+    )
+    if seat["status"] == "checked_in":
+        return
+
+    meeting_response = client.get("/api/meetings/active")
+    assert meeting_response.status_code == 200
+    meeting_id = meeting_response.json()["data"]["id"]
+
+    attendee_response = client.post(
+        f"/api/meetings/{meeting_id}/attendees",
+        json={"name": f"Speech Seat {seat_id}", "title": "Speech Fixture"},
+    )
+    assert attendee_response.status_code == 200
+    attendee_id = attendee_response.json()["data"]["id"]
+
+    assignment_response = client.put(
+        f"/api/meetings/{meeting_id}/seat-assignments/{seat_id}",
+        json={"attendeeId": attendee_id},
+    )
+    assert assignment_response.status_code == 200
+
+    db = TestSessionLocal()
+    try:
+        seat_state = db.get(SeatState, seat_id)
+        assert seat_state is not None
+        seat_state.status = "occupied_unchecked"
+        db.commit()
+    finally:
+        db.close()
+
+    checkin_response = client.post(
+        f"/api/seats/{seat_id}/checkin",
+        json={"attendee_id": attendee_id},
+    )
+    assert checkin_response.status_code == 200
+
+
 def _set_speaker_seat(client: TestClient, seat_id: int) -> None:
     """Set the speaker seat via HTTP API."""
+    _ensure_seat_checked_in(client, seat_id)
     resp = client.post("/api/seats/speaker", json={"seat_id": seat_id})
     assert resp.status_code == 200, f"Set speaker seat failed: {resp.json()}"
     assert resp.json()["data"]["seat_id"] == seat_id
@@ -330,6 +389,7 @@ class TestSpeechWebSocketBlackBox:
                         "sample_rate": 16000,
                         "encoding": "pcm_s16le",
                         "channels": 1,
+                        "language_mode": "zh",
                     })
                     started = speech_ws.receive_json()
                     assert started["type"] == "started"
@@ -466,6 +526,7 @@ class TestSpeechWebSocketBlackBox:
                         "sample_rate": 16000,
                         "encoding": "pcm_s16le",
                         "channels": 1,
+                        "language_mode": "zh",
                     })
                     speech_ws.receive_json()  # started
 

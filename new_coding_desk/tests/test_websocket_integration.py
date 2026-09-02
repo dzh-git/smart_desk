@@ -104,7 +104,7 @@ class TestWebSocketEvents:
         assert isinstance(data["timestamp"], int)
 
     def test_seat_occupied_event_via_dev_api(self, dev_enabled):
-        """POST /api/dev/seats/10/occupy → seat_occupied WebSocket event."""
+        """POST /api/dev/seats/9/occupy → seat_occupied WebSocket event."""
         with TestClient(app) as client:
             mid = _create_meeting(client)
 
@@ -113,7 +113,7 @@ class TestWebSocketEvents:
                 ws.receive_json()
 
                 # Trigger seat_occupied via synchronous dev route
-                resp = client.post("/api/dev/seats/10/occupy")
+                resp = client.post("/api/dev/seats/9/occupy")
                 assert resp.status_code == 200
 
                 # Receive seat_occupied event
@@ -121,7 +121,7 @@ class TestWebSocketEvents:
 
         assert data["event"] == "seat_occupied"
         assert data["meeting_id"] == mid
-        assert data["payload"]["seat_id"] == 10
+        assert data["payload"]["seat_id"] == 9
 
     def test_seat_vacant_event_via_dev_api(self, dev_enabled):
         """Occupy then vacate → seat_vacant WebSocket event."""

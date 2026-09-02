@@ -10,6 +10,22 @@ setlocal enabledelayedexpansion
 :: -- Project root (resolve from batch file location) ----------------------
 set "SD_ROOT=%~dp0"
 if "%SD_ROOT:~-1%"=="\" set "SD_ROOT=%SD_ROOT:~0,-1%"
+for %%I in ("%SD_ROOT%\..") do set "REPO_ROOT=%%~fI"
+set "VENV_PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
+set "PYTHONUTF8=1"
+
+if not exist "%VENV_PYTHON%" (
+    echo   [ERROR] SmartDesk Python environment not found: %VENV_PYTHON%
+    echo   Run: "%REPO_ROOT%\SETUP_PYTHON.bat"
+    pause
+    exit /b 1
+)
+"%VENV_PYTHON%" "%REPO_ROOT%\scripts\check_python_runtime.py"
+if %ERRORLEVEL% NEQ 0 (
+    pause
+    exit /b 1
+)
+set "PATH=%REPO_ROOT%\.venv\Scripts;%PATH%"
 
 echo ========================================
 echo   SmartDesk - Smart Conference Table
@@ -24,6 +40,7 @@ set VITE_ENABLE_DEMO_CONTROLS=true
 set ENABLE_TRANSLATION_MODEL=true
 if not defined SMART_DESK_ENABLE_SPEECH_TRACE set "SMART_DESK_ENABLE_SPEECH_TRACE=true"
 if not defined VITE_ENABLE_SPEECH_TRACE set "VITE_ENABLE_SPEECH_TRACE=true"
+if not defined SMART_DESK_CAPTURE_SPEECH_DEBUG set "SMART_DESK_CAPTURE_SPEECH_DEBUG=false"
 if not defined SMART_DESK_TORCH_THREADS set "SMART_DESK_TORCH_THREADS=4"
 if not defined SMART_DESK_TORCH_INTEROP_THREADS set "SMART_DESK_TORCH_INTEROP_THREADS=1"
 if not defined OMP_NUM_THREADS set "OMP_NUM_THREADS=4"
@@ -44,6 +61,7 @@ echo     VITE_ENABLE_DEMO_CONTROLS    = true
 echo     ENABLE_TRANSLATION_MODEL     = true
 echo     SMART_DESK_SPEECH_TRACE      = %SMART_DESK_ENABLE_SPEECH_TRACE%
 echo     VITE_SPEECH_TRACE            = %VITE_ENABLE_SPEECH_TRACE%
+echo     SPEECH_DEBUG_AUDIO_CAPTURE   = %SMART_DESK_CAPTURE_SPEECH_DEBUG%
 echo     TORCH_THREADS                = %SMART_DESK_TORCH_THREADS% / interop %SMART_DESK_TORCH_INTEROP_THREADS%
 echo     OMP/MKL_THREADS              = %OMP_NUM_THREADS% / %MKL_NUM_THREADS%
 echo     TRANSLATION_MODEL_PATH       = %TRANSLATION_MODEL_PATH%
@@ -62,7 +80,7 @@ if exist "%SD_ROOT%\.smartdesk-runtime\frontend.pid" del "%SD_ROOT%\.smartdesk-r
 set "SKIP_PAUSE=1"
 call "%SD_ROOT%\kill.bat"
 set "SKIP_PAUSE="
-%SystemRoot%\System32\timeout.exe /t 2 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 2000"
 echo.
 
 :: -- Step 1: Check dependencies -------------------------------------------
@@ -72,7 +90,7 @@ echo.
 :: Python
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo   [ERROR] Python not found in PATH.
+    echo   [ERROR] SmartDesk Python 3.11 was not added to PATH.
     pause
     exit /b 1
 )
@@ -149,11 +167,11 @@ echo   node_modules: OK
 echo.
 
 :: -- Step 2: Start Backend -----------------------------------------------
-echo [2/4] Starting backend FastAPI on http://127.0.0.1:8000 ...
+echo [2/4] Starting backend FastAPI on http://0.0.0.0:8000 ...
 echo.
 
 powershell -NoProfile -Command ^
-  "$p = Start-Process python.exe -ArgumentList '-m','uvicorn','backend.main:app','--host','127.0.0.1','--port','8000','--log-level','info' -WorkingDirectory '%SD_ROOT%' -WindowStyle Normal -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\backend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\backend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\backend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\backend.pid' -ErrorAction SilentlyContinue }"
+  "$p = Start-Process python.exe -ArgumentList '-m','uvicorn','backend.main:app','--host','0.0.0.0','--port','8000','--log-level','info' -WorkingDirectory '%SD_ROOT%' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\backend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\backend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\backend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\backend.pid' -ErrorAction SilentlyContinue }"
 
 if not exist "%SD_ROOT%\.smartdesk-runtime\backend.pid" (
     echo   [ERROR] Backend failed to start. Check:
@@ -200,7 +218,7 @@ for /L %%i in (1,1,30) do (
                 exit /b 1
             )
             <nul set /p "=."
-%SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 1000"
         )
     )
 )
@@ -220,7 +238,7 @@ echo [3/4] Starting frontend Vite on http://0.0.0.0:5173 ...
 echo.
 
 powershell -NoProfile -Command ^
-  "$p = Start-Process npm.cmd -ArgumentList 'run dev -- --host 0.0.0.0' -WorkingDirectory '%SD_ROOT%\frontend' -WindowStyle Normal -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\frontend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\frontend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\frontend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\frontend.pid' -ErrorAction SilentlyContinue }"
+  "$p = Start-Process npm.cmd -ArgumentList 'run dev -- --host 0.0.0.0' -WorkingDirectory '%SD_ROOT%\frontend' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\frontend.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\frontend.stderr.log'; Start-Sleep -Milliseconds 500; if ($p -and -not $p.HasExited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\frontend.pid', $p.Id.ToString()) } else { Remove-Item '%SD_ROOT%\.smartdesk-runtime\frontend.pid' -ErrorAction SilentlyContinue }"
 
 if not exist "%SD_ROOT%\.smartdesk-runtime\frontend.pid" (
     echo   [ERROR] Frontend failed to start. Check:
@@ -267,7 +285,7 @@ for /L %%i in (1,1,30) do (
                 exit /b 1
             )
             <nul set /p "=."
-%SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 1000"
         )
     )
 )
@@ -293,7 +311,7 @@ if exist "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid" del "%SD_ROOT%\.sm
 if /I "%ENABLE_DISPLAY_AGENT%"=="true" (
     echo   [display-agent] Starting on http://127.0.0.1:8766 ...
     start "SmartDesk Display Agent" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'agent.py' -WorkingDirectory '%SD_ROOT%\host_services\display_agent' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\display_agent.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and -not $exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\display_agent.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\display_agent.pid' -ErrorAction SilentlyContinue }"
-    %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+    powershell -NoProfile -Command "Start-Sleep -Milliseconds 1000"
 ) else (
     echo   [display-agent] Disabled: ENABLE_DISPLAY_AGENT is not true.
 )
@@ -318,7 +336,7 @@ if /I "%ENABLE_SCREEN_STREAM%"=="true" (
     if %SCREEN_STREAM_READY% EQU 1 (
         echo   [screen-stream] Starting Screen Supervisor ...
         start "SmartDesk Screen Supervisor" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'supervisor.py' -WorkingDirectory '%SD_ROOT%\host_services\screen_stream' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and -not $exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid' -ErrorAction SilentlyContinue }"
-        %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+        powershell -NoProfile -Command "Start-Sleep -Milliseconds 1000"
     ) else (
         if %SCREEN_STREAM_READY% EQU 0 (
             echo   [screen-stream] [ERROR] Required screen-stream binaries not found
@@ -370,8 +388,12 @@ if /I "%ENABLE_SCREEN_STREAM%"=="true" if %SCREEN_STREAM_READY% EQU 1 (
 echo.
 
 :: -- Step 4: Open browser --------------------------------------------------
-echo [4/4] Opening browser ...
-powershell -NoProfile -Command "Start-Process 'http://127.0.0.1:5173'"
+if /I "%SMARTDESK_SKIP_BROWSER%"=="true" (
+    echo [4/4] Browser launch skipped by controller.
+) else (
+    echo [4/4] Opening browser ...
+    powershell -NoProfile -Command "Start-Process 'http://127.0.0.1:5173'"
+)
 echo.
 
 echo ========================================
@@ -388,6 +410,6 @@ echo   Run kill.bat to stop all.
 echo ========================================
 echo.
 
-pause
+if /I not "%SMARTDESK_CONTROL_MODE%"=="true" pause
 endlocal
 exit /b 0

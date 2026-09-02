@@ -1,0 +1,21 @@
+{
+  "name": "smartdesk-tablet-diagnostic-web",
+  "private": true,
+  "version": "0.8.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:android": "npm run build && node scripts/copy-to-android.mjs",
+    "test": "node --test src/*.test.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.0.4",
+    "vite": "8.1.5"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "modelVersion": "se-mobilefacenet-ms1mv3-arcface-emb256-v1",
+  "weightLicense": "NON_COMMERCIAL_RESEARCH_ONLY",
+  "commercialDeploymentApproved": false,
+  "redistributionApproved": false,
+  "approvalRecord": null
+}

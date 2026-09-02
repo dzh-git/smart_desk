@@ -103,14 +103,12 @@ def clear_env(monkeypatch):
 
 
 class TestBackendReadOnlyBoundary:
-    """Backend MUST NOT expose write endpoints, import Win32, or use subprocess."""
+    """Backend stays OS-isolated; tablet writes require Seat 1 authentication."""
 
-    def test_no_post_activate_endpoint(self, client) -> None:
-        """No POST /api/host-display/activate exists."""
+    def test_post_activate_requires_host_authentication(self, client) -> None:
+        """POST activation exists but fails closed without Seat 1 credentials."""
         resp = client.post("/api/host-display/activate", json={"app": "powerpoint"})
-        assert resp.status_code in (404, 405), (
-            f"POST activate should not exist, got {resp.status_code}"
-        )
+        assert resp.status_code in (403, 422)
 
     def test_no_get_activate_endpoint(self, client) -> None:
         """No GET variant of activate."""
@@ -127,8 +125,8 @@ class TestBackendReadOnlyBoundary:
                 f"{method.upper()} /api/host-display/activate should not exist"
             )
 
-    def test_only_status_endpoint_on_router(self) -> None:
-        """The host_display router only registers GET /status."""
+    def test_router_exposes_status_and_authenticated_activation(self) -> None:
+        """The router exposes read-only status and one fixed-target relay."""
         from backend.api.host_display import router
         registered_routes = []
         for route in router.routes:
@@ -136,18 +134,10 @@ class TestBackendReadOnlyBoundary:
                 if method in ("HEAD", "OPTIONS"):
                     continue
                 registered_routes.append(f"{method} {route.path}")
-        read_only_routes = [
-            r for r in registered_routes
-            if r.startswith("GET ") or r.startswith("OPTIONS ")
-        ]
-        # Make sure there's exactly one non-OPTIONS route (GET /status)
         get_routes = [r for r in registered_routes if r.startswith("GET ")]
-        assert len(get_routes) == 1, (
-            f"Router should only expose GET /status. Found: {registered_routes}"
-        )
-        assert "/status" in get_routes[0], (
-            f"Expected GET /status, got: {get_routes}"
-        )
+        post_routes = [r for r in registered_routes if r.startswith("POST ")]
+        assert get_routes == ["GET /api/host-display/status"]
+        assert post_routes == ["POST /api/host-display/activate"]
 
     def test_backend_does_not_import_win32(self) -> None:
         """host_display module does not import any Win32/COM module."""
@@ -206,7 +196,7 @@ class TestBackendReadOnlyBoundary:
         write_patterns = [
             "db.add(", "db.commit(", "db.merge(", "db.delete(",
             "session.add(", "session.commit(", "session.merge(", "session.delete(",
-            "Base.metadata", "SessionLocal", "from backend.database",
+            "Base.metadata", "SessionLocal",
             "from backend.repositories",
         ]
         for pattern in write_patterns:

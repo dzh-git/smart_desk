@@ -5,6 +5,12 @@ setlocal
 :: ── Resolve paths ───────────────────────────────────────────────────────────
 set "SD_ROOT=%~dp0..\.."
 if "%SD_ROOT:~-1%"=="\" set "SD_ROOT=%SD_ROOT:~0,-1%"
+for %%I in ("%SD_ROOT%\..") do set "REPO_ROOT=%%~fI"
+set "VENV_PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
+if defined SMARTDESK_PYTHON set "VENV_PYTHON=%SMARTDESK_PYTHON%"
+set "PYTHON_GATE=%REPO_ROOT%\scripts\check_python_runtime.py"
+if defined SMARTDESK_PYTHON_GATE set "PYTHON_GATE=%SMARTDESK_PYTHON_GATE%"
+set "PYTHONUTF8=1"
 set "SCREEN_STREAM_DIR=%SD_ROOT%\host_services\screen_stream"
 set "RUNTIME_DIR=%SD_ROOT%\.smartdesk-runtime\screen-stream"
 
@@ -14,6 +20,15 @@ echo ==========================================
 echo   SmartDesk Screen Stream
 echo ==========================================
 echo.
+
+if not exist "%VENV_PYTHON%" (
+    echo   [ERROR] SmartDesk Python environment not found: %VENV_PYTHON%
+    echo   Run: "%REPO_ROOT%\SETUP_PYTHON.bat"
+    pause
+    exit /b 1
+)
+"%VENV_PYTHON%" "%PYTHON_GATE%" >nul
+if errorlevel 1 exit /b 1
 
 :: ── Verify FFmpeg binary ────────────────────────────────────────────────────
 if not exist "%SD_ROOT%\tools\ffmpeg\bin\ffmpeg.exe" (
@@ -38,5 +53,5 @@ echo.
 echo   Starting screen stream supervisor...
 echo.
 cd /d "%SCREEN_STREAM_DIR%"
-python supervisor.py
+"%VENV_PYTHON%" supervisor.py
 endlocal

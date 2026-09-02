@@ -4,7 +4,14 @@
 //
 // See docs/API_SPEC.md for complete documentation.
 
-import { apiDelete, apiGet, apiGetRaw, apiPost } from "./client";
+import {
+  apiDelete,
+  apiGet,
+  apiGetRaw,
+  apiPost,
+  apiPut,
+  apiRequest,
+} from "./client";
 import type {
   Meeting,
   SeatState,
@@ -14,8 +21,16 @@ import type {
   ServiceCall,
   Agenda,
   Attendee,
+  Person,
+  IdentityCheckInPayload,
+  TabletVacatePayload,
+  DebugAdmitPayload,
+  TabletDeviceStatus,
+  TabletHeartbeatPayload,
   TranslationHistoryResponse,
   ServiceType,
+  HostDisplayApp,
+  HostDisplayActivateResult,
 } from "./types";
 
 // ── Meeting ─────────────────────────────────────────────────────────────────
@@ -23,6 +38,11 @@ import type {
 /** Returns the active meeting, or `null` when none exists. */
 export function fetchActiveMeeting(): Promise<Meeting | null> {
   return apiGet<Meeting | null>("/meetings/active");
+}
+
+/** Returns all meetings, newest first as provided by the backend. */
+export function fetchMeetings(): Promise<Meeting[]> {
+  return apiGet<Meeting[]>("/meetings");
 }
 
 /** Create a pending meeting. */
@@ -114,11 +134,23 @@ export function createAttendee(
   meetingId: number,
   name: string,
   title: string = "",
+  personId?: string,
 ): Promise<Attendee> {
   return apiPost<Attendee>(`/meetings/${meetingId}/attendees`, {
     name,
     title,
+    ...(personId ? { personId } : {}),
   });
+}
+
+/** List stable people available for meeting attendee assignment. */
+export function fetchPeople(): Promise<Person[]> {
+  return apiGet<Person[]>("/people");
+}
+
+/** Create a stable person identity before face enrollment. */
+export function createPerson(id: string, name: string): Promise<Person> {
+  return apiPost<Person>("/people", { id, name });
 }
 
 /** Delete an attendee from a meeting. */
@@ -127,6 +159,33 @@ export function deleteAttendee(
   attendeeId: number,
 ): Promise<void> {
   return apiDelete<void>(`/meetings/${meetingId}/attendees/${attendeeId}`);
+}
+
+/** Assign the meeting's default attendee to a physical seat. */
+export function setSeatAssignment(
+  meetingId: number,
+  seatId: number,
+  attendeeId: number,
+): Promise<Attendee> {
+  return apiPut<Attendee>(
+    `/meetings/${meetingId}/seat-assignments/${seatId}`,
+    { attendeeId },
+  );
+}
+
+/** Clear a seat's default attendee assignment. */
+export function clearSeatAssignment(
+  meetingId: number,
+  seatId: number,
+): Promise<void> {
+  return apiDelete<void>(
+    `/meetings/${meetingId}/seat-assignments/${seatId}`,
+  );
+}
+
+/** Host fallback admission for the attendee assigned to the seat. */
+export function manualAdmitSeat(seatId: number): Promise<SeatState> {
+  return apiPost<SeatState>(`/seats/${seatId}/manual-admit`);
 }
 
 /** Add an agenda item to a meeting. */
@@ -213,6 +272,84 @@ export function checkinSeat(
   return apiPost<SeatState>(`/seats/${seatId}/checkin`, {
     attendee_id: attendeeId,
   });
+}
+
+/**
+ * Submit Android's local identity evidence for server-side policy checks.
+ * The server maps personId to the active meeting attendee and reuses the
+ * existing SeatService check-in state machine.
+ */
+export function identityCheckinSeat(
+  seatId: number,
+  payload: IdentityCheckInPayload,
+  deviceToken: string,
+): Promise<SeatState> {
+  return apiRequest<SeatState>(`/seats/${seatId}/identity-checkin`, {
+    method: "POST",
+    headers: {
+      "X-SmartDesk-Device-Token": deviceToken,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function tabletVacateSeat(
+  seatId: number,
+  payload: TabletVacatePayload,
+  deviceToken: string,
+): Promise<SeatState> {
+  return apiRequest<SeatState>(`/seats/${seatId}/tablet-vacate`, {
+    method: "POST",
+    headers: {
+      "X-SmartDesk-Device-Token": deviceToken,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function debugAdmitSeat(
+  seatId: number,
+  payload: DebugAdmitPayload,
+  deviceToken: string,
+): Promise<SeatState> {
+  return apiRequest<SeatState>(`/seats/${seatId}/debug-admit`, {
+    method: "POST",
+    headers: {
+      "X-SmartDesk-Device-Token": deviceToken,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function activateHostDisplayFromTablet(
+  app: HostDisplayApp,
+  deviceId: string,
+  deviceToken: string,
+): Promise<HostDisplayActivateResult> {
+  return apiRequest<HostDisplayActivateResult>("/host-display/activate", {
+    method: "POST",
+    headers: {
+      "X-SmartDesk-Device-Token": deviceToken,
+    },
+    body: JSON.stringify({ deviceId, deviceSeatId: 1, app }),
+  });
+}
+
+export function reportTabletHeartbeat(
+  deviceId: string,
+  payload: TabletHeartbeatPayload,
+  deviceToken: string,
+): Promise<TabletDeviceStatus> {
+  return apiRequest<TabletDeviceStatus>(
+    `/tablet-devices/${encodeURIComponent(deviceId)}/heartbeat`,
+    {
+      method: "POST",
+      headers: {
+        "X-SmartDesk-Device-Token": deviceToken,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 // ── Dev Seat Controls (demo-only) ────────────────────────────────────────────

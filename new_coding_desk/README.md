@@ -23,7 +23,21 @@ npm install
 cd ..
 ```
 
-启动本地 demo：
+推荐双击以下文件启动会议控制窗口（不会显示终端窗口）：
+
+```text
+SmartDeskControl.vbs
+```
+
+需要桌面快捷方式时，双击 `CreateSmartDeskShortcut.vbs`。该脚本会创建带
+SmartDesk 专用图标的桌面快捷方式；不要直接移动原始 `.vbs` 文件。
+
+控制窗口提供“启动程序”“停止程序”和“打开会议页面”按钮。点击窗口右上角
+“×”或最小化时，控制窗口只会隐藏到任务栏托盘，会议服务继续运行。需要完全
+退出时，右键托盘图标并选择“结束程序”，此操作会先停止会议服务再退出控制器。
+启动、停止和打开页面期间会显示操作状态与平滑进度条，操作完成前相关按钮保持禁用。
+
+命令行调试时仍可使用：
 
 ```powershell
 .\start.bat
@@ -120,6 +134,10 @@ Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 | `pytest.ini` | pytest 测试配置（测试发现路径与运行选项）。 |
 | `start.bat` | 一键启动脚本：同时拉起 FastAPI 后端与 Vite 前端。 |
 | `kill.bat` | 停止脚本：结束由 `start.bat` 启动的本地进程。 |
+| `SmartDeskControl.vbs` | 无终端窗口启动会议控制器。 |
+| `CreateSmartDeskShortcut.vbs` | 在桌面创建带 SmartDesk 图标的控制器快捷方式。 |
+| `smartdesk_control.ps1` | Windows 会议控制窗口、后台状态检测及任务栏托盘实现。 |
+| `assets/SmartDeskControl.ico` | 控制窗口、系统托盘及快捷方式使用的多尺寸 Windows 图标。 |
 
 ### 源码目录
 

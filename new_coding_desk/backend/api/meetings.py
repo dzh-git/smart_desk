@@ -36,6 +36,7 @@ from backend.schemas.meeting import (
     AgendaResponse,
     AttendeeCreate,
     AttendeeResponse,
+    SeatAssignmentRequest,
 )
 from backend.services.meeting_service import MeetingService
 
@@ -314,10 +315,58 @@ def create_attendee(
             meeting_id=meeting_id,
             name=body.name,
             title=body.title,
+            person_id=body.person_id,
         )
     except NotFoundError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ConflictError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 409)
     return ApiResponse.ok(data=AttendeeResponse.model_validate(attendee))
+
+
+@router.put(
+    "/{meeting_id}/seat-assignments/{seat_id}",
+    response_model=ApiResponse[AttendeeResponse],
+)
+def set_seat_assignment(
+    meeting_id: int,
+    seat_id: int,
+    body: SeatAssignmentRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        attendee = _service(db).assign_attendee_to_seat(
+            meeting_id,
+            seat_id,
+            body.attendee_id,
+        )
+    except NotFoundError as error:
+        return _to_json(ApiResponse.fail(error.message, error.error_code), 404)
+    except ConflictError as error:
+        return _to_json(ApiResponse.fail(error.message, error.error_code), 409)
+    except ValidationError as error:
+        return _to_json(ApiResponse.fail(error.message, error.error_code), 400)
+    return ApiResponse.ok(data=AttendeeResponse.model_validate(attendee))
+
+
+@router.delete(
+    "/{meeting_id}/seat-assignments/{seat_id}",
+    response_model=ApiResponse[None],
+)
+def clear_seat_assignment(
+    meeting_id: int,
+    seat_id: int,
+    db: Session = Depends(get_db),
+):
+    try:
+        _service(db).clear_seat_assignment(meeting_id, seat_id)
+    except NotFoundError as error:
+        return _to_json(ApiResponse.fail(error.message, error.error_code), 404)
+    except ConflictError as error:
+        return _to_json(ApiResponse.fail(error.message, error.error_code), 409)
+    except ValidationError as error:
+        return _to_json(ApiResponse.fail(error.message, error.error_code), 400)
+    return ApiResponse.ok(message="Seat assignment cleared")
 
 
 @router.delete(

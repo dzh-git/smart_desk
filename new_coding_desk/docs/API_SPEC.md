@@ -28,6 +28,7 @@ in `WEBSOCKET_PROTOCOL.md`.
   `{"detail": "<ERROR_CODE>"}` form **instead of** the common envelope. Their
   success responses still use the common envelope above.
 - Create endpoints return HTTP **201** on success: `POST /api/meetings`,
+  `POST /api/people`,
   `POST /api/votes`, `POST /api/service-calls`, and `POST /api/translations`
   (when `final=true`). All other successful writes return 200.
 - The frontend must initialize by calling the concrete resources below. There
@@ -46,6 +47,7 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `ENABLE_DEMO_SEED` | `false` | Create demo data only when the database has no meetings. |
 | `ENABLE_DEMO_SEED_WHEN_NO_ACTIVE` | `false` | Create a demo active meeting if startup finds no active meeting. |
 | `ENABLE_DEMO_SEAT_API` | `false` | Enable development-only seat occupy/vacate endpoints. |
+| `SMARTDESK_ALLOW_PROTOTYPE_IDENTITY_CHECKIN` | `false` | Development-only opt-in allowing a `PROTOTYPE` + `PROVISIONAL` identity result to reach the existing seat check-in state machine. Never enable before local calibration is accepted. |
 | `ENABLE_TRANSLATION_MODEL` | unset | Enable local OPUS-MT translation for final records. |
 | `TRANSLATION_ZH_EN_MODEL_PATH` | `models/opus-mt-zh-en` | Local Chinese-to-English model directory. |
 | `TRANSLATION_EN_ZH_MODEL_PATH` | `models/opus-mt-en-zh` | Local English-to-Chinese model directory. |
@@ -94,7 +96,8 @@ POST /api/meetings/{meeting_id}/agendas
 { "title": "Opening", "sort_order": 0 }          // title 1..500 (required); sort_order int >= 0, default 0
 
 POST /api/meetings/{meeting_id}/attendees
-{ "name": "Alice", "title": "" }                 // name 1..100 (required); title default ""
+{ "name": "Alice", "title": "", "personId": "person_001" }
+// name 1..100 (required); title default ""; personId optional stable identity
 ```
 
 Meeting backend statuses are `pending`, `active`, and `finished`. The frontend
@@ -104,6 +107,26 @@ Ending a meeting resets seats to `vacant`, clears attendee seat bindings,
 sets attendees to `checked_in=false`, closes any open vote, preserves the
 speaker seat value, and keeps historical votes, service calls, and translation
 records.
+
+## People APIs
+
+`Person.id` is the stable identifier used by local face templates across
+meetings. It is distinct from the per-meeting, auto-incrementing
+`Attendee.id`.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/people` | List stable people. |
+| `POST` | `/api/people` | Create a stable person; returns 201. |
+
+```json
+POST /api/people
+{ "id": "person_001", "name": "Alice" }
+```
+
+`id` must contain 3–64 ASCII letters, numbers, dots, underscores, or hyphens.
+An attendee may reference a Person through optional `personId`; the same Person
+cannot appear twice in one meeting.
 
 ## Agenda APIs
 
@@ -219,6 +242,9 @@ Frontend clients must still be able to refresh the source of truth through
 |---|---|---|
 | `GET` | `/api/seats` | Return all 9 seat states. |
 | `POST` | `/api/seats/{seat_id}/checkin` | Check an attendee into an occupied unchecked seat. |
+| `POST` | `/api/seats/{seat_id}/identity-checkin` | Validate Android identity evidence, map stable Person to the active meeting attendee, then reuse normal check-in. |
+| `POST` | `/api/seats/{seat_id}/debug-admit` | In configured `identity_mode=debug` only, authenticate the bound tablet and admit its assigned attendee without fabricating biometric evidence. |
+| `POST` | `/api/seats/{seat_id}/tablet-vacate` | Authenticate the bound tablet, release the attendee and return the seat to `vacant`. |
 | `GET` | `/api/seats/speaker` | Return the current speaker seat. |
 | `POST` | `/api/seats/speaker` | Set speaker seat. See request body below. |
 | `DELETE` | `/api/seats/speaker` | Clear speaker seat. |
@@ -252,6 +278,174 @@ Check-in requires:
 
 Successful check-in sets `seat.status=checked_in`, sets both seat and attendee
 bindings, and broadcasts `check_in`.
+
+`POST /api/seats/{seat_id}/identity-checkin` request body:
+
+```json
+{
+  "eventId": "6fe8e135-15f5-4a3f-946c-8800d7519937",
+  "eventTimestamp": 1785168000000,
+  "personCode": "person_001",
+  "deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201",
+  "deviceSeatId": 1,
+  "status": "VERIFIED",
+  "similarity": 0.82,
+  "thresholdStatus": "PROVISIONAL",
+  "verificationLevel": "PROTOTYPE",
+  "modelVersion": "se-mobilefacenet-ms1mv3-arcface-emb256-v1"
+}
+```
+
+The request must include `X-SmartDesk-Device-Token`. The token is compared
+against the salted PBKDF2 hash stored for the provisioned tablet; raw device
+tokens are never stored by the backend.
+
+The endpoint never trusts face evidence as a direct attendee ID. It:
+
+1. authenticates an enabled device provisioned for the URL seat and rejects
+   either a registry or request seat mismatch;
+2. requires `eventTimestamp` in Unix epoch milliseconds; a new event older
+   than 120 seconds or more than 30 seconds in the future is rejected with
+   `IDENTITY_EVENT_STALE` or `IDENTITY_EVENT_FUTURE` (bounded settings:
+   `SMARTDESK_IDENTITY_MAX_EVENT_AGE_SECONDS` and
+   `SMARTDESK_IDENTITY_MAX_FUTURE_SKEW_SECONDS`);
+3. rejects non-`VERIFIED` and `CALIBRATION_PENDING` results;
+4. accepts `VALIDATED` only with `thresholdStatus=VALIDATED`;
+5. rejects `PROTOTYPE` by default; the explicit development environment flag
+   may allow `PROTOTYPE` only with `thresholdStatus=PROVISIONAL`;
+6. resolves `Person.id` to exactly one attendee in the active meeting;
+7. accepts either `vacant` or `occupied_unchecked`; a vacant seat is occupied
+   inside the same transaction before delegating duplicate-seat and
+   attendee-binding checks to `SeatService.check_in`;
+8. atomically commits Seat, Attendee and the durable identity event, then emits
+   `seat_occupied` followed by `check_in` for a newly occupied seat;
+9. persists `eventId`; an identical retry returns the existing checked-in
+   state without broadcasting a second `check_in`, while conflicting evidence
+   using the same ID returns HTTP 409.
+
+`POST /api/seats/{seat_id}/tablet-vacate` requires
+`X-SmartDesk-Device-Token` and this body:
+
+```json
+{"deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201", "deviceSeatId": 1}
+```
+
+The device registry seat, URL seat and `deviceSeatId` must match, and an active
+meeting must exist. Success clears both seat and attendee bindings, emits
+`seat_vacant`, and returns the standard `SeatStateResponse`.
+
+Identity submissions use a bounded per-device/seat sliding-window limiter
+(default 60/minute). HTTP 429 returns stable `RATE_LIMITED` plus
+`Retry-After`; change the bounded limit with
+`SMARTDESK_IDENTITY_RATE_LIMIT_PER_MINUTE`.
+
+Provisioning is fail-closed unless
+`SMARTDESK_DEVICE_PROVISIONING_TOKEN` contains at least 24 characters:
+
+```http
+POST /api/tablet-devices/provision
+X-SmartDesk-Provisioning-Token: <admin provisioning token>
+Content-Type: application/json
+```
+
+```json
+{
+  "deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201",
+  "seatId": 1,
+  "deviceToken": "unique-device-token-at-least-24-chars",
+  "enabled": true,
+  "replaceExisting": false
+}
+```
+
+Provisioning the same physical device rotates its token and may move it to an
+unbound seat. A seat may have only one registered tablet. Replacing a different
+tablet requires the admin-authorized request to set `replaceExisting=true`.
+
+Before loading a formal seat page, Android validates its stored binding:
+
+```http
+POST /api/tablet-devices/{deviceId}/validate
+X-SmartDesk-Device-Token: <per-device token>
+Content-Type: application/json
+
+{"seatId": 1, "appVersion": "0.8.0"}
+```
+
+The response includes the stable physical `deviceId`, derived human-readable
+`seatAlias` such as `tablet-seat-01`, and the backend-authoritative
+`identityMode` (`formal` or `debug`). Missing or invalid integration config
+always resolves to `formal`.
+
+`POST /api/seats/{seatId}/debug-admit` accepts the same authenticated device
+identity shape as tablet vacate:
+
+```json
+{"deviceId": "tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201", "deviceSeatId": 1}
+```
+
+It is rejected with `DEBUG_IDENTITY_MODE_DISABLED` outside debug mode. The
+server selects only the active meeting attendee assigned to the authenticated
+seat, reuses the normal seat state machine, and never writes an identity event.
+
+### Central face-template management and tablet synchronization
+
+All management writes require the bound Seat 1 `deviceId` and
+`X-SmartDesk-Device-Token`. Raw photos are never accepted by these APIs.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/face-templates` | Seat 1 list/capacity/revisions. |
+| `PUT` | `/api/face-templates/{personId}` | Seat 1 upload a device-encrypted 256-D template envelope. |
+| `DELETE` | `/api/face-templates/{personId}` | Delete an unused template without deleting Person/history. |
+| `GET/PUT` | `/api/face-templates/meetings/{meetingId}/assignments` | Read or batch update Seat 1 host and Seat 2–9 participant mappings through existing attendees. |
+| `PUT` | `/api/tablet-devices/{deviceId}/face-transport-key` | Register the device Android-Keystore RSA public key. |
+| `GET` | `/api/tablet-devices/{deviceId}/face-template-bundle` | Download the single template assigned to that participant seat, encrypted to the device. |
+| `POST` | `/api/tablet-devices/{deviceId}/face-template-sync-ack` | Report target meeting/revision/count/result and redacted error. |
+
+The central library holds at most 81 templates. Adding the 82nd evicts the
+oldest template not referenced by a pending or active meeting and returns the
+evicted person; if every template is protected, the request returns
+`FACE_TEMPLATE_CAPACITY_LOCKED`. Bundles carry the assigned `personId`, its
+single template, exact model hash, pipeline version, dimension, provisional
+threshold, meeting ID, and template-set revision. Verification is 1:1; Top2
+is optional diagnostic data and does not gate admission.
+
+The formal Android seat page sends authenticated operational heartbeats:
+
+```http
+POST /api/tablet-devices/tablet-a83f0a90-1f47-4a7d-83ca-53d4b570a201/heartbeat
+X-SmartDesk-Device-Token: <per-device token>
+Content-Type: application/json
+```
+
+```json
+{
+  "seatId": 1,
+  "appVersion": "0.8.0",
+  "cameraStatus": "READY",
+  "faceModelStatus": "READY",
+  "registeredTemplatesCount": 3,
+  "microphoneStatus": "READY",
+  "meetingWebsocketStatus": "CONNECTED",
+  "diagnosticStatus": "READY",
+  "lastError": null
+}
+```
+
+The device ID, token, and bound seat must all match. Heartbeats never contain
+face images, embeddings, diagnostic crops, or raw audio.
+`appVersion` must be SemVer and at least
+`SMARTDESK_TABLET_MIN_APP_VERSION` (default `0.8.0`). Invalid and old clients
+receive `DEVICE_APP_VERSION_INVALID` and `DEVICE_APP_VERSION_UNSUPPORTED`.
+Heartbeat rate is limited per device/seat (default 30/minute, configurable
+through `SMARTDESK_TABLET_HEARTBEAT_RATE_LIMIT_PER_MINUTE`); provisioning is
+limited per client (default 10/minute). Both return `RATE_LIMITED` and
+`Retry-After` when exceeded.
+
+Current Android face results remain `CALIBRATION_PENDING` until the 75-run
+field calibration is complete. The production default therefore cannot use
+them for automatic check-in.
 
 ## Development Seat APIs
 
@@ -480,18 +674,26 @@ cadence, sentence-translation waiting/inference, and finalization waiting/work.
 GET /api/hardware/status
 ```
 
-Each item in `data.seats` includes `current_mode` (the last mode confirmed by
-the Arduino ACK), `intended_mode`, `command_pending`, `last_ack_at`, and
-`last_error`, in addition to seat, port, enabled, and connection fields. An
-offline seat remains in the response so the management UI can show pending
-commands and port diagnostics.
+`data.seats` contains the Arduino/Windows-compatible or ESP32 controller
+channel. Each item includes `device_type`, device/firmware identity,
+`current_mode`, `intended_mode`, command ACK state, heartbeat, sensor
+diagnostics, and the last error. ESP32 connections whose heartbeat expires are
+reported offline.
+
+`data.tablets` is a separate nine-seat Android channel. It reports provisioning
+and enablement, online/offline derived from authenticated `last_seen_at`,
+app version, camera, face model, registered-template count, microphone,
+meeting-WebSocket status, diagnostic status, last error, and face-template
+target meeting/revision/count/sync result/redacted error. The default
+offline window is 45 seconds and can be configured from 10–300 seconds with
+`SMARTDESK_TABLET_OFFLINE_TIMEOUT_SECONDS`.
 
 ## Host Display and Screen Stream APIs
 
 The complete Phase 1-6 process, network, HTTP, frontend, and deployment
 contract is defined in `HOST_DISPLAY_CONTRACT.md`.
 
-### SmartDesk backend: read-only status
+### SmartDesk backend: status and Seat 1 control relay
 
 ```http
 GET /api/host-display/status
@@ -509,15 +711,25 @@ Frontend integration note: this raw response is incompatible with the common
 `apiGetRaw()` which reads the body as-is without expecting an envelope.
 Test fixtures return raw JSON matching the actual backend schema.
 
-There is deliberately no backend application-switching endpoint:
+The bound Seat 1 Android tablet may switch the host application through:
 
-```text
-POST /api/host-display/activate  # forbidden / not implemented
+```http
+POST /api/host-display/activate
+X-SmartDesk-Device-Token: <device-token>
+
+{"deviceId":"...","deviceSeatId":1,"app":"powerpoint|solidworks|smartdesk"}
 ```
+
+The backend authenticates an enabled device bound to Seat 1, accepts only the
+three application values, and forwards only `{app}` to the configured,
+loopback-validated Display Agent URL with a short timeout. The caller cannot
+provide a target URL. Stable errors include `HOST_DEVICE_AUTH_FAILED`,
+`DISPLAY_AGENT_OFFLINE`, `DISPLAY_APP_INVALID`,
+`DISPLAY_APP_ALREADY_ACTIVE`, and `DISPLAY_ACTIVATION_FAILED`.
 
 ### Central-host local Display Agent
 
-These endpoints are not served by the SmartDesk backend and are reachable only
+These endpoints are served by the local Display Agent and are reachable only
 on the browser machine's loopback interface (CORS is a fixed origin whitelist —
 default `http://127.0.0.1:5173`, `http://localhost:5173` — not `*`):
 

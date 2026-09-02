@@ -54,7 +54,7 @@ function getMeetingBadge(status: string): MeetingBadgeConfig {
     case "finished":
       return { status: "offline", labelCn: "已结束", labelEn: "ENDED", pulse: false };
     default:
-      return { status: "neutral", labelCn: status, labelEn: "", pulse: false };
+      return { status: "neutral", labelCn: "状态未知", labelEn: "UNKNOWN", pulse: false };
   }
 }
 
@@ -127,9 +127,9 @@ export function AdminHeader({
               <Cpu size={16} className="text-techCyan" />
             </div>
             <div className="min-w-0">
-              <DualLabel cn="SmartDesk" en="主机控制台" />
+              <DualLabel cn="SmartDesk 主持人控制台" en="HOST CONSOLE" />
               <p className="truncate text-sm font-semibold text-techText leading-tight">
-                {title || "等待会议"}
+                {title || "等待会议 / Waiting for Meeting"}
               </p>
             </div>
           </div>
@@ -156,7 +156,7 @@ export function AdminHeader({
             {showMetrics && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techBorder rounded-md text-xs">
                 <Users size={11} className="text-techGreen shrink-0" />
-                <span className="text-techMuted">签到</span>
+                <span className="text-techMuted">签到 / Check-in</span>
                 <span className="font-semibold text-techGreen">{checkedInCount}</span>
                 <span className="text-techBorder text-[10px]">/</span>
                 <span className="font-semibold text-techMuted text-[10px]">{totalSeats}</span>
@@ -165,8 +165,9 @@ export function AdminHeader({
 
             {/* Current speaker */}
             {showMetrics && speakerName && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techBorder rounded-md text-xs max-w-[120px]">
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techBorder rounded-md text-xs max-w-[170px]">
                 <Mic size={11} className="text-techCyan shrink-0" />
+                <span className="text-techMuted shrink-0">发言人 / Speaker</span>
                 <span className="text-techMuted truncate">{speakerName}</span>
               </span>
             )}
@@ -175,6 +176,7 @@ export function AdminHeader({
             {showMetrics && elapsedMs != null && elapsedMs > 0 && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techBorder rounded-md text-xs">
                 <Timer size={11} className="text-techCyan shrink-0" />
+                <span className="text-techMuted">时长 / Time</span>
                 <span className="font-semibold text-techText font-mono">
                   {formatDuration(elapsedMs)}
                 </span>
@@ -185,7 +187,7 @@ export function AdminHeader({
             {showMetrics && pendingRequestCount != null && pendingRequestCount > 0 && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techAmber/30 rounded-md text-xs">
                 <span className="font-semibold text-techAmber">{pendingRequestCount}</span>
-                <span className="text-techMuted">待处理</span>
+                <span className="text-techMuted">待处理 / Pending</span>
               </span>
             )}
 
@@ -207,7 +209,7 @@ export function AdminHeader({
                   onClick={onModeSwitch}
                 >
                   <span className="w-2 h-2 rounded-full bg-techCyan" />
-                  预览 Seat {previewSeat}
+                  预览座位 {previewSeat} / Preview Seat {previewSeat}
                 </ActionButton>
               </>
             )}

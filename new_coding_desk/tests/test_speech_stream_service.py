@@ -10,6 +10,7 @@ Covers:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from unittest.mock import AsyncMock
@@ -30,6 +31,7 @@ from backend.websocket.speech_ws import (
     _handle_text_message,
     ERROR_MODEL_NOT_LOADED,
 )
+import backend.websocket.speech_ws as speech_ws_mod
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────────
@@ -305,22 +307,14 @@ class TestProcessPcmFrame:
         assert audio is not None
         assert len(audio) == 1600
 
-    # ── Phase 02: caption timeout commit ──────────────────────────────
+    # ── Caption timeout compatibility ─────────────────────────────────
 
-    def test_timeout_commits_via_check_timeout(self, monkeypatch):
-        """When ASR text does not change for text_change_timeout_s (2.0s),
-        check_timeout commits uncommitted current_line to previous_line.
+    def test_timeout_does_not_commit_frozen_interim_text(self, monkeypatch):
+        """Frozen ASR text must not create a semantic sentence boundary.
 
-        Strategy:
-          - Mock SpeechModule to return identical >=5-char text on each call.
-          - Monkeypatch time.monotonic: first call → t0, second → t0 + 2.5.
-          - First process_pcm_frame: update() sets _last_change_time = t0.
-            check_timeout(t0) sees elapsed=0 and returns None.
-            → current_line non-empty, previous_line empty.
-          - Second process_pcm_frame: same text → update() short-circuits
-            (raw_text == _last_raw), _last_change_time stays t0.
-            check_timeout(t0+2.5) sees elapsed=2.5 >= 2.0 and commits.
-            → previous_line non-empty, current_line empty.
+        PCM/VAD owns pause detection.  The legacy caption timeout API remains
+        a no-op so an unchanged interim hypothesis stays visible until a real
+        speech boundary is detected.
         """
         mock_sm = _MockSpeechModule()
         monkeypatch.setattr(
@@ -356,15 +350,15 @@ class TestProcessPcmFrame:
         assert c1["previous_line"] == "", \
             "First frame: previous_line should be empty"
 
-        # ── Second frame: same text → timeout triggers commit ──
+        # ── Second frame: same text remains current despite elapsed time ──
         r2 = stream_service.process_pcm_frame(
             self.session_key, _make_pcm16_sine(),
         )
         c2 = r2["caption"]
-        assert c2["previous_line"] != "", \
-            "Second frame: previous_line should contain committed text"
-        assert c2["current_line"] == "", \
-            "Second frame: current_line should be empty after commit"
+        assert c2["previous_line"] == "", \
+            "Elapsed time alone must not commit an interim hypothesis"
+        assert c2["current_line"] == c1["current_line"], \
+            "Frozen interim text should remain visible until VAD finalizes it"
 
     def test_cached_error_fails_fast(self) -> None:
         """When _speech_module_error is set, process_pcm_frame raises immediately."""
@@ -504,7 +498,7 @@ class _MockSpeechModule:
     def set_session_context(self, session_key, meeting_id, seat_id):
         pass
 
-    def process_interim_array(self, audio, session_key):
+    def process_interim_array(self, audio, session_key, *, is_final=False):
         return "今天天气真好我们出去散步了"
 
     def start_utterance(self, session_key):
@@ -512,6 +506,25 @@ class _MockSpeechModule:
 
     def reset_interim(self, session_key):
         pass
+
+
+class _TailFlushSpeechModule(_MockSpeechModule):
+    """Streaming fake whose final Chinese character exists only after flush."""
+
+    def __init__(self):
+        super().__init__()
+        self.flush_calls = 0
+        self.after_flush = False
+
+    def process_interim_array(self, audio, session_key, *, is_final=False):
+        if is_final:
+            return self.finish_chinese_interim(session_key)
+        return "共青团员们青年朋友" if self.after_flush else "共青团员"
+
+    def finish_chinese_interim(self, session_key):
+        self.flush_calls += 1
+        self.after_flush = True
+        return "共青团员们"
 
 
 class TestIdentitySafeCleanup:
@@ -733,6 +746,125 @@ class TestVadDetection:
             "VAD silence counter should be 0 after speech"
         )
 
+    def test_chinese_pause_flushes_pending_tail_once(self) -> None:
+        """A 0.9 s pause flushes Chinese CIF tail before final ASR starts."""
+        mock_sm = _TailFlushSpeechModule()
+        stream_service._speech_module = mock_sm
+        stream_service._speech_module_error = None
+        stream_service.start_utterance(
+            self.session_key,
+            "utt_1_1_tail_flush",
+            language_mode="zh",
+        )
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        session.calibration_frames_remaining = 0
+        session.voice_active = True
+        session.has_speech = True
+
+        # Initial online hypothesis intentionally lacks the final "们".
+        first = stream_service.process_pcm_frame(
+            self.session_key, self._make_speech_sine(),
+        )
+        assert first["source_text"].startswith("共青团员")
+        assert "共青团员们" not in first["source_text"]
+
+        for _ in range(9):
+            result = stream_service.process_pcm_frame(
+                self.session_key, self._make_silence(),
+            )
+
+        assert "共青团员们" in result["source_text"]
+        assert mock_sm.flush_calls == 1
+        assert session.chinese_streaming_flushed is True
+        assert result["vad_should_finalize"] is False
+
+        # Further silence must keep the corrected live hypothesis intact.
+        for _ in range(6):
+            result = stream_service.process_pcm_frame(
+                self.session_key, self._make_silence(),
+            )
+        assert "共青团员们" in result["source_text"]
+        assert mock_sm.flush_calls == 1
+        assert result["vad_should_finalize"] is False
+
+        # Resumed speech reopens the stream without losing or duplicating text.
+        resumed = stream_service.process_pcm_frame(
+            self.session_key, self._make_speech_sine(),
+        )
+        assert resumed["source_text"].startswith("共青团员们青年朋友")
+        assert session.chinese_streaming_flushed is False
+
+    def test_manual_end_flushes_chinese_tail(self) -> None:
+        """end_hint uses the same Chinese flush path as automatic silence."""
+        mock_sm = _TailFlushSpeechModule()
+        stream_service._speech_module = mock_sm
+        stream_service._speech_module_error = None
+        stream_service.start_utterance(
+            self.session_key,
+            "utt_1_1_manual_tail_flush",
+            language_mode="zh",
+        )
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        session.calibration_frames_remaining = 0
+        session.voice_active = True
+        session.has_speech = True
+        stream_service.process_pcm_frame(self.session_key, self._make_speech_sine())
+
+        finalized = stream_service.finalize_utterance(self.session_key)
+        assert finalized is not None
+        assert finalized["live_flush"] is True
+        assert "共青团员们" in finalized["source_text"]
+        assert mock_sm.flush_calls == 1
+
+    def test_end_hint_broadcasts_chinese_flush_before_finalizing(self, monkeypatch) -> None:
+        """Manual end publishes the corrected live text before finalizing."""
+        mock_sm = _TailFlushSpeechModule()
+        stream_service._speech_module = mock_sm
+        stream_service._speech_module_error = None
+        stream_service.start_utterance(
+            self.session_key,
+            "utt_1_1_end_hint_tail_flush",
+            language_mode="zh",
+        )
+        session = stream_service.get_session(self.session_key)
+        assert session is not None
+        session.calibration_frames_remaining = 0
+        session.voice_active = True
+        session.has_speech = True
+        stream_service.process_pcm_frame(self.session_key, self._make_speech_sine())
+
+        events = []
+
+        def _handler(event) -> None:
+            events.append(event)
+
+        event_bus.subscribe("translation_interim", _handler)
+        event_bus.subscribe("translation_finalizing", _handler)
+        monkeypatch.setattr(speech_ws_mod.finalization_queue, "submit", lambda job: True)
+
+        class _WebSocket:
+            async def send_json(self, _payload):
+                return None
+
+        try:
+            asyncio.run(_handle_text_message(
+                _WebSocket(),
+                json.dumps({"type": "end_hint"}),
+                1,
+                1,
+                self.session_key,
+            ))
+            assert [event.event_name for event in events[:2]] == [
+                "translation_interim",
+                "translation_finalizing",
+            ]
+            assert "共青团员们" in events[0].payload["source_text"]
+        finally:
+            event_bus.unsubscribe("translation_interim", _handler)
+            event_bus.unsubscribe("translation_finalizing", _handler)
+
     def test_vad_returns_false_for_unknown_session(self) -> None:
         """_check_vad_end returns False for non-existent session."""
         audio = stream_service.pcm16_to_float32(self._make_silence())
@@ -760,10 +892,14 @@ class TestVadDetection:
         session = stream_service.get_session(self.session_key)
         assert session is not None
         assert session.utterance_state == UTTERANCE_STATE_SPEAKING
+        session.chinese_streaming_flushed = True
+        session.last_streaming_text = "共青团员们"
 
         stream_service.cancel_utterance(self.session_key)
         assert session.utterance_state == UTTERANCE_STATE_IDLE
         assert session.vad_silence_seconds == 0.0
+        assert session.chinese_streaming_flushed is False
+        assert session.last_streaming_text == ""
 
     def test_prepare_next_utterance_generates_new_id(self) -> None:
         """prepare_next_utterance generates a new unique utterance_id."""

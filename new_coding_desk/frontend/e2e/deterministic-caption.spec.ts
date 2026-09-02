@@ -161,6 +161,20 @@ test.describe("Deterministic two-line live caption", () => {
     meetingId = createResp?.data?.id;
     expect(meetingId).toBeGreaterThan(0);
     await request.post(`${BACKEND}/api/meetings/${meetingId}/start`);
+    const attendeeResp = await (await request.post(
+      `${BACKEND}/api/meetings/${meetingId}/attendees`,
+      {
+        data: { name: `DetCaption Speaker ${Date.now()}` },
+        headers: { "Content-Type": "application/json" },
+      },
+    )).json();
+    expect(attendeeResp?.data?.id).toBeGreaterThan(0);
+    await request.post(`${BACKEND}/api/dev/seats/1/occupy`);
+    const checkInResp = await request.post(`${BACKEND}/api/seats/1/checkin`, {
+      data: { attendee_id: attendeeResp.data.id },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(checkInResp.status()).toBe(200);
     const speakerResp = await (await request.post(`${BACKEND}/api/seats/speaker`, {
       data: { seat_id: 1 },
       headers: { "Content-Type": "application/json" },
@@ -217,6 +231,7 @@ test.describe("Deterministic two-line live caption", () => {
     // ── 3. Navigate admin page ───────────────────────────────────────────────
     await page.goto("/");
     await page.waitForSelector("text=Connected", { timeout: 15_000 });
+    await page.getByRole("button", { name: /SERVICE & RECORDS/i }).click();
     await page.waitForTimeout(1000);
     console.log("[DetCaption] Admin page loaded, WS mock active");
 
@@ -402,7 +417,7 @@ test.describe("Deterministic two-line live caption", () => {
     let domFinalText = "";
     if (finalRow) {
       domFinalText = await page.$eval(
-        `${finalRowSelector} [data-testid="transcript-source"]`,
+        `${finalRowSelector} :is([data-testid="live-final-source"], [data-testid="transcript-source"])`,
         (el: any) => (el.textContent || "").trim(),
       );
     }

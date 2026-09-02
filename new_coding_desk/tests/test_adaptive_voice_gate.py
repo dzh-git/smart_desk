@@ -100,9 +100,17 @@ def test_content_aware_boundary_thresholds():
     session = service.get_session(key)
     session.has_speech = True
 
+    assert SpeechStreamService().get_model_status()["voice_gate"][
+        "chinese_finalize_pause_seconds"
+    ] == 2.0
+
     session.vad_silence_seconds = 0.89
     assert service._boundary_reason(session, "完整句子。") is None
     session.vad_silence_seconds = 0.9
+    assert service._boundary_reason(session, "完整句子。") is None
+    session.vad_silence_seconds = 1.99
+    assert service._boundary_reason(session, "完整句子。") is None
+    session.vad_silence_seconds = 2.0
     assert service._boundary_reason(session, "完整句子。") == "sentence_pause"
 
     session.vad_silence_seconds = 1.3

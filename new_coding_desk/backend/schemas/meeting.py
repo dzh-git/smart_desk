@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pydantic import BaseModel, Field
+from backend.schemas.person import PERSON_ID_PATTERN
 
 
 # ── Meeting ─────────────────────────────────────────────────────────────────
@@ -70,15 +71,32 @@ class AttendeeCreate(BaseModel):
     """POST /api/meetings/{meeting_id}/attendees request body."""
     name: str = Field(..., min_length=1, max_length=100)
     title: str = Field(default="", max_length=100)
+    person_id: str | None = Field(
+        default=None,
+        pattern=PERSON_ID_PATTERN,
+        alias="personId",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class AttendeeResponse(BaseModel):
     """Attendee data returned to clients."""
     id: int
     meeting_id: int
+    person_id: str | None
     name: str
     title: str
+    assigned_seat_id: int | None
     seat_id: int | None
     checked_in: bool
 
     model_config = {"from_attributes": True}
+
+
+class SeatAssignmentRequest(BaseModel):
+    """Assign one attendee as the default person for a meeting seat."""
+
+    attendee_id: int = Field(..., gt=0, alias="attendeeId")
+
+    model_config = {"populate_by_name": True}

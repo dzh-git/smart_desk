@@ -51,12 +51,15 @@ Control and observation are deliberately separate:
 
 - MediaMTX distributes pixels only.
 - The Display Agent performs local Win32/COM application switching.
-- The SmartDesk backend exposes read-only aggregate status only.
+- The SmartDesk backend exposes aggregate status and one Seat 1 authenticated,
+  fixed-loopback activation relay.
 - `/admin` may call the Display Agent directly only when the browser itself is
   running on the central host.
 - In browser code, `127.0.0.1` always means the machine running that browser.
   A remote terminal must therefore see the local Agent as unreachable.
-- No public `POST /api/host-display/activate` endpoint exists in v1.
+- `POST /api/host-display/activate` requires an enabled device bound to Seat 1,
+  a valid device token, and a whitelisted application value. It never accepts
+  a caller-supplied target URL.
 
 ## 3. Phase 1: Screen Stream Process Contract
 
@@ -370,7 +373,8 @@ The default `/admin` Overview workspace contains a Host Display card that:
 - never uses `window.location.hostname` as a central-host heuristic;
 - enables application buttons only after the loopback probe succeeds;
 - directly posts to `http://127.0.0.1:8766/activate`;
-- never posts to `/api/host-display/activate`;
+- desktop `/admin` never posts to `/api/host-display/activate`; the protected
+  Android `/host` variant uses that endpoint with Seat 1 device credentials;
 - shows stable feedback for 409, 503, CORS, and network failures;
 - does not affect meeting controls or other Admin workspaces when it fails.
 

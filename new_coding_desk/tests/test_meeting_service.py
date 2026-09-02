@@ -9,7 +9,7 @@ Coverage:
     - Agenda CRUD
     - Attendee CRUD
     - Meeting end resets seats, unbinds attendees, closes open vote,
-      preserves speaker seat (Phase 03)
+      clears speaker seat and speech ownership
 """
 from __future__ import annotations
 
@@ -381,12 +381,39 @@ class TestAttendeeCRUD:
         assert fetched is not None
         assert fetched.id == attendee.id
 
+    def test_seat_assignment_changes_publish_refresh_events(self, svc, event_bus):
+        mid = _create_pending(svc)
+        attendee = svc.create_attendee(mid, "Assigned Person")
+        received = []
+
+        def capture(event):
+            received.append(event)
+
+        event_bus.subscribe("seat_assignment_updated", capture)
+
+        svc.assign_attendee_to_seat(mid, 1, attendee.id)
+        svc.clear_seat_assignment(mid, 1)
+
+        assert [event.meeting_id for event in received] == [mid, mid]
+        assert [event.payload for event in received] == [
+            {
+                "seat_id": 1,
+                "attendee_id": attendee.id,
+                "action": "assigned",
+            },
+            {
+                "seat_id": 1,
+                "attendee_id": attendee.id,
+                "action": "cleared",
+            },
+        ]
+
 
 # ── Extended Meeting End Behavior (Phase 03) ───────────────────────────────
 
 
 class TestEndMeetingExtended:
-    """Meeting end: seat reset, attendee unbind, vote close, speaker preserved."""
+    """Meeting end resets all meeting-scoped seat and speaker state."""
 
     def _meeting_svc(self, db, event_bus) -> MeetingService:
         return MeetingService(db, event_bus)
@@ -471,23 +498,29 @@ class TestEndMeetingExtended:
         assert events[0].event_name == "vote_closed"
         assert events[0].payload["vote_id"] == vote.id
 
-    def test_ends_meeting_preserves_speaker_seat(self, seeded_db, event_bus):
-        """Speaker seat is NOT cleared when meeting ends."""
+    def test_ends_meeting_clears_speaker_seat(self, seeded_db, event_bus):
+        """A new meeting must not inherit the previous meeting's speaker."""
         SeatRepository.init_seats(seeded_db)
         ms = self._meeting_svc(seeded_db, event_bus)
         ss = self._seat_svc(seeded_db, event_bus)
 
         mid = _create_pending(ms)
         ms.start_meeting(mid)
+        attendee = ms.create_attendee(mid, "Speaker 3", "Speaker Fixture")
+        ss.seat_occupied(3, meeting_id=mid)
+        ss.check_in(3, attendee_id=attendee.id, meeting_id=mid)
 
-        # Set speaker seat
-        ss.set_speaker_seat(3)
+        events = []
+        event_bus.subscribe("speaker_seat_clear", lambda event: events.append(event))
+
+        ss.set_speaker_seat(3, meeting_id=mid)
         assert seeded_db.get(SpeakerSeat, 1).seat_id == 3
 
         ms.end_meeting(mid)
 
-        # Speaker seat must still be 3 (preserved)
-        assert seeded_db.get(SpeakerSeat, 1).seat_id == 3
+        assert seeded_db.get(SpeakerSeat, 1).seat_id is None
+        assert len(events) == 1
+        assert events[0].meeting_id == mid
 
     def test_ends_meeting_publishes_meeting_ended(self, seeded_db, event_bus):
         """meeting_ended event is published."""

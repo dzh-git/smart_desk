@@ -40,23 +40,28 @@ class LightingManager:
         self.seat_mode: dict[int, str] = {sid: "IDLE" for sid in self.seat_ids}
         self._timers: dict[tuple[int, str], threading.Timer] = {}
         self._welcomed_seats: set[int] = set()
+        self._subscriptions: list[tuple[str, object]] = []
         self._registered = False
 
     def register(self) -> None:
         if self._registered:
             return
-        event_bus.subscribe("meeting_started", self._on_meeting_started)
-        event_bus.subscribe("meeting_ended", self._on_meeting_ended)
-        event_bus.subscribe("agenda_updated", self._on_agenda_updated)
-        event_bus.subscribe("vote_started", self._on_vote_started)
-        event_bus.subscribe("vote_closed", self._on_vote_closed)
-        event_bus.subscribe("seat_occupied", self._on_seat_occupied)
-        event_bus.subscribe("seat_vacant", self._on_seat_vacant)
-        event_bus.subscribe("service_call_created", self._on_service_call_created)
-        event_bus.subscribe("service_call_resolved", self._on_service_call_finished)
-        event_bus.subscribe("service_call_cancelled", self._on_service_call_finished)
-        event_bus.subscribe("speaker_speaking", self._on_speaker_speaking)
-        event_bus.subscribe("speaker_speaking_stop", self._on_speaker_speaking_stop)
+        self._subscriptions = [
+            ("meeting_started", self._on_meeting_started),
+            ("meeting_ended", self._on_meeting_ended),
+            ("agenda_updated", self._on_agenda_updated),
+            ("vote_started", self._on_vote_started),
+            ("vote_closed", self._on_vote_closed),
+            ("seat_occupied", self._on_seat_occupied),
+            ("seat_vacant", self._on_seat_vacant),
+            ("service_call_created", self._on_service_call_created),
+            ("service_call_resolved", self._on_service_call_finished),
+            ("service_call_cancelled", self._on_service_call_finished),
+            ("speaker_speaking", self._on_speaker_speaking),
+            ("speaker_speaking_stop", self._on_speaker_speaking_stop),
+        ]
+        for event_name, handler in self._subscriptions:
+            event_bus.subscribe(event_name, handler)
 
         managers = getattr(self.gateway, "seat_managers", None)
         if managers:
@@ -70,6 +75,18 @@ class LightingManager:
                 )
         self._registered = True
         logger.info("[Lighting] registered handlers for seats=%s", self.seat_ids)
+
+    def unregister(self) -> None:
+        """Release EventBus handlers and timers for tests/app replacement."""
+        if not self._registered:
+            return
+        for event_name, handler in self._subscriptions:
+            event_bus.unsubscribe(event_name, handler)
+        self._subscriptions.clear()
+        for timer in self._timers.values():
+            timer.cancel()
+        self._timers.clear()
+        self._registered = False
 
     def _active_seats(self) -> list[int]:
         if self.demo_seat_id is not None:
@@ -177,7 +194,7 @@ class LightingManager:
     def _play_welcome(self, seat_id: int) -> None:
         if not self._is_active_seat(seat_id):
             return
-        if self._effective_mode(seat_id) != "IDLE" or seat_id in self._welcomed_seats:
+        if seat_id in self._welcomed_seats:
             return
         self._welcomed_seats.add(seat_id)
         self._set_overlay(seat_id, "welcome", "WELCOME", WELCOME_DURATION)
@@ -190,6 +207,7 @@ class LightingManager:
         seat_id = self._seat_of(event)
         if seat_id is None or not self._is_active_seat(seat_id):
             return
+        self._welcomed_seats.discard(seat_id)
         self._clear_seat_transients(seat_id)
         self.base_mode[seat_id] = "IDLE"
         self._render(seat_id)

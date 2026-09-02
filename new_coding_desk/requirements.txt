@@ -8,6 +8,8 @@ uvicorn[standard]>=0.29.0
 sqlalchemy>=2.0.0
 pydantic>=2.5.0
 pydantic-settings>=2.0.0
+python-multipart>=0.0.9
+cryptography>=42.0.0
 
 # == Hardware (Arduino Nano lighting controller serial bridge) ==
 pyserial>=3.5              # ArduinoManager: serial comms with lighting controller
@@ -16,8 +18,10 @@ pyserial>=3.5              # ArduinoManager: serial comms with lighting controll
 # == Speech / Audio (required for streaming ASR) ==
 numpy>=1.26.0
 torch>=2.0.0              # PyTorch — required by FunASR for model inference
+torchaudio>=2.0.0         # FunASR audio frontend; keep resolved with torch
 funasr>=1.0.0             # FunASR: Paraformer Streaming + Paraformer-large + FSMN-VAD
                           #   also pulls modelscope, huggingface-hub transitively
+click>=8.4.2,<9           # required by current huggingface-hub releases
 sherpa-onnx>=1.12.24      # English Zipformer online streaming ASR (CPU)
 scipy>=1.11.0
 soundfile>=0.12.0

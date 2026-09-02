@@ -176,6 +176,7 @@ class TestMediaMTXConfigContract:
         known_udp_keys = [
             "webrtcICEUDPMuxAddress", "webrtcUDPAddress",
             "webrtcICEUDPMux", "webrtcUdpAddress",
+            "webrtcLocalUDPAddress",
         ]
         found = False
         for line in mediamtx_config.splitlines():

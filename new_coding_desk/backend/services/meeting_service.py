@@ -17,14 +17,18 @@ from backend.events.event_bus import EventBus
 from backend.events.meeting_events import MeetingStartedEvent, MeetingEndedEvent
 from backend.events.vote_events import VoteClosedEvent
 from backend.events.agenda_events import AgendaUpdatedEvent
+from backend.events.seat_events import SeatAssignmentUpdatedEvent
 from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.models.meeting import Meeting
+from backend.models.speaker_seat import SpeakerSeat
 from backend.models.agenda import Agenda
 from backend.models.attendee import Attendee
 from backend.models.seat_state import SeatState
 from backend.models.vote import Vote
 from backend.repositories.meeting_repository import MeetingRepository
 from backend.repositories.attendee_repository import AttendeeRepository
+from backend.repositories.person_repository import PersonRepository
+from backend.repositories.seat_repository import SEAT_COUNT
 from backend.services.base import BaseService
 
 logger = logging.getLogger(__name__)
@@ -38,23 +42,30 @@ class MeetingService(BaseService):
         - Status flow: pending → active → finished (no rollback).
         - start_meeting() publishes meeting_started.
         - end_meeting() resets seats, unbinds attendees, closes open vote,
-          preserves speaker seat, publishes meeting_ended + vote_closed.
+          clears speaker ownership, publishes meeting_ended + vote_closed.
     """
 
     def __init__(self, db: Session, event_bus: EventBus) -> None:
         super().__init__(db, event_bus)
         self.meeting_repo = MeetingRepository(db)
         self.attendee_repo = AttendeeRepository(db)
+        self.person_repo = PersonRepository(db)
 
     # ── Meeting CRUD ─────────────────────────────────────────────────────────
 
     def create_meeting(self, title: str, description: str | None = None) -> Meeting:
         """Create a new meeting with status='pending'."""
-        return self.meeting_repo.create(
+        meeting = self.meeting_repo.create(
             title=title,
             description=description or "",
             status="pending",
         )
+        # Face defaults are optional: an empty library leaves the meeting
+        # untouched, while an existing library copies the previous layout.
+        from backend.services.face_template_service import FaceTemplateService
+
+        FaceTemplateService(self.db).seed_meeting_assignments(meeting)
+        return meeting
 
     def get_meeting(self, meeting_id: int) -> Meeting:
         """Get meeting by ID. Raises NotFoundError if missing."""
@@ -128,7 +139,7 @@ class MeetingService(BaseService):
             - All attendees for this meeting have seat_id cleared and
               checked_in set to false.
             - Any open vote is automatically closed (vote_closed event).
-            - Speaker seat is preserved (NOT cleared).
+            - Speaker ownership and active speech state are cleared.
             - Historical votes, service calls and translation records
               are preserved.
             - Publishes meeting_ended and (if vote was closed) vote_closed.
@@ -174,7 +185,15 @@ class MeetingService(BaseService):
                 )
             )
 
-        # Speaker seat deliberately preserved — NOT cleared.
+        # Ending a meeting also ends ownership of the speech stream. Reuse the
+        # speaker-seat cleanup path so active utterances and websockets close
+        # before subscribers receive meeting_ended.
+        from backend.services.seat_service import SeatService
+
+        if self.db.get(SpeakerSeat, 1) is not None:
+            SeatService(self.db, self.event_bus).clear_speaker_seat(
+                meeting_id=meeting_id
+            )
 
         self.meeting_repo.save(meeting)
 
@@ -503,12 +522,34 @@ class MeetingService(BaseService):
     # ── Attendee ─────────────────────────────────────────────────────────────
 
     def create_attendee(
-        self, meeting_id: int, name: str, title: str = ""
+        self,
+        meeting_id: int,
+        name: str,
+        title: str = "",
+        person_id: str | None = None,
     ) -> Attendee:
         """Add an attendee to a meeting."""
         self.get_meeting(meeting_id)  # ensure meeting exists
+        if person_id is not None:
+            if self.person_repo.get_by_id(person_id) is None:
+                raise NotFoundError(
+                    f"Person {person_id} not found",
+                    "PERSON_NOT_FOUND",
+                )
+            if (
+                self.attendee_repo.get_by_person_and_meeting(
+                    person_id,
+                    meeting_id,
+                )
+                is not None
+            ):
+                raise ConflictError(
+                    f"Person {person_id} is already attending meeting {meeting_id}",
+                    "PERSON_ALREADY_IN_MEETING",
+                )
         return self.attendee_repo.create(
             meeting_id=meeting_id,
+            person_id=person_id,
             name=name,
             title=title,
         )
@@ -517,6 +558,99 @@ class MeetingService(BaseService):
         """List all attendees for a meeting."""
         self.get_meeting(meeting_id)  # ensure meeting exists
         return self.attendee_repo.list_by_meeting(meeting_id)
+
+    def assign_attendee_to_seat(
+        self,
+        meeting_id: int,
+        seat_id: int,
+        attendee_id: int,
+    ) -> Attendee:
+        """Set the meeting's default attendee for one physical seat."""
+        meeting = self.get_meeting(meeting_id)
+        if meeting.status == "finished":
+            raise ValidationError(
+                "Seat assignments cannot be changed after the meeting ends",
+                "MEETING_FINISHED",
+            )
+        if seat_id < 1 or seat_id > SEAT_COUNT:
+            raise NotFoundError(f"Seat {seat_id} not found", "SEAT_NOT_FOUND")
+
+        attendee = self.attendee_repo.get_by_id(attendee_id)
+        if attendee is None or attendee.meeting_id != meeting_id:
+            raise NotFoundError(
+                f"Attendee {attendee_id} not found in meeting {meeting_id}",
+                "ATTENDEE_NOT_FOUND",
+            )
+        if attendee.checked_in:
+            raise ConflictError(
+                "A checked-in attendee cannot be reassigned",
+                "ATTENDEE_ALREADY_CHECKED_IN",
+            )
+
+        if (
+            attendee.assigned_seat_id is not None
+            and attendee.assigned_seat_id != seat_id
+        ):
+            raise ConflictError(
+                f"Attendee {attendee_id} is already assigned to seat "
+                f"{attendee.assigned_seat_id}",
+                "ATTENDEE_ASSIGNMENT_CONFLICT",
+            )
+
+        current = self.attendee_repo.get_by_assigned_seat(meeting_id, seat_id)
+        if current is not None and current.id != attendee.id:
+            if current.checked_in:
+                raise ConflictError(
+                    "The seat is already checked in",
+                    "SEAT_ALREADY_CHECKED_IN",
+                )
+            current.assigned_seat_id = None
+            self.attendee_repo.save(current, commit=False)
+
+        attendee.assigned_seat_id = seat_id
+        assigned = self.attendee_repo.save(attendee)
+        self.event_bus.publish(
+            SeatAssignmentUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "seat_id": seat_id,
+                    "attendee_id": attendee.id,
+                    "action": "assigned",
+                },
+            )
+        )
+        return assigned
+
+    def clear_seat_assignment(self, meeting_id: int, seat_id: int) -> None:
+        """Remove the default attendee assignment from a meeting seat."""
+        meeting = self.get_meeting(meeting_id)
+        if meeting.status == "finished":
+            raise ValidationError(
+                "Seat assignments cannot be changed after the meeting ends",
+                "MEETING_FINISHED",
+            )
+        if seat_id < 1 or seat_id > SEAT_COUNT:
+            raise NotFoundError(f"Seat {seat_id} not found", "SEAT_NOT_FOUND")
+        attendee = self.attendee_repo.get_by_assigned_seat(meeting_id, seat_id)
+        if attendee is None:
+            return
+        if attendee.checked_in:
+            raise ConflictError(
+                "A checked-in seat assignment cannot be removed",
+                "SEAT_ALREADY_CHECKED_IN",
+            )
+        attendee.assigned_seat_id = None
+        self.attendee_repo.save(attendee)
+        self.event_bus.publish(
+            SeatAssignmentUpdatedEvent(
+                meeting_id=meeting_id,
+                payload={
+                    "seat_id": seat_id,
+                    "attendee_id": attendee.id,
+                    "action": "cleared",
+                },
+            )
+        )
 
     def delete_attendee(self, meeting_id: int, attendee_id: int) -> None:
         """Remove an attendee. Must belong to the given meeting."""

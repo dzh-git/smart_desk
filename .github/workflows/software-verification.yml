@@ -1,0 +1,79 @@
+name: Software verification
+
+on:
+  push:
+    branches:
+      - main
+      - feature/android-tablet-integration
+      - "codex/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  software:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            new_coding_desk/requirements-ci.txt
+            smartdesk_gesture_controller/requirements.txt
+            esp32_seat_controller/simulator/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            new_coding_desk/frontend/package-lock.json
+            android_tablet/diagnostic-web/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Python test dependencies
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r new_coding_desk/requirements-ci.txt
+          .\.venv\Scripts\python.exe -m pip install -r smartdesk_gesture_controller/requirements.txt
+          .\.venv\Scripts\python.exe -m pip install -r esp32_seat_controller/simulator/requirements.txt
+          .\.venv\Scripts\python.exe -m venv .tools/platformio-venv
+          .\.tools\platformio-venv\Scripts\python.exe -m pip install platformio
+
+      - name: Install web dependencies
+        shell: pwsh
+        run: |
+          npm ci --prefix new_coding_desk/frontend
+          npm ci --prefix android_tablet/diagnostic-web
+
+      - name: Verify all model-independent software
+        shell: pwsh
+        run: ./scripts/verify_all_software.ps1 -Profile CI
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: software-verification
+          path: logs/verification/
+          if-no-files-found: error

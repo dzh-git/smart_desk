@@ -813,21 +813,27 @@ class TestReadinessPollingWaitsBetweenRetries:
     def test_backend_poll_loop_waits_on_failure(self) -> None:
         body = self._loop_body("Waiting for backend")
         joined = "\n".join(body)
-        # Must use a real ~1s wait, not a trivially short one.
-        assert re.search(r"timeout\.exe\s+/t\s+1\b", joined), (
-            "Backend readiness loop must call 'timeout.exe /t 1' on the "
-            "failure path so 30 retries actually span ~30 seconds, not "
-            "fire instantly. Loop body:\n" + joined
+        assert re.search(r"Start-Sleep\s+-Milliseconds\s+1000\b", joined), (
+            "Backend readiness loop must use a non-interactive one-second "
+            "wait on the failure path so 30 retries actually span about "
+            "30 seconds. Loop body:\n" + joined
         )
         # The wait must live INSIDE the loop body (it does, by construction).
 
     def test_frontend_poll_loop_waits_on_failure(self) -> None:
         body = self._loop_body("Waiting for frontend")
         joined = "\n".join(body)
-        assert re.search(r"timeout\.exe\s+/t\s+1\b", joined), (
-            "Frontend readiness loop must call 'timeout.exe /t 1' on the "
-            "failure path so 30 retries actually span ~30 seconds, not "
-            "fire instantly. Loop body:\n" + joined
+        assert re.search(r"Start-Sleep\s+-Milliseconds\s+1000\b", joined), (
+            "Frontend readiness loop must use a non-interactive one-second "
+            "wait on the failure path so 30 retries actually span about "
+            "30 seconds. Loop body:\n" + joined
+        )
+
+    def test_waits_do_not_require_interactive_stdin(self) -> None:
+        text = _read_text(START_BAT)
+        assert "timeout.exe" not in text, (
+            "timeout.exe fails when start.bat runs with redirected stdin; "
+            "use PowerShell Start-Sleep for controller and automation launches"
         )
 
     def test_poll_loops_bounded_to_at_most_60(self) -> None:

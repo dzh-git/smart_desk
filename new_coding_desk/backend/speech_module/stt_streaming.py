@@ -185,6 +185,8 @@ class StreamingChunkProcessor:
         self._cache: dict = {}
         self._accumulated_text: str = ""
         self._total_frames: int = 0
+        self._debug_frame_index: int = 0
+        self._last_debug: dict[str, object] = {}
 
     @property
     def chunk_size(self) -> list[int]:
@@ -194,11 +196,17 @@ class StreamingChunkProcessor:
     def accumulated_text(self) -> str:
         return self._accumulated_text
 
+    @property
+    def last_debug(self) -> dict[str, object]:
+        return dict(self._last_debug)
+
     def reset(self):
         """Reset state for new VAD segment. Clears cache and accumulated text."""
         self._cache = {}
         self._accumulated_text = ""
         self._total_frames = 0
+        self._debug_frame_index = 0
+        self._last_debug = {}
 
     def reset_accumulated_text(self):
         """Reset accumulated text for a new utterance. Preserves CIF cache.
@@ -283,6 +291,22 @@ class StreamingChunkProcessor:
                 self._accumulated_text = self._merge_text(prev_text, chunk_text)
 
         self._total_frames += len(audio32)
+
+        if os.environ.get("SMART_DESK_CAPTURE_SPEECH_DEBUG", "").lower() == "true":
+            self._debug_frame_index += 1
+            self._last_debug = {
+                "frame_index": self._debug_frame_index,
+                "samples": int(len(audio32)),
+                "is_final": bool(is_final),
+                "chunk_text": chunk_text,
+                "before_text": prev_text,
+                "after_text": self._accumulated_text,
+                "decode_ms": decode_ms,
+                "cache_valid": bool(self._cache),
+                "cache_size": len(self._cache),
+            }
+        else:
+            self._last_debug = {}
 
         return {
             "text": chunk_text,

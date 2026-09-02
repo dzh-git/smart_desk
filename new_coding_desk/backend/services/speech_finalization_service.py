@@ -14,6 +14,7 @@ from backend.events import event_bus
 from backend.events.translation_events import TranslationInterimCancelledEvent
 from backend.services.translation_service import TranslationService
 from backend.services.speech_inference_runtime import inference_runtime
+from backend.services.speech_debug_capture import update_speech_debug_final_result
 from backend.websocket.speech_trace import trace
 
 logger = logging.getLogger(__name__)
@@ -208,7 +209,7 @@ class SpeechFinalizationQueue:
         try:
             service = TranslationService(db, event_bus)
             if job.recognized_text.strip() and job.recognition_engine == "sensevoice_rolling":
-                service.process_final_text(
+                record = service.process_final_text(
                     source_text=job.recognized_text,
                     source_lang=job.detected_language,
                     meeting_id=job.meeting_id,
@@ -223,7 +224,7 @@ class SpeechFinalizationQueue:
                     ),
                 )
             elif use_audio and job.audio is not None and len(job.audio) > 0:
-                service.process_final_array(
+                record = service.process_final_array(
                     audio=job.audio,
                     sr=job.sample_rate,
                     meeting_id=job.meeting_id,
@@ -234,7 +235,7 @@ class SpeechFinalizationQueue:
                     translate=translate,
                 )
             else:
-                service.process_final_text(
+                record = service.process_final_text(
                     source_text=job.source_text,
                     meeting_id=job.meeting_id,
                     seat_id=job.seat_id,
@@ -245,6 +246,20 @@ class SpeechFinalizationQueue:
                         "Finalization queue overflow; streaming ASR text was preserved"
                         if not use_audio else "Final audio was unavailable"
                     ),
+                )
+            try:
+                update_speech_debug_final_result(
+                    job.utterance_id,
+                    translation_id=record.id,
+                    source_text=record.source_text,
+                    source_lang=record.source_lang,
+                    source_type=record.source_type,
+                    recognition_status=job.recognition_status,
+                )
+            except Exception:
+                logger.exception(
+                    "Speech debug final-result update failed: utterance=%s",
+                    job.utterance_id,
                 )
             logger.info(
                 "Speech auto-final complete: utterance=%s reason=%s "

@@ -23,7 +23,7 @@ logDestinations: [stdout]
 ###############################################
 rtsp: yes
 rtspAddress: 127.0.0.1:{{RTSP_PORT}}
-protocols: [tcp]
+rtspTransports: [tcp]
 rtspEncryption: "no"
 
 ###############################################
@@ -35,7 +35,7 @@ webrtcICEServers2:
   - url: "stun:stun.l.google.com:19302"
 # webrtcAdditionalHosts allows browsers on LAN to reach the ICE candidate
 webrtcAdditionalHosts: ["{{HOST_IP}}"]
-webrtcICEUDPMuxAddress: :{{WEBRTC_UDP_PORT}}
+webrtcLocalUDPAddress: :{{WEBRTC_UDP_PORT}}
 
 ###############################################
 # RTMP — DISABLED (first version)
@@ -60,11 +60,6 @@ srt: no
 moq: no
 
 ###############################################
-# Record — DISABLED
-###############################################
-record: no
-
-###############################################
 # Control API & Metrics (loopback only)
 ###############################################
 api: yes
@@ -73,18 +68,13 @@ metrics: yes
 metricsAddress: 127.0.0.1:{{METRICS_PORT}}
 
 ###############################################
-# External authentication — DISABLED
-###############################################
-externalAuthenticationURL: ""
-
-###############################################
 # Path defaults
 ###############################################
 pathDefaults:
   source: publisher
   sourceProtocol: tcp
   overridePublisher: yes
-  fallback: ""
+  record: no
 
 ###############################################
 # Stream paths
