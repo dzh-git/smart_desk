@@ -1,6 +1,6 @@
 # 发布就绪报告
 
-最后更新：2026-07-30
+最后更新：2026-09-02
 
 ## 当前结论
 
@@ -55,8 +55,26 @@
 | 数据库 | 备份、双次迁移、数据/约束保持、失败回滚通过 |
 | 便携包 | 全新安装、升级、失败回滚、卸载保留数据通过 |
 | 投屏 | MediaMTX/FFmpeg、10 Chromium 客户端、FFmpeg 恢复通过 |
-| Display Agent | PowerPoint 实际窗口切换通过；SolidWorks 待目标机 |
+| Display Agent | 8766 服务与自动化契约通过；最新 PowerPoint 实机切换受当前 Office COM 忙状态阻塞，关闭临时演示文稿后需重跑；SolidWorks 待目标机 |
 | 模型门禁 | prototype 声明通过；release 按预期 `MODEL_LICENSE_GATE_BLOCKED` |
+
+### 2026-09-02 增量复验
+
+- 正式 `start.bat` 已修复重定向 stdin 下 `timeout.exe` 立即失败的问题；重新启动
+  后端约 5 秒、前端约 1 秒就绪，Display Agent 正常监听 8766，启动输出无伪失败。
+- 前端 373 项单测、类型检查和生产构建通过；Android 单测/Lint/Debug APK、
+  平板诊断页 11 项测试与构建通过。
+- Python 测试按后台线程边界拆为两个干净进程执行：其余集合 1054 通过、7 条件
+  跳过，语音 WebSocket 黑盒 24 通过、1 条件跳过，共 1078 通过、8 跳过、0 失败。
+- 九席软件模拟通过；语音 WebSocket 黑盒为 24 通过、1 条件跳过，真实中文
+  PCM 实时字幕用例通过。旧测试录音已仅在测试端归一化，并显式选择中文流式
+  引擎，避免把自动语言探测性能混入中文字幕契约。
+- 新平板部署包 5 项回归已覆盖 Windows PowerShell 5/7 Dry Run、确认设备模拟
+  配置和验收、输出目录越界防护，以及缺失/篡改 APK SHA-256 时在任何 ADB
+  操作前拒绝；manifest 声明不含秘密。
+- 当前 Seat 2 未连接 USB，但通过移动热点持续上报新鲜心跳：App 0.9.0，
+  camera/face/microphone/diagnostic 为 `READY`，会议 WebSocket 为 `CONNECTED`，
+  API 与 `/seat/2` 均可从 `192.168.137.1` 访问。
 
 PCM 长语音、生命周期和切席路由测试已通过。
 `test_speech_stream_service.py` 与 `test_speech_websocket_blackbox.py` 在本环境组合

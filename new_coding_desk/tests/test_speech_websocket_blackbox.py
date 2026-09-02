@@ -53,6 +53,7 @@ _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 _PCM_FIXTURE = os.path.join(_FIXTURE_DIR, "speech_sample.pcm")
 # 100ms @ 16kHz s16le mono = 3200 bytes
 _FRAME_SIZE = 3200
+_FIXTURE_GAIN = 2.0
 
 
 def _load_pcm16_frames(
@@ -90,7 +91,18 @@ def _load_pcm16_frames(
         end = start + _FRAME_SIZE
         if end > len(raw):
             break  # not enough data
-        frames.append(raw[start:end])
+        # The archived recording is quieter than the current adaptive-gate
+        # acceptance floor in several consecutive frames.  Normalize the
+        # fixture to a stable microphone level so this remains a real-ASR
+        # black-box test instead of waiting forever for an interim that the
+        # gate correctly suppresses.
+        samples = np.frombuffer(raw[start:end], dtype=np.int16).astype(np.float32)
+        normalized = np.clip(
+            samples * _FIXTURE_GAIN,
+            np.iinfo(np.int16).min,
+            np.iinfo(np.int16).max,
+        ).astype(np.int16)
+        frames.append(normalized.tobytes())
 
     return frames
 
@@ -377,6 +389,7 @@ class TestSpeechWebSocketBlackBox:
                         "sample_rate": 16000,
                         "encoding": "pcm_s16le",
                         "channels": 1,
+                        "language_mode": "zh",
                     })
                     started = speech_ws.receive_json()
                     assert started["type"] == "started"
@@ -513,6 +526,7 @@ class TestSpeechWebSocketBlackBox:
                         "sample_rate": 16000,
                         "encoding": "pcm_s16le",
                         "channels": 1,
+                        "language_mode": "zh",
                     })
                     speech_ws.receive_json()  # started
 

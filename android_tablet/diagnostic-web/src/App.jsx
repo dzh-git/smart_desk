@@ -12,6 +12,7 @@ import {
 import {
   buildProvisioningPayload,
   isConfigurationVisible,
+  readDeploymentPrefill,
   seatAlias,
   usesAdvancedEndpoints,
 } from "./configWorkflow";
@@ -54,7 +55,7 @@ export default function App() {
     androidVersion: "—",
     maintenancePinConfigured: false,
   });
-  const [deviceConfig, setDeviceConfig] = useState({
+  const [deviceConfig, setDeviceConfig] = useState(() => ({
     seatId: 1,
     centralHost: "192.168.1.10",
     serverBaseUrl: "",
@@ -62,7 +63,8 @@ export default function App() {
     provisioningToken: "",
     maintenancePin: "",
     replaceExisting: false,
-  });
+    ...readDeploymentPrefill(window.location.search),
+  }));
   const [showAdvancedUrls, setShowAdvancedUrls] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
   const [replacementRequired, setReplacementRequired] = useState(false);

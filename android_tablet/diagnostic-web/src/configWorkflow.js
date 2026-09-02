@@ -6,6 +6,30 @@ export function isConfigurationVisible(mode) {
   return mode === "setup" || mode === "maintenance";
 }
 
+export function readDeploymentPrefill(search) {
+  const params = new URLSearchParams(search);
+  if (params.get("mode") !== "setup") return {};
+  const seatId = Number(params.get("seatId"));
+  if (!Number.isInteger(seatId) || seatId < 1 || seatId > 9) return {};
+  try {
+    const url = new URL(params.get("centralHost") ?? "");
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.port ||
+      (url.pathname && url.pathname !== "/") ||
+      url.search ||
+      url.hash
+    ) {
+      return {};
+    }
+    return { seatId, centralHost: url.origin };
+  } catch {
+    return {};
+  }
+}
+
 export function usesAdvancedEndpoints(config) {
   const host = config?.centralHost?.replace(/\/$/, "");
   if (!host) return false;

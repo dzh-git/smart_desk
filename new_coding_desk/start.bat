@@ -80,7 +80,7 @@ if exist "%SD_ROOT%\.smartdesk-runtime\frontend.pid" del "%SD_ROOT%\.smartdesk-r
 set "SKIP_PAUSE=1"
 call "%SD_ROOT%\kill.bat"
 set "SKIP_PAUSE="
-%SystemRoot%\System32\timeout.exe /t 2 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 2000"
 echo.
 
 :: -- Step 1: Check dependencies -------------------------------------------
@@ -218,7 +218,7 @@ for /L %%i in (1,1,30) do (
                 exit /b 1
             )
             <nul set /p "=."
-%SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 1000"
         )
     )
 )
@@ -285,7 +285,7 @@ for /L %%i in (1,1,30) do (
                 exit /b 1
             )
             <nul set /p "=."
-%SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 1000"
         )
     )
 )
@@ -311,7 +311,7 @@ if exist "%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid" del "%SD_ROOT%\.sm
 if /I "%ENABLE_DISPLAY_AGENT%"=="true" (
     echo   [display-agent] Starting on http://127.0.0.1:8766 ...
     start "SmartDesk Display Agent" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'agent.py' -WorkingDirectory '%SD_ROOT%\host_services\display_agent' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\display_agent.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and -not $exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\display_agent.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\display_agent.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\display_agent.pid' -ErrorAction SilentlyContinue }"
-    %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+    powershell -NoProfile -Command "Start-Sleep -Milliseconds 1000"
 ) else (
     echo   [display-agent] Disabled: ENABLE_DISPLAY_AGENT is not true.
 )
@@ -336,7 +336,7 @@ if /I "%ENABLE_SCREEN_STREAM%"=="true" (
     if %SCREEN_STREAM_READY% EQU 1 (
         echo   [screen-stream] Starting Screen Supervisor ...
         start "SmartDesk Screen Supervisor" /b powershell -NoProfile -Command "try { $p = Start-Process python.exe -ArgumentList 'supervisor.py' -WorkingDirectory '%SD_ROOT%\host_services\screen_stream' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stdout.log' -RedirectStandardError '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Start-Sleep -Milliseconds 500; try { $exited = $p.HasExited } catch { $exited = $false }; if ($p -and $p.Id -and -not $exited) { [IO.File]::WriteAllText('%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid', $p.Id.ToString()) } } catch { $_ | Out-File -Encoding ascii '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.stderr.log'; Remove-Item '%SD_ROOT%\.smartdesk-runtime\screen_supervisor.pid' -ErrorAction SilentlyContinue }"
-        %SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+        powershell -NoProfile -Command "Start-Sleep -Milliseconds 1000"
     ) else (
         if %SCREEN_STREAM_READY% EQU 0 (
             echo   [screen-stream] [ERROR] Required screen-stream binaries not found

@@ -10,6 +10,7 @@ param(
     [string]$Serial = "",
     [string]$AdbPath = "",
     [string]$ApkPath = "",
+    [string]$ExpectedVersion = "",
     [string]$ExpectedWifiSsid = "",
     [string]$ReportPath = "",
     [switch]$SkipInstall,
@@ -25,6 +26,15 @@ $gradleFile = Join-Path $repoRoot (
 )
 
 function Get-ExpectedVersion {
+    if ($ExpectedVersion.Trim()) {
+        return $ExpectedVersion.Trim()
+    }
+    if (-not (Test-Path -LiteralPath $gradleFile)) {
+        throw (
+            "Android build.gradle.kts is unavailable; pass " +
+            "-ExpectedVersion when using the packaged verifier."
+        )
+    }
     $gradle = Get-Content -LiteralPath $gradleFile -Encoding UTF8 -Raw
     $match = [regex]::Match($gradle, 'versionName\s*=\s*"([^"]+)"')
     if (-not $match.Success) {

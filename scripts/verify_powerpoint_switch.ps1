@@ -40,6 +40,7 @@ try {
         $powerPointCom = New-Object -ComObject PowerPoint.Application
         $powerPointCom.Visible = -1
         $testPresentation = $powerPointCom.Presentations.Add()
+        $testPresentation.Slides.Add(1, 12) | Out-Null
     }
     $deadline = (Get-Date).AddSeconds(30)
     do {

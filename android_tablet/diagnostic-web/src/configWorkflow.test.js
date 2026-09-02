@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildProvisioningPayload,
   isConfigurationVisible,
+  readDeploymentPrefill,
   seatAlias,
   usesAdvancedEndpoints,
 } from "./configWorkflow.js";
@@ -57,4 +58,19 @@ test("never sends a local device token and omits PIN after setup", () => {
   assert.equal(payload.seatId, 3);
   assert.equal(payload.maintenancePin, null);
   assert.equal("deviceToken" in payload, false);
+});
+
+test("reads only validated non-secret deployment prefill values", () => {
+  assert.deepEqual(
+    readDeploymentPrefill(
+      "?mode=setup&seatId=2&centralHost=http%3A%2F%2F192.168.137.1",
+    ),
+    { seatId: 2, centralHost: "http://192.168.137.1" },
+  );
+  assert.deepEqual(
+    readDeploymentPrefill(
+      "?mode=setup&seatId=10&centralHost=http%3A%2F%2Fhost&maintenancePin=should-not-be-read",
+    ),
+    {},
+  );
 });

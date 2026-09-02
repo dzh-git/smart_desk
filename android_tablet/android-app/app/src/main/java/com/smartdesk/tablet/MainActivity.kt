@@ -46,6 +46,7 @@ import com.smartdesk.tablet.camera.FillLightOverlayView
 import com.smartdesk.tablet.config.DeviceConfig
 import com.smartdesk.tablet.config.DeviceConfigStore
 import com.smartdesk.tablet.config.DeviceIdentityStore
+import com.smartdesk.tablet.config.DeploymentPrefill
 import com.smartdesk.tablet.config.HostConsoleAccessStore
 import com.smartdesk.tablet.config.MaintenancePinStore
 import com.smartdesk.tablet.config.ProvisioningRequest
@@ -81,6 +82,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var hostConsoleAccessStore: HostConsoleAccessStore
     private lateinit var maintenancePinStore: MaintenancePinStore
     private lateinit var stableDeviceId: String
+    private var deploymentPrefill: DeploymentPrefill? = null
     private var recognitionManager: FaceRecognitionManager? = null
     private var recognitionInitError: Throwable? = null
     private var lastNativeError: String? = null
@@ -188,8 +190,17 @@ class MainActivity : ComponentActivity() {
         deviceConfigStore = DeviceConfigStore(applicationContext)
         deviceIdentityStore = DeviceIdentityStore(applicationContext)
         hostConsoleAccessStore = HostConsoleAccessStore(this)
+        val existingConfig = deviceConfigStore.load()
+        deploymentPrefill = if (existingConfig == null) {
+            DeploymentPrefill.parse(
+                intent.getIntExtra(EXTRA_DEPLOYMENT_SEAT_ID, 0).toString(),
+                intent.getStringExtra(EXTRA_DEPLOYMENT_CENTRAL_HOST)
+            )
+        } else {
+            null
+        }
         stableDeviceId = deviceIdentityStore.getOrCreate(
-            deviceConfigStore.load()?.deviceId
+            existingConfig?.deviceId
         )
         maintenancePinStore = MaintenancePinStore(applicationContext)
         configureIdentityRecognition()
@@ -1144,7 +1155,13 @@ class MainActivity : ComponentActivity() {
         val config = deviceConfigStore.load()
         if (config == null) {
             pageLoadState.waitingConfiguration()
-            loadWaitingPage("waiting-config", retry = false)
+            if (deploymentPrefill == null) {
+                loadWaitingPage("waiting-config", retry = false)
+            } else {
+                maintenanceAuthorized = true
+                scheduleMaintenanceExpiry()
+                loadDiagnosticPage("setup")
+            }
             return
         }
 
@@ -1246,7 +1263,18 @@ class MainActivity : ComponentActivity() {
         cancelSeatPageLoadTimeout()
         cancelOfflineRetry()
         maintenanceButton.visibility = View.GONE
-        val url = "$LOCAL_PAGE_URL?mode=${Uri.encode(mode)}"
+        val url = Uri.parse(LOCAL_PAGE_URL).buildUpon()
+            .appendQueryParameter("mode", mode)
+            .apply {
+                if (mode == "setup") {
+                    deploymentPrefill?.let { prefill ->
+                        appendQueryParameter("seatId", prefill.seatId.toString())
+                        appendQueryParameter("centralHost", prefill.centralHost)
+                    }
+                }
+            }
+            .build()
+            .toString()
         val previousUrl = pageAccessState.currentUrl()
         if (previousUrl != url) {
             pageAccessState.update(null)
@@ -1973,6 +2001,10 @@ class MainActivity : ComponentActivity() {
         const val BRIDGE_NAME = "SmartDeskNative"
         const val LOCAL_ASSET_PREFIX = "file:///android_asset/web/"
         const val LOCAL_PAGE_URL = "${LOCAL_ASSET_PREFIX}index.html"
+        const val EXTRA_DEPLOYMENT_SEAT_ID =
+            "com.smartdesk.tablet.extra.DEPLOYMENT_SEAT_ID"
+        const val EXTRA_DEPLOYMENT_CENTRAL_HOST =
+            "com.smartdesk.tablet.extra.DEPLOYMENT_CENTRAL_HOST"
         const val FACE_EVENT_HEARTBEAT_MS = 1_000L
         const val CONFIG_RELOAD_DELAY_MS = 250L
         const val MAINTENANCE_HOLD_MS = 5_000L

@@ -350,7 +350,7 @@ export function TranscriptPanel({
             <LiveCaptionPlaceholder reconnecting={liveReconnecting} />
           )}
 
-          {liveEnabled && liveFinal && !hasLyrics && captionInterims.length === 0 && textInterims.length === 0 && (
+          {liveEnabled && liveFinal && captionInterims.length === 0 && textInterims.length === 0 && (
             <LiveFinalBlock
               entry={liveFinal}
               speakerName={seatNameMap[liveFinal.seat_id] ?? `Seat ${liveFinal.seat_id}`}
@@ -619,6 +619,7 @@ function LiveLyricsBlock({
   return (
     <div
       data-testid="live-lyrics"
+      data-utterance-id={latest?.utteranceId}
       data-seat-id={latest?.seatId}
       className="bg-techCardSoft border border-techCyan/40 rounded-lg p-3 shadow-cyan-glow h-[13rem] flex flex-col"
     >

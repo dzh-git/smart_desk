@@ -193,6 +193,48 @@ def test_seat_id_outside_nine_seat_range_is_rejected() -> None:
     assert "10" in result.stderr
 
 
+def test_packaged_verifier_accepts_explicit_version_without_gradle_tree(
+    tmp_path: Path,
+) -> None:
+    adb_path, _ = _fake_adb(tmp_path)
+    packaged_script = tmp_path / "package" / "scripts" / SCRIPT.name
+    packaged_script.parent.mkdir(parents=True)
+    shutil.copy2(SCRIPT, packaged_script)
+    report_path = tmp_path / "seat-02.json"
+
+    result = subprocess.run(
+        [
+            _pwsh(),
+            "-NoLogo",
+            "-NoProfile",
+            "-File",
+            str(packaged_script),
+            "-Action",
+            "Verify",
+            "-SeatId",
+            "2",
+            "-ExpectedVersion",
+            "0.9.0",
+            "-AdbPath",
+            str(adb_path),
+            "-ReportPath",
+            str(report_path),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(report_path.read_text(encoding="utf-8-sig"))[
+        "expectedVersion"
+    ] == "0.9.0"
+
+
 def test_legacy_verifier_uses_current_android_build_version(
     tmp_path: Path,
 ) -> None:

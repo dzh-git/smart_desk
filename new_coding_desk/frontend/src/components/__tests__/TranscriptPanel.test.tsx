@@ -94,7 +94,7 @@ describe("TranscriptPanel - sentence-paired lyrics", () => {
     expect(screen.getByTestId("live-lyric-pairs")).toHaveClass("justify-end");
   });
 
-  it("keeps lyrics visible when the persisted final arrives", () => {
+  it("keeps older lyrics visible and shows the authoritative final", () => {
     render(
       <TranscriptPanel
         entries={[]}
@@ -111,7 +111,7 @@ describe("TranscriptPanel - sentence-paired lyrics", () => {
     );
     expect(screen.getByTestId("live-lyrics")).toBeInTheDocument();
     expect(screen.getByTestId("live-lyric-translation")).toHaveTextContent("First sentence.");
-    expect(screen.queryByTestId("live-final-translation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("live-final-translation")).toHaveTextContent("Final.");
   });
 
   it("shows an explicit unavailable message for the matching sentence", () => {

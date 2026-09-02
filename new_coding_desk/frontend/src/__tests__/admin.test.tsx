@@ -2158,6 +2158,45 @@ describe("Transcript - live caption display", () => {
 });
 
 describe("Transcript - language labels", () => {
+  it("shows the newest final while older lyric history is still retained", async () => {
+    const { TranscriptPanel } = await import("../components/TranscriptPanel");
+
+    render(
+      <TranscriptPanel
+        entries={[]}
+        liveFinal={{
+          id: 202,
+          meeting_id: 1,
+          seat_id: 1,
+          utterance_id: "utt_current",
+          source_lang: "zh",
+          target_lang: "en",
+          source_text: "当前最终结果。",
+          translated_text: "Current final result.",
+          created_at: "2026-01-01T10:06:00Z",
+          source_type: "speech_ws",
+        }}
+        lyrics={[{
+          utteranceId: "utt_older",
+          sentenceId: "sentence_older",
+          sentenceSequence: 1,
+          seatId: 1,
+          revision: 1,
+          sourceLang: "zh",
+          targetLang: "en",
+          sourceText: "较早的实时字幕。",
+          translatedText: "Older live lyric.",
+          translationStatus: "ok",
+        }]}
+        seatNameMap={{ 1: "Alice Wang" }}
+        liveEnabled
+      />,
+    );
+
+    expect(screen.getByText("Current final result.")).toBeInTheDocument();
+    expect(screen.getByText("Older live lyric.")).toBeInTheDocument();
+  });
+
   it("TranscriptPanel renders the actual bilingual translation direction", async () => {
     const { TranscriptPanel } = await import("../components/TranscriptPanel");
 
@@ -2475,6 +2514,36 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
       expect(screen.getByTestId("live-final-target")).toHaveTextContent("Final old admin segment.");
     });
   });
+
+  it("replaces live lyrics with the authoritative final transcript", async () => {
+    mockTranscriptScenario();
+    render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
+    await act(async () => {
+      screen.getByText("服务与记录").click();
+    });
+
+    act(() => wsSend(0, "translation_sentence", 1, {
+      utterance_id: "utt_admin_lyric_final", sentence_id: "sentence-1",
+      sentence_sequence: 1, seat_id: 1, revision: 2,
+      source_lang: "zh", target_lang: "en", source_text: "在线旧结果。",
+      translated_text: "Old online result.", translation_status: "ok",
+    }));
+    await waitFor(() => {
+      expect(screen.getByTestId("live-lyrics")).toHaveTextContent("在线旧结果。");
+    });
+
+    act(() => wsSend(0, "translation_final", 1, {
+      translation_id: 990, utterance_id: "utt_admin_lyric_final", seat_id: 1,
+      source_lang: "zh", target_lang: "en", source_text: "离线最终结果。",
+      translated_text: "Authoritative final result.", translation_status: "ok",
+      source_type: "speech_ws",
+    }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-lyrics")).not.toBeInTheDocument();
+      expect(screen.getByTestId("live-final-source")).toHaveTextContent("离线最终结果。");
+    });
+  });
 });
 
 describe("AdminDashboard - seat access control", () => {
@@ -2550,7 +2619,7 @@ describe("AdminDashboard - seat access control", () => {
 });
 
 describe("AdminDashboard - sentence lyric events", () => {
-  it("pairs a completed sentence translation and keeps it after final", async () => {
+  it("pairs a completed sentence translation until the final transcript replaces it", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/meetings/active") return okResponse({ id: 1, title: "Lyric Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
       if (url === "/api/seats") return okResponse([]);
@@ -2586,7 +2655,11 @@ describe("AdminDashboard - sentence lyric events", () => {
     act(() => wsSend(0, "translation_final", 1, {
       translation_id: 9, ...base, translated_text: "Final sentence display.",
     }));
-    await waitFor(() => expect(screen.getByTestId("live-lyric-translation")).toHaveTextContent("Sentence display."));
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-lyrics")).not.toBeInTheDocument();
+      expect(screen.getByTestId("live-final-source")).toHaveTextContent("逐句显示。");
+      expect(screen.getByTestId("live-final-target")).toHaveTextContent("Final sentence display.");
+    });
   });
 });
 

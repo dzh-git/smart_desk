@@ -229,6 +229,31 @@ async function apiGet(request: any, url: string, label?: string): Promise<any> {
   return resp.json();
 }
 
+async function checkInSeatOne(
+  request: any,
+  meetingId: number,
+  label: string,
+): Promise<void> {
+  const attendee = await apiPost(
+    request,
+    `${BACKEND}/api/meetings/${meetingId}/attendees`,
+    { name: `${label} Speaker ${Date.now()}` },
+    `POST ${label} Seat 1 attendee`,
+  );
+  await apiPost(
+    request,
+    `${BACKEND}/api/dev/seats/1/occupy`,
+    undefined,
+    `POST ${label} Seat 1 occupy`,
+  );
+  await apiPost(
+    request,
+    `${BACKEND}/api/seats/1/checkin`,
+    { attendee_id: attendee.data.id },
+    `POST ${label} Seat 1 check-in`,
+  );
+}
+
 /**
  * Detect if a Chinese text contains a repeated prefix (>= 6 chars).
  */
@@ -310,7 +335,9 @@ async function sampleDom(page: any): Promise<DomSample> {
   for (const el of finalEls) {
     const utteranceId = await el.getAttribute("data-utterance-id") ?? "";
     const transIdStr = await el.getAttribute("data-translation-id") ?? "0";
-    const sourceEl = await el.$('[data-testid="transcript-source"]');
+    const sourceEl = await el.$(
+      ':is([data-testid="live-final-source"], [data-testid="transcript-source"])',
+    );
     const sourceText = sourceEl ? (await sourceEl.textContent())?.trim() ?? "" : "";
     sample.finals.push({
       utteranceId,
@@ -331,6 +358,23 @@ async function sampleDom(page: any): Promise<DomSample> {
       utteranceId,
       previousLine,
       currentLine,
+    });
+  }
+
+  // Current production speech events use sentence-paired lyrics. Keep the
+  // legacy caption shape in this report so historical comparisons remain
+  // readable while validating the visible current source sentence.
+  const lyricBlock = await page.$('[data-testid="live-lyrics"]');
+  if (lyricBlock) {
+    const utteranceId = await lyricBlock.getAttribute("data-utterance-id") ?? "";
+    const lyricSources = await lyricBlock.$$('[data-testid="live-lyric-source"]');
+    const latestSource = lyricSources.length > 0
+      ? (await lyricSources[lyricSources.length - 1].textContent())?.trim() ?? ""
+      : "";
+    sample.liveCaptions.push({
+      utteranceId,
+      previousLine: "",
+      currentLine: latestSource,
     });
   }
 
@@ -416,6 +460,7 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
       request, `${BACKEND}/api/meetings/${meetingId}/start`,
       undefined, `POST /api/meetings/${meetingId}/start`,
     );
+    await checkInSeatOne(request, meetingId, "Speech E2E");
 
     const speakerResp: any = await apiPost(
       request, `${BACKEND}/api/seats/speaker`,
@@ -426,8 +471,13 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     console.log(`[E2E] Meeting ${meetingId} ready, speaker seat=1`);
 
     // ---- 2. Navigate to admin page ----------------------------------------
+    await page.route("**/app-config.js", (route) => route.fulfill({
+      contentType: "application/javascript",
+      body: 'window.__APP_CONFIG__ = { apiBase: "", wsBase: "ws://localhost:8000" };',
+    }));
     await page.goto("/");
     await page.waitForSelector("text=Connected", { timeout: 15_000 });
+    await page.getByRole("button", { name: /SERVICE & RECORDS/i }).click();
     // Give the browser WebSocket one short turn to finish joining the backend room
     await page.waitForTimeout(1000);
     console.log("[E2E] Admin page loaded, WS connected");
@@ -503,6 +553,18 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
             currentLine: currText,
             sourceTextFallback: srcFallback,
           });
+        } else {
+          const lyricSources = await page.$$('[data-testid="live-lyric-source"]');
+          if (lyricSources.length > 0) {
+            const currentText =
+              (await lyricSources[lyricSources.length - 1].textContent())?.trim() ?? "";
+            report.dom_caption_samples.push({
+              timestamp: Date.now(),
+              previousLine: "",
+              currentLine: currentText,
+              sourceTextFallback: null,
+            });
+          }
         }
 
         // Wait 200ms between samples
@@ -640,8 +702,11 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     // Wait for DOM to show something (either interim row or live-caption)
     try {
       if (report.caption_seen) {
-        await page.waitForSelector('[data-testid="live-caption"]', { timeout: 10_000 });
-        console.log("[E2E] live-caption block appeared in DOM");
+        await page.waitForSelector(
+          ':is([data-testid="live-caption"], [data-testid="live-lyrics"])',
+          { timeout: 10_000 },
+        );
+        console.log("[E2E] real-time caption/lyrics block appeared in DOM");
 
         // Count DOM lines in live caption
         const lineCount = await countDomLines(page, '[data-testid="live-caption"]');
@@ -874,7 +939,10 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     const hasExactlyOneFinal = report.dom_samples.some(
       (s) => s.finals.filter((f) => f.utteranceId === uid).length === 1,
     );
-    expect(hasExactlyOneFinal, `Expected at least one sample with exactly 1 final row for ${uid}`).toBe(true);
+    expect(
+      hasExactlyOneFinal,
+      `Expected exactly one authoritative final row for ${uid}`,
+    ).toBe(true);
 
     // D. Overlap should not persist until last sample
     if (overlapSeen) {
@@ -915,15 +983,10 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     ).toBe(true);
 
     // ---- 19. DOM final text verification ----------------------------------
-    let domFinalSource = "";
-    try {
-      domFinalSource = await page.$eval(
-        `${finalRowSelector} [data-testid="transcript-source"]`,
-        (el) => el.textContent?.trim() ?? "",
-      );
-    } catch {
-      console.log("[E2E] Could not find DOM final source text");
-    }
+    const domFinalSource = await page.$eval(
+      `${finalRowSelector} :is([data-testid="live-final-source"], [data-testid="transcript-source"])`,
+      (el) => el.textContent?.trim() ?? "",
+    );
     const domFinalSeatId = await page.$eval(
       finalRowSelector, (el) => el.getAttribute("data-seat-id"),
     ).catch(() => null);
@@ -1097,6 +1160,7 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
       request, `${BACKEND}/api/meetings/${meetingId}/start`,
       undefined, `POST /api/meetings/${meetingId}/start`,
     );
+    await checkInSeatOne(request, meetingId, "Auto-final E2E");
 
     const speakerResp: any = await apiPost(
       request, `${BACKEND}/api/seats/speaker`,
@@ -1107,8 +1171,13 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     console.log(`[E2E-AF] Meeting ${meetingId} ready, speaker seat=1`);
 
     // ---- 2. Navigate to admin page -----------------------------------------
+    await page.route("**/app-config.js", (route) => route.fulfill({
+      contentType: "application/javascript",
+      body: 'window.__APP_CONFIG__ = { apiBase: "", wsBase: "ws://localhost:8000" };',
+    }));
     await page.goto("/");
     await page.waitForSelector("text=Connected", { timeout: 15_000 });
+    await page.getByRole("button", { name: /SERVICE & RECORDS/i }).click();
     await page.waitForTimeout(1000);
     console.log("[E2E-AF] Admin page loaded, WS connected");
 
@@ -1142,8 +1211,9 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     const speechFrames = loadPcmFrames(15);
     expect(speechFrames.length).toBeGreaterThan(0);
 
-    // Silence frames: 1.2s VAD threshold → need ~14 frames to be safe
-    const silenceFrameCount = 16;
+    // The production hard-silence boundary is 3.0 s. Each frame is 100 ms;
+    // include two extra frames to avoid float-boundary sensitivity.
+    const silenceFrameCount = 32;
     const silenceFrames: Buffer[] = [];
     for (let i = 0; i < silenceFrameCount; i++) {
       silenceFrames.push(Buffer.alloc(3200, 0));
@@ -1232,7 +1302,7 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
       firstInterimReceivedAt - tFirstFrameSend;
     autoReport.latency!.first_frame_to_latest_interim_ms =
       latestInterimReceivedAt - tFirstFrameSend;
-    autoReport.latest_interim_source_text = latestInterim.source_text;
+    autoReport.latest_interim_source_text = latestInterim?.source_text ?? "";
     autoReport.interim_count = interimCount;
 
     console.log(
@@ -1259,14 +1329,10 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     );
 
     // Wait for final DOM to appear + 1s settle
-    try {
-      await page.waitForSelector(
-        `[data-testid="transcript-final"][data-utterance-id="${uid}"]`,
-        { timeout: 20_000 },
-      );
-    } catch {
-      console.log(`[E2E-AF] Warning: final row not found for ${uid}`);
-    }
+    await page.waitForSelector(
+      `[data-testid="transcript-final"][data-utterance-id="${uid}"]`,
+      { timeout: 20_000 },
+    );
 
     await page.waitForTimeout(1000);
     stopSampling = true;
@@ -1281,16 +1347,11 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     autoReport.max_final_rows_for_utterance = maxFinalForUid;
 
     // ---- 10. DOM final text verification ----------------------------------
-    let domFinalSource = "";
-    try {
-      const finalRowSelector = `[data-testid="transcript-final"][data-utterance-id="${uid}"]`;
-      domFinalSource = await page.$eval(
-        `${finalRowSelector} [data-testid="transcript-source"]`,
-        (el: any) => el.textContent?.trim() ?? "",
-      );
-    } catch {
-      console.log("[E2E-AF] Could not find DOM final source text");
-    }
+    const finalRowSelector = `[data-testid="transcript-final"][data-utterance-id="${uid}"]`;
+    const domFinalSource = await page.$eval(
+      `${finalRowSelector} :is([data-testid="live-final-source"], [data-testid="transcript-source"])`,
+      (el: any) => el.textContent?.trim() ?? "",
+    );
     console.log(`[E2E-AF] DOM final: src="${domFinalSource}"`);
 
     // ---- 11. GET /api/translations -- verify persisted record -------------

@@ -78,14 +78,24 @@ def start_slideshow_on_display(display_index: int) -> dict:
                     "code": "powerpoint_not_running",
                 }
 
-            if app.Presentations.Count == 0:
+            try:
+                presentations = app.Presentations
+            except Exception:
+                # Some Office ROT proxies expose only the application shell.
+                # Dispatch re-wraps the same running instance with its full
+                # PowerPoint automation interface instead of starting a new
+                # process when PowerPoint is already active.
+                app = win32com.client.Dispatch("PowerPoint.Application")
+                presentations = app.Presentations
+
+            if presentations.Count == 0:
                 return {
                     "ok": False,
                     "error": "No presentation open in PowerPoint",
                     "code": "no_presentation",
                 }
 
-            presentation = app.Presentations.Item(1)
+            presentation = presentations.Item(1)
 
             # If a slideshow is already running, don't restart it
             if app.SlideShowWindows.Count > 0:

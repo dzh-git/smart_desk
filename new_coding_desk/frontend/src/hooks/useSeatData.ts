@@ -698,6 +698,7 @@ export function useSeatData(seatId: number): SeatData {
         });
         if (uid) {
           finalizedUtteranceIdsRef.current.add(uid);
+          setLyricMap((prev) => removeLyricsForUtterance(prev, uid));
           // Task 126: mark as terminal (skip if already recorded)
           if (!terminalUtteranceIdsRef.current.has(uid)) {
             recordTerminalId(uid);
