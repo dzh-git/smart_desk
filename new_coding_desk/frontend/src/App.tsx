@@ -15,20 +15,23 @@ import { HostTabletConsole } from "./components/HostTabletConsole";
 import { DisplayView } from "./components/DisplayView";
 import { ScreenView } from "./components/ScreenView";
 import { isDemoControlsEnabled } from "./components/shared";
+import { SpatialProvider } from "./spatial/SpatialProvider";
 
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LegacyRootRedirect />} />
-        <Route path="/admin" element={<AdminRoute />} />
-        <Route path="/host" element={<HostTabletConsole />} />
-        <Route path="/seat/:seatId" element={<SeatRoute />} />
-        <Route path="/seat/1/face-templates" element={<FaceTemplateManager />} />
-        <Route path="/display" element={<DisplayView />} />
-        <Route path="/screen" element={<ScreenView />} />
-        <Route path="*" element={<Navigate to="/admin" replace />} />
-      </Routes>
+      <SpatialProvider>
+        <Routes>
+          <Route path="/" element={<LegacyRootRedirect />} />
+          <Route path="/admin" element={<AdminRoute />} />
+          <Route path="/host" element={<HostTabletConsole />} />
+          <Route path="/seat/:seatId" element={<SeatRoute />} />
+          <Route path="/seat/1/face-templates" element={<FaceTemplateManager />} />
+          <Route path="/display" element={<DisplayView />} />
+          <Route path="/screen" element={<ScreenView />} />
+          <Route path="*" element={<Navigate to="/admin" replace />} />
+        </Routes>
+      </SpatialProvider>
     </BrowserRouter>
   );
 }

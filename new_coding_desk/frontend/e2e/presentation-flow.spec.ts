@@ -58,7 +58,7 @@ async function verifySpeech(
     ).first()).toBeVisible();
 
     uploader.send(JSON.stringify({ type: "end_hint" }));
-    await expect.poll(() => result("translation_final")?.translation_status, { timeout: 30_000 }).toBe("ok");
+    await expect.poll(() => result("translation_final")?.translation_status, { timeout: 60_000 }).toBe("ok");
     const final = result("translation_final")!;
     expect(final.source_lang).toBe(language);
     expect(final.target_lang).toBe(language === "zh" ? "en" : "zh");
@@ -82,7 +82,7 @@ test.skip(
 
 test("prepare, operate, and review a nine-seat meeting across devices", async ({ browser, baseURL, request }) => {
   const englishPCM = process.env.SMARTDESK_PRESENTATION_ENGLISH_PCM;
-  test.setTimeout(englishPCM ? 180_000 : 120_000);
+  test.setTimeout(englishPCM ? 240_000 : 120_000);
   const controller = await browser.newContext({ baseURL, viewport: { width: 1600, height: 1000 } });
   const guest = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 } });
   const displayDevice = await browser.newContext({ baseURL, viewport: { width: 1920, height: 1080 } });

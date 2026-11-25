@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { AlertCircle, ArrowLeft, Maximize, Monitor, MonitorOff, RefreshCw } from "lucide-react";
 import { fetchHostDisplayStatus } from "../api/resources";
 import type { HostDisplayStatus } from "../api/types";
+import { SpatialStage } from "../spatial/SpatialStage";
 import { ActionButton, StatusBadge, isDemoControlsEnabled } from "./shared";
 
 const POLL_INTERVAL_MS = 5000;
@@ -72,8 +73,9 @@ export function ScreenView() {
 
   const showStream = status?.stream_state === "online"
     || (status?.stream_state === "unknown" && tryPlayback);
+  const phase = loading ? "busy" : error ? "fault" : showStream ? "live" : "idle";
   return (
-    <div data-testid="screen-view" className="desk-page flex min-h-dvh flex-col">
+    <div data-testid="screen-view" data-spatial-mode="relay" data-spatial-phase={phase} className="desk-page flex min-h-dvh flex-col">
       <header className="desk-hero flex flex-wrap items-center justify-between gap-4 border-b border-techBorder px-4 py-4 sm:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <Link to={returnTo} aria-label="返回 / Back" className="mr-2 grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-techBorder text-techMuted hover:text-techText">
@@ -122,28 +124,40 @@ export function ScreenView() {
               title="Screen Stream"
             />
           ) : (
-            <div className="m-auto max-w-lg space-y-3 p-6 text-center" role="status">
-              {loading ? (
-                <p data-testid="screen-loading" className="text-techCyan">正在连接共享画面…</p>
-              ) : error ? (
-                <div data-testid="screen-error" className="space-y-2">
-                  <AlertCircle size={32} className="mx-auto text-techRose" />
-                  <p className="text-lg font-semibold">无法连接状态服务</p>
-                  <p className="break-words text-sm text-techMuted">{error}</p>
-                </div>
-              ) : (
-                <>
-                  <MonitorOff size={32} className="mx-auto text-techCyan" />
-                  <p data-testid={status?.stream_state === "offline" ? "stream-offline" : undefined} className="text-xl font-semibold">
-                    等待中央主机共享
-                  </p>
-                  <p className="text-sm text-techMuted">中央主机开始共享后，画面会自动出现。</p>
-                  {status?.stream_state === "unknown" && (
-                    <ActionButton variant="secondary" touch onClick={() => setTryPlayback(true)}>尝试播放 / Try playback</ActionButton>
-                  )}
-                </>
-              )}
-            </div>
+            <>
+              <div className="absolute inset-0">
+                <SpatialStage
+                  className="spatial-relay-empty h-full w-full"
+                  state={{
+                    mode: "relay",
+                    phase,
+                    signal: status?.stream_state,
+                  }}
+                />
+              </div>
+              <div className="relative z-10 mx-auto mb-6 mt-auto w-fit max-w-[calc(100%-2rem)] space-y-3 rounded-2xl border border-techBorder bg-techBg/95 p-5 text-center shadow-card-glow sm:mb-10 sm:p-6" role="status">
+                {loading ? (
+                  <p data-testid="screen-loading" className="text-techCyan">正在连接共享画面…</p>
+                ) : error ? (
+                  <div data-testid="screen-error" className="space-y-2">
+                    <AlertCircle size={26} className="mx-auto text-techRose" />
+                    <p className="text-lg font-semibold">无法连接状态服务</p>
+                    <p className="max-w-md break-words text-sm text-techMuted">{error}</p>
+                  </div>
+                ) : (
+                  <>
+                    <MonitorOff size={26} className="mx-auto text-techCyan" />
+                    <p data-testid={status?.stream_state === "offline" ? "stream-offline" : undefined} className="text-xl font-semibold">
+                      等待中央主机共享
+                    </p>
+                    <p className="text-sm text-techMuted">中央主机开始共享后，画面会自动出现。</p>
+                    {status?.stream_state === "unknown" && (
+                      <ActionButton variant="secondary" touch onClick={() => setTryPlayback(true)}>尝试播放 / Try playback</ActionButton>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
           )}
         </div>
       </main>

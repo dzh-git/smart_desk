@@ -15,6 +15,7 @@ import {
   type SmartDeskNativeEvent,
 } from "../native/nativeEvents";
 import { useSeatData } from "../hooks/useSeatData";
+import { SpatialStage } from "../spatial/SpatialStage";
 import { isDemoControlsEnabled } from "./shared";
 
 interface HostDeviceAccess {
@@ -119,12 +120,13 @@ function NativeHostTabletConsole() {
   }, [bridge]);
 
   if (initializing) return <HostGate message="正在验证主持人设备…" busy />;
-  if (!deviceAccess) return <HostGate message={denied ?? "主持人设备验证失败"} />;
+  if (!deviceAccess) return <HostGate message={denied ?? "主持人设备验证失败"} denied />;
   if (!unlocked) {
     return (
       <HostGate
         message={denied ?? "输入维护 PIN 进入主持人控制台"}
         busy={pendingUnlock}
+        denied={denied != null}
         onUnlock={() => void requestUnlock()}
       />
     );
@@ -169,30 +171,45 @@ function NativeHostTabletConsole() {
 function HostGate({
   message,
   busy = false,
+  denied = false,
   onUnlock,
 }: {
   message: string;
   busy?: boolean;
+  denied?: boolean;
   onUnlock?: () => void;
 }) {
+  const phase = busy ? "busy" : denied ? "fault" : "idle";
   return (
-    <main className="min-h-screen bg-techBg grid place-items-center p-6 text-techText">
-      <div className="w-full max-w-md rounded-2xl border border-techBorder bg-techCard p-8 text-center shadow-card-glow">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-techCyan/40 bg-techCyan/10">
-          {busy ? <Loader2 className="animate-spin text-techCyan" /> : <LockKeyhole className="text-techCyan" />}
+    <main data-spatial-mode="identity" data-spatial-phase={phase} className="desk-page grid min-h-dvh place-items-center p-4 text-techText sm:p-8">
+      <div className="desk-panel grid w-full max-w-5xl overflow-hidden md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div className="relative min-h-48 md:min-h-[25rem]">
+          <div className="absolute inset-0">
+            <SpatialStage
+              className="spatial-gate-stage h-full w-full"
+              state={{ mode: "identity", phase, selectedSeat: 1 }}
+            />
+          </div>
         </div>
-        <h1 className="mt-5 text-xl font-bold">主持人控制台</h1>
-        <p className="mt-2 text-sm text-techMuted">{message}</p>
-        {onUnlock && (
-          <button
-            data-testid="unlock-host-console"
-            disabled={busy}
-            onClick={onUnlock}
-            className="mt-6 rounded-lg bg-techCyan px-5 py-2.5 text-sm font-semibold text-techBg disabled:opacity-50"
-          >
-            {busy ? "等待 PIN 验证…" : "输入维护 PIN"}
-          </button>
-        )}
+        <div className="spatial-gate-card grid content-center border-t border-techBorder p-6 text-center sm:p-9 md:border-l md:border-t-0 md:text-left">
+          <div className="desk-brand-mark mx-auto grid h-12 w-12 place-items-center md:mx-0">
+            {busy ? <Loader2 className="animate-spin text-techCyan" /> : <LockKeyhole className="text-techCyan" />}
+          </div>
+          <h1 className="mt-5 text-2xl font-bold sm:text-3xl">主持人控制台</h1>
+          <p className="mt-2 text-sm text-techMuted">{message}</p>
+          {onUnlock && (
+            <div className="mt-6">
+              <button
+                data-testid="unlock-host-console"
+                disabled={busy}
+                onClick={onUnlock}
+                className="min-h-11 rounded-lg bg-techCyan px-5 py-2.5 text-sm font-semibold text-techBg disabled:opacity-50"
+              >
+                {busy ? "等待 PIN 验证…" : "输入维护 PIN"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );

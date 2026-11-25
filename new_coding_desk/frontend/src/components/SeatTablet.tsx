@@ -34,7 +34,10 @@ import { useClock, formatTime, formatDuration, parseBackendDate } from "./shared
 import { isDemoControlsEnabled } from "./shared";
 import { useSpeechStream } from "../hooks/useSpeechStream";
 import { isMicrophoneCaptureSupported } from "../audio/microphone";
+import type { SpeechStatus } from "../audio/types";
 import { TranscriptPanel } from "./TranscriptPanel";
+import { SpatialStage } from "../spatial/SpatialStage";
+import type { SceneSeat, SpatialState } from "../spatial/sceneState";
 import {
   identityCheckinSeat,
   manualAdmitSeat,
@@ -137,6 +140,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const [creatingService, setCreatingService] = useState(false);
   const [cancellingService, setCancellingService] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [localSpeechStatus, setLocalSpeechStatus] = useState<SpeechStatus>("idle");
   const nativeBridge = useMemo(() => getNativeBridge(), []);
   const [nativeDeviceInfo, setNativeDeviceInfo] = useState<DeviceInfo | null>(
     null,
@@ -874,114 +878,69 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     void nativeBridge.cancelMaintenanceHold().catch(() => undefined);
   }, [nativeBridge]);
 
-  // ── Loading State ──────────────────────────────────────────────────────
+  const waitingForMeeting = loading || (error && !meeting) || noMeeting;
+  const header = (
+    <SeatHeader
+      seatId={seatId}
+      connection={connection}
+      onBack={onSwitchToAdmin}
+      meetingTitle={waitingForMeeting ? undefined : meeting?.title}
+      elapsedMs={waitingForMeeting ? undefined : elapsedMs}
+      onMaintenanceHoldStart={maintenanceAccessAvailable ? beginMaintenanceHold : undefined}
+      onMaintenanceHoldEnd={maintenanceAccessAvailable ? cancelMaintenanceHold : undefined}
+    />
+  );
 
-  if (loading) {
+  if (waitingForMeeting) {
+    const phase = loading ? "busy" : error ? "fault" : "idle";
     return (
-      <div className="min-h-screen bg-techBg flex flex-col">
-        <SeatHeader
-          seatId={seatId}
-          connection={connection}
-          onBack={onSwitchToAdmin}
-          onMaintenanceHoldStart={
-            maintenanceAccessAvailable ? beginMaintenanceHold : undefined
-          }
-          onMaintenanceHoldEnd={
-            maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
-          }
-        />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <Loader2
-              size={32}
-              className="animate-spin text-techCyan mx-auto"
-            />
-            <p className="text-sm font-medium text-techMuted">
-              正在加载席位数据 / Loading seat data...
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Error State ────────────────────────────────────────────────────────
-
-  if (error && !meeting) {
-    return (
-      <div className="min-h-screen bg-techBg flex flex-col">
-        <SeatHeader
-          seatId={seatId}
-          connection={connection}
-          onBack={onSwitchToAdmin}
-          onMaintenanceHoldStart={
-            maintenanceAccessAvailable ? beginMaintenanceHold : undefined
-          }
-          onMaintenanceHoldEnd={
-            maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
-          }
-        />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4 max-w-md">
-            <div className="w-14 h-14 rounded-full bg-techCyan/10 border-2 border-techCyan/30 flex items-center justify-center mx-auto">
-              <Loader2 className="animate-spin text-techCyan" size={24} />
+      <div data-spatial-mode="station" data-spatial-phase={phase} className="desk-page flex min-h-dvh flex-col">
+        {header}
+        <main className="grid flex-1 place-items-center p-4 sm:p-6">
+          <div className="desk-panel grid w-full max-w-5xl overflow-hidden md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <div className="relative min-h-48 md:min-h-[24rem]">
+              <div className="absolute inset-0">
+                <SpatialStage
+                  className="spatial-gate-stage h-full w-full"
+                  state={{ mode: "station", phase, selectedSeat: seatId }}
+                />
+              </div>
             </div>
-            <p className="text-sm font-semibold text-techText">
-              正在重新连接会议系统 / Reconnecting
-            </p>
-            <p className="text-xs text-techMuted">{error}</p>
-            <ActionButton
-              variant="primary"
-              size="md"
-              icon={<RefreshCw size={14} />}
-              onClick={refresh}
-            >
-              <span>重试 / </span>
-              <span>Retry</span>
-            </ActionButton>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── No Meeting State ───────────────────────────────────────────────────
-
-  if (noMeeting) {
-    return (
-      <div className="min-h-screen bg-techBg flex flex-col">
-        <SeatHeader
-          seatId={seatId}
-          connection={connection}
-          onBack={onSwitchToAdmin}
-          onMaintenanceHoldStart={
-            maintenanceAccessAvailable ? beginMaintenanceHold : undefined
-          }
-          onMaintenanceHoldEnd={
-            maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
-          }
-        />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4 max-w-md">
-            <div className="w-16 h-16 rounded-full bg-techCardSoft border-2 border-techBorder flex items-center justify-center mx-auto">
-              <Cpu className="text-techCyan" size={28} />
+            <div className="spatial-gate-card flex flex-col items-center justify-center gap-4 border-t border-techBorder p-6 text-center sm:p-8 md:items-start md:border-l md:border-t-0 md:text-left">
+              {loading ? (
+                <>
+                  <Loader2 size={30} className="animate-spin text-techCyan" />
+                  <p className="text-sm font-medium text-techMuted">正在加载席位数据 / Loading seat data...</p>
+                </>
+              ) : error ? (
+                <>
+                  <div className="desk-brand-mark grid h-14 w-14 place-items-center">
+                    <Loader2 className="animate-spin text-techCyan" size={24} />
+                  </div>
+                  <p className="text-xl font-semibold text-techText">正在重新连接会议系统 / Reconnecting</p>
+                  <p className="break-words text-xs text-techMuted">{error}</p>
+                  <ActionButton variant="primary" size="md" icon={<RefreshCw size={14} />} onClick={refresh}>
+                    <span>重试 / </span>
+                    <span>Retry</span>
+                  </ActionButton>
+                </>
+              ) : (
+                <>
+                  <div className="desk-brand-mark grid h-14 w-14 place-items-center">
+                    <Cpu className="text-techCyan" size={24} />
+                  </div>
+                  <p className="text-2xl font-bold text-techText">等待会议开始 / Waiting for Meeting</p>
+                  <p className="text-sm text-techMuted">
+                    会议开始后将自动启用此席位页面。 / The seat interface will activate once a meeting starts.
+                  </p>
+                  <ActionButton variant="secondary" size="md" icon={<RefreshCw size={14} />} onClick={refresh}>
+                    刷新 / Refresh
+                  </ActionButton>
+                </>
+              )}
             </div>
-            <p className="text-base font-bold text-techText">
-              等待会议开始 / Waiting for Meeting
-            </p>
-            <p className="text-xs text-techMuted">
-              会议开始后将自动启用此席位页面。 / The seat interface will activate once a meeting starts.
-            </p>
-            <ActionButton
-              variant="secondary"
-              size="md"
-              icon={<RefreshCw size={14} />}
-              onClick={refresh}
-            >
-              刷新 / Refresh
-            </ActionButton>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
@@ -992,24 +951,17 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     const verificationActive = ACTIVE_IDENTITY_STATUSES.has(
       nativeIdentityStatus?.status ?? "",
     );
+    const phase = error || actionError || connection === "disconnected" ? "fault"
+      : identityCheckinSubmitting || verificationActive || (hasAssignment && identityMode === "debug") ? "busy"
+      : "idle";
     return (
       <div
         data-testid="seat-page-scroll"
-        className="desk-page h-dvh overflow-y-auto flex flex-col"
+        data-spatial-mode="identity"
+        data-spatial-phase={phase}
+        className="desk-page flex h-dvh flex-col overflow-y-auto"
       >
-        <SeatHeader
-          seatId={seatId}
-          connection={connection}
-          onBack={onSwitchToAdmin}
-          meetingTitle={meeting?.title ?? undefined}
-          elapsedMs={elapsedMs}
-          onMaintenanceHoldStart={
-            maintenanceAccessAvailable ? beginMaintenanceHold : undefined
-          }
-          onMaintenanceHoldEnd={
-            maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
-          }
-        />
+        {header}
         {error && (
           <div className="border-b border-techAmber/40 bg-techAmber/10 px-4 py-2 text-center text-xs font-semibold text-techAmber">
             连接暂时中断，正在自动重连。{error && ` · ${error}`}
@@ -1017,99 +969,115 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         )}
         <main
           data-testid="face-access-gate"
-          className="flex-1 flex items-center justify-center p-6"
+          className="grid flex-1 place-items-center p-4 sm:p-6"
         >
-          <div className="desk-hero w-full max-w-xl rounded-3xl border border-techCyan/30 p-6 text-center shadow-card-glow sm:p-10">
-            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border-2 border-techCyan/40 bg-techCyan/10">
-              <UserCheck size={36} className="text-techCyan" />
-            </div>
-            <h1 className="text-2xl font-semibold text-techText sm:text-3xl">
-              {demoBrowser ? "席位签到 / Seat Check-in" : "人脸验证门禁 / Face Access"}
-            </h1>
-            {!hasAssignment ? (
-              <p className="mt-4 text-sm text-techAmber">
-                等待主持人分配席位人员 / Waiting for host seat assignment
-              </p>
-            ) : demoBrowser ? (
-              <div className="mt-5 space-y-4">
-                <p className="text-xl font-semibold text-techText">{assignedAttendee.name}</p>
-                <p className="text-sm text-techMuted">演示模式，可直接签到。</p>
-                <ActionButton
-                  variant="primary"
-                  size="lg"
-                  touch
-                  icon={<UserCheck size={16} />}
-                  onClick={() => void handleDemoCheckIn()}
-                  disabled={!writesAllowed}
-                  loading={identityCheckinSubmitting}
-                >
-                  演示签到 / Demo Check-in
-                </ActionButton>
-              </div>
-            ) : identityMode === "debug" ? (
-              <div className="mt-5 space-y-2">
-                <Loader2 size={28} className="mx-auto animate-spin text-techAmber" />
-                <p className="text-base font-semibold text-techText">
-                  {assignedAttendee.name}
-                </p>
-                <p className="text-sm text-techAmber">
-                  Debug 模式正在自动完成签到，无需进行人脸验证。
-                </p>
-              </div>
-            ) : !canRecognize ? (
-              <div className="mt-4 space-y-2">
-                <p className="text-base font-semibold text-techText">
-                  {assignedAttendee.name}
-                </p>
-                <p className="text-sm text-techAmber">
-                  {nativeBridge.isAvailable()
-                    ? "默认人员尚未绑定人脸，请联系主持人放行。"
-                    : "当前浏览器无法使用平板人脸验证，请联系主持人放行。"}
-                </p>
-              </div>
-            ) : (
-              <div className="mt-5 space-y-4 text-left">
-                <p className="text-center text-sm text-techMuted">
-                  默认人员：{assignedAttendee.name}
-                </p>
-                <NativeIdentityPanel
-                  automatic
-                  status={nativeIdentityStatus}
-                  onFaceVerification={handleFaceVerification}
-                  onStopFaceVerification={handleStopFaceVerification}
+          <div className="desk-panel grid w-full max-w-5xl overflow-hidden md:grid-cols-[minmax(0,1.12fr)_minmax(0,1fr)]">
+            <div className="relative min-h-48 md:min-h-[25rem]">
+              <div className="absolute inset-0">
+                <SpatialStage
+                  className="spatial-gate-stage h-full w-full"
+                  state={{
+                    mode: "identity",
+                    phase,
+                    selectedSeat: seatId,
+                    seats: [{ id: seatId, status: hasAssignment ? "assigned" : "vacant" }],
+                    signal: nativeIdentityStatus?.status,
+                  }}
                 />
-                {!verificationActive && (
-                  <div className="flex justify-center">
-                    <ActionButton
-                      variant="primary"
-                      size="md"
-                      icon={<RefreshCw size={14} />}
-                      onClick={() => void retryFaceVerification().catch((reason: unknown) => {
-                        setActionError(reason instanceof Error ? reason.message : "重新识别失败");
-                      })}
-                      disabled={identityCheckinSubmitting}
-                    >
-                      重新识别 / Retry Recognition
-                    </ActionButton>
-                  </div>
-                )}
               </div>
-            )}
-            {actionError && (
-              <p className="mt-5 rounded-lg border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
-                {identityMode === "debug" ? "自动放行失败" : "验证失败"}：{actionError}
-              </p>
-            )}
-            {!wsConnected && (
-              <p className="mt-4 text-xs text-techAmber">
-                后端连接已断开，恢复连接前不会解锁会议页面。
-              </p>
-            )}
-            {identityMode === "debug" && (
-              <div className="mt-5 rounded-lg border border-techAmber/50 bg-techAmber/10 px-4 py-3 text-sm font-semibold text-techAmber">
-                DEBUG · 正在跳过人脸验证并自动签到
+            </div>
+            <div className="spatial-gate-card grid min-w-0 content-center border-t border-techBorder p-6 text-center sm:p-8 md:border-l md:border-t-0">
+              <div className="desk-brand-mark mx-auto mb-4 grid h-12 w-12 place-items-center">
+                <UserCheck size={24} className="text-techCyan" />
               </div>
-            )}
+              <h1 className="text-2xl font-semibold text-techText sm:text-3xl">
+                {demoBrowser ? "席位签到 / Seat Check-in" : "人脸验证门禁 / Face Access"}
+              </h1>
+              {!hasAssignment ? (
+                <p className="mt-4 text-sm text-techAmber">
+                  等待主持人分配席位人员 / Waiting for host seat assignment
+                </p>
+              ) : demoBrowser ? (
+                <div className="mt-5 space-y-4">
+                  <p className="text-xl font-semibold text-techText">{assignedAttendee.name}</p>
+                  <p className="text-sm text-techMuted">演示模式，可直接签到。</p>
+                  <ActionButton
+                    variant="primary"
+                    size="lg"
+                    touch
+                    icon={<UserCheck size={16} />}
+                    onClick={() => void handleDemoCheckIn()}
+                    disabled={!writesAllowed}
+                    loading={identityCheckinSubmitting}
+                  >
+                    演示签到 / Demo Check-in
+                  </ActionButton>
+                </div>
+              ) : identityMode === "debug" ? (
+                <div className="mt-5 space-y-2">
+                  <Loader2 size={28} className="mx-auto animate-spin text-techAmber" />
+                  <p className="text-base font-semibold text-techText">
+                    {assignedAttendee.name}
+                  </p>
+                  <p className="text-sm text-techAmber">
+                    Debug 模式正在自动完成签到，无需进行人脸验证。
+                  </p>
+                </div>
+              ) : !canRecognize ? (
+                <div className="mt-4 space-y-2">
+                  <p className="text-base font-semibold text-techText">
+                    {assignedAttendee.name}
+                  </p>
+                  <p className="text-sm text-techAmber">
+                    {nativeBridge.isAvailable()
+                      ? "默认人员尚未绑定人脸，请联系主持人放行。"
+                      : "当前浏览器无法使用平板人脸验证，请联系主持人放行。"}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-5 space-y-4 text-left">
+                  <p className="text-center text-sm text-techMuted">
+                    默认人员：{assignedAttendee.name}
+                  </p>
+                  <NativeIdentityPanel
+                    automatic
+                    status={nativeIdentityStatus}
+                    onFaceVerification={handleFaceVerification}
+                    onStopFaceVerification={handleStopFaceVerification}
+                  />
+                  {!verificationActive && (
+                    <div className="flex justify-center">
+                      <ActionButton
+                        variant="primary"
+                        size="md"
+                        icon={<RefreshCw size={14} />}
+                        onClick={() => void retryFaceVerification().catch((reason: unknown) => {
+                          setActionError(reason instanceof Error ? reason.message : "重新识别失败");
+                        })}
+                        disabled={identityCheckinSubmitting}
+                      >
+                        重新识别 / Retry Recognition
+                      </ActionButton>
+                    </div>
+                  )}
+                </div>
+              )}
+              {actionError && (
+                <p className="mt-5 rounded-lg border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
+                  {identityMode === "debug" ? "自动放行失败" : "验证失败"}：{actionError}
+                </p>
+              )}
+              {!wsConnected && (
+                <p className="mt-4 text-xs text-techAmber">
+                  后端连接已断开，恢复连接前不会解锁会议页面。
+                </p>
+              )}
+              {identityMode === "debug" && (
+                <div className="mt-5 rounded-lg border border-techAmber/50 bg-techAmber/10 px-4 py-3 text-sm font-semibold text-techAmber">
+                  DEBUG · 正在跳过人脸验证并自动签到
+                </div>
+              )}
+            </div>
           </div>
         </main>
       </div>
@@ -1118,24 +1086,41 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   // ── Active Meeting ─────────────────────────────────────────────────────
 
+  const assignedSeatIds = new Set(attendees.map((attendee) => attendee.assigned_seat_id));
+  const sceneSeats = seats.map<SceneSeat>((seat) => ({
+    id: seat.seatId,
+    status: seat.isCheckedIn ? (seat.isSpeaker ? "speaking" : "ready")
+      : seat.isVacant && !assignedSeatIds.has(seat.seatId) ? "vacant" : "assigned",
+  }));
+  const speechActive = (isSpeaker && ["recording", "stopping"].includes(localSpeechStatus))
+    || (speakerSeatId != null && Object.values(interimMap).some((item) => item.seatId === speakerSeatId));
+  const speechStarting = isSpeaker && ["requesting_microphone", "connecting_speech_ws"].includes(localSpeechStatus);
+  const speechFailed = isSpeaker && localSpeechStatus === "error";
+  const phase = error || actionError || speechFailed || connection === "disconnected" ? "fault"
+    : !wsConnected || speechStarting ? "busy"
+    : speechActive ? "speech"
+    : activeVote?.status === "open" ? "vote"
+    : isSpeaker ? "speech" : "live";
+  const scene: SpatialState = {
+    mode: "station",
+    phase,
+    selectedSeat: seatId,
+    seats: sceneSeats,
+    level: phase === "vote" ? Number(currentVoteOption != null)
+      : phase === "speech" ? Number(speechActive)
+      : seats.filter((seat) => seat.isCheckedIn).length / Math.max(1, seats.length),
+    signal: [meeting?.id, agendaState.current?.id, speakerSeatId, displayVote?.id, displayVote?.status,
+      currentVoteOption != null, isSpeaker ? localSpeechStatus : null].join(":"),
+  };
+
   return (
     <div
       data-testid="seat-page-scroll"
-      className="desk-page h-dvh overflow-y-auto relative"
+      data-spatial-mode="station"
+      data-spatial-phase={phase}
+      className="desk-page relative h-dvh overflow-y-auto"
     >
-      <SeatHeader
-        seatId={seatId}
-        connection={connection}
-        onBack={onSwitchToAdmin}
-        meetingTitle={meeting?.title ?? undefined}
-        elapsedMs={elapsedMs}
-        onMaintenanceHoldStart={
-          maintenanceAccessAvailable ? beginMaintenanceHold : undefined
-        }
-        onMaintenanceHoldEnd={
-          maintenanceAccessAvailable ? cancelMaintenanceHold : undefined
-        }
-      />
+      {header}
 
       {error && (
         <div className="border-b border-techAmber/40 bg-techAmber/10 px-4 py-2 text-center text-xs font-semibold text-techAmber">
@@ -1170,86 +1155,93 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
             <ActionButton variant="secondary" size="sm" onClick={refresh}>立即重试 / Retry Now</ActionButton>
           </div>
         )}
-        <div className="grid gap-4">
-        {/* Seat Status Card */}
-        <SeatStatusCard
-          seatId={seatId}
-          isSpeaker={isSpeaker}
-          myAttendee={myAttendeeName ? { name: myAttendeeName, title: myAttendeeTitle } : null}
-          demoControlsEnabled={demoBrowser}
-          onVacate={handleVacate}
-          writesAllowed={writesAllowed}
-          meetingStatus={meetingStatus}
-          tabletVacateAvailable={tabletVacateAvailable}
-          onTabletVacate={handleTabletVacate}
-          tabletVacateSubmitting={tabletVacateSubmitting}
-        />
-
-        {/* Current Topic Card (read-only) */}
-        <CurrentTopicCard agendaState={agendaState} />
-
-        <button
-          data-testid="seat-screen-entry"
-          onClick={() => navigate("/screen", { state: { seatId } })}
-          className="desk-panel flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-techBorder px-4 py-3 text-techCyan transition-colors hover:border-techCyan/50"
-        >
-          <Monitor size={17} />
-          <span className="text-sm font-semibold">共享画面 / Screen Share</span>
-        </button>
-
-        {/* Voting Section: open votes are writable; closed votes remain visible as final results. */}
-        {isCheckedIn && displayVote && (
-          <SeatVoteSection
-            vote={displayVote}
-            voteStats={displayVoteStats}
-            voteStatsError={voteStatsError}
-            currentVote={currentVoteOption}
-            onRetryStats={refresh}
-            selectedOption={selectedVoteOption}
-            onSelectOption={setSelectedVoteOption}
-            onSubmit={handleVoteSubmit}
-            submitting={submittingVote}
+        <section className="desk-panel grid items-stretch overflow-hidden sm:grid-cols-[minmax(0,0.84fr)_minmax(0,1.16fr)] lg:col-span-2">
+          <SeatStatusCard
+            seatId={seatId}
+            isSpeaker={isSpeaker}
+            myAttendee={myAttendeeName ? { name: myAttendeeName, title: myAttendeeTitle } : null}
+            demoControlsEnabled={demoBrowser}
+            onVacate={handleVacate}
             writesAllowed={writesAllowed}
             meetingStatus={meetingStatus}
+            tabletVacateAvailable={tabletVacateAvailable}
+            onTabletVacate={handleTabletVacate}
+            tabletVacateSubmitting={tabletVacateSubmitting}
           />
-        )}
+          <div className="relative min-h-48 border-t border-techBorder sm:border-l sm:border-t-0">
+            <div className="absolute inset-0">
+              <SpatialStage state={scene} className="spatial-seat-stage h-full w-full" />
+            </div>
+          </div>
+        </section>
 
-        {/* Service Calls Section — only for checked-in seats */}
-        {isCheckedIn && (
-          <SeatServiceSection
-            currentCall={currentServiceCall}
-            onRequest={handleServiceCall}
-            onCancel={handleCancelService}
-            creating={creatingService}
-            cancelling={cancellingService}
-            writesAllowed={writesAllowed}
-            meetingStatus={meetingStatus}
-          />
-        )}
+        <div className="grid min-w-0 gap-4">
+          {/* Current Topic Card (read-only) */}
+          <CurrentTopicCard agendaState={agendaState} />
+
+          <button
+            data-testid="seat-screen-entry"
+            onClick={() => navigate("/screen", { state: { seatId } })}
+            className="desk-panel flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-techBorder px-4 py-3 text-techCyan transition-colors hover:border-techCyan/50"
+          >
+            <Monitor size={17} />
+            <span className="text-sm font-semibold">共享画面 / Screen Share</span>
+          </button>
+
+          {/* Voting Section: open votes are writable; closed votes remain visible as final results. */}
+          {isCheckedIn && displayVote && (
+            <SeatVoteSection
+              vote={displayVote}
+              voteStats={displayVoteStats}
+              voteStatsError={voteStatsError}
+              currentVote={currentVoteOption}
+              onRetryStats={refresh}
+              selectedOption={selectedVoteOption}
+              onSelectOption={setSelectedVoteOption}
+              onSubmit={handleVoteSubmit}
+              submitting={submittingVote}
+              writesAllowed={writesAllowed}
+              meetingStatus={meetingStatus}
+            />
+          )}
+
+          {/* Service Calls Section — only for checked-in seats */}
+          {isCheckedIn && (
+            <SeatServiceSection
+              currentCall={currentServiceCall}
+              onRequest={handleServiceCall}
+              onCancel={handleCancelService}
+              creating={creatingService}
+              cancelling={cancellingService}
+              writesAllowed={writesAllowed}
+              meetingStatus={meetingStatus}
+            />
+          )}
 
         </div>
-        <div className="grid gap-4">
-        <SpeechControl
-          meetingId={meeting?.id ?? null}
-          seatId={seatId}
-          isSpeaker={isSpeaker}
-          isCheckedIn={isCheckedIn}
-          writesAllowed={writesAllowed}
-          meetingStatus={meetingStatus}
-          onLocalTerminalUtterance={terminateUtterance}
-        />
+        <div className="grid min-w-0 gap-4">
+          <SpeechControl
+            meetingId={meeting?.id ?? null}
+            seatId={seatId}
+            isSpeaker={isSpeaker}
+            isCheckedIn={isCheckedIn}
+            writesAllowed={writesAllowed}
+            meetingStatus={meetingStatus}
+            onLocalTerminalUtterance={terminateUtterance}
+            onSpeechStatusChange={setLocalSpeechStatus}
+          />
 
-        {/* Bilingual Transcript */}
-        <TranscriptPanel
-          entries={translations}
-          liveFinal={liveFinal}
-          interims={Object.values(interimMap)}
-          lyrics={Object.values(lyricMap).flat()}
-          pendingFinals={Object.values(pendingFinalMap)}
-          seatNameMap={seatNameMap}
-          liveEnabled={meetingStatus === "meeting_active"}
-          liveReconnecting={connection !== "connected"}
-        />
+          {/* Bilingual Transcript */}
+          <TranscriptPanel
+            entries={translations}
+            liveFinal={liveFinal}
+            interims={Object.values(interimMap)}
+            lyrics={Object.values(lyricMap).flat()}
+            pendingFinals={Object.values(pendingFinalMap)}
+            seatNameMap={seatNameMap}
+            liveEnabled={meetingStatus === "meeting_active"}
+            liveReconnecting={connection !== "connected"}
+          />
         </div>
       </main>
     </div>
@@ -1625,14 +1617,7 @@ function SeatStatusCard({
   tabletVacateSubmitting,
 }: SeatStatusCardProps) {
   return (
-    <div
-      className={cx(
-        "desk-panel rounded-2xl border bg-techCard p-5",
-        isSpeaker
-          ? "border-techCyan shadow-cyan-glow"
-          : "border-techBorder",
-      )}
-    >
+    <div className="flex min-w-0 flex-col justify-center p-5 sm:p-6">
       <div className="flex flex-wrap items-center gap-3">
         <div
           className={cx(
@@ -2038,6 +2023,7 @@ interface SpeechControlProps {
   meetingStatus: "no_meeting" | "meeting_active";
   /** Task 127A: local cleanup callback — immediately removes live caption. */
   onLocalTerminalUtterance?: (utteranceId: string, reason: string) => void;
+  onSpeechStatusChange?: (status: SpeechStatus) => void;
 }
 
 export function SpeechControl({
@@ -2048,6 +2034,7 @@ export function SpeechControl({
   writesAllowed,
   meetingStatus,
   onLocalTerminalUtterance,
+  onSpeechStatusChange,
 }: SpeechControlProps) {
   const {
     status,
@@ -2063,6 +2050,12 @@ export function SpeechControl({
     isSpeaker && isCheckedIn && writesAllowed && meetingStatus === "meeting_active",
     onLocalTerminalUtterance ? { onLocalTerminalUtterance } : undefined,
   );
+
+  useEffect(() => {
+    onSpeechStatusChange?.(status);
+  }, [onSpeechStatusChange, status]);
+
+  useEffect(() => () => onSpeechStatusChange?.("idle"), [onSpeechStatusChange]);
 
   // ── Speech model status polling (Task 119) ──────────────────────────────
   const [speechStatus, setSpeechStatus] = useState<SpeechModelStatus | null>(null);

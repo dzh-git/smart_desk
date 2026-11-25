@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle,
@@ -19,6 +19,8 @@ import {
 import { useWebSocket } from "../hooks/useWebSocket";
 import type { WSMessage } from "../hooks/useWebSocket";
 import type { Meeting, Agenda, VoteStatistics } from "../api/types";
+import { SpatialStage } from "../spatial/SpatialStage";
+import type { SpatialState } from "../spatial/sceneState";
 import {
   ActionButton,
   DualLabel,
@@ -172,12 +174,33 @@ export function DisplayView() {
     state.activeVote ??
     state.voteResults.find((vote) => vote.status === "closed") ??
     null;
+  const agendaState = useMemo(() => deriveAgendaState(state.agendas), [state.agendas]);
+  const { current, progress } = agendaState;
+  const showPanels = !state.loading && (!state.error || state.meeting || isEndedMeeting);
+  const scene: SpatialState = {
+    mode: "display",
+    phase: state.loading ? "busy"
+      : state.error ? "fault"
+      : isEndedMeeting ? "complete"
+      : state.activeVote?.status === "open" ? "vote"
+      : state.meeting && connection !== "connected" ? "busy"
+      : state.meeting ? "live"
+      : "idle",
+    level: progress.total ? (progress.completed + progress.skipped) / progress.total : 0,
+    signal: activeMeetingId == null && !isEndedMeeting ? null : [
+      activeMeetingId ?? state.endedMeetingId,
+      current?.id,
+      displayVote?.vote_id,
+      displayVote?.status,
+      displayVote?.total_votes,
+    ].join(":"),
+  };
 
   // ── Live clock for header ────────────────────────────────────────────────
   const now = useClock();
 
   return (
-    <div className="desk-page min-h-screen text-techText lg:h-dvh lg:flex lg:flex-col">
+    <div data-spatial-mode="display" data-spatial-phase={scene.phase} className="desk-page min-h-screen text-techText lg:flex lg:h-dvh lg:min-h-[44rem] lg:flex-col">
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="desk-hero flex shrink-0 flex-wrap items-center justify-between gap-5 border-b border-techBorder px-5 py-6 lg:px-9 xl:px-12 xl:py-9">
         <div className="flex min-w-0 items-center gap-4 sm:gap-6">
@@ -257,95 +280,81 @@ export function DisplayView() {
       </header>
 
       {/* ── Main content ──────────────────────────────────────── */}
-      <main className="px-4 py-4 lg:min-h-0 lg:flex-1 lg:px-9 lg:py-6 xl:px-12 xl:py-8">
-        <div className="lg:h-full">
-          {/* ── Loading state ──────────────────────────────────── */}
-          {state.loading && (
-            <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-xl border border-techBorder bg-techCard p-10 shadow-card-glow lg:h-full lg:min-h-0">
-              <Loader2 size={48} className="animate-spin text-techCyan" />
-              <div className="mt-6 text-center">
-                <p className="text-2xl font-semibold text-techText">
-                  正在加载大屏数据
-                </p>
-                <p className="mt-1 text-sm font-mono tracking-wider text-techMuted">
-                  Loading Display
-                </p>
-              </div>
+      <main className="flex flex-1 flex-col gap-3 px-4 py-4 lg:min-h-0 lg:px-9 lg:py-6 xl:px-12 xl:py-8">
+        {showPanels && state.error && (
+          <p role="alert" className="rounded-xl border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
+            更新失败 / Sync failed · {state.error}
+          </p>
+        )}
+        {showPanels && isEndedMeeting && (
+          <div className="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-techAmber/30 bg-techAmber/10 px-4 py-2.5 text-center shadow-card-glow">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-techAmber opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-techAmber" />
+            </span>
+            <p className="text-sm font-semibold text-techAmber">
+              会议已结束，结果保留 / Meeting Ended — Results Preserved
+            </p>
+          </div>
+        )}
+
+        <div
+          data-testid={showPanels ? "display-dashboard-grid" : undefined}
+          className={showPanels
+            ? "spatial-display-grid grid min-h-0 flex-1 gap-4 lg:grid-cols-12 lg:grid-rows-[minmax(13rem,0.9fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1.85fr)_minmax(0,1.18fr)] xl:grid-rows-1 xl:gap-5"
+            : "grid min-h-[50vh] flex-1"}
+        >
+          {showPanels && (
+            <div
+              data-testid="display-agenda-panel"
+              className="min-h-0 min-w-0 lg:col-span-4 lg:row-start-2 xl:col-span-1 xl:col-start-1 xl:row-start-1"
+            >
+              <DisplayAgendaProgress agendas={state.agendas} agendaState={agendaState} />
             </div>
           )}
 
-          {/* ── Error state ────────────────────────────────────── */}
-          {!state.loading && state.error && !state.meeting && !isEndedMeeting && (
-            <div className="flex min-h-[50vh] flex-col justify-center rounded-xl border border-techRose/30 bg-techRose/10 p-8 shadow-card-glow lg:h-full lg:min-h-0">
-              <div className="mb-4 flex items-center gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-techRose/20">
-                  <AlertTriangle size={28} className="text-techRose" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-techRose">
-                    大屏数据加载失败
-                  </p>
-                  <p className="mt-0.5 text-sm font-mono tracking-wider text-techMuted">
-                    Display Load Failed
-                  </p>
-                </div>
-              </div>
-              <p className="mb-6 text-base text-techMuted/80">
-                操作失败 / Operation Failed: {state.error}
-              </p>
-              <ActionButton
-                variant="danger"
-                icon={<RefreshCw size={18} />}
-                onClick={() => void load()}
-              >
-                <span>刷新重试</span>
-                <span>Retry</span>
-              </ActionButton>
+          <div className={showPanels
+            ? "desk-panel relative order-first min-h-[15rem] overflow-hidden lg:col-span-12 lg:row-start-1 lg:min-h-0 xl:col-span-1 xl:col-start-2"
+            : "desk-panel relative grid min-h-[20rem] place-items-center overflow-hidden p-4"}
+          >
+            <div className="absolute inset-0">
+              <SpatialStage state={scene} className="spatial-display-stage h-full w-full" />
             </div>
-          )}
-
-          {/* ── Normal content (not loading, no error) ─────────── */}
-          {!state.loading && (!state.error || state.meeting || isEndedMeeting) && (
-            <div className="flex min-h-[50vh] flex-col gap-3 lg:h-full lg:min-h-0">
-              {state.error && (
-                <p role="alert" className="rounded-xl border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
-                  更新失败 / Sync failed · {state.error}
-                </p>
-              )}
-              {/* ── Ended meeting banner ──────────────────────────── */}
-              {isEndedMeeting && (
-                <div className="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-techAmber/30 bg-techAmber/10 px-4 py-2.5 text-center shadow-card-glow">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-techAmber opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-techAmber" />
-                  </span>
-                  <p className="text-sm font-semibold text-techAmber">
-                    会议已结束，结果保留 / Meeting Ended — Results Preserved
-                  </p>
-                </div>
-              )}
-
-              <div
-                data-testid="display-dashboard-grid"
-                className="grid min-h-0 flex-1 gap-4 lg:grid-cols-12 xl:gap-6"
-              >
-                <div
-                  data-testid="display-agenda-panel"
-                  className="min-h-0 lg:col-span-4"
-                >
-                  <DisplayAgendaProgress agendas={state.agendas} />
-                </div>
-                <div
-                  data-testid="display-vote-panel"
-                  className="min-h-0 lg:col-span-8"
-                >
-                  {displayVote ? (
-                    <DisplayVoteResult vote={displayVote} />
-                  ) : (
-                    <DisplayEmptyVote />
-                  )}
-                </div>
+            {state.loading && (
+              <div role="status" className="relative z-10 rounded-2xl border border-techBorder bg-techBg/90 px-8 py-6 text-center">
+                <Loader2 size={32} className="mx-auto animate-spin text-techCyan" />
+                <p className="mt-3 text-xl font-semibold text-techText">正在加载大屏数据</p>
+                <p className="mt-1 text-sm font-mono tracking-wider text-techMuted">Loading Display</p>
               </div>
+            )}
+            {!state.loading && state.error && !showPanels && (
+              <div className="relative z-10 w-full max-w-md rounded-2xl border border-techRose/30 bg-techBg/95 p-6">
+                <div className="mb-4 flex items-center gap-4">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-techRose/20">
+                    <AlertTriangle size={25} className="text-techRose" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-techRose">大屏数据加载失败</p>
+                    <p className="mt-0.5 text-sm font-mono tracking-wider text-techMuted">Display Load Failed</p>
+                  </div>
+                </div>
+                <p className="mb-5 break-words text-sm text-techMuted">
+                  操作失败 / Operation Failed: {state.error}
+                </p>
+                <ActionButton variant="danger" icon={<RefreshCw size={18} />} onClick={() => void load()}>
+                  <span>刷新重试</span>
+                  <span>Retry</span>
+                </ActionButton>
+              </div>
+            )}
+          </div>
+
+          {showPanels && (
+            <div
+              data-testid="display-vote-panel"
+              className="min-h-0 min-w-0 lg:col-span-8 lg:row-start-2 xl:col-span-1 xl:col-start-3 xl:row-start-1"
+            >
+              {displayVote ? <DisplayVoteResult vote={displayVote} /> : <DisplayEmptyVote />}
             </div>
           )}
         </div>
@@ -387,7 +396,7 @@ function clearStoredEndedId(): void {
 
 function DisplayEmptyVote() {
   return (
-    <section className="desk-panel flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-techBorder bg-techCard p-8 text-center shadow-card-glow lg:h-full lg:min-h-0">
+    <section className="desk-panel flex min-h-52 flex-col items-center justify-center rounded-xl border border-techBorder bg-techCard p-6 text-center shadow-card-glow lg:h-full lg:min-h-0">
       <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-techBorder bg-techCardSoft text-techMuted">
         <VoteIcon size={32} />
       </div>
@@ -411,8 +420,8 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
   const hasClearWinner = vote.results.filter((option) => option.count === maxCount).length === 1;
 
   return (
-    <section className="desk-panel flex min-h-[360px] flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 lg:p-7 xl:p-8">
-      <div className="mb-7 flex shrink-0 flex-wrap items-start justify-between gap-4">
+    <section className="desk-panel flex min-h-52 flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 xl:p-6">
+      <div className="mb-5 flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="mb-2">
             <StatusBadge
@@ -422,15 +431,15 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
               pulse={isOpen}
             />
           </div>
-          <h2 className="break-words text-2xl font-semibold leading-tight text-techText xl:text-4xl">
+          <h2 className="break-words text-2xl font-semibold leading-tight text-techText xl:text-3xl">
             {vote.title}
           </h2>
         </div>
-        <div className="min-w-[116px] rounded-xl border border-techBorder bg-techCardSoft px-5 py-3 text-center">
-          <p className="text-3xl font-bold text-techCyan xl:text-4xl">
+        <div className="flex items-center gap-2 rounded-lg border border-techBorder bg-techCardSoft px-3 py-2 text-center">
+          <p className="text-2xl font-bold text-techCyan">
             {vote.total_votes}
           </p>
-          <p className="mt-1 text-[0.65rem] font-mono tracking-wider text-techMuted">
+          <p className="text-[0.65rem] font-mono tracking-wider text-techMuted">
             总票数 / TOTAL VOTES
           </p>
         </div>
@@ -447,15 +456,15 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
 
           return (
             <div key={option.option}>
-              <div className="mb-2 flex items-start justify-between gap-4">
-                <span className="flex min-w-0 items-start gap-2.5">
+              <div className="mb-2 flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
                   {isWinner && (
                     <span className="mt-0.5 shrink-0 text-techCyan">
                       <CheckCircle size={20} />
                     </span>
                   )}
                   <span
-                    className={`break-words text-lg font-semibold leading-snug xl:text-xl ${
+                    className={`min-w-0 break-words text-base font-semibold leading-snug 2xl:text-lg ${
                       isWinner ? "text-techCyan" : "text-techText"
                     }`}
                   >
@@ -467,7 +476,7 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
                     </span>
                   )}
                 </span>
-                <span className="shrink-0 text-base tabular-nums text-techMuted xl:text-lg">
+                <span className="text-sm tabular-nums text-techMuted">
                   {option.count} 票 / {option.count} votes · {pct}%
                 </span>
               </div>
@@ -502,8 +511,11 @@ function agendaStatusCopy(status: string | null | undefined) {
   }
 }
 
-function DisplayAgendaProgress({ agendas }: { agendas: Agenda[] }) {
-  const { current, progress, isFlowDone } = deriveAgendaState(agendas);
+function DisplayAgendaProgress({ agendas, agendaState }: {
+  agendas: Agenda[];
+  agendaState: ReturnType<typeof deriveAgendaState>;
+}) {
+  const { current, progress, isFlowDone } = agendaState;
   const sortedAgendas = [...agendas].sort(
     (a, b) => (a.sort_order ?? a.id) - (b.sort_order ?? b.id),
   );
@@ -517,7 +529,7 @@ function DisplayAgendaProgress({ agendas }: { agendas: Agenda[] }) {
       : { cn: "暂无当前议题", en: "NO ACTIVE TOPIC" };
 
   return (
-    <section className="desk-panel flex min-h-[360px] flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 lg:p-6 xl:p-7">
+    <section className="desk-panel flex min-h-52 flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 xl:p-6">
       <div className="mb-4 shrink-0">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-techCyan">

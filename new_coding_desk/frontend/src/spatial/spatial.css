@@ -1,0 +1,339 @@
+:root {
+  --desk-accent: 187 164 255;
+}
+
+[data-spatial-mode="agenda"] { --desk-accent: 255 203 130; }
+[data-spatial-mode="service"] { --desk-accent: 140 233 187; }
+[data-spatial-mode="station"] { --desk-accent: 168 188 255; }
+[data-spatial-mode="display"] { --desk-accent: 192 202 255; }
+[data-spatial-mode="relay"] { --desk-accent: 163 240 242; }
+[data-spatial-mode="identity"] { --desk-accent: 230 178 235; }
+[data-spatial-phase="vote"] { --desk-accent: 255 208 148; }
+[data-spatial-phase="speech"] { --desk-accent: 229 183 255; }
+[data-spatial-phase="complete"] { --desk-accent: 176 220 206; }
+[data-spatial-phase="fault"] { --desk-accent: 255 162 139; }
+
+.desk-page {
+  background:
+    radial-gradient(ellipse at 20% 0%, rgb(var(--desk-accent) / .09), transparent 44rem),
+    radial-gradient(ellipse at 100% 84%, #21132e47, transparent 48rem),
+    #0a0911;
+}
+
+.desk-hero {
+  background:
+    linear-gradient(116deg, #131020, #0b0a1385 70%),
+    repeating-linear-gradient(90deg, transparent 0 52px, rgb(var(--desk-accent) / .055) 52px 53px);
+}
+
+.desk-panel {
+  background: linear-gradient(143deg, #1a1727, #110f1b 86%);
+  border-color: #d1b7ff25;
+  box-shadow: inset 0 1px #e0d0ff08, 0 14px 40px #0003;
+}
+
+.desk-brand-mark {
+  border-radius: .65rem;
+  background: linear-gradient(143deg, rgb(var(--desk-accent) / .21), rgb(var(--desk-accent) / .035));
+}
+
+.spatial-stage {
+  --scene-accent: #bba4ff;
+  --scene-secondary: #ffaf78;
+  --scene-shadow: #18112d;
+  isolation: isolate;
+  position: relative;
+  min-width: 0;
+  min-height: 240px;
+  overflow: hidden;
+  border: 1px solid #bfa4f33a;
+  border-color: color-mix(in srgb, var(--scene-accent) 23%, #191622);
+  border-radius: 1.05rem;
+  background:
+    radial-gradient(ellipse at 50% 60%, var(--scene-shadow), #0b0914 78%);
+  box-shadow: inset 0 1px #eee0ff11, 0 1.2rem 4rem #03010860;
+}
+
+.spatial-stage::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(0deg, #06050bc4, transparent 16%, transparent 82%, #06050bab),
+    repeating-linear-gradient(90deg, transparent 0 71px, #d2bdff09 71px 72px);
+}
+
+.spatial-stage::after {
+  position: absolute;
+  z-index: 1;
+  inset: 13px;
+  border-radius: .55rem;
+  border: 1px solid color-mix(in srgb, var(--scene-accent) 12%, transparent);
+  mask-image: linear-gradient(90deg, black, transparent 18%, transparent 82%, black);
+  pointer-events: none;
+  content: "";
+}
+
+.spatial-stage[data-renderer="fallback"] {
+  min-height: 110px;
+}
+
+.spatial-viewport, .spatial-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.spatial-viewport {
+  touch-action: pan-y;
+}
+
+.spatial-stage[data-renderer="webgl2"] .spatial-viewport {
+  cursor: grab;
+}
+
+.spatial-stage[data-renderer="webgl2"] .spatial-viewport:active {
+  cursor: grabbing;
+}
+
+.spatial-viewport:focus-visible {
+  outline: 1px solid var(--scene-accent);
+  outline-offset: -5px;
+  border-radius: .8rem;
+}
+
+.spatial-stage__top,
+.spatial-stage__foot {
+  position: absolute;
+  z-index: 3;
+  inset-inline: clamp(1.05rem, 2vw, 1.7rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  pointer-events: none;
+}
+
+.spatial-stage__top { top: 1rem; }
+.spatial-stage__foot { bottom: .95rem; }
+
+.spatial-stage__label {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  color: var(--scene-accent);
+  font-size: .79rem;
+  font-weight: 620;
+  letter-spacing: .095em;
+}
+
+.spatial-stage__label svg {
+  filter: drop-shadow(0 0 8px var(--scene-accent));
+}
+
+.spatial-stage__engine,
+.spatial-stage__help {
+  color: #beb6cb;
+  font: 600 .63rem/1.45 ui-monospace, monospace;
+  letter-spacing: .07em;
+}
+
+.spatial-stage__engine {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+}
+
+.spatial-stage__engine::before {
+  width: .32rem;
+  height: .32rem;
+  border-radius: 100%;
+  background: var(--scene-accent);
+  box-shadow: 0 0 .8rem var(--scene-accent);
+  content: "";
+}
+
+.spatial-stage__fps {
+  color: var(--scene-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.spatial-stage__content {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  height: 100%;
+  min-height: inherit;
+  align-items: center;
+  padding: 3.75rem 1.4rem;
+  pointer-events: none;
+}
+
+.spatial-stage__content button,
+.spatial-stage__content a {
+  pointer-events: auto;
+}
+
+.spatial-settings {
+  position: relative;
+  pointer-events: auto;
+}
+
+.spatial-settings summary {
+  display: flex;
+  align-items: center;
+  gap: .42rem;
+  min-height: 32px;
+  padding: .28rem .6rem;
+  border: 1px solid #ead7ff30;
+  border-radius: 6px;
+  background: #0e0a18ba;
+  color: #eee9fb;
+  cursor: pointer;
+  font-size: .75rem;
+  list-style: none;
+}
+
+.spatial-settings summary::-webkit-details-marker { display: none; }
+
+.spatial-settings__menu {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + .5rem);
+  right: 0;
+  display: grid;
+  gap: .7rem;
+  width: 170px;
+  padding: .8rem;
+  border: 1px solid #dbc6ff48;
+  border-radius: .7rem;
+  background: #171222;
+  box-shadow: 0 .8rem 2rem #02010599;
+  color: #e7def7;
+  font-size: .75rem;
+}
+
+.spatial-settings__menu select {
+  display: block;
+  width: 100%;
+  margin-top: .3rem;
+  padding: .35rem;
+  border: 1px solid #523f66;
+  border-radius: .35rem;
+  background: #100b19;
+}
+
+.spatial-settings__motion { display: flex; align-items: center; gap: .55rem; }
+.spatial-settings__motion input { accent-color: var(--scene-accent); }
+
+.spatial-command {
+  display: grid;
+  gap: 1rem;
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.spatial-command > .spatial-stage {
+  min-height: clamp(270px, 36vw, 420px);
+}
+
+.spatial-command__rail {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.05rem;
+  padding: 1.1rem;
+  border-block: 1px solid #cfa8ff27;
+  background: linear-gradient(110deg, #1c1628b8, transparent 95%);
+}
+
+.spatial-workspaces {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .35rem;
+}
+
+.spatial-workspaces button {
+  display: flex;
+  min-width: 0;
+  min-height: 61px;
+  align-items: center;
+  gap: .55rem;
+  padding: .56rem .64rem;
+  border-bottom: 1px solid #bca2f637;
+  color: #c4bad8;
+  text-align: left;
+}
+
+.spatial-workspaces button:hover,
+.spatial-workspaces button[aria-pressed="true"] {
+  border-color: rgb(var(--desk-accent));
+  background: linear-gradient(0deg, rgb(var(--desk-accent) / .15), transparent);
+  color: rgb(var(--desk-accent));
+}
+
+.spatial-workspaces button svg {
+  flex-shrink: 0;
+}
+
+.spatial-workspaces button span span {
+  display: block;
+}
+
+.spatial-workspaces button span span:last-child {
+  margin-top: .23rem;
+  font: 600 .59rem/1.35 ui-monospace, monospace;
+  letter-spacing: .04em;
+}
+
+.spatial-readout {
+  min-width: 0;
+  padding: .6rem .75rem;
+  border-left: 1px solid #b9a1ed4d;
+  background: linear-gradient(90deg, #1e172ceb, transparent);
+}
+
+.spatial-readout > p:first-child {
+  font-size: clamp(1.15rem, 2vw, 1.7rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.spatial-command .spatial-stage[data-renderer="fallback"] {
+  min-height: 125px;
+}
+
+.spatial-stage.spatial-seat-stage,
+.spatial-stage.spatial-display-stage,
+.spatial-stage.spatial-gate-stage,
+.spatial-stage.spatial-relay-empty {
+  min-height: 0;
+}
+
+@media (min-width: 960px) {
+  .spatial-command {
+    grid-template-columns: minmax(0, 1.62fr) minmax(350px, 1fr);
+  }
+  .spatial-command--setup {
+    grid-template-columns: minmax(0, 1.18fr) minmax(340px, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .spatial-stage__help { display: none; }
+  .spatial-command__rail { padding: .85rem .55rem; }
+  .spatial-workspaces button { padding-inline: .45rem; }
+  .spatial-workspaces button svg { display: none; }
+  .spatial-workspaces button span span:last-child { font-size: .54rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spatial-stage *, .spatial-workspaces button {
+    animation-duration: .001s !important;
+    transition-duration: .001s !important;
+  }
+}

@@ -14,8 +14,13 @@ import {
   MicOff,
   WifiOff,
   UserCheck,
+  Orbit,
+  ListChecks,
+  Radio,
 } from "lucide-react";
 import { useAdminData } from "../hooks/useAdminData";
+import { SpatialStage } from "../spatial/SpatialStage";
+import type { SpatialState } from "../spatial/sceneState";
 
 import { AdminHeader } from "./AdminHeader";
 import { ConferenceTable } from "./ConferenceTable";
@@ -637,6 +642,44 @@ export function AdminDashboard({
     const assigned = attendees.find((attendee) => attendee.assigned_seat_id === seat.seatId);
     return !seat.attendeeName && assigned ? { ...seat, attendeeName: assigned.name } : seat;
   });
+  const scene: SpatialState = {
+    mode: workspace === "agenda_vote" ? "agenda" : workspace === "service_records" ? "service" : "room",
+    phase: error || adminActionError ? "fault" : isEndedMeeting ? "complete"
+      : loading || pendingMeeting ? "busy" : !meeting ? "idle"
+      : workspace === "agenda_vote" && hasActiveVote ? "vote"
+        : workspace === "overview" && Object.keys(interimMap).length ? "speech" : "live",
+    level: workspace === "service_records" ? Math.min(1, pendingRequests / 4)
+      : workspace === "agenda_vote" && hasActiveVote ? Math.min(1, (activeVote?.total_votes ?? 0) / 9)
+      : checkedIn / Math.max(seats.length, 1),
+    selectedSeat: activeSeatId,
+    signal: [
+      meeting?.id ?? pendingMeeting?.id, speakerSeatId,
+      agenda.find((topic) => topic.status === "active")?.id,
+      activeVote?.total_votes, pendingRequests,
+    ].join(":"),
+    seats: workspace === "overview" && !isEndedMeeting ? roomSeats.map((seat) => ({
+      id: seat.seatId,
+      status: seat.isSpeaker ? "speaking" : seat.isCheckedIn ? "ready"
+        : seat.attendeeName || !seat.isVacant ? "assigned" : "vacant",
+    })) : undefined,
+  };
+  const workspaceNavigation = (
+    <nav className="spatial-workspaces" aria-label="主持人工作区">
+      {([
+        ["overview", "会议总览", "OVERVIEW", Orbit],
+        ["agenda_vote", "议程与投票", "AGENDA & VOTE", ListChecks],
+        ["service_records", "服务与记录", "SERVICE & RECORDS", Radio],
+      ] as const).map(([key, label, english, Icon]) => (
+        <button key={key} type="button" aria-pressed={workspace === key} onClick={() => setWorkspace(key)}>
+          <Icon size={17} aria-hidden="true" />
+          <span>
+            <span>{label}</span>
+            <span>{english}</span>
+          </span>
+        </button>
+      ))}
+    </nav>
+  );
   const seatOverview = (
     <div className="desk-panel rounded-2xl border border-techBorder bg-techCard p-4 sm:p-6">
       <h3 className="text-xs font-semibold uppercase tracking-widest text-techMuted mb-5">
@@ -868,7 +911,7 @@ export function AdminDashboard({
   // ── Loading State ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="desk-page min-h-screen flex flex-col">
+      <div data-spatial-mode={scene.mode} data-spatial-phase={scene.phase} className="desk-page min-h-screen flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -876,8 +919,9 @@ export function AdminDashboard({
           onModeSwitch={isDemoControlsEnabled() && onSwitchToSeat ? () => onSwitchToSeat(previewSeat) : undefined}
           previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
         />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
+        <div className="spatial-command spatial-command--setup mx-auto w-full max-w-[1600px] flex-1 items-center p-4 sm:p-6">
+          <SpatialStage state={scene} />
+          <div className="spatial-command__rail text-center space-y-4">
             <Loader2 size={32} className="animate-spin text-techCyan mx-auto" />
             <p className="text-sm font-medium text-techMuted">
               正在加载会议数据 / Loading meeting data...
@@ -891,7 +935,7 @@ export function AdminDashboard({
   // ── Error State ────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="desk-page min-h-screen flex flex-col">
+      <div data-spatial-mode={scene.mode} data-spatial-phase={scene.phase} className="desk-page min-h-screen flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -899,8 +943,9 @@ export function AdminDashboard({
           onModeSwitch={isDemoControlsEnabled() && onSwitchToSeat ? () => onSwitchToSeat(previewSeat) : undefined}
           previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
         />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4 max-w-md">
+        <div className="spatial-command spatial-command--setup mx-auto w-full max-w-[1600px] flex-1 items-center p-4 sm:p-6">
+          <SpatialStage state={scene} />
+          <div className="spatial-command__rail text-center space-y-4 max-w-md">
             <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mx-auto">
               <AlertCircle className="text-techRose" size={24} />
             </div>
@@ -924,29 +969,34 @@ export function AdminDashboard({
 
   if (pendingMeeting) {
     return (
-      <div className="desk-page min-h-screen">
+      <div data-spatial-mode={scene.mode} data-spatial-phase={scene.phase} className="desk-page min-h-screen">
         <AdminHeader title="" meetingStatus="pending" connection={connection} />
         <main className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6">
           {actionNotice}
-          <SectionCard title="待启动会议" titleEn="Pending Meeting">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="min-w-0">
-                <h1 className="break-words text-2xl font-semibold text-techText">{pendingMeeting.title}</h1>
-                {pendingMeeting.description && (
-                  <p className="mt-1 text-sm text-techMuted">{pendingMeeting.description}</p>
-                )}
-              </div>
-              <ActionButton
-                variant="primary"
-                onClick={handleStartPendingMeeting}
-                disabled={!canStartMeeting(meetingStatus, true, meetingActionBusy) || attendeeBusy || seatAccessBusy}
-                loading={meetingActionBusy}
-                icon={<Play size={16} />}
-              >
-                开始会议 / Start Meeting
-              </ActionButton>
+          <section className="spatial-command spatial-command--setup">
+            <SpatialStage state={scene} onSelectSeat={handleSeatClick} />
+            <div className="spatial-command__rail">
+              <SectionCard title="待启动会议" titleEn="Pending Meeting">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <h1 className="break-words text-2xl font-semibold text-techText">{pendingMeeting.title}</h1>
+                    {pendingMeeting.description && (
+                      <p className="mt-1 text-sm text-techMuted">{pendingMeeting.description}</p>
+                    )}
+                  </div>
+                  <ActionButton
+                    variant="primary"
+                    onClick={handleStartPendingMeeting}
+                    disabled={!canStartMeeting(meetingStatus, true, meetingActionBusy) || attendeeBusy || seatAccessBusy}
+                    loading={meetingActionBusy}
+                    icon={<Play size={16} />}
+                  >
+                    开始会议 / Start Meeting
+                  </ActionButton>
+                </div>
+              </SectionCard>
             </div>
-          </SectionCard>
+          </section>
           <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
             {seatOverview}
             {rosterPanel}
@@ -959,7 +1009,7 @@ export function AdminDashboard({
   // ── No Meeting State ───────────────────────────────────────────────────
   if (noMeeting) {
     return (
-      <div className="desk-page min-h-screen flex flex-col">
+      <div data-spatial-mode={scene.mode} data-spatial-phase={scene.phase} className="desk-page min-h-screen flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -967,8 +1017,9 @@ export function AdminDashboard({
           onModeSwitch={isDemoControlsEnabled() && onSwitchToSeat ? () => onSwitchToSeat(previewSeat) : undefined}
           previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
         />
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="desk-hero w-full max-w-2xl space-y-5 rounded-2xl border border-techBorder p-5 sm:p-8">
+        <main className="spatial-command spatial-command--setup mx-auto w-full max-w-[1600px] flex-1 items-center p-4 sm:p-6">
+          <SpatialStage state={scene} />
+          <div className="spatial-command__rail">
             <div className="w-16 h-16 rounded-full bg-techCyan/10 border-2 border-techCyan/30 flex items-center justify-center mx-auto">
               <Cpu className="text-techCyan" size={28} />
             </div>
@@ -1025,14 +1076,14 @@ export function AdminDashboard({
               </ActionButton>
             </div>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
 
   // ── Active Meeting ─────────────────────────────────────────────────────
   return (
-    <div className="desk-page min-h-screen flex flex-col relative">
+    <div data-spatial-mode={scene.mode} data-spatial-phase={scene.phase} className="desk-page min-h-screen flex flex-col relative">
       <AdminHeader
         title={meeting?.title ?? ""}
         meetingStatus={meeting?.status ?? "pending"}
@@ -1065,158 +1116,123 @@ export function AdminDashboard({
             <ActionButton variant="secondary" size="sm" onClick={refresh}>立即刷新 / Refresh</ActionButton>
           </div>
         )}
-        {/* Summary row / Ended meeting banner */}
-        {isEndedMeeting ? (
-          <div className="mb-6">
-            <div className="rounded-xl border border-techBorder bg-techCard p-4 text-center shadow-card-glow">
-              <p className="text-lg font-bold text-techMuted">会议已结束 / <span>Meeting Ended</span></p>
-              <p className="text-sm text-techMuted/70 mt-1">{meeting?.title}</p>
-              {elapsedMs > 0 && (
-                <p className="text-xs text-techMuted/50 mt-2 font-mono">
-                  会议时长 / Duration: {formatDuration(elapsedMs)}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <MetricCard
-                labelCn="会议时长"
-                labelEn="MEETING TIME"
-                value={elapsedMs > 0 ? formatDuration(elapsedMs) : "—"}
-                accent="text-techCyan"
-              />
-              <MetricCard
-                labelCn="签到人数"
-                labelEn="CHECKED IN"
-                value={`${checkedIn}/${seats.length}`}
-                detailCn="参会人"
-                detailEn="ATTENDEES"
-                accent={
-                  checkedIn >= 9 ? "text-techGreen" : "text-techAmber"
-                }
-              />
-              <MetricCard
-                labelCn="当前发言人"
-                labelEn="CURRENT SPEAKER"
-                value={speakerAttendee?.split(" ")[0] ?? "—"}
-                detailCn={speakerSeatId != null ? `座位 ${speakerSeatId}` : "暂无发言人"}
-                detailEn={speakerSeatId != null ? `SEAT ${speakerSeatId}` : "NO ACTIVE SPEAKER"}
-                accent="text-techGreen"
-              />
-              <MetricCard
-                labelCn="待处理服务"
-                labelEn="PENDING SERVICES"
-                value={pendingRequests}
-                detailCn="请求"
-                detailEn="REQUESTS"
-                accent={
-                  pendingRequests > 0 ? "text-techRose" : "text-techMuted"
-                }
-              />
-            </div>
-
-
-          </div>
-        )}
-
-        {isEndedMeeting ? (
-          <SectionCard
-            title="会议已结束"
-            titleEn="MEETING ENDED"
-            headerRight={
-              <span className="text-xs text-techMuted">
-                ID {meeting?.id}
-              </span>
-            }
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <span className="inline-flex items-baseline gap-1.5">
-                  <span className="text-sm text-techMuted">会议已结束，下方显示结果。</span>
-                  <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted/60">MEETING ENDED — RESULTS BELOW</span>
-                </span>
+        <section className="spatial-command">
+          <SpatialStage
+            state={scene}
+            onSelectSeat={workspace === "overview" && !isEndedMeeting ? handleSeatClick : undefined}
+          />
+          <div className="spatial-command__rail">
+            {workspaceNavigation}
+            {/* Summary row / Ended meeting banner */}
+            {isEndedMeeting ? (
+              <div className="mb-6">
+                <div className="rounded-xl border border-techBorder bg-techCard p-4 text-center shadow-card-glow">
+                  <p className="text-lg font-bold text-techMuted">会议已结束 / <span>Meeting Ended</span></p>
+                  <p className="text-sm text-techMuted/70 mt-1">{meeting?.title}</p>
+                  {elapsedMs > 0 && (
+                    <p className="text-xs text-techMuted/50 mt-2 font-mono">
+                      会议时长 / Duration: {formatDuration(elapsedMs)}
+                    </p>
+                  )}
+                </div>
               </div>
-              <ActionButton
-                variant="secondary"
-                size="sm"
-                icon={<Plus size={13} />}
-                onClick={handleClearEndedMeeting}
-              >
-                新会议 / NEW MEETING
-              </ActionButton>
-            </div>
-          </SectionCard>
-        ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex flex-wrap items-baseline gap-2 text-sm font-semibold text-techText">
-              <span>会议控制</span>
-              <span className="desk-label">MEETING CONTROL</span>
-              <span className="desk-label">· ID {meeting?.id}</span>
-            </h2>
-            <div className="flex flex-wrap items-center gap-3">
-              <a className="rounded-lg border border-techBorder px-3 py-2 text-sm font-semibold text-techCyan hover:border-techCyan/50" href="/display" target="_blank" rel="noreferrer">
-                会议大屏 / Display
-              </a>
-              <ActionButton
-                variant="danger"
-                size="sm"
-                icon={<Square size={13} />}
-                onClick={handleEndMeeting}
-                disabled={!canEndMeeting(meetingStatus, meetingActionBusy)}
-                loading={meetingActionBusy}
-              >
-                结束会议 / END MEETING
-              </ActionButton>
-            </div>
-          </div>
-        )}
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <MetricCard
+                    labelCn="会议时长"
+                    labelEn="MEETING TIME"
+                    value={elapsedMs > 0 ? formatDuration(elapsedMs) : "—"}
+                    accent="text-techCyan"
+                  />
+                  <MetricCard
+                    labelCn="签到人数"
+                    labelEn="CHECKED IN"
+                    value={`${checkedIn}/${seats.length}`}
+                    detailCn="参会人"
+                    detailEn="ATTENDEES"
+                    accent={
+                      checkedIn >= 9 ? "text-techGreen" : "text-techAmber"
+                    }
+                  />
+                  <MetricCard
+                    labelCn="当前发言人"
+                    labelEn="CURRENT SPEAKER"
+                    value={speakerAttendee?.split(" ")[0] ?? "—"}
+                    detailCn={speakerSeatId != null ? `座位 ${speakerSeatId}` : "暂无发言人"}
+                    detailEn={speakerSeatId != null ? `SEAT ${speakerSeatId}` : "NO ACTIVE SPEAKER"}
+                    accent="text-techGreen"
+                  />
+                  <MetricCard
+                    labelCn="待处理服务"
+                    labelEn="PENDING SERVICES"
+                    value={pendingRequests}
+                    detailCn="请求"
+                    detailEn="REQUESTS"
+                    accent={
+                      pendingRequests > 0 ? "text-techRose" : "text-techMuted"
+                    }
+                  />
+                </div>
 
-        {/* Workspace switcher — always visible */}
-        <div className="mb-6">
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => setWorkspace("overview")}
-              className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                workspace === "overview"
-                  ? "bg-techCyan text-techBg shadow-cyan-glow"
-                  : "bg-techCard border border-techBorder text-techMuted hover:bg-techCardSoft hover:text-techText"
-              }`}
-            >
-              <span className="inline-flex items-baseline gap-1.5">
-                <span>会议总览</span>
-                <span className="text-[0.65rem] font-mono uppercase tracking-wider opacity-60">OVERVIEW</span>
-              </span>
-            </button>
-            <button
-              onClick={() => setWorkspace("agenda_vote")}
-              className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                workspace === "agenda_vote"
-                  ? "bg-techCyan text-techBg shadow-cyan-glow"
-                  : "bg-techCard border border-techBorder text-techMuted hover:bg-techCardSoft hover:text-techText"
-              }`}
-            >
-              <span className="inline-flex items-baseline gap-1.5">
-                <span>议程与投票</span>
-                <span className="text-[0.65rem] font-mono uppercase tracking-wider opacity-60">AGENDA &amp; VOTE</span>
-              </span>
-            </button>
-            <button
-              onClick={() => setWorkspace("service_records")}
-              className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                workspace === "service_records"
-                  ? "bg-techCyan text-techBg shadow-cyan-glow"
-                  : "bg-techCard border border-techBorder text-techMuted hover:bg-techCardSoft hover:text-techText"
-              }`}
-            >
-              <span className="inline-flex items-baseline gap-1.5">
-                <span>服务与记录</span>
-                <span className="text-[0.65rem] font-mono uppercase tracking-wider opacity-60">SERVICE &amp; RECORDS</span>
-              </span>
-            </button>
+
+              </div>
+            )}
+
+            {isEndedMeeting ? (
+              <SectionCard
+                title="会议已结束"
+                titleEn="MEETING ENDED"
+                headerRight={
+                  <span className="text-xs text-techMuted">
+                    ID {meeting?.id}
+                  </span>
+                }
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="inline-flex items-baseline gap-1.5">
+                      <span className="text-sm text-techMuted">会议已结束，下方显示结果。</span>
+                      <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted/60">MEETING ENDED — RESULTS BELOW</span>
+                    </span>
+                  </div>
+                  <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    icon={<Plus size={13} />}
+                    onClick={handleClearEndedMeeting}
+                  >
+                    新会议 / NEW MEETING
+                  </ActionButton>
+                </div>
+              </SectionCard>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="flex flex-wrap items-baseline gap-2 text-sm font-semibold text-techText">
+                  <span>会议控制</span>
+                  <span className="desk-label">MEETING CONTROL</span>
+                  <span className="desk-label">· ID {meeting?.id}</span>
+                </h2>
+                <div className="flex flex-wrap items-center gap-3">
+                  <a className="rounded-lg border border-techBorder px-3 py-2 text-sm font-semibold text-techCyan hover:border-techCyan/50" href="/display" target="_blank" rel="noreferrer">
+                    会议大屏 / Display
+                  </a>
+                  <ActionButton
+                    variant="danger"
+                    size="sm"
+                    icon={<Square size={13} />}
+                    onClick={handleEndMeeting}
+                    disabled={!canEndMeeting(meetingStatus, meetingActionBusy)}
+                    loading={meetingActionBusy}
+                  >
+                    结束会议 / END MEETING
+                  </ActionButton>
+                </div>
+              </div>
+            )}
+
           </div>
-        </div>
+        </section>
 
         {/* adminActionError — always visible regardless of workspace */}
         {adminActionError && (
@@ -1418,7 +1434,7 @@ function MetricCard({
   accent = "text-techCyan",
 }: MetricCardProps) {
   return (
-    <div className="desk-panel min-w-0 rounded-xl border border-techBorder px-4 py-4 sm:px-5">
+    <div className="spatial-readout">
       <p className={`truncate text-xl sm:text-2xl font-bold leading-none ${accent}`}>{value}</p>
       <p className="mt-2 flex flex-wrap items-baseline gap-1.5 text-xs font-medium text-techMuted">
         <span>{labelCn}</span>

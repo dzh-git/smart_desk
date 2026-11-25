@@ -558,15 +558,15 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/package.json": {
-    "mtime": 1795533371.9631782,
-    "seen": 1795533883.0187144,
-    "ast_hash": "8ff2ab3e7211b92924876ba4c9772fd5",
+    "mtime": 1795618738.555768,
+    "seen": 1795619854.791429,
+    "ast_hash": "aeee347ab39e72e7df7788b99d29a5db",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/playwright.config.ts": {
-    "mtime": 1795533757.890448,
-    "seen": 1795533883.0187156,
-    "ast_hash": "5479c0312e829c21c4f3c360f20a6863",
+    "mtime": 1795619273.0790865,
+    "seen": 1795619854.7914314,
+    "ast_hash": "4788b7ce158101ac242a2b0a83c8bcce",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/postcss.config.js": {
@@ -582,9 +582,9 @@
     "semantic_hash": "ad0d80822b2c7d2b81a9eb4ef0aabf18"
   },
   "new_coding_desk/frontend/src/App.tsx": {
-    "mtime": 1795533341.6688054,
-    "seen": 1795533883.0187209,
-    "ast_hash": "c84b0f9fd73437e6992405f446e81d75",
+    "mtime": 1795619084.777626,
+    "seen": 1795619854.791531,
+    "ast_hash": "4577f64bc445bbf2aac5c33cf861e45a",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/App.test.tsx": {
@@ -708,9 +708,9 @@
     "semantic_hash": "ed481375583d9fc714522d23688e19a6"
   },
   "new_coding_desk/frontend/src/components/AdminDashboard.tsx": {
-    "mtime": 1795533983.0083525,
-    "seen": 1795611916.4071538,
-    "ast_hash": "b8c222313505957139bb537c84bec841",
+    "mtime": 1795619469.344565,
+    "seen": 1795619854.7926052,
+    "ast_hash": "a5b62b29a28fc1b86978da582f418e85",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AdminHeader.tsx": {
@@ -732,9 +732,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/DisplayView.tsx": {
-    "mtime": 1795611811.4067206,
-    "seen": 1795611916.40726,
-    "ast_hash": "9cb22b90b24c0fca1c1655abfc8a1358",
+    "mtime": 1795619265.7054722,
+    "seen": 1795619854.7927082,
+    "ast_hash": "da74bf783b7b92376cca091627dbf43b",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HardwareStatus.tsx": {
@@ -756,15 +756,15 @@
     "semantic_hash": "5bd5b9ba073ee92cb3e5346163895c5c"
   },
   "new_coding_desk/frontend/src/components/ScreenView.tsx": {
-    "mtime": 1795611813.0107133,
-    "seen": 1795611916.407434,
-    "ast_hash": "9510ae91b2633dae40c116e643bd7e28",
+    "mtime": 1795619267.1294665,
+    "seen": 1795619854.792887,
+    "ast_hash": "4ff019497e9e9d6469acab640cdd6713",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/SeatTablet.tsx": {
-    "mtime": 1795533088.1527593,
-    "seen": 1795533883.0188084,
-    "ast_hash": "99123a83409c053bd047d61ce69e6f73",
+    "mtime": 1795619366.7730415,
+    "seen": 1795619854.7928889,
+    "ast_hash": "538d87d244f47f5a202125cc06c3574e",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ServicePanel.tsx": {
@@ -828,9 +828,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/main.tsx": {
-    "mtime": 1795532241.957985,
-    "seen": 1795533883.0188274,
-    "ast_hash": "eb10138ed48767691f1c803ec3337c9b",
+    "mtime": 1795619084.7818763,
+    "seen": 1795619854.7942352,
+    "ast_hash": "c25e4c3620222668d076ddd0496a9830",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/mockData.ts": {
@@ -870,9 +870,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/tailwind.config.js": {
-    "mtime": 1795532581.4564118,
-    "seen": 1795533883.0188432,
-    "ast_hash": "e7d668ec35ef53430354043d9397d641",
+    "mtime": 1795619084.778181,
+    "seen": 1795619854.7946424,
+    "ast_hash": "a640cd79d60f2e7f44838c82ed834f09",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/tsconfig.app.json": {
@@ -1404,9 +1404,9 @@
     "semantic_hash": "7a380495b6b2862564d3e278b1478f24"
   },
   "new_coding_desk/docs/DEMO_RUNBOOK.md": {
-    "mtime": 1795533807.8748705,
-    "seen": 1795533883.0190651,
-    "ast_hash": "f10fa45e0472c81bfb82b7b9cbcea423",
+    "mtime": 1795619739.3712943,
+    "seen": 1795619854.799872,
+    "ast_hash": "4ff63b71f830d07219196531b82a945c",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/EVENT_BUS_SPEC.md": {
@@ -1428,9 +1428,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/docs/FRONTEND_VISUAL_SPEC.md": {
-    "mtime": 1795533115.4290156,
-    "seen": 1795533883.0190697,
-    "ast_hash": "004c96c575fa69795acfcc23d3ac48c4",
+    "mtime": 1795619585.0600212,
+    "seen": 1795619854.7999609,
+    "ast_hash": "dd24dd6883efd6675993ae0ed0d95e87",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/HOST_DISPLAY_CONTRACT.md": {
@@ -3054,9 +3054,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HostTabletConsole.tsx": {
-    "mtime": 1795532880.5361638,
-    "seen": 1795533883.0188046,
-    "ast_hash": "0d683cd5796711ce15bdced6fb26c36e",
+    "mtime": 1795619268.65346,
+    "seen": 1795619854.7928112,
+    "ast_hash": "8a1d9c4f9eecc1850077dc21ed0a0fea",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_host_display_activation.py": {
@@ -3222,9 +3222,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/presentation-flow.spec.ts": {
-    "mtime": 1795533759.0424576,
-    "seen": 1795533883.0186965,
-    "ast_hash": "c75050ee086836dc53e567b6c8d763a1",
+    "mtime": 1795619806.055,
+    "seen": 1795619854.7889988,
+    "ast_hash": "5b8f184dee51ae05dc711b37fb23b598",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_meetings_router.py": {
@@ -3305,6 +3305,168 @@
     "ast_hash": "aa0de4854abe0d3085ad5f6816ff9ebe",
     "semantic_hash": ""
   },
+  "new_coding_desk/frontend/e2e/spatial-rendering.spec.ts": {
+    "mtime": 1795619886.4946287,
+    "seen": 1795619964.0823257,
+    "ast_hash": "f6216a5657c9695648b8163a8302a492",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/SpatialProvider.tsx": {
+    "mtime": 1795618994.6567266,
+    "seen": 1795619854.7944517,
+    "ast_hash": "5dc6fb72a76c90a825cd06992eb01e25",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/SpatialStage.tsx": {
+    "mtime": 1795619471.264553,
+    "seen": 1795619854.794454,
+    "ast_hash": "8fcf4e781167a73cd5541cd5bdf2f679",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/__tests__/director.test.ts": {
+    "mtime": 1795619477.3485217,
+    "seen": 1795619854.7944555,
+    "ast_hash": "b913255615794d2be706aef4336f7fa0",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/__tests__/particles.test.ts": {
+    "mtime": 1795619227.6856327,
+    "seen": 1795619854.7944567,
+    "ast_hash": "027f610c370915b53bab77318ccb7105",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/__tests__/sceneState.test.ts": {
+    "mtime": 1795618763.0199718,
+    "seen": 1795619854.7944582,
+    "ast_hash": "2e4511d42a79d17771ef9794b0f971c6",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/__tests__/world.test.ts": {
+    "mtime": 1795619374.6930084,
+    "seen": 1795619854.7944593,
+    "ast_hash": "ee8e683b837a838d9e7091d424a8800e",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/director.ts": {
+    "mtime": 1795619425.5927749,
+    "seen": 1795619854.794461,
+    "ast_hash": "c8df5db2e95d6c50e23d29a27bc6ad07",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/engine.ts": {
+    "mtime": 1795619930.4104273,
+    "seen": 1795619964.0860012,
+    "ast_hash": "0372d40d500d0231ee98f774376d81aa",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/lens.ts": {
+    "mtime": 1795619928.9304342,
+    "seen": 1795619964.086004,
+    "ast_hash": "7c58edde906252c60aeda2868bfaa384",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/particleMaterials.ts": {
+    "mtime": 1795619068.8902538,
+    "seen": 1795619854.7944653,
+    "ast_hash": "7aabb1348896019e96ac28aba9885bea",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/particleTargets.ts": {
+    "mtime": 1795619263.6814806,
+    "seen": 1795619854.794467,
+    "ast_hash": "23025862279d2407b75802192c550468",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/particles.ts": {
+    "mtime": 1795619262.5814862,
+    "seen": 1795619854.7944689,
+    "ast_hash": "9220072fb5f75519ced252b179b1ce8a",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/sceneState.ts": {
+    "mtime": 1795618797.6115003,
+    "seen": 1795619854.79447,
+    "ast_hash": "4e98ac9949d07dcac0e3a69ef5fcf9c2",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/spatialContext.ts": {
+    "mtime": 1795618994.6587381,
+    "seen": 1795619854.7944715,
+    "ast_hash": "6a395832a7ae7faaa145f11e6b228c02",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/spatialPreferences.ts": {
+    "mtime": 1795618994.6601877,
+    "seen": 1795619854.7944727,
+    "ast_hash": "0443bfbc0ec41b2a4740f918c963864b",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/world.ts": {
+    "mtime": 1795619424.9967773,
+    "seen": 1795619854.7944741,
+    "ast_hash": "1fd89d865a4a55ca2e0ab1b216dd6e1a",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/README.md": {
+    "mtime": 1795619737.7913017,
+    "seen": 1795619854.7995515,
+    "ast_hash": "7f8ef0b89c957faf3965cf66d3d4a142",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/docs/SPATIAL_UI.md": {
+    "mtime": 1795619884.8706362,
+    "seen": 1795619964.0921185,
+    "ast_hash": "fe2fec4ac226fc0d78ead7e34bd19324",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/admin.webp": {
+    "mtime": 1795619930.9704247,
+    "seen": 1795619964.0934052,
+    "ast_hash": "11f982f9f50822795cba369683505d6f",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/agenda.webp": {
+    "mtime": 1795619931.1424239,
+    "seen": 1795619964.0934072,
+    "ast_hash": "22a69dc23641be4e1153f5a12fefcf45",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/display.webp": {
+    "mtime": 1795619932.202419,
+    "seen": 1795619964.0934088,
+    "ast_hash": "f885a58123946df7da4c9f6dbd390ebe",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/host.webp": {
+    "mtime": 1795619931.4504225,
+    "seen": 1795619964.09341,
+    "ast_hash": "bc3b7f43bda92cb03d919d79f45496be",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/screen.webp": {
+    "mtime": 1795619932.7784164,
+    "seen": 1795619964.0934117,
+    "ast_hash": "28d8fe357dfa84fafb451898b2e950f7",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/seat-mobile.webp": {
+    "mtime": 1795619932.8544161,
+    "seen": 1795619964.093413,
+    "ast_hash": "7cada481617a0944eff79ab273bd25d5",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/seat.webp": {
+    "mtime": 1795619932.5424175,
+    "seen": 1795619964.0934143,
+    "ast_hash": "6327c480057e4006cae9cd764b9c8c72",
+    "semantic_hash": ""
+  },
+  "docs/integration/spatial-presentation/service.webp": {
+    "mtime": 1795619931.3104231,
+    "seen": 1795619964.0934155,
+    "ast_hash": "ab5fd543097c75c1dbce1a3471708f00",
+    "semantic_hash": ""
+  },
   "android_tablet/diagnostic-web/package-lock.json": {
     "mtime": 1795532241.8594337,
     "seen": 1795533883.0190997,
@@ -3312,9 +3474,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/package-lock.json": {
-    "mtime": 1795532241.9518695,
-    "seen": 1795533883.0191011,
-    "ast_hash": "5d7451c1098c15a9564e5385a0d14956",
+    "mtime": 1795618738.6197677,
+    "seen": 1795619854.8010583,
+    "ast_hash": "792ffaa226b6b899a6a4cbf0ddf3f772",
     "semantic_hash": ""
   }
 }

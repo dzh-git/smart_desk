@@ -15,6 +15,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const externalBaseURL = process.env.SMARTDESK_PRESENTATION_BASE_URL;
+const graphics = process.env.SMARTDESK_PLAYWRIGHT_WEBGL;
+const graphicsArgs = graphics === "software"
+  ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
+  : graphics === "disabled" ? ["--disable-webgl"] : [];
 
 export default defineConfig({
   testDir: "./e2e",
@@ -29,7 +33,7 @@ export default defineConfig({
   ],
   use: {
     baseURL: externalBaseURL ?? "http://localhost:5173",
-    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE },
+    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE, args: graphicsArgs },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
