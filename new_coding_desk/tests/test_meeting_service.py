@@ -350,6 +350,24 @@ class TestAttendeeCRUD:
         svc.delete_attendee(mid, attendee.id)
         assert len(svc.list_attendees(mid)) == 0
 
+    def test_delete_assigned_attendee_notifies_seat_of_cleared_assignment(self, svc, event_bus):
+        mid = _create_pending(svc)
+        attendee = svc.create_attendee(mid, "Alice")
+        attendee_id = attendee.id
+        svc.assign_attendee_to_seat(mid, 1, attendee_id)
+        received = []
+        event_bus.subscribe("seat_assignment_updated", received.append)
+
+        svc.delete_attendee(mid, attendee_id)
+
+        assert len(received) == 1
+        assert received[0].meeting_id == mid
+        assert received[0].payload == {
+            "seat_id": 1,
+            "attendee_id": attendee_id,
+            "action": "cleared",
+        }
+
     def test_delete_attendee_wrong_meeting(self, svc):
         """Cannot delete attendee belonging to different meeting."""
         m1 = _create_pending(svc, "M1")

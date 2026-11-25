@@ -1,162 +1,152 @@
-/**
- * ScreenView — read-only full-screen stream viewer.
- *
- * Embeds a WebRTC iframe pointing at the central-host MediaMTX relay.
- * The iframe src uses `window.location.hostname` (not a hardcoded IP) so
- * the same code works from any device on the LAN.
- *
- * This page has NO control buttons (no PowerPoint / SolidWorks / SmartDesk
- * switching). Application switching is only allowed from the admin page on
- * the central host itself via the loopback Agent (127.0.0.1:8766).
- */
-
-import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  Loader2,
-  WifiOff,
-  MonitorOff,
-  AlertCircle,
-  RefreshCw,
-  Maximize,
-} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { AlertCircle, ArrowLeft, Maximize, Monitor, MonitorOff, RefreshCw } from "lucide-react";
 import { fetchHostDisplayStatus } from "../api/resources";
 import type { HostDisplayStatus } from "../api/types";
+import { ActionButton, StatusBadge, isDemoControlsEnabled } from "./shared";
 
-const POLL_INTERVAL_MS = 5_000;
+const POLL_INTERVAL_MS = 5000;
 
-/** Build the WebRTC iframe URL from the current hostname. */
-function buildStreamUrl(): string {
-  const base = `http://${window.location.hostname}:8889/screen`;
-  const params = new URLSearchParams({
+function buildStreamUrl() {
+  const url = new URL(`http://${window.location.hostname}:8889/screen`);
+  url.search = new URLSearchParams({
     controls: "false",
     muted: "true",
     autoplay: "true",
     playsInline: "true",
-  });
-  return `${base}?${params.toString()}`;
+  }).toString();
+  return url.href;
 }
 
 export function ScreenView() {
+  const location = useLocation();
+  const seatId = location.state?.seatId;
+  const returnTo = Number.isInteger(seatId) && seatId >= 2 && seatId <= 9
+    ? `/seat/${seatId}`
+    : "/display";
   const [status, setStatus] = useState<HostDisplayStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [tryPlayback, setTryPlayback] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inFlight = useRef(false);
 
   const poll = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     try {
-      const data = await fetchHostDisplayStatus();
-      setStatus(data);
-      setLoading(false);
-      setError(false);
-    } catch {
-      setError(true);
+      const nextStatus = await fetchHostDisplayStatus();
+      setStatus(nextStatus);
+      if (nextStatus.stream_state === "offline") setTryPlayback(false);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "无法连接状态服务");
+    } finally {
+      inFlight.current = false;
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      if (pollRef.current != null) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
   }, [poll]);
 
   const handleRetry = () => {
-    setIframeKey((k) => k + 1);
-    poll();
+    setLoading(true);
+    setIframeKey((current) => current + 1);
+    void poll();
   };
 
-  const handleFullscreen = () => {
-    const el = document.documentElement;
-    if (el.requestFullscreen) {
-      el.requestFullscreen();
+  const handleFullscreen = async () => {
+    setFullscreenError(null);
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch (reason) {
+      setFullscreenError(reason instanceof Error ? reason.message : "当前设备无法进入全屏");
     }
   };
 
+  const showStream = status?.stream_state === "online"
+    || (status?.stream_state === "unknown" && tryPlayback);
   return (
-    <div data-testid="screen-view" className="min-h-screen bg-black flex flex-col">
-      {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-white text-xs">
-        <div className="flex items-center gap-3">
-          {loading && (
-            <span data-testid="screen-loading" className="flex items-center gap-1 text-amber-400">
-              <Loader2 size={14} className="animate-spin" />
-              正在连接…
-            </span>
-          )}
-          {!loading && !error && status && (
-            <>
-              {status.stream_state === "offline" && (
-                <span data-testid="stream-offline" className="flex items-center gap-1 text-red-400">
-                  <WifiOff size={14} />
-                  流 offline
-                </span>
-              )}
-              {status.agent_state === "offline" && (
-                <span data-testid="agent-offline" className="flex items-center gap-1 text-red-400">
-                  <MonitorOff size={14} />
-                  Agent offline
-                </span>
-              )}
-              {status.active_app && (
-                <span
-                  data-testid="current-app-name"
-                  className="text-slate-300"
-                >
-                  {status.active_app}
-                </span>
-              )}
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            data-testid="screen-retry"
-            onClick={handleRetry}
-            className="p-1 rounded hover:bg-slate-700 transition-colors"
-            title="Retry"
-          >
-            <RefreshCw size={14} />
-          </button>
-          <button
-            data-testid="screen-fullscreen"
-            onClick={handleFullscreen}
-            className="p-1 rounded hover:bg-slate-700 transition-colors"
-            title="Fullscreen"
-          >
-            <Maximize size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* Error state */}
-      {error && (
-        <div className="flex-1 flex items-center justify-center bg-black">
-          <div data-testid="screen-error" className="text-center text-red-400">
-            <AlertCircle size={48} className="mx-auto mb-3" />
-            <p className="text-sm">无法连接状态服务</p>
+    <div data-testid="screen-view" className="desk-page flex min-h-dvh flex-col">
+      <header className="desk-hero flex flex-wrap items-center justify-between gap-4 border-b border-techBorder px-4 py-4 sm:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link to={returnTo} aria-label="返回 / Back" className="mr-2 grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-techBorder text-techMuted hover:text-techText">
+            <ArrowLeft size={18} />
+          </Link>
+          <div className="desk-brand-mark grid h-11 w-11 shrink-0 place-items-center rounded-xl text-techCyan">
+            <Monitor size={20} />
+          </div>
+          <div className="min-w-0">
+            <p className="desk-label">SmartDesk · Screen Share</p>
+            <h1 className="text-lg font-semibold text-techText sm:text-2xl">中央主机画面</h1>
           </div>
         </div>
-      )}
-
-      {/* Stream iframe */}
-      {!error && (
-        <div className="flex-1">
-          <iframe
-            key={iframeKey}
-            data-testid="stream-iframe"
-            src={buildStreamUrl()}
-            className="w-full h-full border-0"
-            allow="autoplay; encrypted-media"
-            title="Screen Stream"
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          {isDemoControlsEnabled() && (
+            <StatusBadge status="warning" labelCn="演示模式" labelEn="Demo Mode" />
+          )}
+          {status?.agent_state === "offline" && (
+            <span data-testid="agent-offline" className="text-xs text-techMuted">Display Agent 离线</span>
+          )}
+          {status?.active_app && (
+            <span data-testid="current-app-name" className="text-sm text-techCyan">{status.active_app}</span>
+          )}
+          <ActionButton data-testid="screen-retry" variant="secondary" touch onClick={handleRetry} loading={loading} icon={<RefreshCw size={16} />}>
+            刷新 / Retry
+          </ActionButton>
+          <ActionButton data-testid="screen-fullscreen" variant="secondary" touch onClick={handleFullscreen} icon={<Maximize size={16} />}>
+            全屏 / Fullscreen
+          </ActionButton>
         </div>
+      </header>
+
+      {fullscreenError && <p role="alert" className="px-6 pt-3 text-sm text-techAmber">{fullscreenError}</p>}
+      {error && showStream && (
+        <p role="alert" className="px-6 pt-3 text-sm text-techAmber">共享状态更新失败 · {error}</p>
       )}
+      <main className="flex min-h-[18rem] flex-1 flex-col p-4 sm:p-6">
+        <div className="desk-panel relative flex min-h-[65vh] flex-1 flex-col overflow-hidden rounded-2xl border border-techBorder bg-techBg">
+          {showStream ? (
+            <iframe
+              key={iframeKey}
+              data-testid="stream-iframe"
+              src={buildStreamUrl()}
+              className="absolute inset-0 h-full w-full border-0 bg-black"
+              allow="autoplay; encrypted-media"
+              title="Screen Stream"
+            />
+          ) : (
+            <div className="m-auto max-w-lg space-y-3 p-6 text-center" role="status">
+              {loading ? (
+                <p data-testid="screen-loading" className="text-techCyan">正在连接共享画面…</p>
+              ) : error ? (
+                <div data-testid="screen-error" className="space-y-2">
+                  <AlertCircle size={32} className="mx-auto text-techRose" />
+                  <p className="text-lg font-semibold">无法连接状态服务</p>
+                  <p className="break-words text-sm text-techMuted">{error}</p>
+                </div>
+              ) : (
+                <>
+                  <MonitorOff size={32} className="mx-auto text-techCyan" />
+                  <p data-testid={status?.stream_state === "offline" ? "stream-offline" : undefined} className="text-xl font-semibold">
+                    等待中央主机共享
+                  </p>
+                  <p className="text-sm text-techMuted">中央主机开始共享后，画面会自动出现。</p>
+                  {status?.stream_state === "unknown" && (
+                    <ActionButton variant="secondary" touch onClick={() => setTryPlayback(true)}>尝试播放 / Try playback</ActionButton>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

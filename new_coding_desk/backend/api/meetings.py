@@ -19,7 +19,7 @@ Per API_SPEC §4-6:
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Literal
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -61,9 +61,12 @@ def _to_json(api_response: ApiResponse, status_code: int = 200) -> JSONResponse:
 
 
 @router.get("", response_model=ApiResponse[List[MeetingResponse]])
-def list_meetings(db: Session = Depends(get_db)):
-    """GET /api/meetings — list all meetings."""
-    meetings = _service(db).list_meetings()
+def list_meetings(
+    status: Literal["pending", "active", "finished"] | None = None,
+    db: Session = Depends(get_db),
+):
+    """GET /api/meetings — list meetings, optionally filtered by status."""
+    meetings = _service(db).list_meetings(status=status)
     return ApiResponse.ok(
         data=[MeetingResponse.model_validate(m) for m in meetings]
     )
@@ -321,6 +324,8 @@ def create_attendee(
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
     except ConflictError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 409)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
     return ApiResponse.ok(data=AttendeeResponse.model_validate(attendee))
 
 
@@ -380,4 +385,8 @@ def delete_attendee(
         _service(db).delete_attendee(meeting_id, attendee_id)
     except NotFoundError as e:
         return _to_json(ApiResponse.fail(e.message, e.error_code), 404)
+    except ConflictError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 409)
+    except ValidationError as e:
+        return _to_json(ApiResponse.fail(e.message, e.error_code), 400)
     return ApiResponse.ok(message="Attendee deleted")

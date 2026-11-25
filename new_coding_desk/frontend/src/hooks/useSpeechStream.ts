@@ -55,7 +55,7 @@ export interface UseSpeechStreamReturn {
   setLanguageMode: (mode: SpeechLanguageMode) => void;
   /** Start recording: request mic → connect WS → stream audio. */
   start: () => Promise<void>;
-  /** Stop recording: send end_hint → close WS → stop mic. */
+  /** Release the microphone and send end_hint for server finalization. */
   stop: () => void;
   /** Cancel mid-utterance: send cancel → close WS → stop mic. */
   cancel: () => void;
@@ -66,7 +66,7 @@ export interface UseSpeechStreamReturn {
 export function useSpeechStream(
   meetingId: number | null,
   seatId: number,
-  isSpeaker: boolean,
+  canCapture: boolean,
   options?: UseSpeechStreamOptions,
 ): UseSpeechStreamReturn {
   const [status, setStatus] = useState<SpeechStatus>("idle");
@@ -110,6 +110,12 @@ export function useSpeechStream(
 
   // ---- Cleanup (internal) ----
 
+  const releaseMicrophone = useCallback(() => {
+    const mic = micRef.current;
+    micRef.current = null;
+    mic?.stop();
+  }, []);
+
   const cleanup = useCallback(() => {
     startingRef.current = false;
     recordingRef.current = false;
@@ -128,17 +134,15 @@ export function useSpeechStream(
     const ws = wsRef.current;
     wsRef.current = null;
     ws?.close();
-    const mic = micRef.current;
-    micRef.current = null;
-    mic?.stop();
+    releaseMicrophone();
     utteranceIdRef.current = null;
-  }, []);
+  }, [releaseMicrophone]);
 
   // ---- Start ----
 
   const start = useCallback(async () => {
     if (
-      !meetingId || !isSpeaker || recordingRef.current || startingRef.current
+      !meetingId || !canCapture || recordingRef.current || startingRef.current
     ) return;
 
     const generation = generationRef.current + 1;
@@ -310,9 +314,7 @@ export function useSpeechStream(
           || !recordingRef.current || wsRef.current !== client
         ) return;
         wsRef.current = null;
-        const activeMicrophone = micRef.current;
-        micRef.current = null;
-        activeMicrophone?.stop();
+        releaseMicrophone();
         reconnectingRef.current = false;
         scheduleReconnect();
       });
@@ -351,7 +353,7 @@ export function useSpeechStream(
       setError(msg);
       setStatus("error");
     }
-  }, [meetingId, seatId, isSpeaker]);
+  }, [canCapture, cleanup, meetingId, releaseMicrophone, seatId]);
 
   // ---- Stop (end_hint path) ----
 
@@ -360,6 +362,7 @@ export function useSpeechStream(
     const generation = generationRef.current;
     const uid = utteranceIdRef.current;
     recordingRef.current = false;
+    releaseMicrophone();
     trace("stop_clicked_at", { utteranceId: uid ?? undefined });
     setStatus("stopping");
 
@@ -384,7 +387,7 @@ export function useSpeechStream(
         setUtteranceId(null);
       }
     }, 2000);
-  }, [cleanup]);
+  }, [cleanup, releaseMicrophone]);
 
   // ---- Cancel ----
 
@@ -411,7 +414,7 @@ export function useSpeechStream(
     setUtteranceId(null);
   }, [cleanup]);
 
-  // ---- Auto-cleanup on unmount or when isSpeaker becomes false ----
+  // ---- Auto-cleanup on unmount or when capture permission is lost ----
 
   useEffect(() => {
     mountedRef.current = true;
@@ -422,12 +425,14 @@ export function useSpeechStream(
     };
   }, [cleanup]);
 
-  // Stop recording if speaker seat is revoked mid-stream
   useEffect(() => {
-    if (!isSpeaker && (recordingRef.current || startingRef.current)) {
+    if (
+      (!canCapture || !meetingId)
+      && (startingRef.current || recordingRef.current || stopTimerRef.current !== null)
+    ) {
       cancel();
     }
-  }, [isSpeaker, cancel]);
+  }, [canCapture, cancel, meetingId]);
 
   // Android Activity pause, browser backgrounding, and page teardown must
   // release both getUserMedia and the speech WebSocket immediately.
@@ -436,6 +441,7 @@ export function useSpeechStream(
       if (
         startingRef.current ||
         recordingRef.current ||
+        stopTimerRef.current !== null ||
         micRef.current !== null ||
         wsRef.current !== null
       ) {

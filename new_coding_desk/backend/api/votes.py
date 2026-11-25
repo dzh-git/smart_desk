@@ -94,8 +94,12 @@ def create_vote(data: VoteCreateRequest, db: Session = Depends(get_db)):
             options=data.options,
             is_anonymous=data.is_anonymous,
         )
+    except NotFoundError as e:
+        raise HTTPException(404, detail=e.error_code)
     except ConflictError as e:
         raise HTTPException(409, detail=e.error_code)
+    except ValidationError as e:
+        raise HTTPException(400, detail=e.error_code)
     return _ok(_vote_out(v))
 
 
@@ -152,4 +156,6 @@ def close_vote(vote_id: int, db: Session = Depends(get_db)):
         v = svc.close_vote(vote_id)
     except NotFoundError as e:
         raise HTTPException(404, detail=e.error_code)
+    except ValidationError as e:
+        raise HTTPException(400, detail=e.error_code)
     return _ok(_vote_out(v))

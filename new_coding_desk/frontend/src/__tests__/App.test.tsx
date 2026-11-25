@@ -153,8 +153,8 @@ describe("App - admin mode (default)", () => {
     expect(screen.getByText("MEETING TIME")).toBeInTheDocument();
     expect(screen.getAllByText("ATTENDEES").length).toBeGreaterThanOrEqual(1);
 
-    // Should show 2/10 checked in
-    expect(screen.getByText("2/10")).toBeInTheDocument();
+    // Should show 2/9 checked in
+    expect(screen.getByText("2/9")).toBeInTheDocument();
   });
 
   it("shows waiting state when no active meeting", async () => {

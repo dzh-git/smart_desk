@@ -113,13 +113,62 @@ $env:ENABLE_TRANSLATION_MODEL = "true"
 未启用翻译模型时，最终记录的 `translated_text` 使用
 `[translation not available]`。
 
+### 无设备浏览器演示
+
+Windows 可以继续使用 `new_coding_desk\start.bat`。以下命令也可在 Linux 或 macOS
+使用同一份项目代码启动。先在仓库根目录建立 Python 3.11 的 `.venv` 并安装轻量依赖。
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r new_coding_desk/requirements-ci.txt
+npm ci --prefix new_coding_desk/frontend
+```
+
+在仓库根目录分别打开两个终端。
+
+```bash
+cd new_coding_desk
+SMARTDESK_DATA_DIR="$PWD/.smartdesk-runtime/demo-data" ENABLE_DEMO_SEAT_API=true \
+  ENABLE_TRANSLATION_MODEL=true ../.venv/bin/python -m uvicorn backend.main:app --port 8000
+```
+
+```bash
+npm run demo --prefix new_coding_desk/frontend
+```
+
+从 `http://127.0.0.1:5173/admin` 创建会议，在待启动页加入参会者并逐席分配，再开始会议。
+浏览器里打开 `/seat/2` 到 `/seat/9`，领取本席分配人员的演示签到。打开 `/host` 预览
+Seat 1 控制台，打开 `/display` 观看议程和投票同步。需要一场已布置的样例会议时，在使用空白
+演示数据库启动后端前增加 `ENABLE_DEMO_SEED=true`。样例包含预置名单、字幕和票数，
+新签到、投票更新和服务请求仍走真实接口。
+
+真实中英文语音与双向翻译需要安装 `new_coding_desk/requirements.txt`，并按本项目
+[语音模型说明](../README.md#current-speech-contract) 准备权重。模型暂缺时，发言席界面
+显示模型状态，其余业务可继续演示。屏幕共享和外部软件切换仍使用本节上方的 Windows 配置。
+
+重复执行浏览器演示回归时使用独立数据库，关闭种子选项。后端与 demo 前端就绪后，在
+`new_coding_desk/frontend` 中执行以下命令。也可用 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` 指定本机浏览器。
+
+```bash
+npx playwright install chromium
+SMARTDESK_PRESENTATION_E2E=true npx playwright test e2e/presentation-flow.spec.ts
+```
+
+同一次验收也可加入真实中英识别。启动已加载模型的后端，额外设置
+`SMARTDESK_PRESENTATION_ENGLISH_PCM` 为一段英文原始音频的路径。音频格式为
+16 kHz、单声道、16 位小端 PCM。中文使用仓库中的 `tests/fixtures/speech_sample.pcm`。
+测试会通过语音 WebSocket 验证两种语言的实时字幕、译文与结束后的文字记录。
+若使用其他前端地址，通过 `SMARTDESK_PRESENTATION_BASE_URL` 指定。
+
 ## 3. 路由
 
 | 路由 | 用途 |
 |---|---|
 | `/admin` | 主持人控制台。 |
-| `/seat/:seatId` | 1 到 9 号座位端（seat 1 为主持人位）。 |
+| `/host` | Seat 1 主持人平板。 |
+| `/seat/:seatId` | 2 到 9 号参会席；Seat 1 兼容入口跳转到 `/host`。 |
 | `/display` | 中央大屏。 |
+| `/screen` | 中央主机画面共享。 |
 | `/` | 自动跳转到 `/admin`。 |
 | `/?seat=N` | 兼容旧入口，自动跳转到 `/seat/N`。 |
 
@@ -127,7 +176,7 @@ $env:ENABLE_TRANSLATION_MODEL = "true"
 
 1. 打开 `http://127.0.0.1:5173/admin`。
 2. 无 active meeting 时，创建 pending meeting。
-3. 点击 `Start Meeting`，进入 active meeting。
+3. 在待启动页录入或选用已有人员，点选会议桌席位完成分配，再点击 `Start Meeting`。
 4. 确认 Workspace 切换可见：
    - `会议总览 / OVERVIEW`
    - `议程与投票 / AGENDA & VOTE`
@@ -147,9 +196,9 @@ $env:ENABLE_TRANSLATION_MODEL = "true"
 
 ## 5. 座位端验收
 
-1. 打开 `http://127.0.0.1:5173/seat/1`。
-2. demo 模式下点击 `Occupy Seat (Demo)`。
-3. 选择参会人并点击 `Confirm Check-in`。
+1. 打开 `http://127.0.0.1:5173/seat/2`。
+2. 确认显示主持人分配给本席的人员。
+3. 浏览器演示模式点击 `Demo Check-in`。Android 正式环境使用人脸验证。
 4. 确认座位号、参会人、会议标题、连接状态清晰。
 5. 确认当前议题只读卡片可见，不出现 `Set Current`、`Advance`、
    `Complete`、`Skip` 等控制按钮。

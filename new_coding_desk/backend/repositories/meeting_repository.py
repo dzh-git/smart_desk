@@ -29,9 +29,15 @@ class MeetingRepository(BaseRepository[Meeting]):
         """Return the meeting with status='active', or None."""
         return self.db.query(Meeting).filter(Meeting.status == "active").first()
 
-    def list_by_status(self, status: str) -> list[Meeting]:
-        """List meetings filtered by status."""
-        return self.db.query(Meeting).filter(Meeting.status == status).all()
+    def list_by_status(self, status: str, *, limit: int = 200) -> list[Meeting]:
+        """List the most recently created meetings with the given status."""
+        return (
+            self.db.query(Meeting)
+            .filter(Meeting.status == status)
+            .order_by(Meeting.created_at.desc(), Meeting.id.desc())
+            .limit(limit)
+            .all()
+        )
 
     # ── Agenda CRUD ──────────────────────────────────────────────────────────
 

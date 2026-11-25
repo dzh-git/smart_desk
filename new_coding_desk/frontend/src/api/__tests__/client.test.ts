@@ -77,6 +77,21 @@ describe("apiGet", () => {
     expect(err.message).toBe("Internal Server Error");
   });
 
+  it("shows the field and reason from a FastAPI validation response", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      statusText: "Unprocessable Content",
+      json: async () => ({
+        detail: [{ loc: ["body", "title"], msg: "String should have at most 200 characters" }],
+      }),
+    });
+
+    await expect(apiPost("/meetings", { title: "too long" })).rejects.toThrow(
+      "title: String should have at most 200 characters",
+    );
+  });
+
   it("throws NetworkError when fetch fails", async () => {
     mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 

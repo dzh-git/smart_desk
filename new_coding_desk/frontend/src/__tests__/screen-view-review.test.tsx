@@ -300,6 +300,25 @@ describe("Phase 4 — state and lifecycle", () => {
     expect(agentOfflineEl).toBeInTheDocument();
   });
 
+  it("returns to the waiting view when the relay reports offline after a manual attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      window.history.replaceState({}, "", "/screen");
+      let streamState = "unknown";
+      mockFetch.mockImplementation(() => hostDisplayStatusResponse({ stream_state: streamState }));
+      render(<App />);
+      await act(async () => {});
+      act(() => screen.getByRole("button", { name: /Try playback/ }).click());
+      expect(screen.getByTestId("stream-iframe")).toBeInTheDocument();
+      streamState = "offline";
+      await act(async () => vi.advanceTimersByTimeAsync(5000));
+      expect(screen.queryByTestId("stream-iframe")).toBeNull();
+      expect(screen.getByTestId("stream-offline")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("retry button rebuilds or reloads iframe", async () => {
     // Target: clicking retry (data-testid="screen-retry") changes the iframe
     // src or key, causing a reload.  We test by verifying a new iframe is
@@ -380,9 +399,7 @@ describe("Phase 4 — state and lifecycle", () => {
     const initialCalls = callCount;
 
     // Advance timer past one polling interval (e.g., 5s)
-    await act(async () => {
-      vi.advanceTimersByTime(10000);
-    });
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
 
     expect(callCount).toBeGreaterThan(initialCalls);
 

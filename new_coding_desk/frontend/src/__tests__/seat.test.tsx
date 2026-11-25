@@ -258,6 +258,25 @@ describe("SeatTablet - no meeting state", () => {
       expect(screen.getByText(/等待会议开始.*Waiting for Meeting/)).toBeInTheDocument();
     });
   });
+
+  it("detects a meeting started after more than one idle poll", async () => {
+    vi.useFakeTimers();
+    try {
+      const active = createSeatMock("checked_in");
+      let started = false;
+      mockFetch.mockImplementation((url: string) =>
+        url === "/api/meetings/active" && !started ? okResponse(null) : active(url),
+      );
+      render(<SeatTablet seatId={1} />);
+      await act(async () => {});
+      await act(async () => vi.advanceTimersByTimeAsync(5000));
+      started = true;
+      await act(async () => vi.advanceTimersByTimeAsync(5000));
+      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("SeatTablet - face gate", () => {
@@ -4077,6 +4096,7 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
     mockSpeaker();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+    await waitFor(() => expect(findMeetingWs()?.onmessage).toBeTypeOf("function"));
 
     const send = (event: string, payload: Record<string, unknown>) => {
       const ws = findMeetingWs();

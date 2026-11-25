@@ -60,7 +60,11 @@ export function useWebSocket(
       reconnectRef.current = null;
     }
 
-    if (!meetingId || !mountedRef.current) return;
+    if (!mountedRef.current) return;
+    if (!meetingId) {
+      setStatus("disconnected");
+      return;
+    }
 
     setStatus("connecting");
 
@@ -71,7 +75,7 @@ export function useWebSocket(
     wsRef.current = ws;
 
     ws.onopen = () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || wsRef.current !== ws) return;
       setStatus("connected");
       if (firstConnectDoneRef.current) {
         // Reconnection — trigger full HTTP re-fetch per WEBSOCKET_PROTOCOL §4
@@ -86,6 +90,7 @@ export function useWebSocket(
     };
 
     ws.onmessage = (event: MessageEvent) => {
+      if (wsRef.current !== ws) return;
       try {
         const msg: WSMessage = JSON.parse(event.data as string);
         onEventRef.current(msg.event, msg);
@@ -95,7 +100,7 @@ export function useWebSocket(
     };
 
     ws.onclose = () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || wsRef.current !== ws) return;
       wsRef.current = null;
       setStatus("disconnected");
       // Schedule reconnect

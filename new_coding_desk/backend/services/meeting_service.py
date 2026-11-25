@@ -77,8 +77,18 @@ class MeetingService(BaseService):
             )
         return meeting
 
-    def list_meetings(self) -> list[Meeting]:
-        """List all meetings."""
+    def require_editable_meeting(self, meeting_id: int) -> None:
+        """Require an existing meeting whose records are still editable."""
+        if self.get_meeting(meeting_id).status == "finished":
+            raise ValidationError(
+                "Meeting records cannot be changed after the meeting ends",
+                "MEETING_FINISHED",
+            )
+
+    def list_meetings(self, *, status: str | None = None) -> list[Meeting]:
+        """List meetings, with newest matches first when filtering by status."""
+        if status is not None:
+            return self.meeting_repo.list_by_status(status)
         return self.meeting_repo.list_all()
 
     def get_active_meeting(self) -> Meeting | None:
@@ -173,8 +183,11 @@ class MeetingService(BaseService):
             attendee.seat_id = None
             attendee.checked_in = False
 
-        # Auto-close open vote (if any)
-        open_vote = self.db.query(Vote).filter(Vote.status == "open").first()
+        # Auto-close the meeting's open vote (if any)
+        open_vote = self.db.query(Vote).filter(
+            Vote.meeting_id == meeting_id,
+            Vote.status == "open",
+        ).first()
         if open_vote is not None:
             open_vote.status = "closed"
             open_vote.closed_at = datetime.now(timezone.utc)
@@ -529,7 +542,7 @@ class MeetingService(BaseService):
         person_id: str | None = None,
     ) -> Attendee:
         """Add an attendee to a meeting."""
-        self.get_meeting(meeting_id)  # ensure meeting exists
+        self.require_editable_meeting(meeting_id)
         if person_id is not None:
             if self.person_repo.get_by_id(person_id) is None:
                 raise NotFoundError(
@@ -566,12 +579,7 @@ class MeetingService(BaseService):
         attendee_id: int,
     ) -> Attendee:
         """Set the meeting's default attendee for one physical seat."""
-        meeting = self.get_meeting(meeting_id)
-        if meeting.status == "finished":
-            raise ValidationError(
-                "Seat assignments cannot be changed after the meeting ends",
-                "MEETING_FINISHED",
-            )
+        self.require_editable_meeting(meeting_id)
         if seat_id < 1 or seat_id > SEAT_COUNT:
             raise NotFoundError(f"Seat {seat_id} not found", "SEAT_NOT_FOUND")
 
@@ -623,12 +631,7 @@ class MeetingService(BaseService):
 
     def clear_seat_assignment(self, meeting_id: int, seat_id: int) -> None:
         """Remove the default attendee assignment from a meeting seat."""
-        meeting = self.get_meeting(meeting_id)
-        if meeting.status == "finished":
-            raise ValidationError(
-                "Seat assignments cannot be changed after the meeting ends",
-                "MEETING_FINISHED",
-            )
+        self.require_editable_meeting(meeting_id)
         if seat_id < 1 or seat_id > SEAT_COUNT:
             raise NotFoundError(f"Seat {seat_id} not found", "SEAT_NOT_FOUND")
         attendee = self.attendee_repo.get_by_assigned_seat(meeting_id, seat_id)
@@ -641,26 +644,50 @@ class MeetingService(BaseService):
             )
         attendee.assigned_seat_id = None
         self.attendee_repo.save(attendee)
+        self._publish_assignment_cleared(meeting_id, seat_id, attendee.id)
+
+    def _publish_assignment_cleared(
+        self,
+        meeting_id: int,
+        seat_id: int,
+        attendee_id: int,
+    ) -> None:
         self.event_bus.publish(
             SeatAssignmentUpdatedEvent(
                 meeting_id=meeting_id,
                 payload={
                     "seat_id": seat_id,
-                    "attendee_id": attendee.id,
+                    "attendee_id": attendee_id,
                     "action": "cleared",
                 },
             )
         )
 
     def delete_attendee(self, meeting_id: int, attendee_id: int) -> None:
-        """Remove an attendee. Must belong to the given meeting."""
+        """Remove an unchecked attendee with no identity or voting history."""
         attendee = self.attendee_repo.get_by_id(attendee_id)
         if not attendee or attendee.meeting_id != meeting_id:
             raise NotFoundError(
                 f"Attendee {attendee_id} not found in meeting {meeting_id}",
                 "ATTENDEE_NOT_FOUND",
             )
+        self.require_editable_meeting(meeting_id)
+        if attendee.checked_in:
+            raise ConflictError(
+                "A checked-in attendee cannot be removed",
+                "ATTENDEE_ALREADY_CHECKED_IN",
+            )
+        if self.attendee_repo.has_history(attendee_id):
+            raise ConflictError(
+                "An attendee with check-in or voting history cannot be removed",
+                "ATTENDEE_HAS_HISTORY",
+            )
+        assigned_seat_id = attendee.assigned_seat_id
         self.attendee_repo.delete(attendee)
+        if assigned_seat_id is not None:
+            self._publish_assignment_cleared(
+                meeting_id, assigned_seat_id, attendee_id,
+            )
 
 
 # ── Background speech preload (Task 119) ────────────────────────────────────────

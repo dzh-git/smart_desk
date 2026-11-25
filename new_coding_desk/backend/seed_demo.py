@@ -39,6 +39,7 @@ from backend.models.service_call import ServiceCall
 from backend.models.speaker_seat import SpeakerSeat
 from backend.models.translation_record import TranslationRecord
 from backend.models.vote import Vote
+from backend.models.vote_record import VoteRecord
 
 logger = logging.getLogger(__name__)
 
@@ -84,18 +85,23 @@ def seed_demo_data(db: Session) -> None:
     db.flush()
 
     # ── 5 agenda items ──────────────────────────────────────────────────
-    for item in [
-        ("开场致辞", 1),
-        ("产品路线图回顾", 2),
-        ("技术方案评审", 3),
-        ("市场策略讨论", 4),
-        ("总结与下一步计划", 5),
-    ]:
-        db.add(Agenda(meeting_id=meeting.id, title=item[0], sort_order=item[1]))
+    for index, title in enumerate([
+        "开场致辞",
+        "产品路线图回顾",
+        "技术方案评审",
+        "市场策略讨论",
+        "总结与下一步计划",
+    ], start=1):
+        db.add(Agenda(
+            meeting_id=meeting.id, title=title, sort_order=index,
+            status="completed" if index == 1 else "active" if index == 2 else "pending",
+            started_at=now if index <= 2 else None,
+            completed_at=now if index == 1 else None,
+        ))
     db.flush()
 
     # ── 8 attendees ─────────────────────────────────────────────────────
-    # First 4 will be checked in (seats 1-4), last 4 unbound.
+    # Assign eight demo attendees to seats 1–8. The first four have arrived.
     attendee_names = [
         ("张伟", "产品总监"),
         ("李娜", "技术经理"),
@@ -107,22 +113,23 @@ def seed_demo_data(db: Session) -> None:
         ("周明", "运营主管"),
     ]
     attendees = []
-    for name, title in attendee_names:
+    for seat_id, (name, title) in enumerate(attendee_names, start=1):
         att = Attendee(
             meeting_id=meeting.id,
             name=name,
             title=title,
             seat_id=None,
+            assigned_seat_id=seat_id,
             checked_in=False,
         )
         db.add(att)
         attendees.append(att)
     db.flush()
 
-    # ── 10 seat_states (mix of states) ──────────────────────────────────
+    # ── 9 seat_states (mix of states) ───────────────────────────────────
     # Seat 1-4: checked_in (bound to attendees 0-3)
     # Seat 5-6: occupied_unchecked (no attendee bound yet)
-    # Seat 7-10: vacant
+    # Seat 7-9: vacant
     seat_assignments: list[tuple[int, int | None, str]] = [
         (1, attendees[0].id, "checked_in"),
         (2, attendees[1].id, "checked_in"),
@@ -133,7 +140,6 @@ def seed_demo_data(db: Session) -> None:
         (7, None, "vacant"),
         (8, None, "vacant"),
         (9, None, "vacant"),
-        (10, None, "vacant"),
     ]
     for seat_id, att_id, status in seat_assignments:
         seat = db.get(SeatState, seat_id)
@@ -163,6 +169,9 @@ def seed_demo_data(db: Session) -> None:
         created_at=now,
     )
     db.add(vote)
+    db.flush()
+    for attendee, option in zip(attendees[:3], ["批准", "批准", "修改后批准"]):
+        db.add(VoteRecord(vote_id=vote.id, attendee_id=attendee.id, option=option, created_at=now))
 
     # ── 1 pending service call ─────────────────────────────────────────
     sc = ServiceCall(

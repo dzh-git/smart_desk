@@ -41,6 +41,16 @@ export class NetworkError extends Error {
 
 // ── Core Request Function ────────────────────────────────────────────────
 
+function validationDetail(detail: unknown): string | undefined {
+  if (typeof detail === "string") return detail;
+  if (!Array.isArray(detail)) return undefined;
+  return detail.flatMap((issue) => {
+    if (typeof issue?.msg !== "string") return [];
+    const field = Array.isArray(issue.loc) ? issue.loc.slice(1).join(".") : "";
+    return field ? `${field}: ${issue.msg}` : issue.msg;
+  }).join(" / ") || undefined;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -61,8 +71,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     let errorCode: string | null | undefined;
     try {
       const body = await response.json();
-      // FastAPI returns { detail: "..." } on validation errors
-      detail = body.detail ?? body.message ?? response.statusText;
+      detail = validationDetail(body.detail) ?? body.message ?? response.statusText;
       errorCode = body.error_code;
     } catch {
       detail = response.statusText;

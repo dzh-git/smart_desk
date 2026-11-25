@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { TranscriptPanel } from "../TranscriptPanel";
 import type { TranslationRecord } from "../../api/types";
 
@@ -74,7 +74,7 @@ describe("TranscriptPanel - sentence-paired lyrics", () => {
     expect(pairs[1]).toHaveTextContent("正在翻译");
   });
 
-  it("keeps all sentence pairs and bottom-aligns the newest pair", () => {
+  it("keeps all sentence pairs and orders them by sentence sequence", () => {
     const third = {
       ...second,
       sentenceId: "utt_lyrics:s3",
@@ -84,14 +84,61 @@ describe("TranscriptPanel - sentence-paired lyrics", () => {
     render(
       <TranscriptPanel
         entries={[]}
-        lyrics={[first, second, third]}
+        lyrics={[third, first, second]}
         interims={[]}
         seatNameMap={{ 1: "张伟" }}
         liveEnabled
       />,
     );
-    expect(screen.getAllByTestId("live-lyric-pair")).toHaveLength(3);
-    expect(screen.getByTestId("live-lyric-pairs")).toHaveClass("justify-end");
+    const pairs = screen.getAllByTestId("live-lyric-pair");
+    expect(pairs.map((pair) => pair.getAttribute("data-sentence-id"))).toEqual([
+      first.sentenceId,
+      second.sentenceId,
+      third.sentenceId,
+    ]);
+  });
+
+  it("keeps a fallback caption for a different utterance and only renders overlapping lyrics once", () => {
+    render(
+      <TranscriptPanel
+        entries={[]}
+        seatNameMap={{ 1: "张伟", 2: "Alice Wang" }}
+        liveEnabled
+        lyrics={[first]}
+        interims={[{
+          utteranceId: first.utteranceId,
+          seatId: 1,
+          revision: 2,
+          sourceLang: "zh",
+          targetLang: "en",
+          sourceText: first.sourceText,
+          translatedText: first.translatedText,
+          caption: { previousLine: "", currentLine: first.sourceText, mode: "two_line" },
+        }, {
+          utteranceId: "utt_carry",
+          seatId: 1,
+          revision: 0,
+          sourceLang: "zh",
+          targetLang: "en",
+          sourceText: first.sourceText,
+          translatedText: first.translatedText,
+          caption: { previousLine: "", currentLine: first.sourceText, mode: "two_line" },
+        }, {
+          utteranceId: "utt_fallback",
+          seatId: 2,
+          revision: 1,
+          sourceLang: "en",
+          targetLang: "zh",
+          sourceText: "Second speaker.",
+          translatedText: "第二位发言人。",
+          caption: { previousLine: "", currentLine: "Second speaker.", mode: "two_line" },
+        }]}
+      />,
+    );
+
+    expect(screen.getByTestId("live-lyric-source")).toHaveTextContent(first.sourceText);
+    expect(screen.getByTestId("live-caption")).toHaveTextContent("Second speaker.");
+    expect(screen.getByTestId("live-caption-translation")).toHaveTextContent("第二位发言人。");
   });
 
   it("keeps older lyrics visible and shows the authoritative final", () => {
@@ -179,12 +226,93 @@ describe("TranscriptPanel - sentence-paired lyrics", () => {
 
     expect(viewport.scrollTop).toBe(480);
   });
+
+  it("preserves the reader's scroll position until they return to the latest lyrics", () => {
+    const panel = (lyrics: (typeof first | typeof second)[]) => (
+      <TranscriptPanel entries={[]} lyrics={lyrics} seatNameMap={{ 1: "张伟" }} liveEnabled />
+    );
+    const { rerender } = render(panel([first, second]));
+    const viewport = screen.getByTestId("live-lyric-pairs");
+    let scrollHeight = 480;
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 160 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+    });
+    viewport.scrollTop = 85;
+    fireEvent.scroll(viewport);
+
+    scrollHeight = 600;
+    rerender(panel([first, second, { ...second, sentenceSequence: 3, sentenceId: "utt_lyrics:s3" }]));
+    expect(viewport.scrollTop).toBe(85);
+
+    viewport.scrollTop = 440;
+    fireEvent.scroll(viewport);
+    scrollHeight = 720;
+    rerender(panel([first, second, { ...first, sentenceSequence: 3, sentenceId: "utt_lyrics:s3" }]));
+    expect(viewport.scrollTop).toBe(560);
+  });
 });
 
 // ── Sort Order Tests ──────────────────────────────────────────────────────────
 
 describe("TranscriptPanel - sort order (Task 7)", () => {
   const seatNameMap: Record<number, string> = { 1: "Alice Wang", 2: "Bob Li" };
+
+  it("groups UTC timestamps with and without offsets in chronological order", () => {
+    vi.stubEnv("TZ", "Asia/Shanghai");
+    try {
+      const entries: TranslationRecord[] = [{
+        id: 3, meeting_id: 1, seat_id: 1, source_lang: "en", target_lang: "zh",
+        source_text: "Second sentence.", translated_text: "第二句。",
+        created_at: "2026-01-01T18:00:30+08:00", utterance_id: "utt_2",
+      }, {
+        id: 2, meeting_id: 1, seat_id: 1, source_lang: "en", target_lang: "zh",
+        source_text: "First sentence.", translated_text: "第一句。",
+        created_at: "2026-01-01T10:00:10", utterance_id: "utt_1",
+      }, {
+        id: 1, meeting_id: 1, seat_id: 1, source_lang: "en", target_lang: "zh",
+        source_text: "Stale revision.", translated_text: "过期版本。",
+        created_at: "2026-01-01T10:00:00Z", utterance_id: "utt_1",
+      }];
+
+      render(<TranscriptPanel entries={entries} seatNameMap={seatNameMap} />);
+
+      expect(screen.getByTestId("transcript-source")).toHaveTextContent("First sentence. Second sentence.");
+      expect(screen.getByTestId("transcript-target")).toHaveTextContent("第一句。第二句。");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps the previous final in history when the next utterance goes live", () => {
+    const previous: TranslationRecord = {
+      id: 1, meeting_id: 1, seat_id: 1, source_lang: "en", target_lang: "zh",
+      source_text: "Previous sentence.", translated_text: "上一句。",
+      created_at: "2026-01-01T10:00:00Z", utterance_id: "utt_1",
+    };
+    const { rerender } = render(
+      <TranscriptPanel entries={[previous]} liveFinal={previous} seatNameMap={seatNameMap} liveEnabled />,
+    );
+    expect(screen.getByTestId("live-final-translation")).toHaveTextContent("上一句。");
+    expect(screen.queryByTestId("transcript-source")).toBeNull();
+
+    rerender(
+      <TranscriptPanel
+        entries={[previous]}
+        liveFinal={previous}
+        seatNameMap={seatNameMap}
+        liveEnabled
+        interims={[{
+          utteranceId: "utt_2", seatId: 1, revision: 1, sourceLang: "en", targetLang: "zh",
+          sourceText: "Next sentence.", translatedText: "下一句。",
+          caption: { previousLine: "", currentLine: "Next sentence.", mode: "two_line" },
+        }]}
+      />,
+    );
+    expect(screen.getByTestId("live-caption-translation")).toHaveTextContent("下一句。");
+    expect(screen.getByTestId("transcript-source")).toHaveTextContent("Previous sentence.");
+    expect(screen.getByTestId("transcript-target")).toHaveTextContent("上一句。");
+  });
 
   it("renders newest-first backend data as oldest-first in UI", () => {
     // Backend returns newest first

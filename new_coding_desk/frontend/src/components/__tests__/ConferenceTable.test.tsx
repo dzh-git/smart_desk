@@ -60,4 +60,23 @@ describe("ConferenceTable", () => {
     expect(screen.getByTestId("conference-seat-1")).toHaveTextContent("空座");
     expect(screen.getByTestId("conference-seat-1")).not.toHaveTextContent("发言中");
   });
+
+  it("announces a pending meeting and exposes the selected seat", () => {
+    render(
+      <ConferenceTable
+        seats={[seat(1), { ...seat(2), isVacant: false, isCheckedIn: true }]}
+        currentSpeaker={2}
+        activeSeat={2}
+        preparing
+      />,
+    );
+
+    expect(screen.getByText("待开始")).toBeInTheDocument();
+    expect(screen.queryByText("会议中")).not.toBeInTheDocument();
+    expect(screen.getByTestId("conference-seat-1")).toHaveAttribute("aria-pressed", "false");
+    const selectedSeat = screen.getByTestId("conference-seat-2");
+    expect(selectedSeat).toHaveAttribute("aria-pressed", "true");
+    expect(selectedSeat).toHaveTextContent("已签到");
+    expect(selectedSeat).not.toHaveTextContent("发言中");
+  });
 });

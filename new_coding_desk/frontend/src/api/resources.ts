@@ -45,6 +45,14 @@ export function fetchMeetings(): Promise<Meeting[]> {
   return apiGet<Meeting[]>("/meetings");
 }
 
+export async function fetchPendingMeeting(): Promise<Meeting | null> {
+  const meetings = await apiGet<Meeting[]>("/meetings?status=pending");
+  return (meetings ?? []).reduce<Meeting | null>(
+    (latest, meeting) => latest == null || meeting.id > latest.id ? meeting : latest,
+    null,
+  );
+}
+
 /** Create a pending meeting. */
 export function createMeeting(
   title: string,
@@ -112,9 +120,12 @@ export async function fetchVotesForMeeting(
 /** Returns statistics for all votes in a meeting, newest first. */
 export async function fetchVoteResultsForMeeting(
   meetingId: number,
+  excludeVoteId?: number,
 ): Promise<VoteStatistics[]> {
   const votes = await fetchVotesForMeeting(meetingId);
-  return Promise.all(votes.map((vote) => fetchVoteStatistics(vote.id)));
+  return Promise.all(votes
+    .filter((vote) => vote.id !== excludeVoteId)
+    .map((vote) => fetchVoteStatistics(vote.id)));
 }
 
 // ── Meeting Child Resources ─────────────────────────────────────────────────

@@ -25,6 +25,7 @@ import {
   StatusBadge,
   useClock,
   formatTime,
+  isDemoControlsEnabled,
 } from "./shared";
 import { deriveAgendaState } from "../utils/agendaState";
 
@@ -46,7 +47,6 @@ interface DisplayState {
   agendas: Agenda[];
   activeVote: VoteStatistics | null;
   voteResults: VoteStatistics[];
-  currentMeetingId: number | null;
   endedMeetingId: number | null;
 }
 
@@ -57,202 +57,116 @@ const EMPTY_STATE: DisplayState = {
   agendas: [],
   activeVote: null,
   voteResults: [],
-  currentMeetingId: null,
   endedMeetingId: null,
 };
 
-/** Derive the effective meeting ID for fetching data. */
-function getEffectiveMeetingId(
-  meeting: Meeting | null,
-  endedMeetingId: number | null,
-): number | null {
-  if (meeting) return meeting.id;
-  if (endedMeetingId !== null) return endedMeetingId;
-  return null;
-}
-
-/** Determine whether we are showing an ended meeting. */
-function getIsEndedMeeting(
-  meeting: Meeting | null,
-  endedMeetingId: number | null,
-): boolean {
-  return !meeting && endedMeetingId !== null;
-}
-
 export function DisplayView() {
-  const [state, setState] = useState<DisplayState>(() => {
-    // Restore endedMeetingId from sessionStorage on initial load
-    const stored = tryGetStoredEndedId();
-    return { ...EMPTY_STATE, endedMeetingId: stored };
-  });
-
-  // Track endedMeetingId in a ref so the load callback can access the latest value
-  // without re-creating itself or reading from state synchronously.
-  const endedMeetingIdRef = useRef<number | null>(state.endedMeetingId);
-
-  // Keep ref in sync with state
-  useEffect(() => {
-    endedMeetingIdRef.current = state.endedMeetingId;
-  }, [state.endedMeetingId]);
-
-  // Track the last active meeting id so we can save it on meeting_ended
+  const [state, setState] = useState<DisplayState>(() => ({
+    ...EMPTY_STATE,
+    endedMeetingId: tryGetStoredEndedId(),
+  }));
+  const endedMeetingIdRef = useRef(state.endedMeetingId);
   const lastActiveMeetingIdRef = useRef<number | null>(null);
+  const requestVersion = useRef(0);
+  const loadingSnapshot = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
+  const load = useCallback(async (checkForNextMeeting = false, polling = false) => {
+    if (polling && loadingSnapshot.current) return;
+    const version = ++requestVersion.current;
+    loadingSnapshot.current = true;
+    if (!checkForNextMeeting) setRefreshing(true);
     try {
       const meeting = await fetchActiveMeeting();
-      const endedMeetingId = endedMeetingIdRef.current;
+      if (version !== requestVersion.current) return;
 
-      // If an active meeting exists, prefer it and discard any stored ended id
-      if (meeting) {
-        clearStoredEndedId();
-        const [rawActiveVote, voteResults, agendas] = await Promise.all([
-          fetchActiveVote(),
-          fetchVoteResultsForMeeting(meeting.id),
-          fetchAgendas(meeting.id),
-        ]);
-        const activeVote = rawActiveVote
-          ? await fetchVoteStatistics(rawActiveVote.id)
-          : null;
-
-        lastActiveMeetingIdRef.current = meeting.id;
-        setState({
-          loading: false,
-          error: null,
-          meeting,
-          agendas,
-          activeVote,
-          voteResults,
-          currentMeetingId: meeting.id,
-          endedMeetingId: null,
-        });
+      const endedMeetingId = meeting
+        ? null
+        : endedMeetingIdRef.current ?? lastActiveMeetingIdRef.current;
+      if (checkForNextMeeting && !meeting && endedMeetingId === endedMeetingIdRef.current) {
+        setState((previous) => previous.error ? { ...previous, error: null } : previous);
         return;
       }
 
-      // No active meeting — check if we have an ended meeting to show
-      if (endedMeetingId !== null) {
-        const [voteResults, agendas] = await Promise.all([
-          fetchVoteResultsForMeeting(endedMeetingId),
-          fetchAgendas(endedMeetingId),
-        ]);
-        setState({
-          loading: false,
-          error: null,
-          meeting: null,
-          agendas,
-          activeVote: null,
-          voteResults,
-          currentMeetingId: null,
-          endedMeetingId,
-        });
-        return;
-      }
+      const meetingId = meeting?.id ?? endedMeetingId;
+      const [rawActiveVote, voteResults, agendas] = meetingId == null
+        ? [null, [], []] as const
+        : await Promise.all([
+            meeting ? fetchActiveVote() : null,
+            fetchVoteResultsForMeeting(meetingId),
+            fetchAgendas(meetingId),
+          ]);
+      const activeVote = rawActiveVote && rawActiveVote.meeting_id === meetingId
+        ? voteResults.find((vote) => vote.vote_id === rawActiveVote.id)
+          ?? await fetchVoteStatistics(rawActiveVote.id)
+        : null;
+      if (version !== requestVersion.current) return;
 
-      // No active meeting and no ended meeting — empty state
+      lastActiveMeetingIdRef.current = meeting?.id ?? null;
+      endedMeetingIdRef.current = endedMeetingId;
+      if (endedMeetingId != null) persistEndedId(endedMeetingId);
+      else clearStoredEndedId();
       setState({
         loading: false,
         error: null,
-        meeting: null,
-        agendas: [],
-        activeVote: null,
-        voteResults: [],
-        currentMeetingId: null,
-        endedMeetingId: null,
+        meeting,
+        agendas: [...agendas],
+        activeVote,
+        voteResults: [...voteResults],
+        endedMeetingId,
       });
     } catch (err) {
-      setState((prev) => ({
-        ...prev,
+      if (version !== requestVersion.current) return;
+      setState((previous) => ({
+        ...previous,
         loading: false,
         error: err instanceof Error ? err.message : "Failed to load display",
       }));
+    } finally {
+      if (version === requestVersion.current) {
+        loadingSnapshot.current = false;
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
-
-  // ── Poll for active meeting when in waiting state ────────────────────────
-  // When DisplayView has no active meeting and no ended meeting id, poll
-  // the backend every POLL_INTERVAL_MS to detect a newly started meeting.
-  // The timer is cleaned up when a meeting is found, when ended meeting
-  // results are displayed, or on unmount.
-  useEffect(() => {
-    // Poll when there is no active meeting (includes both waiting state and
-    // ended-meeting result view). If poll finds a new active meeting, it
-    // calls load() which switches to it and clears the endedMeetingId.
-    // When no active meeting exists, the ended results remain intact.
-    const shouldPoll =
-      !state.loading &&
-      !state.meeting &&
-      !state.error;
-
-    if (!shouldPoll) return;
-
-    const pollTimer = setInterval(async () => {
-      try {
-        const meeting = await fetchActiveMeeting();
-        if (meeting) {
-          // New active meeting found — update state and stop polling
-          clearInterval(pollTimer);
-          // Persist: store endedMeetingId to prevent re-polling on re-render
-          // that triggers a new effect scheduling.  The load() call below
-          // will see the active meeting and clear any stored ended id.
-          load();
-        }
-      } catch {
-        // Silently ignore polling errors — the manual Refresh button exists.
-      }
-    }, DISPLAY_POLL_INTERVAL_MS);
-
-    return () => {
-      clearInterval(pollTimer);
-    };
-  }, [state.loading, state.meeting, state.error, load]);
 
   const handleEvent = useCallback(
     (event: string, message: WSMessage) => {
-      if (
-        event === "vote_started" ||
-        event === "vote_updated" ||
-        event === "vote_closed" ||
-        event === "meeting_ended" ||
-        event === "agenda_updated"
-      ) {
-        // For meeting_ended, save the meeting id so we keep showing vote
-        // results even after the active meeting is gone.
-        if (event === "meeting_ended") {
-          // Prefer the meeting_id from the WS message payload; fall back to
-          // the ref so we still work if the message lacks a valid id.
-          const meetingId =
-            typeof message.meeting_id === "number" && message.meeting_id > 0
-              ? message.meeting_id
-              : lastActiveMeetingIdRef.current;
-
-          if (meetingId !== null) {
-            persistEndedId(meetingId);
-            setState((prev) => ({
-              ...prev,
-              endedMeetingId: meetingId,
-              currentMeetingId: null,
-            }));
-            endedMeetingIdRef.current = meetingId;
-          }
+      if (event === "meeting_ended") {
+        const meetingId = message.meeting_id || lastActiveMeetingIdRef.current;
+        if (meetingId != null) {
+          endedMeetingIdRef.current = meetingId;
+          persistEndedId(meetingId);
         }
-        load();
       }
+      if ([
+        "meeting_ended",
+        "vote_started",
+        "vote_updated",
+        "vote_closed",
+        "agenda_updated",
+        "reconnected",
+      ].includes(event)) void load();
     },
     [load],
   );
 
-  const effectiveMeetingId = getEffectiveMeetingId(
-    state.meeting,
-    state.endedMeetingId,
-  );
-  const isEndedMeeting = getIsEndedMeeting(state.meeting, state.endedMeetingId);
+  const activeMeetingId = state.meeting?.id ?? null;
+  const isEndedMeeting = activeMeetingId == null && state.endedMeetingId != null;
+  const connection = useWebSocket(activeMeetingId, handleEvent, 0);
 
-  useWebSocket(effectiveMeetingId, handleEvent, 0);
+  useEffect(() => {
+    if (state.loading || (activeMeetingId != null && connection === "connected" && !state.error)) {
+      return;
+    }
+    const checkForNextMeeting = activeMeetingId == null && !state.error;
+    const timer = window.setInterval(() => void load(checkForNextMeeting, true), DISPLAY_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [activeMeetingId, connection, load, state.error, state.loading]);
 
   const displayVote =
     state.activeVote ??
@@ -263,11 +177,11 @@ export function DisplayView() {
   const now = useClock();
 
   return (
-    <div className="min-h-screen bg-techBg text-techText lg:h-screen lg:overflow-hidden lg:flex lg:flex-col">
+    <div className="desk-page min-h-screen text-techText lg:h-dvh lg:flex lg:flex-col">
       {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-techBorder px-5 py-4 lg:px-8 xl:px-10">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-techCyan/30 bg-techCyan/10 shadow-cyan-glow">
+      <header className="desk-hero flex shrink-0 flex-wrap items-center justify-between gap-5 border-b border-techBorder px-5 py-6 lg:px-9 xl:px-12 xl:py-9">
+        <div className="flex min-w-0 items-center gap-4 sm:gap-6">
+          <div className="desk-brand-mark flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-techCyan/30 bg-techCyan/10 sm:h-16 sm:w-16">
             <Monitor size={21} className="text-techCyan" />
           </div>
           <div className="min-w-0">
@@ -278,7 +192,7 @@ export function DisplayView() {
               cnClassName="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-techCyan"
               enClassName="text-[0.65rem] opacity-70"
             />
-            <h1 className="truncate text-2xl font-bold text-techText xl:text-3xl">
+            <h1 className="break-words text-3xl font-semibold leading-tight text-techText sm:text-4xl xl:text-6xl">
               {isEndedMeeting ? (
                 <>
                   会议已结束 <span className="ml-1 text-base font-mono tracking-wider text-techMuted xl:text-lg">
@@ -297,7 +211,13 @@ export function DisplayView() {
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-3 lg:gap-4">
+        <div className="flex flex-wrap items-center gap-3 lg:gap-4">
+          {isDemoControlsEnabled() && (
+            <StatusBadge status="warning" labelCn="演示模式" labelEn="Demo Mode" />
+          )}
+          {activeMeetingId != null && connection !== "connected" && (
+            <StatusBadge status="warning" labelCn="实时连接恢复中" labelEn="Syncing" />
+          )}
           {!state.loading && !state.error && (
             <>
               {state.meeting && (
@@ -327,7 +247,8 @@ export function DisplayView() {
             variant="secondary"
             size="md"
             icon={<RefreshCw size={15} />}
-            onClick={load}
+            loading={refreshing}
+            onClick={() => void load()}
           >
             <span>刷新</span>
             <span>Refresh</span>
@@ -336,7 +257,7 @@ export function DisplayView() {
       </header>
 
       {/* ── Main content ──────────────────────────────────────── */}
-      <main className="px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:px-6 lg:py-5 xl:px-10 xl:py-6">
+      <main className="px-4 py-4 lg:min-h-0 lg:flex-1 lg:px-9 lg:py-6 xl:px-12 xl:py-8">
         <div className="lg:h-full">
           {/* ── Loading state ──────────────────────────────────── */}
           {state.loading && (
@@ -354,7 +275,7 @@ export function DisplayView() {
           )}
 
           {/* ── Error state ────────────────────────────────────── */}
-          {!state.loading && state.error && (
+          {!state.loading && state.error && !state.meeting && !isEndedMeeting && (
             <div className="flex min-h-[50vh] flex-col justify-center rounded-xl border border-techRose/30 bg-techRose/10 p-8 shadow-card-glow lg:h-full lg:min-h-0">
               <div className="mb-4 flex items-center gap-4">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-techRose/20">
@@ -375,7 +296,7 @@ export function DisplayView() {
               <ActionButton
                 variant="danger"
                 icon={<RefreshCw size={18} />}
-                onClick={load}
+                onClick={() => void load()}
               >
                 <span>刷新重试</span>
                 <span>Retry</span>
@@ -384,8 +305,13 @@ export function DisplayView() {
           )}
 
           {/* ── Normal content (not loading, no error) ─────────── */}
-          {!state.loading && !state.error && (
+          {!state.loading && (!state.error || state.meeting || isEndedMeeting) && (
             <div className="flex min-h-[50vh] flex-col gap-3 lg:h-full lg:min-h-0">
+              {state.error && (
+                <p role="alert" className="rounded-xl border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
+                  更新失败 / Sync failed · {state.error}
+                </p>
+              )}
               {/* ── Ended meeting banner ──────────────────────────── */}
               {isEndedMeeting && (
                 <div className="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-techAmber/30 bg-techAmber/10 px-4 py-2.5 text-center shadow-card-glow">
@@ -401,7 +327,7 @@ export function DisplayView() {
 
               <div
                 data-testid="display-dashboard-grid"
-                className="grid min-h-0 flex-1 gap-4 lg:grid-cols-12"
+                className="grid min-h-0 flex-1 gap-4 lg:grid-cols-12 xl:gap-6"
               >
                 <div
                   data-testid="display-agenda-panel"
@@ -461,7 +387,7 @@ function clearStoredEndedId(): void {
 
 function DisplayEmptyVote() {
   return (
-    <section className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-techBorder bg-techCard p-8 text-center shadow-card-glow lg:h-full lg:min-h-0">
+    <section className="desk-panel flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-techBorder bg-techCard p-8 text-center shadow-card-glow lg:h-full lg:min-h-0">
       <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-techBorder bg-techCardSoft text-techMuted">
         <VoteIcon size={32} />
       </div>
@@ -482,14 +408,11 @@ function DisplayEmptyVote() {
 function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
   const maxCount = Math.max(...vote.results.map((item) => item.count), 1);
   const isOpen = vote.status === "open";
-  const topOption = vote.results.reduce(
-    (best, curr) => (curr.count > best.count ? curr : best),
-    vote.results[0],
-  );
+  const hasClearWinner = vote.results.filter((option) => option.count === maxCount).length === 1;
 
   return (
-    <section className="flex min-h-[360px] flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 lg:p-7 xl:p-8">
-      <div className="mb-5 flex shrink-0 flex-wrap items-start justify-between gap-4">
+    <section className="desk-panel flex min-h-[360px] flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 lg:p-7 xl:p-8">
+      <div className="mb-7 flex shrink-0 flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="mb-2">
             <StatusBadge
@@ -499,7 +422,7 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
               pulse={isOpen}
             />
           </div>
-          <h2 className="break-words text-2xl font-bold leading-tight text-techText xl:text-3xl">
+          <h2 className="break-words text-2xl font-semibold leading-tight text-techText xl:text-4xl">
             {vote.title}
           </h2>
         </div>
@@ -519,9 +442,8 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
             vote.total_votes > 0
               ? Math.round((option.count / vote.total_votes) * 100)
               : 0;
-          const barWidth = maxCount > 0 ? (option.count / maxCount) * 100 : 0;
           const isWinner =
-            option.option === topOption.option && option.count > 0 && !isOpen;
+            hasClearWinner && option.count === maxCount && !isOpen;
 
           return (
             <div key={option.option}>
@@ -549,12 +471,12 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
                   {option.count} 票 / {option.count} votes · {pct}%
                 </span>
               </div>
-              <div className="h-3 overflow-hidden rounded-full bg-techCardSoft xl:h-4">
+              <div className="h-3 overflow-hidden rounded-full border border-techBorder bg-techSurface xl:h-5">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${
                     isWinner ? "bg-techCyan" : "bg-techBlue/60"
                   }`}
-                  style={{ width: `${barWidth}%` }}
+                  style={{ width: `${pct}%` }}
                 />
               </div>
             </div>
@@ -595,7 +517,7 @@ function DisplayAgendaProgress({ agendas }: { agendas: Agenda[] }) {
       : { cn: "暂无当前议题", en: "NO ACTIVE TOPIC" };
 
   return (
-    <section className="flex min-h-[360px] flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 lg:p-6 xl:p-7">
+    <section className="desk-panel flex min-h-[360px] flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 lg:p-6 xl:p-7">
       <div className="mb-4 shrink-0">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-techCyan">
@@ -628,7 +550,7 @@ function DisplayAgendaProgress({ agendas }: { agendas: Agenda[] }) {
 
       {sortedAgendas.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <ol className="relative space-y-3 border-l border-techBorder pl-4">
+          <ol className="relative ml-1 space-y-1">
             {sortedAgendas.map((item) => {
               const status = agendaStatusCopy(item.status);
               const isActive = item.status === "active";
@@ -643,9 +565,9 @@ function DisplayAgendaProgress({ agendas }: { agendas: Agenda[] }) {
                     : "border-techBorder bg-techCardSoft";
 
               return (
-                <li key={item.id} className="relative pl-4">
+                <li key={item.id} className="relative flex flex-col gap-1 rounded-xl border border-transparent py-2 pl-11 pr-3 hover:border-techBorder">
                   <span
-                    className={`absolute -left-[1.1rem] top-1 flex h-7 w-7 items-center justify-center rounded-full border text-[0.65rem] font-bold ${markerClass} ${
+                    className={`absolute left-1 top-2 flex h-7 w-7 items-center justify-center rounded-full border text-[0.65rem] font-bold ${markerClass} ${
                       isActive ? "animate-pulse" : ""
                     }`}
                   >

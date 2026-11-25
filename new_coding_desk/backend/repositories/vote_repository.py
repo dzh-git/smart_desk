@@ -7,6 +7,7 @@ Per DATABASE_SCHEMA.md §8-9, §15:
 """
 from __future__ import annotations
 
+from backend.models.meeting import Meeting
 from backend.models.vote import Vote
 from backend.models.vote_record import VoteRecord
 from backend.repositories.base import BaseRepository
@@ -25,8 +26,13 @@ class VoteRepository(BaseRepository[Vote]):
     # ── Vote queries ─────────────────────────────────────────────────────────
 
     def get_open_vote(self) -> Vote | None:
-        """Return the vote with status='open', or None."""
-        return self.db.query(Vote).filter(Vote.status == "open").first()
+        """Return an open vote whose meeting still allows changes."""
+        return (
+            self.db.query(Vote)
+            .join(Meeting, Vote.meeting_id == Meeting.id)
+            .filter(Vote.status == "open", Meeting.status != "finished")
+            .first()
+        )
 
     def list_by_meeting(self, meeting_id: int) -> list[Vote]:
         """Return all votes for a meeting, newest first."""

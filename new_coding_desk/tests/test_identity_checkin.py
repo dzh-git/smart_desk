@@ -179,6 +179,34 @@ def test_validated_identity_delegates_to_existing_checkin_state_machine():
     assert response.json()["data"]["attendee_id"] is not None
 
 
+def test_checked_in_attendee_cannot_be_deleted():
+    meeting_id, attendee_id, _, _ = _prepare_active_attendee(occupy_seat=False)
+    assert client.post("/api/seats/1/manual-admit").status_code == 200
+    roster_url = f"/api/meetings/{meeting_id}/attendees"
+
+    deleted = client.delete(f"{roster_url}/{attendee_id}")
+
+    assert deleted.status_code == 409
+    assert deleted.json()["error_code"] == "ATTENDEE_ALREADY_CHECKED_IN"
+    assert client.get(roster_url).json()["data"][0]["checked_in"] is True
+    assert client.get("/api/seats").json()["data"][0]["attendee_id"] == attendee_id
+
+
+def test_attendee_with_identity_history_cannot_be_deleted_after_vacating():
+    meeting_id, attendee_id, payload, headers = _prepare_active_attendee()
+    assert _identity_post(1, payload, headers).status_code == 200
+    assert _tablet_vacate_post(1, payload, headers).status_code == 200
+    roster_url = f"/api/meetings/{meeting_id}/attendees"
+
+    deleted = client.delete(f"{roster_url}/{attendee_id}")
+
+    assert deleted.status_code == 409
+    assert deleted.json()["error_code"] == "ATTENDEE_HAS_HISTORY"
+    attendee = client.get(roster_url).json()["data"][0]
+    assert attendee["id"] == attendee_id
+    assert attendee["checked_in"] is False
+
+
 def test_stale_and_future_identity_events_are_rejected(monkeypatch):
     _, _, payload, headers = _prepare_active_attendee()
     now_ms = int(time.time() * 1000)

@@ -1,6 +1,6 @@
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { MessageSquare, Loader2, Mic } from "lucide-react";
-import { PanelCard, TechEmptyState, SectionHeader, formatTranscriptTime } from "./shared";
+import { PanelCard, TechEmptyState, SectionHeader, formatTranscriptTime, parseBackendDate } from "./shared";
 import type { TranslationRecord } from "../api/types";
 import type { PendingTranslation } from "../types";
 import type { LiveLyricSentence } from "../types";
@@ -74,6 +74,10 @@ interface TranscriptPanelProps {
 
 // ── Deduplication helpers ──────────────────────────────────────────────────
 
+function transcriptTimestamp(value: string): number {
+  return parseBackendDate(value)?.getTime() ?? Number.NaN;
+}
+
 /** Deduplicate finals deterministically:
  *  1. By translation id — keep first occurrence.
  *  2. Within id-deduped set, group by utterance_id.
@@ -103,8 +107,8 @@ function deduplicateFinals(entries: TranslationRecord[]): TranslationRecord[] {
         byUtterance.set(e.utterance_id, e);
       } else {
         // Keep latest created_at; if same, keep max id
-        const existingTime = new Date(existing.created_at).getTime();
-        const entryTime = new Date(e.created_at).getTime();
+        const existingTime = transcriptTimestamp(existing.created_at);
+        const entryTime = transcriptTimestamp(e.created_at);
         if (
           entryTime > existingTime ||
           (entryTime === existingTime && e.id > existing.id)
@@ -129,8 +133,8 @@ function sortFinalsOldestFirst(
   entries: TranslationRecord[],
 ): TranslationRecord[] {
   return [...entries].sort((a, b) => {
-    const ta = new Date(a.created_at).getTime();
-    const tb = new Date(b.created_at).getTime();
+    const ta = transcriptTimestamp(a.created_at);
+    const tb = transcriptTimestamp(b.created_at);
 
     // Both parse successfully → oldest first
     if (!isNaN(ta) && !isNaN(tb)) {
@@ -151,8 +155,8 @@ function groupFinals(entries: TranslationRecord[]): TranslationRecord[][] {
     const group = groups.length ? groups[groups.length - 1] : undefined;
     const previous = group?.length ? group[group.length - 1] : undefined;
     if (group && previous) {
-      const previousTime = new Date(previous.created_at).getTime();
-      const entryTime = new Date(entry.created_at).getTime();
+      const previousTime = transcriptTimestamp(previous.created_at);
+      const entryTime = transcriptTimestamp(entry.created_at);
       const gap = entryTime - previousTime;
       const canMerge =
         previous.seat_id === entry.seat_id &&
@@ -237,23 +241,6 @@ export function TranscriptPanel({
     () => sortFinalsOldestFirst(deduplicateFinals(entries)),
     [entries],
   );
-  const visibleHistoryEntries = useMemo(
-    () => dedupedEntries.filter((entry) => {
-      if (!liveEnabled || !liveFinal) return true;
-      if (entry.id === liveFinal.id) return false;
-      return !(
-        entry.utterance_id
-        && liveFinal.utterance_id
-        && entry.utterance_id === liveFinal.utterance_id
-      );
-    }),
-    [dedupedEntries, liveEnabled, liveFinal],
-  );
-  const finalGroups = useMemo(
-    () => groupFinals(visibleHistoryEntries),
-    [visibleHistoryEntries],
-  );
-
   // Collect utterance_ids that have finals
   const finalUtteranceIds = useMemo(() => {
     const ids = new Set<string>();
@@ -274,6 +261,16 @@ export function TranscriptPanel({
     () => deduplicateInterims(interims, finalUtteranceIds),
     [interims, finalUtteranceIds],
   );
+  const liveFinalEntry = liveEnabled && filteredInterims.length === 0 ? liveFinal : null;
+  const visibleHistoryEntries = useMemo(
+    () => liveFinalEntry ? dedupedEntries.filter((entry) => (
+      entry.id !== liveFinalEntry.id
+      && !(entry.utterance_id && entry.utterance_id === liveFinalEntry.utterance_id)
+    )) : dedupedEntries,
+    [dedupedEntries, liveFinalEntry],
+  );
+  const finalGroups = useMemo(() => groupFinals(visibleHistoryEntries), [visibleHistoryEntries]);
+
   const lyricGroups = useMemo(() => {
     const bySeat = new Map<number, LiveLyricSentence[]>();
     for (const sentence of lyrics) {
@@ -287,14 +284,21 @@ export function TranscriptPanel({
         .sort((a, b) => a.sentenceSequence - b.sentenceSequence),
     }));
   }, [lyrics]);
+  const lyricUtteranceIds = new Set(lyrics.map((sentence) => sentence.utteranceId));
+  const lyricSeatIds = new Set(lyricGroups.map(({ seatId }) => seatId));
+  const fallbackInterims = filteredInterims.filter((interim) => (
+    !lyricUtteranceIds.has(interim.utteranceId)
+    // Revision zero carries existing text into the next utterance.
+    && !(interim.revision === 0 && lyricSeatIds.has(interim.seatId))
+  ));
 
   // Caption entries with visible lines use the two-line live box. Empty
   // captions and entries without caption use the fallback row, whose active
   // meeting variant keeps the same fixed-height shell.
-  const captionInterims = filteredInterims.filter(
+  const captionInterims = fallbackInterims.filter(
     (i) => i.caption != null && (i.caption.currentLine || i.caption.previousLine),
   );
-  const textInterims = filteredInterims.filter(
+  const textInterims = fallbackInterims.filter(
     (i) => i.caption == null || (!i.caption.currentLine && !i.caption.previousLine),
   );
 
@@ -350,10 +354,10 @@ export function TranscriptPanel({
             <LiveCaptionPlaceholder reconnecting={liveReconnecting} />
           )}
 
-          {liveEnabled && liveFinal && captionInterims.length === 0 && textInterims.length === 0 && (
+          {liveFinalEntry && (
             <LiveFinalBlock
-              entry={liveFinal}
-              speakerName={seatNameMap[liveFinal.seat_id] ?? `Seat ${liveFinal.seat_id}`}
+              entry={liveFinalEntry}
+              speakerName={seatNameMap[liveFinalEntry.seat_id] ?? `Seat ${liveFinalEntry.seat_id}`}
             />
           )}
 
@@ -366,7 +370,7 @@ export function TranscriptPanel({
           ))}
 
           {/* Live caption blocks (interims with caption) */}
-          {!hasLyrics && captionInterims.map((interim) => (
+          {captionInterims.map((interim) => (
             <LiveCaptionBlock
               key={`seat-${interim.seatId}`}
               interim={interim}
@@ -377,7 +381,7 @@ export function TranscriptPanel({
           ))}
 
           {/* Keep fallback interims in a fixed-height shell during a meeting. */}
-          {!hasLyrics && textInterims.map((interim) => (
+          {textInterims.map((interim) => (
             <InterimRow
               key={interim.utteranceId}
               interim={interim}
@@ -582,6 +586,7 @@ function LiveLyricsBlock({
 }) {
   const renderedStatesRef = useRef<Set<string>>(new Set());
   const lyricViewportRef = useRef<HTMLDivElement>(null);
+  const followLatestRef = useRef(true);
   useEffect(() => {
     for (const sentence of sentences) {
       if (sentence.translationStatus === "forming") continue;
@@ -608,9 +613,11 @@ function LiveLyricsBlock({
     }
   }, [sentences]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const viewport = lyricViewportRef.current;
-    if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    if (viewport && followLatestRef.current) {
+      viewport.scrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+    }
   }, [sentences]);
 
   const latest = sentences[sentences.length - 1];
@@ -632,52 +639,57 @@ function LiveLyricsBlock({
       </div>
       <div
         ref={lyricViewportRef}
-        className="space-y-2 flex flex-col justify-end flex-1 min-h-0 overflow-y-auto pr-1"
+        className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1"
         data-testid="live-lyric-pairs"
+        onScroll={({ currentTarget: viewport }) => {
+          followLatestRef.current = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 8;
+        }}
       >
-        {sentences.map((sentence, index) => {
-          const current = index === sentences.length - 1;
-          return (
-            <div
-              key={sentence.sentenceId}
-              data-testid="live-lyric-pair"
-              data-sentence-id={sentence.sentenceId}
-              data-sentence-sequence={sentence.sentenceSequence}
-              className={current ? "opacity-100" : "opacity-55"}
-            >
-              <LiveLyricText
-                data-testid="live-lyric-source"
-                className={`leading-snug ${
-                  current
-                    ? "text-base text-techText font-medium"
-                    : "text-sm text-techMuted"
-                }`}
-                text={sentence.sourceText}
-                language={sentence.sourceLang}
-              />
-              <div className="min-h-[1.1rem] mt-0.5 border-l-2 border-techCyan/45 pl-2">
-                {sentence.translationStatus === "pending" ? (
-                  <p className="text-xs text-techMuted/70" data-testid="live-lyric-pending">
-                    {sentence.recognitionStatus === "correcting"
-                      ? "识别校正中… / Correcting speech…"
-                      : "正在翻译… / Translating…"}
-                  </p>
-                ) : sentence.translationStatus === "unavailable" ? (
-                  <p className="text-xs text-techRose" data-testid="live-lyric-unavailable">
-                    译文不可用 / Translation unavailable
-                  </p>
-                ) : sentence.translationStatus === "ok" ? (
-                  <LiveLyricText
-                    className="text-sm text-techCyan leading-snug"
-                    data-testid="live-lyric-translation"
-                    text={sentence.translatedText}
-                    language={sentence.targetLang}
-                  />
-                ) : null}
+        <div className="mt-auto shrink-0 space-y-2">
+          {sentences.map((sentence, index) => {
+            const current = index === sentences.length - 1;
+            return (
+              <div
+                key={sentence.sentenceId}
+                data-testid="live-lyric-pair"
+                data-sentence-id={sentence.sentenceId}
+                data-sentence-sequence={sentence.sentenceSequence}
+                className={current ? "opacity-100" : "opacity-55"}
+              >
+                <LiveLyricText
+                  data-testid="live-lyric-source"
+                  className={`leading-snug ${
+                    current
+                      ? "text-base text-techText font-medium"
+                      : "text-sm text-techMuted"
+                  }`}
+                  text={sentence.sourceText}
+                  language={sentence.sourceLang}
+                />
+                <div className="min-h-[1.1rem] mt-0.5 border-l-2 border-techCyan/45 pl-2">
+                  {sentence.translationStatus === "pending" ? (
+                    <p className="text-xs text-techMuted/70" data-testid="live-lyric-pending">
+                      {sentence.recognitionStatus === "correcting"
+                        ? "识别校正中… / Correcting speech…"
+                        : "正在翻译… / Translating…"}
+                    </p>
+                  ) : sentence.translationStatus === "unavailable" ? (
+                    <p className="text-xs text-techRose" data-testid="live-lyric-unavailable">
+                      译文不可用 / Translation unavailable
+                    </p>
+                  ) : sentence.translationStatus === "ok" ? (
+                    <LiveLyricText
+                      className="text-sm text-techCyan leading-snug"
+                      data-testid="live-lyric-translation"
+                      text={sentence.translatedText}
+                      language={sentence.targetLang}
+                    />
+                  ) : null}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

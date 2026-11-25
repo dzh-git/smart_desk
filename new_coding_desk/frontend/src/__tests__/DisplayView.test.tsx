@@ -148,6 +148,24 @@ afterEach(() => {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("DisplayView — Task 2 ended meeting", () => {
+  it("recovers missed agenda updates after the meeting socket reconnects", async () => {
+    let agendaTitle = "First topic";
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(activeMeeting());
+      if (url === "/api/meetings/1/agendas") return okResponse([
+        { id: 1, title: agendaTitle, sort_order: 1, status: "active" },
+      ]);
+      if (url.startsWith("/api/votes?")) return okResponse([]);
+      return okResponse(null);
+    });
+    renderDisplay();
+    await screen.findAllByText("First topic");
+    await waitFor(() => expect(wsInstances[0]?.readyState).toBe(1));
+    agendaTitle = "Updated while offline";
+    act(() => wsInstances[0].onclose?.());
+    expect(await screen.findAllByText(agendaTitle, {}, { timeout: 4500 })).toHaveLength(2);
+  });
+
   it("1. active meeting exists → shows vote results", async () => {
     mockFetch
       .mockResolvedValueOnce(okResponse(activeMeeting()))

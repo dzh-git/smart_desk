@@ -1,34 +1,31 @@
 # SmartDesk 前端视觉规范
 
-> **版本**: 1.1  
-> **状态**: 当前 SmartDesk 深色科技风视觉规范；用于约束三端视觉一致性和后续小范围 UI 修复。  
-> **最后更新**: 2026-06-18
+> **版本** 1.2
+>
+> **范围** 管理端、主持席、座位平板、中央大屏和投屏预览
+>
+> **最后更新** 2026-11-24
 
 ---
 
 ## 1. Design Goals (设计目标)
 
-1. **赛博朋克科技感** — 深色背景 + 霓虹青 Cyan 高亮基调，营造沉浸式会议控制体验。
+1. **会议控制台** — 深石板蓝表面与青绿色交互强调色，适用于会议现场和远距离展示。
 2. **信息密度适中** — 会议控制需要同时呈现状态、议题、发言、字幕，但绝不拥挤；善用间距和卡片层级。
 3. **简洁高效** — 去掉装饰性冗余，每一个视觉元素都有功能归属。Admin 控制台侧重操作效率，Display 大屏侧重状态感知，Seat 平板侧重触控易用。
 4. **一致性** — 所有页面共享同一套 token 体系（颜色、阴影、圆角、字体），不出现两套视觉语言。
-5. **实时感** — 通过 cyan glow 阴影、脉冲动效、流畅过渡来体现 WebSocket 实时通信的气质。
+5. **实时感** — 活动状态使用明确的标签和轻量状态点动效。整块卡片保持稳定。
 6. **触控友好** — Seat 平板为 13.3 英寸触屏设计，所有触摸目标 ≥ 44px，防误触。
 
 ---
 
 ## 2. Dark Technology Visual Direction (暗色科技视觉方向)
 
-- **底色**: `#050b14` (techBg) — 极深藏青，接近黑色带一丝蓝底。
-- **表面**: `#07111f` (techSurface) — 面板、侧栏背景。
-- **卡片**: `#0b132b` (techCard) — 内容区块。
-- **卡片柔和**: `#111c33` (techCardSoft) — 悬浮或轻微高亮状态。
-- **边框**: `#1e2a44` (techBorder) — 分割线和边框，低对比度不刺眼。
-- **高亮色**: `#00eaff` (techCyan) — 主强调色，用于激活态、焦点、链接、发光效果。
-- **辅助蓝**: `#38bdf8` (techBlue) — 次要强调和信息提示。
-- **文字**: `#e5edf7` (techText) — 高亮主文字；`#7f8ea3` (techMuted) — 辅助/次要文字。
-- **背景装饰**: 使用 `bg-tech-radial`（左上到右下径向渐变，techCyan 12% → transparent 32% + techBlue 8% → transparent 36%），仅用于页面级背景，不干扰内容可读性。
-- **全局阴影**: 卡片使用 `shadow-card-glow` (18px 50px rgba(0,0,0,0.35))；活跃/选中元素使用 `shadow-cyan-glow` (0 0 18px techCyan 32%) 或 `shadow-cyan-glow-strong` (0 0 32px techCyan 45%)。
+- `desk-page` 为页面提供低强度青蓝渐变背景，`desk-hero` 用于品牌和会议标题区域。
+- `desk-panel` 提供石板蓝表面、边框、16px 圆角和柔和阴影。
+- `desk-brand-mark` 统一各界面品牌图标的背景和描边。
+- `desk-label` 用于英文辅助标签，采用等宽字和适度字距。
+- 选中态主要由边框和颜色标示，`shadow-cyan-glow` 用于需要强调的焦点。
 
 ---
 
@@ -40,23 +37,23 @@
 
 | Token | 值 | 用途 |
 |-------|------|------|
-| `techBg` | `#050b14` | 页面 / 最底层背景 |
-| `techSurface` | `#07111f` | 侧栏 / 面板背景 |
-| `techCard` | `#0b132b` | 卡片 / 内容区块背景 |
-| `techCardSoft` | `#111c33` | 卡片悬浮 / 轻微高亮 |
-| `techBorder` | `#1e2a44` | 边框 / 分割线 |
-| `techText` | `#e5edf7` | 主文字颜色 |
-| `techMuted` | `#7f8ea3` | 辅助文字 / 占位符 |
+| `techBg` | `#0b1016` | 页面 / 最底层背景 |
+| `techSurface` | `#0f1721` | 标题区 / 辅助面板背景 |
+| `techCard` | `#141e2a` | 卡片 / 内容区块背景 |
+| `techCardSoft` | `#1a2937` | 卡片悬浮 / 轻微高亮 |
+| `techBorder` | `#29394a` | 边框 / 分割线 |
+| `techText` | `#edf5f8` | 主文字颜色 |
+| `techMuted` | `#a1b3bf` | 辅助文字 / 占位符 |
 
 ### 3.2 语义色
 
 | Token | 值 | 用途 |
 |-------|------|------|
-| `techCyan` | `#00eaff` | 主强调、焦点指示器、活动状态、链接 |
-| `techBlue` | `#38bdf8` | 次要强调、信息提示 |
-| `techGreen` | `#10b981` | 成功、已连接、在线状态 |
-| `techAmber` | `#f59e0b` | 警告、连接中、待定状态 |
-| `techRose` | `#f43f5e` | 错误、断开连接、危险操作 |
+| `techCyan` | `#67e5d2` | 主强调、焦点指示器、活动状态、链接 |
+| `techBlue` | `#91baf2` | 次要强调、信息提示 |
+| `techGreen` | `#69d7ac` | 成功、已连接、在线状态 |
+| `techAmber` | `#f4bf6b` | 警告、连接中、待定状态 |
+| `techRose` | `#ff879b` | 错误、断开连接、危险操作 |
 
 ### 3.3 状态与语义色映射
 
@@ -79,14 +76,14 @@
 
 ## 4. Typography Scale (字体层级)
 
-使用 Tailwind 默认字体栈（系统无衬线字体）。不需引入外部字体。
+正文使用系统无衬线字体及本地中文回退字体。等宽标签使用 Tailwind `font-mono`。
 
 ### 4.1 字号层级
 
 | 用途 | Class | 大小 | 字重 | 颜色 |
 |------|-------|------|------|------|
-| 大屏标题（Display） | `text-4xl` | 36px | `font-bold` | `techText` |
-| 页面标题 | `text-2xl` | 24px | `font-semibold` | `techText` |
+| 大屏标题（Display） | 响应式大字号 | 36px 起 | `font-semibold` | `techText` |
+| 管理页会议标题 | 限定上下限的自适应字号 | 24–44px | `font-semibold` | `techText` |
 | 区块标题 | `text-lg` | 18px | `font-semibold` | `techText` |
 | 正文 / 按钮 | `text-sm` | 14px | `font-medium` | `techText` |
 | 辅助文字 | `text-xs` | 12px | `font-normal` | `techMuted` |
@@ -97,7 +94,7 @@
 
 - English secondary label：`text-xs text-techMuted`，在中文下方 `-mt-0.5`。
 - 小写英文标签在合适场景可用 `tracking-wider uppercase`。
-- 不要根据视口宽度直接缩放字体。
+- 自适应标题字号应设置可读的最小值和最大值。
 - letter-spacing 默认 `0`，仅 small uppercase 英文标签可加宽。
 
 ---
@@ -119,7 +116,7 @@
 
 | 用途 | Class | 值 |
 |------|-------|-----|
-| 卡片（默认） | `rounded-lg` | 8px |
+| 共享面板 | `desk-panel` | 16px |
 | 按钮 | `rounded-lg` | 8px |
 | 输入框 | `rounded-lg` | 8px |
 | 徽章 | `rounded-full` | 9999px |
@@ -127,8 +124,6 @@
 | 大屏卡片（Display） | `rounded-xl` | 12px |
 | Tab 导航容器 | `rounded-lg` | 8px |
 | 二次确认弹窗卡片 | `rounded-xl` | 12px |
-
-> **例外说明**: 大屏展示卡片（Display 视图）可使用 `rounded-xl`（12px）获得更柔和的视觉边界；二次确认弹窗可适当放大圆角至 `rounded-xl`。默认业务卡片始终使用 `rounded-lg`（8px），不与既有前端设计约束冲突。
 
 ### 5.3 禁止
 
@@ -142,7 +137,7 @@
 ### 6.1 基础卡片
 
 ```jsx
-<div className="bg-techCard border border-techBorder rounded-lg p-5 shadow-card-glow">
+<div className="desk-panel p-5">
   {/* 内容 */}
 </div>
 ```
@@ -152,7 +147,7 @@
 - 卡片标题使用 `text-sm font-semibold text-techText`。
 - 需要在卡片顶部加标题栏时，用 `border-b border-techBorder` 分割，标题栏高度约 44px。
 - 标题栏右侧可放 `headerRight` 操作区。
-- 标题文字：`text-xs font-semibold uppercase tracking-widest text-techMuted`。
+- 中文标题使用 `text-sm font-semibold text-techText`，英文辅助标签使用 `desk-label`。
 
 ### 6.3 选中/活跃卡片
 
@@ -208,7 +203,7 @@
 ```
 
 - 默认态：rose 边框/文字，半透明 rose 背景。
-- 最终确认按钮：`bg-techRose text-white`。
+- 最终确认按钮使用 `bg-techRose text-techBg`。
 
 ### 7.4 幽灵按钮 (Ghost)
 
@@ -467,26 +462,24 @@ interface DualLabelProps {
 
 ### 13.1 整体布局
 
-- 左侧固定侧栏（约 240px 宽）+ 右侧主内容区。
-- 侧栏：`bg-techSurface border-r border-techBorder`，包含导航项和系统品牌标识。
-- 主内容区：`bg-techBg`，可滚动。
+- 页头跨页面布局，控制区随窗口宽度换行。
+- 主内容区使用 `desk-page`，限制超宽屏内容跨度，并支持纵向滚动。
 
-### 13.2 侧栏导航
+### 13.2 工作区导航
 
-- 品牌标识区域：顶部约 56px 高度，含 logo 和中英文标题。
-- 导航项样式见第 10.3 节。
-- 导航项分组可选，组标题 `text-xs font-semibold uppercase tracking-widest text-techMuted/60 px-4 py-2`。
+- 会议总览、议程与投票、服务与记录使用持续可见的工作区导航。
+- 当前工作区使用青绿色强调，控件同时保留可见键盘焦点。
 
 ### 13.3 顶部栏
 
-- 全局状态指示区：显示连接状态、会议状态、当前时间。
-- 高度约 48-56px，`border-b border-techBorder`。
-- 右侧可放置全局操作（全屏、设置等）。
+- 品牌标识和全局状态居首，会议标题位于下方。
+- 状态区显示连接状态、会议状态、当前时间。演示环境以琥珀色显示演示模式标签。
+- 已启用演示控制时显示席位预览操作。
 
 ### 13.4 内容区
 
-- 页面标题：`text-2xl font-semibold text-techText mb-6`。
-- 卡片网格：`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`。
+- 会议标题使用 24–44px 自适应字号。总览中的会议桌为主区块。
+- 宽屏并排展示会议桌、参会者和大屏控制，窄屏按顺序堆叠。
 - 响应式断点遵循 Tailwind 默认（sm:640px, md:768px, lg:1024px, xl:1280px）。
 
 ### 13.5 布局原则
@@ -494,7 +487,7 @@ interface DualLabelProps {
 - 优先操作密度和快速扫描。
 - 使用清晰的网格组织会议状态、座位、投票、服务、议程、参会者和字幕面板。
 - 将破坏性会议控制与常规操作视觉分离。
-- 不引入落地页或营销风格 hero。
+- 标题区展示当前会议信息和可用操作。
 
 ---
 
@@ -566,22 +559,20 @@ interface DualLabelProps {
 
 ### 16.1 布局
 
-- 矩形会议桌居中，椭圆形或圆角矩形表示。
-- 座位围绕桌边排列。
-- 使用 CSS/SVG 绘制，非图片。
+- 桌面由 CSS 绘制，用细描边和内圈表现实际桌面轮廓。
+- 宽容器中主持席居左侧短边，其余八席分列两条长边。
 
 ### 16.2 座位指示
 
-- 每个座位：圆形或圆角矩形图标，44-56px。
-- 座号标于图标内或下方。
-- 座位名称标于图标下方。
-- 座位标签必须保持可读，不在更新时移位。
+- 座位按钮内显示座号、参会人和中英文状态。
+- 当前选中座位显示青色轮廓，并通过 `aria-pressed` 表达选中状态。
+- 发言中仅脉冲状态点，尊重系统的减少动态效果偏好。
 
 ### 16.3 缩放与自适应
 
-- 会议桌可视化应适应容器尺寸，使用相对单位。
-- 在 Admin 端可略小（卡片内），Display 端可较大。
-- 使用稳定网格或表格隐喻。
+- 容器宽度不超过 608px 时，桌面示意图旋转为竖向布局，主持席移到上方短边，其他席位分列左右。
+- 容器宽度不超过 384px 时，座位状态保留中文，英文仍见下方图例。
+- 待启动会议的桌面状态显示“待开始 / Pending”。
 
 ### 16.4 座位状态着色映射
 
@@ -595,9 +586,9 @@ interface DualLabelProps {
 | 离线 / 错误 | `techRose/40` | 半透明 |
 | 投票中 | `techBlue` | 静态 |
 
-**发言中状态推荐实现**:
+**发言中状态点**
 ```jsx
-className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
+className="size-1.5 rounded-full bg-techCyan motion-safe:animate-pulse"
 ```
 
 ---
@@ -688,7 +679,7 @@ className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
     <p className="text-sm text-techMuted mb-6">此操作不可撤销。</p>
     <div className="flex gap-3 justify-end">
       <button className="...secondary...">取消 Cancel</button>
-      <button className="bg-techRose text-white ...danger...">确认结束 End</button>
+      <button className="bg-techRose text-techBg ...danger...">确认结束 End</button>
     </div>
   </div>
 </div>
@@ -782,36 +773,18 @@ className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
 | `shared/utils.ts` | `formatTime`, `formatDuration`, `timeAgo`, `isDemoControlsEnabled` |
 | `shared/display.tsx` | 大屏专用组件 |
 
-### 21.3 本轮约束
+### 21.3 组件维护
 
-- **不移动任何现有组件**。
-- **不新增 `DualLabel` 组件**。
-- **不修改 `shared.tsx` 中的业务逻辑**。
-- 仅当实现视觉冻结后续任务时，才将 shared 组件改为 tech 主题。
+- 复用 `DualLabel`、`SectionCard` 和 `PanelCard`，通过现有参数扩展各视图样式。
+- 共享视觉调整保持组件调用接口和业务逻辑兼容。
 
 ---
 
-## 22. Deferred Features That Must Not Be Implemented Now (本轮禁止实现)
+## 22. Implementation Boundaries (视觉实现范围)
 
-以下功能已在规范中提及，但**本轮绝对不实现**：
-
-1. **`DualLabel` 组件** — 已在 `shared.tsx` 中实现（`cn`+`en` 双标签），不再属于待新增项。
-2. **shared.tsx 拆分** — 分文件组织规范已定，但本轮不移动组件。
-3. **shared.tsx 组件深色主题迁移** — 现有组件改用 tech 色系，本轮不改。
-4. **会议列表页** — 完整的会议列表管理页面。
-5. **完整议题系统** — 议题 CRUD、排序、状态流转。
-6. **主持人控制大屏** — 已在 `/admin` Overview 工作区的 `HostDisplayControl` 组件中实现（经 127.0.0.1:8766 loopback Agent 激活 PowerPoint/SolidWorks/SmartDesk）；只读视频流查看端为 `/screen`（`ScreenView`）。
-7. **权限系统** — 用户角色与权限控制。
-8. **大屏字幕、当前议题、发言人展示** — Display 视图的完整功能。
-9. **Next.js 迁移** — 当前使用 React + Vite，不迁移。
-10. **shadcn/ui 引入** — 不引入该组件库。
-11. **大规模替换组件 className** — 不为视觉 token 大规模改组件。
-12. **页面级 CSS** — 不在 `index.css` 中添加页面级样式。
-13. **后端 API 变更** — 任何 API 接口变更。
-14. **数据库 schema 变更** — 任何数据模型变更。
-15. **WebSocket 行为变更** — 任何实时通信协议变更。
-16. **路由结构变更** — 任何前端路由变更。
-17. **直接复制 v0-smartdesk 代码** — 不应从已有设计中直接复制代码。
+- 使用 React、Vite、Tailwind 及现有组件。全局样式负责主题、键盘焦点和共享组件，路由布局由各页面维护。
+- 大屏切换由 `HostDisplayControl` 通过本机 Display Agent 发起，`/screen` 提供只读视频流。
+- 会议状态和席位状态以现有 API 与 WebSocket 事件为准，样式和文案反映对应的业务状态。
 
 ---
 
@@ -831,16 +804,15 @@ className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
 
 ### 23.3 视觉一致性检查
 
-- [ ] `docs/FRONTEND_VISUAL_SPEC.md` 存在并覆盖 23 个章节。
+- [ ] 视觉规范与代码中的色板、控件和布局一致。
 - [ ] Tailwind 配置中包含所有 semantic tokens。
 - [ ] `tailwind.config.js` theme.extend 包含 colors、boxShadow、backgroundImage。
 - [ ] 所有页面使用 tech 深色色板。
 - [ ] 中英双语覆盖所有用户可见标签（中文主，英文次）。
 - [ ] 触摸目标 ≥ 44px（Seat 平板页面）。
 - [ ] 危险操作用 techRose 色系并有二次确认。
-- [ ] `index.css` 仅含安全全局 base 样式，无页面级 CSS。
+- [ ] `index.css` 中的全局基础规则与共享样式适用于各视图。
 - [ ] 未修改业务逻辑、API、WebSocket、路由、按钮 disabled 规则。
-- [ ] 未实现任何 deferred 功能。
 
 ### 23.4 代码审查要点
 
@@ -850,14 +822,10 @@ className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
 - [ ] 新增文件使用 UTF-8 编码。
 - [ ] 文件编码一致性：所有源码和文档 UTF-8。
 
-### 23.5 本轮验收标准
+### 23.5 视觉验收标准
 
-- [ ] 只修改允许的 3 类文件（`docs/FRONTEND_VISUAL_SPEC.md`, `frontend/tailwind.config.js`, `frontend/src/index.css`）。
-- [ ] `docs/FRONTEND_VISUAL_SPEC.md` 存在，并覆盖全部 27 个要求章节。
 - [ ] Tailwind 包含 SmartDesk semantic tokens。
-- [ ] `index.css` 没有页面级 CSS。
 - [ ] 没有修改业务逻辑、API、WebSocket、路由、按钮 disabled 状态逻辑。
-- [ ] 没有实现 deferred 功能。
 - [ ] lint / typecheck / build / unit test 至少实际尝试运行并记录结果。
 - [ ] Playwright visual smoke test 覆盖三端目标视口截图验收。
 - [ ] 浅色残留类名已被扫描并修复（或记录保留原因）。
@@ -868,11 +836,9 @@ className="ring-2 ring-techCyan shadow-cyan-glow animate-pulse"
 
 ---
 
-## 24. Final Visual Consistency Convention (本轮视觉收尾最终约定)
+## 24. Final Visual Consistency Convention (视觉一致性验收)
 
-> **版本**: 1.1  
-> **更新日期**: 2026-06-13  
-> **范围**: `/admin`、`/seat/:seatId`、`/display` 三端视觉一致性收尾
+> **范围** `/admin`、`/host`、`/seat/:seatId`、`/display` 和 `/screen`
 
 ### 24.1 三端状态颜色最终规则
 
@@ -896,9 +862,9 @@ Badge 半透明背景映射规则:
 | Variant | 外观 | 用途 |
 |---------|------|------|
 | `primary` | `bg-techCyan text-techBg` | 主要操作、创建、确认、投票、开始 |
-| `success` | `bg-techGreen text-white` | 启动会议、成功确认、处理完成 |
-| `warning` | `bg-techAmber text-white` | 预载模型、关闭投票等警示操作 |
-| `danger` | `bg-techRose text-white` | 结束会议、取消、危险操作 |
+| `success` | `bg-techGreen text-techBg` | 启动会议、成功确认、处理完成 |
+| `warning` | `bg-techAmber text-techBg` | 预载模型、关闭投票等警示操作 |
+| `danger` | `bg-techRose text-techBg` | 结束会议、取消、危险操作 |
 | `secondary` | `bg-techCard border-techBorder text-techText` | 取消、刷新、辅助操作 |
 | `ghost` | `bg-transparent text-techText hover:bg-techCard` | 轻量操作 |
 
@@ -1130,19 +1096,8 @@ className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5
   `frontend/test-results/`
 - 如果后端不可用，测试记录环境限制并如实报告，不假装通过
 
-### 24.14 停止大面积视觉重构
+### 24.14 后续样式维护
 
-本规范 v1.1 起，SmartDesk 前端视觉系统已冻结。此后：
-
-- 禁止大规模替换组件 className
-- 禁止新增页面级 CSS
-- 禁止引入新的 UI 组件库
-- 禁止迁移技术栈（React + Vite 保持不变）
-- 禁止在视觉验收任务中修改业务逻辑、API、WebSocket、路由、按钮 disabled 规则
-- 仅允许小范围视觉 bug 修复（浅色残留、溢出、文案等）
-- 仅允许与真实硬件联调相关的视觉调整
-- 所有视觉修改必须更新本文档对应章节
-
----
-
-> **文档结束** — 本规范代表 SmartDesk 前端视觉系统冻结状态（v1.1）。后续所有 UI 开发应以此规范为唯一视觉参考，任何偏离需经团队评审并更新本文档。
+- 使用现有 React + Vite、Tailwind 语义色和共享组件。
+- 视觉调整时保留现有路由、硬件访问条件、键盘焦点和触控热区。
+- 修改视觉规则时同步更新本文档的相应章节。

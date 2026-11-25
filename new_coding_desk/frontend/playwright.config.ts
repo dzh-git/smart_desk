@@ -14,6 +14,8 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
+const externalBaseURL = process.env.SMARTDESK_PRESENTATION_BASE_URL;
+
 export default defineConfig({
   testDir: "./e2e",
   testIgnore: /screen-stream-live\.spec\.ts/,
@@ -26,7 +28,8 @@ export default defineConfig({
     ["json", { outputFile: "../working/speech-e2e-playwright-report.json" }],
   ],
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: externalBaseURL ?? "http://localhost:5173",
+    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -36,7 +39,7 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
+  webServer: externalBaseURL ? undefined : {
     command: "npm run dev",
     url: "http://localhost:5173",
     reuseExistingServer: true,

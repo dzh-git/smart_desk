@@ -28,7 +28,7 @@ export type VoteState = "none" | "open" | "closed";
  * Derive meeting lifecycle status for admin dashboard.
  *
  * @param meeting     - The active meeting from the hook (null if none active)
- * @param pendingMeeting - Locally-tracked pending meeting (just created, not started)
+ * @param pendingMeeting - A persisted draft that can be configured and started
  * @param isEndedMeeting - Whether viewing an ended meeting's results
  */
 export function deriveMeetingLifecycleStatus(
@@ -127,9 +127,9 @@ export function canControlSpeaker(status: MeetingLifecycleStatus): boolean {
   return status === "meeting_active";
 }
 
-/** Add / Delete Attendee — only when meeting active. */
+/** Prepare the roster before start and manage attendance during the meeting. */
 export function canManageAttendees(status: MeetingLifecycleStatus): boolean {
-  return status === "meeting_active";
+  return status === "meeting_created" || status === "meeting_active";
 }
 
 /** Add / Delete Agenda — only when meeting active. */

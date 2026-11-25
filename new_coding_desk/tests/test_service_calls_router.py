@@ -38,6 +38,34 @@ def test_create_service_call():
     assert body["data"]["status"] == "pending"
 
 
+def test_finished_meeting_cannot_create_a_service_call():
+    mid = _create_meeting()
+    assert client.post(f"/api/meetings/{mid}/end").status_code == 200
+    url = f"/api/service-calls?meeting_id={mid}"
+
+    response = client.post(url, json={"seat_id": 3, "service_type": "coffee"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "MEETING_FINISHED"
+    assert client.get(url).json()["data"] == []
+
+
+@pytest.mark.parametrize("action", ["resolve", "cancel"])
+def test_finished_meeting_preserves_pending_service_call_history(action):
+    mid = _create_meeting()
+    url = f"/api/service-calls?meeting_id={mid}"
+    call = client.post(url, json={"seat_id": 3, "service_type": "coffee"})
+    assert call.status_code == 201
+    call_id = call.json()["data"]["id"]
+    assert client.post(f"/api/meetings/{mid}/end").status_code == 200
+
+    response = client.post(f"/api/service-calls/{call_id}/{action}")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "MEETING_FINISHED"
+    assert client.get(url).json()["data"] == [call.json()["data"]]
+
+
 def test_create_service_call_duplicate_blocked():
     """POST /api/service-calls returns 409 if seat already has pending call."""
     mid = _create_meeting()

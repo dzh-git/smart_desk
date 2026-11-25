@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Loader2, LockKeyhole, Settings, ShieldCheck, UserCheck, X } from "lucide-react";
 import { AdminDashboard } from "./AdminDashboard";
 import { SpeechControl } from "./SeatTablet";
@@ -14,6 +15,7 @@ import {
   type SmartDeskNativeEvent,
 } from "../native/nativeEvents";
 import { useSeatData } from "../hooks/useSeatData";
+import { isDemoControlsEnabled } from "./shared";
 
 interface HostDeviceAccess {
   device: DeviceInfo;
@@ -29,6 +31,23 @@ function formatFaceScore(value: number | null | undefined): string {
 }
 
 export function HostTabletConsole() {
+  const bridge = useMemo(() => getNativeBridge(), []);
+  return !bridge.isAvailable() && isDemoControlsEnabled()
+    ? <HostBrowserPreview />
+    : <NativeHostTabletConsole />;
+}
+
+function HostBrowserPreview() {
+  const navigate = useNavigate();
+  return (
+    <AdminDashboard
+      onSwitchToSeat={(seatId) => navigate(`/seat/${seatId}`)}
+      hostSpeechControl={<HostSpeechControl />}
+    />
+  );
+}
+
+function NativeHostTabletConsole() {
   const bridge = useMemo(() => getNativeBridge(), []);
   const [deviceAccess, setDeviceAccess] = useState<HostDeviceAccess | null>(null);
   const [unlocked, setUnlocked] = useState(false);

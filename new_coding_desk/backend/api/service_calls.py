@@ -83,8 +83,12 @@ def create_service_call(
             seat_id=data.seat_id,
             service_type=data.service_type,
         )
+    except NotFoundError as e:
+        raise HTTPException(404, detail=e.error_code)
     except ConflictError as e:
         raise HTTPException(409, detail=e.error_code)
+    except ValidationError as e:
+        raise HTTPException(400, detail=e.error_code)
     return _ok(_sc_out(sc))
 
 

@@ -99,6 +99,25 @@ beforeEach(() => {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe("AdminDashboard - data loading", () => {
+  it("restores the latest draft with its attendees when the console is opened", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings?status=pending") return okResponse([
+        { id: 7, title: "Older draft", status: "pending" },
+        { id: 8, title: "Upcoming board review", status: "pending" },
+      ]);
+      if (url === "/api/meetings/8/attendees") return okResponse([
+        { id: 1, meeting_id: 8, name: "Incoming attendee", assigned_seat_id: 2, checked_in: false },
+      ]);
+      if (url === "/api/seats") return okResponse([]);
+      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
+      return okResponse(null);
+    });
+    render(<AdminDashboard />);
+    expect(await screen.findByText("Upcoming board review")).toBeInTheDocument();
+    expect(screen.getByText(/Incoming attendee · 座位 2/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Start Meeting/i })).toBeEnabled();
+  });
+
   it("shows loading state initially", () => {
     mockFetch.mockImplementation(() => new Promise(() => {}));
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);

@@ -3,6 +3,7 @@ import {
   DualLabel,
   StatusBadge,
   ActionButton,
+  isDemoControlsEnabled,
   useClock,
   formatTime,
   formatDuration,
@@ -118,103 +119,98 @@ export function AdminHeader({
     (meetingStatus === "active" || meetingStatus === "pending");
 
   return (
-    <header className="bg-techBg border-b border-techBorder bg-tech-radial backdrop-blur-sm flex-shrink-0">
-      <div className="px-3 sm:px-5 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          {/* ── Left Block: Brand + Meeting Title ── */}
-          <div className="flex items-center gap-3 min-w-0 shrink-0 max-w-[45%]">
-            <div className="w-8 h-8 rounded-lg bg-techCyan/20 flex items-center justify-center shrink-0">
-              <Cpu size={16} className="text-techCyan" />
-            </div>
-            <div className="min-w-0">
-              <DualLabel cn="SmartDesk 主持人控制台" en="HOST CONSOLE" />
-              <p className="truncate text-sm font-semibold text-techText leading-tight">
-                {title || "等待会议 / Waiting for Meeting"}
-              </p>
-            </div>
+    <header className="desk-hero shrink-0 border-b border-techBorder">
+      <div className="mx-auto max-w-[1760px] px-4 pb-5 pt-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="desk-brand-mark">
+              <Cpu size={20} aria-hidden="true" />
+            </span>
+            <DualLabel
+              cn="SmartDesk 主持人控制台"
+              en="HOST CONSOLE"
+              className="min-w-0 flex-col gap-0.5"
+              cnClassName="text-sm"
+              enClassName="desk-label"
+            />
           </div>
 
-          {/* ── Center Block: Status Pills ── */}
-          <div className="flex items-center gap-1.5 flex-wrap justify-center min-w-0">
-            {/* Meeting status badge */}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {isDemoControlsEnabled() && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-techAmber/40 bg-techAmber/10 px-2.5 py-1 text-xs font-semibold text-techAmber">
+                演示模式 / Demo Mode
+              </span>
+            )}
             <StatusBadge
               status={meetingBadge.status}
               labelCn={meetingBadge.labelCn}
               labelEn={meetingBadge.labelEn}
               pulse={meetingBadge.pulse}
+              className="bg-techBg/65"
             />
-
-            {/* Connection status badge */}
             <StatusBadge
               status={connBadge.status}
               labelCn={connBadge.labelCn}
               labelEn={connBadge.labelEn}
               icon={connBadge.icon}
+              className="bg-techBg/65"
             />
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-techBorder bg-techBg/65 px-2.5 py-1 font-mono text-xs tabular-nums text-techMuted">
+              <Clock size={12} className="shrink-0" aria-hidden="true" />
+              {formatTime(now)}
+            </span>
+          </div>
+        </div>
 
-            {/* Checked-in count */}
-            {showMetrics && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techBorder rounded-md text-xs">
-                <Users size={11} className="text-techGreen shrink-0" />
-                <span className="text-techMuted">签到 / Check-in</span>
-                <span className="font-semibold text-techGreen">{checkedInCount}</span>
-                <span className="text-techBorder text-[10px]">/</span>
-                <span className="font-semibold text-techMuted text-[10px]">{totalSeats}</span>
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <h1 className="min-w-0 max-w-full break-words text-[clamp(1.5rem,3vw,2.75rem)] font-semibold leading-tight tracking-[-0.035em] text-techText">
+            {title || "等待会议 / Waiting for Meeting"}
+          </h1>
+          {onModeSwitch && previewSeat != null && (
+            <ActionButton
+              variant="secondary"
+              size="sm"
+              onClick={onModeSwitch}
+              icon={<span className="block size-1.5 rounded-full bg-techCyan" />}
+            >
+              预览座位 {previewSeat} / Preview Seat {previewSeat}
+            </ActionButton>
+          )}
+        </div>
+
+        {showMetrics && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+            <span className="inline-flex items-center gap-1.5">
+              <Users size={13} className="shrink-0 text-techCyan" aria-hidden="true" />
+              <span className="text-techMuted">签到 / Check-in</span>
+              <span className="font-semibold tabular-nums text-techText">
+                {checkedInCount} / {totalSeats}
               </span>
-            )}
-
-            {/* Current speaker */}
-            {showMetrics && speakerName && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techBorder rounded-md text-xs max-w-[170px]">
-                <Mic size={11} className="text-techCyan shrink-0" />
+            </span>
+            {speakerName && (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <Mic size={13} className="shrink-0 text-techCyan" aria-hidden="true" />
                 <span className="text-techMuted shrink-0">发言人 / Speaker</span>
-                <span className="text-techMuted truncate">{speakerName}</span>
+                <span className="truncate font-medium text-techText">{speakerName}</span>
               </span>
             )}
-
-            {/* Elapsed meeting time */}
-            {showMetrics && elapsedMs != null && elapsedMs > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techBorder rounded-md text-xs">
-                <Timer size={11} className="text-techCyan shrink-0" />
+            {elapsedMs != null && elapsedMs > 0 && (
+              <span className="inline-flex items-center gap-1.5">
+                <Timer size={13} className="shrink-0 text-techCyan" aria-hidden="true" />
                 <span className="text-techMuted">时长 / Time</span>
-                <span className="font-semibold text-techText font-mono">
+                <span className="font-mono font-semibold tabular-nums text-techText">
                   {formatDuration(elapsedMs)}
                 </span>
               </span>
             )}
-
-            {/* Pending requests */}
-            {showMetrics && pendingRequestCount != null && pendingRequestCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-techCard border border-techAmber/30 rounded-md text-xs">
-                <span className="font-semibold text-techAmber">{pendingRequestCount}</span>
+            {pendingRequestCount != null && pendingRequestCount > 0 && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="font-semibold tabular-nums text-techAmber">{pendingRequestCount}</span>
                 <span className="text-techMuted">待处理 / Pending</span>
               </span>
             )}
-
-            {/* Clock */}
-            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono text-techMuted">
-              <Clock size={11} className="shrink-0" />
-              {formatTime(now)}
-            </span>
           </div>
-
-          {/* ── Right Block: Action Buttons ── */}
-          <div className="flex items-center gap-2 shrink-0">
-            {onModeSwitch && previewSeat != null && (
-              <>
-                <div className="hidden sm:block w-px h-5 bg-techBorder" />
-                <ActionButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={onModeSwitch}
-                >
-                  <span className="w-2 h-2 rounded-full bg-techCyan" />
-                  预览座位 {previewSeat} / Preview Seat {previewSeat}
-                </ActionButton>
-              </>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </header>
   );

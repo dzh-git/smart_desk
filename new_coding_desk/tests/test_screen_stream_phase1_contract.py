@@ -67,9 +67,11 @@ def _win_subprocess_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     subprocess.CREATE_NO_WINDOW.
     """
     if not hasattr(subprocess, "CREATE_NO_WINDOW"):
-        monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
     if not hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
-        monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        monkeypatch.setattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False,
+        )
 
 
 @pytest.fixture

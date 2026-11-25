@@ -27,6 +27,7 @@ from backend.models.vote import Vote
 from backend.repositories.vote_repository import VoteRepository
 from backend.schemas.vote import VoteOptionStat, VoteStatistics
 from backend.services.base import BaseService
+from backend.services.meeting_service import MeetingService
 
 
 class VoteService(BaseService):
@@ -39,6 +40,7 @@ class VoteService(BaseService):
     def __init__(self, db: Session, event_bus: EventBus) -> None:
         super().__init__(db, event_bus)
         self.vote_repo = VoteRepository(db)
+        self.meeting_service = MeetingService(db, event_bus)
 
     # ── Vote CRUD ────────────────────────────────────────────────────────────
 
@@ -55,6 +57,7 @@ class VoteService(BaseService):
             V1: Only one open vote allowed at any time.
         Publishes: vote_started event.
         """
+        self.meeting_service.require_editable_meeting(meeting_id)
         # V1: check no open vote exists
         existing = self.vote_repo.get_open_vote()
         if existing is not None:
@@ -120,6 +123,7 @@ class VoteService(BaseService):
                 "Vote is closed",
                 "VOTE_CLOSED",
             )
+        self.meeting_service.require_editable_meeting(vote.meeting_id)
 
         # Validate option
         options: list[str] = json.loads(vote.options_json)
@@ -162,6 +166,7 @@ class VoteService(BaseService):
         if vote.status == "closed":
             return vote  # idempotent
 
+        self.meeting_service.require_editable_meeting(vote.meeting_id)
         vote.status = "closed"
         vote.closed_at = datetime.now(timezone.utc)
         self.vote_repo.save(vote)

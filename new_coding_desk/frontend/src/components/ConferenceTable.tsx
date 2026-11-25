@@ -28,8 +28,7 @@ interface StatusVisual {
 
 const statusVisuals: Record<SeatStatus, StatusVisual> = {
   speaking: {
-    container:
-      "border-techCyan/60 bg-techCyan/10 shadow-cyan-glow",
+    container: "border-techCyan/60 bg-techCardSoft shadow-cyan-glow",
     text: "text-techCyan",
     dot: "bg-techCyan",
     icon: <Mic size={12} className="text-techCyan" />,
@@ -37,7 +36,7 @@ const statusVisuals: Record<SeatStatus, StatusVisual> = {
     labelEn: "Speaking",
   },
   checked_in: {
-    container: "border-techGreen/40 bg-techGreen/10",
+    container: "border-techGreen/30 bg-techCard",
     text: "text-techGreen",
     dot: "bg-techGreen",
     icon: <UserCheck size={12} className="text-techGreen" />,
@@ -45,7 +44,7 @@ const statusVisuals: Record<SeatStatus, StatusVisual> = {
     labelEn: "Checked In",
   },
   waiting: {
-    container: "border-techAmber/40 bg-techAmber/10",
+    container: "border-techAmber/35 bg-techCard",
     text: "text-techAmber",
     dot: "bg-techAmber",
     icon: <Clock size={12} className="text-techAmber" />,
@@ -88,22 +87,15 @@ function SeatVisualNode({
     <button
       type="button"
       data-testid={`conference-seat-${seatId}`}
+      aria-pressed={Boolean(selected)}
       onClick={onClick}
       className={`
-        flex flex-col items-center justify-center gap-1
-        min-w-0 w-full px-2
-        ${isHostSeat ? "min-h-[112px]" : "min-h-[74px]"}
-        rounded-xl border transition-all duration-200
+        flex min-w-0 w-full flex-col items-center justify-center gap-1.5 px-1.5 py-2
+        ${isHostSeat ? "min-h-[100px]" : "min-h-[76px]"}
+        rounded-xl border transition-colors duration-150
         ${sv.container}
-        ${isSpeaking ? "animate-pulse" : ""}
-        ${
-          selected && !isSpeaking
-            ? "ring-2 ring-techCyan/50"
-            : selected && isSpeaking
-              ? ""
-              : ""
-        }
-        hover:brightness-125 active:scale-95
+        ${selected ? "ring-1 ring-techCyan" : ""}
+        hover:border-techCyan hover:bg-techCardSoft
         focus:outline-none focus-visible:ring-2 focus-visible:ring-techCyan
         cursor-pointer
       `}
@@ -111,18 +103,18 @@ function SeatVisualNode({
       {/* Seat number + speaking indicator */}
       <div className="flex items-center gap-1.5">
         <span
-          className={`text-[10px] font-bold uppercase tracking-widest ${sv.text}`}
+          className={`whitespace-nowrap font-mono text-[11px] font-semibold tracking-wider ${sv.text}`}
         >
           SEAT {seatId}
         </span>
         {isSpeaking && (
-          <span className="w-1.5 h-1.5 rounded-full bg-techCyan animate-pulse" />
+          <span className="size-1.5 rounded-full bg-techCyan motion-safe:animate-pulse" />
         )}
       </div>
       {isHostSeat && (
         <span className="flex flex-col items-center text-[11px] font-semibold text-techCyan">
           主持人席
-          <span className="font-mono text-[8px] uppercase tracking-wider text-techCyan/60">
+          <span className="font-mono text-[9px] uppercase tracking-wider text-techMuted">
             Host Seat
           </span>
         </span>
@@ -131,21 +123,22 @@ function SeatVisualNode({
       {/* Attendee name or vacant label */}
       {name ? (
         <span
-          className={`text-xs font-semibold leading-tight text-center px-1 max-w-[88px] truncate ${sv.text}`}
+          className="w-full truncate text-center text-sm font-semibold leading-tight text-techText"
+          title={name}
         >
           {name}
         </span>
-      ) : (
+      ) : status !== "vacant" ? (
         <span className="text-xs text-techMuted">空座</span>
-      )}
+      ) : null}
 
       {/* Status badge row */}
-      <div className="flex items-center gap-1 mt-0.5">
+      <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5">
         {sv.icon}
-        <span className="text-[10px] font-medium leading-none text-techMuted/80">
+        <span className="text-[10px] font-medium leading-none text-techMuted">
           {sv.labelCn}
         </span>
-        <span className="text-[8px] font-mono uppercase tracking-wider text-techMuted/40 leading-none">
+        <span className="conference-table__seat-status-en font-mono text-[9px] uppercase leading-none text-techMuted">
           {sv.labelEn}
         </span>
       </div>
@@ -164,7 +157,7 @@ function TableLegend() {
   ];
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
       {items.map(({ status }) => {
         const sv = statusVisuals[status];
         return (
@@ -173,7 +166,7 @@ function TableLegend() {
             <span className="text-[11px] font-medium text-techMuted">
               {sv.labelCn}
             </span>
-            <span className="text-[9px] font-mono uppercase tracking-wider text-techMuted/50">
+            <span className="font-mono text-[9px] uppercase tracking-wider text-techMuted">
               {sv.labelEn}
             </span>
           </div>
@@ -183,7 +176,7 @@ function TableLegend() {
       <div className="flex items-center gap-1.5">
         <span className="w-2 h-2 rounded-full border border-techCyan bg-transparent" />
         <span className="text-[11px] font-medium text-techMuted">选中</span>
-        <span className="text-[9px] font-mono uppercase tracking-wider text-techMuted/50">
+        <span className="font-mono text-[9px] uppercase tracking-wider text-techMuted">
           Selected
         </span>
       </div>
@@ -197,6 +190,7 @@ interface ConferenceTableProps {
   seats: SeatDisplay[];
   currentSpeaker: number | null;
   activeSeat?: number;
+  preparing?: boolean;
   onSeatClick?: (seatId: number) => void;
 }
 
@@ -204,6 +198,7 @@ export function ConferenceTable({
   seats,
   currentSpeaker,
   activeSeat,
+  preparing = false,
   onSeatClick,
 }: ConferenceTableProps) {
   const hostSeat = seats.find((seat) => seat.seatId === 1);
@@ -211,20 +206,23 @@ export function ConferenceTable({
   const bottomSeats = seats.filter(
     (seat) => seat.seatId >= 6 && seat.seatId <= 9,
   );
+  const speakerSeat = preparing ? null : currentSpeaker;
+  const statusColor = preparing
+    ? "border-techAmber/30 text-techAmber"
+    : "border-techGreen/30 text-techGreen";
+
   return (
-    <div className="flex flex-col gap-5 select-none">
-      {/* Legend */}
-      <TableLegend />
-      <div className="grid grid-cols-[minmax(108px,0.24fr)_minmax(0,1fr)_minmax(36px,0.1fr)] items-center gap-3 sm:gap-5">
+    <div className="conference-table flex select-none flex-col gap-4">
+      <div className="conference-table__layout">
         <div
           data-testid="conference-host-edge"
-          className="flex items-center justify-center"
+          className="conference-table__host"
         >
           {hostSeat && (
             <SeatVisualNode
               seatId={hostSeat.seatId}
               name={hostSeat.attendeeName}
-              status={deriveSeatStatus(hostSeat, currentSpeaker === 1)}
+              status={deriveSeatStatus(hostSeat, speakerSeat === 1)}
               selected={activeSeat === hostSeat.seatId}
               onClick={() => onSeatClick?.(hostSeat.seatId)}
               isHostSeat
@@ -232,87 +230,53 @@ export function ConferenceTable({
           )}
         </div>
 
-        <div className="flex min-w-0 flex-col gap-3">
+        <div data-testid="conference-top-edge" className="conference-table__north">
+          {topSeats.map((seat) => (
+            <SeatVisualNode
+              key={seat.seatId}
+              seatId={seat.seatId}
+              name={seat.attendeeName}
+              status={deriveSeatStatus(seat, speakerSeat === seat.seatId)}
+              selected={activeSeat === seat.seatId}
+              onClick={() => onSeatClick?.(seat.seatId)}
+            />
+          ))}
+        </div>
 
-          {/* Top row */}
-          <div
-            data-testid="conference-top-edge"
-            className="grid grid-cols-4 gap-2 sm:gap-3"
-          >
-            {topSeats.map((seat) => {
-              const isSpeaker = currentSpeaker === seat.seatId;
-              const status = deriveSeatStatus(seat, isSpeaker);
-              return (
-                <SeatVisualNode
-                  key={seat.seatId}
-                  seatId={seat.seatId}
-                  name={seat.attendeeName}
-                  status={status}
-                  selected={activeSeat === seat.seatId}
-                  onClick={() => onSeatClick?.(seat.seatId)}
-                />
-              );
-            })}
-          </div>
-
-          {/* Central table surface */}
-          <div className="relative flex items-center justify-center py-1">
+        <div className="conference-table__surface">
+          <div className="relative min-w-0 px-2 py-4 text-center sm:px-4">
+            <p className="text-[clamp(0.8125rem,4.25cqi,1.25rem)] font-semibold text-techText">
+              SmartDesk 会议桌
+            </p>
+            <p className="desk-label mt-1">Smart Conference Table</p>
             <div
-              className="
-                w-full
-                rounded-[2rem]
-                bg-techSurface
-                border border-techBorder
-                shadow-cyan-glow
-                bg-tech-radial
-                h-32 sm:h-36
-                flex items-center justify-center
-                overflow-hidden
-              "
+              className={`mt-2 inline-flex max-w-full flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-full border bg-techBg/70 px-2.5 py-1 ${statusColor}`}
             >
-              <div className="text-center space-y-1">
-                <p className="text-sm font-bold text-techText tracking-wider sm:text-base">
-                  SmartDesk 会议桌
-                </p>
-                <p className="text-[10px] font-medium text-techMuted tracking-[0.2em] uppercase">
-                  Smart Conference Table
-                </p>
-                <div className="flex items-center justify-center gap-1.5 mt-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-techGreen animate-pulse" />
-                  <span className="text-[10px] font-semibold text-techGreen tracking-wide">
-                    会议中
-                  </span>
-                  <span className="text-[8px] font-mono uppercase tracking-wider text-techGreen/60">
-                    Active Meeting
-                  </span>
-                </div>
-              </div>
+              <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
+              <span className="text-xs font-semibold">
+                {preparing ? "待开始" : "会议中"}
+              </span>
+              <span className="text-[9px] font-mono uppercase tracking-wider">
+                {preparing ? "Pending" : "Active Meeting"}
+              </span>
             </div>
           </div>
-
-          {/* Bottom row */}
-          <div
-            data-testid="conference-bottom-edge"
-            className="grid grid-cols-4 gap-2 sm:gap-3"
-          >
-            {bottomSeats.map((seat) => {
-              const isSpeaker = currentSpeaker === seat.seatId;
-              const status = deriveSeatStatus(seat, isSpeaker);
-              return (
-                <SeatVisualNode
-                  key={seat.seatId}
-                  seatId={seat.seatId}
-                  name={seat.attendeeName}
-                  status={status}
-                  selected={activeSeat === seat.seatId}
-                  onClick={() => onSeatClick?.(seat.seatId)}
-                />
-              );
-            })}
-          </div>
         </div>
-        <div aria-hidden="true" />
+
+        <div data-testid="conference-bottom-edge" className="conference-table__south">
+          {bottomSeats.map((seat) => (
+            <SeatVisualNode
+              key={seat.seatId}
+              seatId={seat.seatId}
+              name={seat.attendeeName}
+              status={deriveSeatStatus(seat, speakerSeat === seat.seatId)}
+              selected={activeSeat === seat.seatId}
+              onClick={() => onSeatClick?.(seat.seatId)}
+            />
+          ))}
+        </div>
       </div>
+      <TableLegend />
     </div>
   );
 }

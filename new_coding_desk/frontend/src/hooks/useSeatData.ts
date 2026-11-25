@@ -282,7 +282,7 @@ export function useSeatData(seatId: number): SeatData {
           fetchAttendees(meetingId),
           fetchAgendas(meetingId),
           fetchTranslations(meetingId).then((r) => r.entries),
-          fetchVoteResultsForMeeting(meetingId),
+          fetchVoteResultsForMeeting(meetingId, rawActiveVote?.id),
         ]);
         attendees = a;
         agenda = ag;
@@ -367,17 +367,14 @@ export function useSeatData(seatId: number): SeatData {
     doFetch(true);
   }, [doFetch]);
 
+  const hasMeeting = data.meeting != null;
   useEffect(() => {
-    if (!error) return;
-    const retry = window.setTimeout(() => doFetch(false), 5_000);
-    return () => window.clearTimeout(retry);
-  }, [doFetch, error]);
+    if (loading || (hasMeeting && !error)) return;
+    const timer = window.setInterval(() => void doFetch(false), 5000);
+    return () => window.clearInterval(timer);
+  }, [doFetch, error, hasMeeting, loading]);
 
-  useEffect(() => {
-    if (loading || error || data.meeting) return;
-    const poll = window.setTimeout(() => doFetch(false), 5_000);
-    return () => window.clearTimeout(poll);
-  }, [data.meeting, doFetch, error, loading]);
+  const refresh = useCallback(() => doFetch(false), [doFetch]);
 
   // ── WebSocket event handler ────────────────────────────────────────────
 
@@ -764,7 +761,7 @@ export function useSeatData(seatId: number): SeatData {
     pendingFinalMap,
     connection,
     noMeeting: !loading && !data.meeting && !error,
-    refresh: () => doFetch(false),
+    refresh,
     terminateUtterance,
   };
 }

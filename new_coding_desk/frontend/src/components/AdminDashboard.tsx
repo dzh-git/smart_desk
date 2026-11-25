@@ -41,6 +41,7 @@ import {
   setSpeakerSeat,
   clearSpeakerSeat,
   createAttendee,
+  fetchPeople,
   deleteAttendee,
   createAgenda,
   deleteAgenda,
@@ -54,7 +55,7 @@ import {
   manualAdmitSeat,
   reportTabletHeartbeat,
 } from "../api/resources";
-import type { Meeting, Attendee, TabletHeartbeatPayload } from "../api/types";
+import type { Attendee, Person, TabletHeartbeatPayload } from "../api/types";
 import {
   deriveMeetingLifecycleStatus,
   deriveAdminVoteState,
@@ -96,6 +97,7 @@ export function AdminDashboard({
     loading,
     error,
     meeting,
+    pendingMeeting,
     seats,
     speakerSeatId,
     attendees,
@@ -148,7 +150,7 @@ export function AdminDashboard({
   }, [connection, hostTabletAccess]);
 
   const [activeSeatId, setActiveSeatId] = useState<number | undefined>();
-  const [previewSeat, setPreviewSeat] = useState(1);
+  const previewSeat = 2;
 
   // ── Admin action state ─────────────────────────────────────────────────
   const [createVoteTitle, setCreateVoteTitle] = useState(DEFAULT_VOTE_TITLE);
@@ -162,17 +164,21 @@ export function AdminDashboard({
   const [resolvingId, setResolvingId] = useState<number | null>(null);
   const [meetingTitle, setMeetingTitle] = useState("");
   const [meetingDescription, setMeetingDescription] = useState("");
-  const [pendingMeeting, setPendingMeeting] = useState<Meeting | null>(null);
   const [meetingActionBusy, setMeetingActionBusy] = useState(false);
   const [speakerBusy, setSpeakerBusy] = useState(false);
   const [attendeeName, setAttendeeName] = useState("");
   const [attendeeTitle, setAttendeeTitle] = useState("");
+  const [registeredPeople, setRegisteredPeople] = useState<Person[] | null>(null);
+  const [loadingPeople, setLoadingPeople] = useState(false);
+  const [selectedPersonId, setSelectedPersonId] = useState("");
   const [attendeeBusy, setAttendeeBusy] = useState(false);
   const [seatAccessBusy, setSeatAccessBusy] = useState(false);
   const [agendaBusy, setAgendaBusy] = useState(false);
 
   // ── Derived meeting lifecycle & vote state (Task 4) ─────────────────────
   const meetingStatus = deriveMeetingLifecycleStatus(meeting, pendingMeeting, isEndedMeeting);
+  const rosterMeetingId = pendingMeeting?.id ?? meeting?.id;
+  const canEditRoster = canManageAttendees(meetingStatus);
   const voteState = deriveAdminVoteState(hasActiveVote, voteResults);
 
   // ── AdminWorkspace (local host-only state) ─────────────────────────────
@@ -267,8 +273,8 @@ export function AdminDashboard({
     setMeetingActionBusy(true);
     setAdminActionError(null);
     try {
-      const created = await createMeeting(title, meetingDescription);
-      setPendingMeeting(created);
+      await createMeeting(title, meetingDescription);
+      await refresh();
       setMeetingTitle("");
       setMeetingDescription("");
     } catch (err: unknown) {
@@ -276,7 +282,7 @@ export function AdminDashboard({
     } finally {
       setMeetingActionBusy(false);
     }
-  }, [meetingTitle, meetingDescription]);
+  }, [meetingTitle, meetingDescription, refresh]);
 
   const handleStartPendingMeeting = useCallback(async () => {
     if (!pendingMeeting) return;
@@ -284,8 +290,7 @@ export function AdminDashboard({
     setAdminActionError(null);
     try {
       await startMeeting(pendingMeeting.id);
-      setPendingMeeting(null);
-      refresh();
+      await refresh();
     } catch (err: unknown) {
       setAdminActionError(err instanceof Error ? err.message : "Failed to start meeting");
     } finally {
@@ -313,7 +318,7 @@ export function AdminDashboard({
         // Prefer backend ended_at from the API response; fallback to current frontend time.
         sessionStorage.setItem('endedMeetingEndedAt', endedMeeting.ended_at ?? new Date().toISOString());
       } catch { /* sessionStorage may throw */ }
-      refresh();
+      await refresh();
     } catch (err: unknown) {
       setAdminActionError(err instanceof Error ? err.message : "Failed to end meeting");
     } finally {
@@ -362,8 +367,20 @@ export function AdminDashboard({
     clearEndedMeeting();
   }, [meeting?.id, clearEndedMeeting]);
 
+  async function loadPeople() {
+    setLoadingPeople(true);
+    setAdminActionError(null);
+    try {
+      setRegisteredPeople(await fetchPeople());
+    } catch (reason) {
+      setAdminActionError(reason instanceof Error ? reason.message : "人员名单加载失败");
+    } finally {
+      setLoadingPeople(false);
+    }
+  }
+
   const handleCreateAttendee = useCallback(async () => {
-    if (!meeting) return;
+    if (!rosterMeetingId || !canEditRoster) return;
     const name = attendeeName.trim();
     if (!name) {
       setAdminActionError("Attendee name is required");
@@ -372,30 +389,31 @@ export function AdminDashboard({
     setAttendeeBusy(true);
     setAdminActionError(null);
     try {
-      await createAttendee(meeting.id, name, attendeeTitle);
+      await createAttendee(rosterMeetingId, name, attendeeTitle, selectedPersonId || undefined);
       setAttendeeName("");
       setAttendeeTitle("");
-      refresh();
+      setSelectedPersonId("");
+      await refresh();
     } catch (err: unknown) {
       setAdminActionError(err instanceof Error ? err.message : "Failed to create attendee");
     } finally {
       setAttendeeBusy(false);
     }
-  }, [meeting, attendeeName, attendeeTitle, refresh]);
+  }, [rosterMeetingId, canEditRoster, attendeeName, attendeeTitle, refresh, selectedPersonId]);
 
   const handleDeleteAttendee = useCallback(async (attendeeId: number) => {
-    if (!meeting) return;
+    if (!rosterMeetingId || !canEditRoster) return;
     setAttendeeBusy(true);
     setAdminActionError(null);
     try {
-      await deleteAttendee(meeting.id, attendeeId);
-      refresh();
+      await deleteAttendee(rosterMeetingId, attendeeId);
+      await refresh();
     } catch (err: unknown) {
       setAdminActionError(err instanceof Error ? err.message : "Failed to delete attendee");
     } finally {
       setAttendeeBusy(false);
     }
-  }, [meeting, refresh]);
+  }, [rosterMeetingId, canEditRoster, refresh]);
 
   const handleCreateAgenda = useCallback(async (title: string) => {
     if (!meeting) return;
@@ -537,16 +555,16 @@ export function AdminDashboard({
 
   const handleSeatAssignment = useCallback(
     async (seatId: number, attendeeId: number | null) => {
-      if (!meeting?.id) return;
+      if (!rosterMeetingId || !canEditRoster) return;
       setSeatAccessBusy(true);
       setAdminActionError(null);
       try {
         if (attendeeId == null) {
-          await clearSeatAssignment(meeting.id, seatId);
+          await clearSeatAssignment(rosterMeetingId, seatId);
         } else {
-          await setSeatAssignment(meeting.id, seatId, attendeeId);
+          await setSeatAssignment(rosterMeetingId, seatId, attendeeId);
         }
-        refresh();
+        await refresh();
       } catch (error: unknown) {
         setAdminActionError(
           error instanceof Error ? error.message : "席位默认人员配置失败",
@@ -555,7 +573,7 @@ export function AdminDashboard({
         setSeatAccessBusy(false);
       }
     },
-    [meeting?.id, refresh],
+    [rosterMeetingId, canEditRoster, refresh],
   );
 
   const handleManualAdmit = useCallback(
@@ -615,10 +633,242 @@ export function AdminDashboard({
     return 0;
   })();
 
+  const roomSeats = seats.map((seat) => {
+    const assigned = attendees.find((attendee) => attendee.assigned_seat_id === seat.seatId);
+    return !seat.attendeeName && assigned ? { ...seat, attendeeName: assigned.name } : seat;
+  });
+  const seatOverview = (
+    <div className="desk-panel rounded-2xl border border-techBorder bg-techCard p-4 sm:p-6">
+      <h3 className="text-xs font-semibold uppercase tracking-widest text-techMuted mb-5">
+        会议桌总览 / Conference Room — Seat Overview
+      </h3>
+      <ConferenceTable
+        seats={roomSeats}
+        currentSpeaker={speakerSeatId}
+        activeSeat={activeSeatId}
+        onSeatClick={handleSeatClick}
+        preparing={meetingStatus === "meeting_created"}
+      />
+      {selectedSeat && (
+        <div className="mt-5 rounded-lg border border-techBorder bg-techCardSoft p-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-techText">
+                座位 {selectedSeat.seatId} / Seat {selectedSeat.seatId}
+              </p>
+              <p className="truncate text-xs text-techMuted">
+                {selectedSeat.attendeeName
+                  ? `${selectedSeat.attendeeName}${selectedSeat.attendeeTitle ? ` · ${selectedSeat.attendeeTitle}` : ""}`
+                  : "尚未签到 / No Attendee Checked In"}
+              </p>
+              <label className="mt-3 block text-xs text-techMuted">
+                默认人员 / Assigned Attendee
+                <select
+                  data-testid="seat-assignment-select"
+                  className="mt-1 block w-full rounded-lg border border-techBorder bg-techCard px-3 py-2 text-sm text-techText disabled:opacity-50"
+                  value={selectedAssignedAttendee?.id ?? ""}
+                  onChange={(event) =>
+                    void handleSeatAssignment(
+                      selectedSeat.seatId,
+                      event.target.value
+                        ? Number(event.target.value)
+                        : null,
+                    )
+                  }
+                  disabled={selectedSeat.isCheckedIn || seatAccessBusy}
+                >
+                  <option value="">未分配 / Unassigned</option>
+                  {attendees.map((attendee) => {
+                    const assignedElsewhere =
+                      attendee.assigned_seat_id != null &&
+                      attendee.assigned_seat_id !== selectedSeat.seatId;
+                    return (
+                      <option
+                        key={attendee.id}
+                        value={attendee.id}
+                        disabled={assignedElsewhere || attendee.checked_in}
+                      >
+                        {attendee.name} · {attendee.person_id ? "已绑定人脸" : "未绑定人脸"}
+                        {assignedElsewhere
+                          ? ` · 已分配席位 ${attendee.assigned_seat_id}`
+                          : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            </div>
+            {meetingStatus === "meeting_active" && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                data-testid="manual-admit-button"
+                onClick={() => {
+                  if (selectedAssignedAttendee) {
+                    void handleManualAdmit(
+                      selectedSeat.seatId,
+                      selectedAssignedAttendee,
+                    );
+                  }
+                }}
+                disabled={
+                  seatAccessBusy ||
+                  selectedSeat.isCheckedIn ||
+                  selectedAssignedAttendee == null
+                }
+                className="inline-flex items-center gap-1.5 rounded-lg bg-techGreen/20 border border-techGreen/40 px-3 py-1.5 text-xs font-medium text-techGreen transition-colors hover:bg-techGreen/30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {seatAccessBusy ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={13} />}
+                人工放行 / Admit
+              </button>
+              <button
+                onClick={() => handleSetSpeaker(selectedSeat.seatId)}
+                disabled={
+                  !canControlSpeaker(meetingStatus) ||
+                  speakerBusy ||
+                  speakerSeatId === selectedSeat.seatId ||
+                  !selectedSeat.isCheckedIn
+                }
+                className="inline-flex items-center gap-1.5 rounded-lg bg-techCyan/20 border border-techCyan/40 px-3 py-1.5 text-xs font-medium text-techCyan transition-colors hover:bg-techCyan/30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {speakerBusy ? <Loader2 size={12} className="animate-spin" /> : <Mic size={13} />}
+                设为发言 / Set Speaker
+              </button>
+              <button
+                onClick={handleClearSpeaker}
+                disabled={!canControlSpeaker(meetingStatus) || speakerBusy || speakerSeatId == null}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-techBorder bg-techCard px-3 py-1.5 text-xs font-medium text-techMuted transition-colors hover:bg-techCardSoft disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {speakerBusy ? <Loader2 size={12} className="animate-spin" /> : <MicOff size={13} />}
+                清除发言 / Clear
+              </button>
+            </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const rosterPanel = (
+    <SectionCard
+      title="参会人员"
+      titleEn="ATTENDEES"
+      headerRight={
+        <span className="text-xs text-techMuted font-medium">
+          {displayAttendees.length} 人 / PEOPLE
+        </span>
+      }
+    >
+      <div className="space-y-3">
+        {canEditRoster && (
+          <>
+            {registeredPeople == null ? (
+              <ActionButton variant="secondary" size="sm" onClick={loadPeople} loading={loadingPeople}>
+                选用已登记人员 / Choose Registered Person
+              </ActionButton>
+            ) : (
+              <label className="block text-xs font-medium text-techMuted">
+                已登记人员 / Registered Person
+                <select
+                  className="mt-1 block w-full rounded-lg border border-techBorder bg-techSurface px-3 py-2 text-sm text-techText"
+                  value={selectedPersonId}
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    setSelectedPersonId(id);
+                    setAttendeeName(registeredPeople.find((person) => person.id === id)?.name ?? "");
+                  }}
+                >
+                  <option value="">{registeredPeople.length ? "手动填写姓名" : "暂无登记人员"}</option>
+                  {registeredPeople.map((person) => (
+                    <option key={person.id} value={person.id} disabled={attendees.some((attendee) => attendee.person_id === person.id)}>
+                      {person.name} · {person.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${hostTabletAccess ? "" : "xl:grid-cols-1"}`}>
+              <input
+                type="text"
+                value={attendeeName}
+                onChange={(e) => setAttendeeName(e.target.value)}
+                readOnly={Boolean(selectedPersonId)}
+                placeholder="参会人姓名 / Attendee name"
+                className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
+              />
+              <input
+                type="text"
+                value={attendeeTitle}
+                onChange={(e) => setAttendeeTitle(e.target.value)}
+                placeholder="职务 / Title"
+                className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
+              />
+            </div>
+            <ActionButton
+              variant="primary"
+              size="md"
+              icon={attendeeBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
+              onClick={handleCreateAttendee}
+              disabled={!attendeeName.trim() || attendeeBusy}
+              loading={attendeeBusy}
+              className="w-full"
+            >
+              添加参会人 / ADD ATTENDEE
+            </ActionButton>
+          </>
+        )}
+        <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+          {displayAttendees.map((attendee) => (
+            <div
+              key={attendee.id}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-techCardSoft"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-techText">
+                  {attendee.name}
+                  {(attendee.seat_id ?? attendee.assigned_seat_id) != null
+                    ? ` · 座位 ${attendee.seat_id ?? attendee.assigned_seat_id} / Seat ${attendee.seat_id ?? attendee.assigned_seat_id}`
+                    : ""}
+                </p>
+                <p className="truncate text-xs text-techMuted">
+                  {attendee.title || "未填写职务 / No Title"}
+                </p>
+              </div>
+              {canEditRoster && (
+                <button
+                  onClick={() => handleDeleteAttendee(attendee.id)}
+                  disabled={attendeeBusy || attendee.checked_in}
+                  className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-techMuted transition-colors hover:bg-techRose/20 hover:text-techRose disabled:opacity-50 min-h-[32px] min-w-[32px]"
+                  aria-label={`删除参会人 ${attendee.name} / Delete attendee ${attendee.name}`}
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </SectionCard>
+  );
+
+  const actionNotice = adminActionError && (
+    <div role="alert" className="bg-techRose/10 border border-techRose/30 rounded-xl px-4 py-3 flex items-center gap-2">
+      <AlertCircle size={14} className="text-techRose flex-shrink-0" />
+      <p className="text-xs text-techRose">操作失败 / Operation Failed：{adminActionError}</p>
+      <button
+        aria-label="关闭错误提示"
+        onClick={() => setAdminActionError(null)}
+        className="ml-auto text-techRose/60 hover:text-techRose"
+      >
+        <XCircle size={14} />
+      </button>
+    </div>
+  );
+
   // ── Loading State ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-techBg flex flex-col">
+      <div className="desk-page min-h-screen flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -641,7 +891,7 @@ export function AdminDashboard({
   // ── Error State ────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="min-h-screen bg-techBg flex flex-col">
+      <div className="desk-page min-h-screen flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -672,10 +922,44 @@ export function AdminDashboard({
     );
   }
 
+  if (pendingMeeting) {
+    return (
+      <div className="desk-page min-h-screen">
+        <AdminHeader title="" meetingStatus="pending" connection={connection} />
+        <main className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6">
+          {actionNotice}
+          <SectionCard title="待启动会议" titleEn="Pending Meeting">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="break-words text-2xl font-semibold text-techText">{pendingMeeting.title}</h1>
+                {pendingMeeting.description && (
+                  <p className="mt-1 text-sm text-techMuted">{pendingMeeting.description}</p>
+                )}
+              </div>
+              <ActionButton
+                variant="primary"
+                onClick={handleStartPendingMeeting}
+                disabled={!canStartMeeting(meetingStatus, true, meetingActionBusy) || attendeeBusy || seatAccessBusy}
+                loading={meetingActionBusy}
+                icon={<Play size={16} />}
+              >
+                开始会议 / Start Meeting
+              </ActionButton>
+            </div>
+          </SectionCard>
+          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+            {seatOverview}
+            {rosterPanel}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   // ── No Meeting State ───────────────────────────────────────────────────
   if (noMeeting) {
     return (
-      <div className="min-h-screen bg-techBg flex flex-col">
+      <div className="desk-page min-h-screen flex flex-col">
         <AdminHeader
           title=""
           meetingStatus="pending"
@@ -684,31 +968,20 @@ export function AdminDashboard({
           previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
         />
         <div className="flex-1 flex items-center justify-center p-6">
-          <div className="w-full max-w-lg space-y-4">
+          <div className="desk-hero w-full max-w-2xl space-y-5 rounded-2xl border border-techBorder p-5 sm:p-8">
             <div className="w-16 h-16 rounded-full bg-techCyan/10 border-2 border-techCyan/30 flex items-center justify-center mx-auto">
               <Cpu className="text-techCyan" size={28} />
             </div>
             <div className="text-center">
-              <p className="text-base font-bold text-techText">
+              <p className="text-2xl font-semibold text-techText">
                 暂无进行中的会议 / <span>No Active Meeting</span>
               </p>
               <p className="text-xs text-techMuted">
-                请先创建待启动会议，会议室准备好后再开始。 / Create a pending meeting, then start it when the room is ready.
+                填写会议标题后即可安排席位。
               </p>
             </div>
 
-            {adminActionError && (
-              <div className="bg-techRose/10 border border-techRose/30 rounded-xl px-4 py-3 flex items-center gap-2">
-                <AlertCircle size={14} className="text-techRose flex-shrink-0" />
-                <p className="text-xs text-techRose">操作失败 / Operation Failed：{adminActionError}</p>
-                <button
-                  onClick={() => setAdminActionError(null)}
-                  className="ml-auto text-techRose/60 hover:text-techRose"
-                >
-                  <XCircle size={14} />
-                </button>
-              </div>
-            )}
+            {actionNotice}
 
             <SectionCard title="创建会议" titleEn="CREATE MEETING">
               <div className="space-y-3">
@@ -739,40 +1012,7 @@ export function AdminDashboard({
               </div>
             </SectionCard>
 
-            {pendingMeeting && (
-              <SectionCard
-                title="待启动会议"
-                titleEn="PENDING MEETING"
-                headerRight={
-                  <span className="text-xs font-medium text-techAmber">
-                    可以开始 / Ready to Start
-                  </span>
-                }
-              >
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm font-semibold text-techText">
-                      {pendingMeeting.title}
-                    </p>
-                    {pendingMeeting.description && (
-                      <p className="text-xs text-techMuted mt-1">
-                        {pendingMeeting.description}
-                      </p>
-                    )}
-                  </div>
-                  <ActionButton
-                    variant="success"
-                    size="md"
-                    onClick={handleStartPendingMeeting}
-                    disabled={!canStartMeeting(meetingStatus, !!pendingMeeting, meetingActionBusy)}
-                    className="w-full"
-                    icon={meetingActionBusy ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                  >
-                    开始会议 / Start Meeting
-                  </ActionButton>
-                </div>
-              </SectionCard>
-            )}
+
 
             <div className="text-center">
               <ActionButton
@@ -792,54 +1032,39 @@ export function AdminDashboard({
 
   // ── Active Meeting ─────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-techSurface flex flex-col relative">
+    <div className="desk-page min-h-screen flex flex-col relative">
       <AdminHeader
         title={meeting?.title ?? ""}
         meetingStatus={meeting?.status ?? "pending"}
         connection={connection}
-        onModeSwitch={isDemoControlsEnabled() && onSwitchToSeat ? () => onSwitchToSeat(previewSeat) : undefined}
-        previewSeat={isDemoControlsEnabled() ? previewSeat : undefined}
-        checkedInCount={checkedIn}
-        totalSeats={seats.length}
-        speakerSeatId={speakerSeatId}
-        speakerName={speakerAttendee}
-        elapsedMs={elapsedMs}
-        pendingRequestCount={pendingRequests}
-        hasActiveVote={hasActiveVote}
       />
 
-      {/* Seat preview selector — only visible in demo mode */}
       {isDemoControlsEnabled() && onSwitchToSeat && (
-        <div className="bg-techSurface border-t border-techBorder px-4 sm:px-6 py-2 flex flex-wrap items-center gap-3">
-          <span className="shrink-0 text-xs text-techMuted font-medium">
-            预览座位 / Preview seat:
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {Array.from({ length: 9 }, (_, i) => i + 1).map((n) => (
+        <nav aria-label="演示席位预览" className="border-b border-techBorder bg-techSurface/60">
+          <div className="mx-auto flex max-w-[1760px] flex-wrap items-center gap-2 px-4 py-2.5 sm:px-6">
+            <span className="mr-2 text-xs font-semibold text-techMuted">快速打开席位</span>
+            {seats.map(({ seatId }) => (
               <button
-                key={n}
-                onClick={() => setPreviewSeat(n)}
-                className={`w-7 h-7 rounded-md text-xs font-semibold transition-colors ${
-                  previewSeat === n
-                    ? "bg-techCyan text-techBg"
-                    : "bg-techCard text-techMuted hover:bg-techCardSoft hover:text-techText"
-                }`}
+                key={seatId}
+                type="button"
+                aria-label={`打开席位 ${seatId} / Open seat ${seatId}`}
+                onClick={() => onSwitchToSeat(seatId)}
+                className="min-h-9 min-w-9 rounded-lg border border-techBorder bg-techCard px-2.5 text-sm font-semibold text-techText transition-colors hover:border-techCyan/50 hover:text-techCyan"
               >
-                {n}
+                {seatId}
               </button>
             ))}
           </div>
-          {onSwitchToSeat && <ActionButton
-            variant="secondary"
-            size="sm"
-            onClick={() => onSwitchToSeat(previewSeat)}
-          >
-            打开席位平板页面 / Open Seat Tablet View
-          </ActionButton>}
-        </div>
+        </nav>
       )}
 
-      <main className="flex-1 p-4 sm:p-6 overflow-auto">
+      <main className="mx-auto w-full max-w-[1760px] flex-1 space-y-5 p-4 sm:p-6">
+        {!isEndedMeeting && connection === "disconnected" && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-techAmber/30 bg-techAmber/10 px-4 py-2 text-sm text-techAmber">
+            <span className="inline-flex items-center gap-2"><WifiOff size={14} /> 实时连接恢复中 / Reconnecting</span>
+            <ActionButton variant="secondary" size="sm" onClick={refresh}>立即刷新 / Refresh</ActionButton>
+          </div>
+        )}
         {/* Summary row / Ended meeting banner */}
         {isEndedMeeting ? (
           <div className="mb-6">
@@ -854,7 +1079,7 @@ export function AdminDashboard({
             </div>
           </div>
         ) : (
-          <div className="mb-6 space-y-3">
+          <div className="space-y-3">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <MetricCard
                 labelCn="会议时长"
@@ -865,7 +1090,7 @@ export function AdminDashboard({
               <MetricCard
                 labelCn="签到人数"
                 labelEn="CHECKED IN"
-                value={`${checkedIn}/10`}
+                value={`${checkedIn}/${seats.length}`}
                 detailCn="参会人"
                 detailEn="ATTENDEES"
                 accent={
@@ -924,30 +1149,20 @@ export function AdminDashboard({
             </div>
           </SectionCard>
         ) : (
-          <SectionCard
-            title="会议控制"
-            titleEn="MEETING CONTROL"
-            headerRight={
-              <span className="text-xs text-techMuted">
-                ID {meeting?.id}
-              </span>
-            }
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-techText">
-                  会议控制面板 / ACTIVE MEETING CONTROLS
-                </p>
-                <p className="text-xs text-techMuted">
-                  {meeting?.status === "active"
-                    ? "状态：进行中 / Status: Active"
-                    : "状态：未知 / Status: Unknown"}
-                </p>
-              </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="flex flex-wrap items-baseline gap-2 text-sm font-semibold text-techText">
+              <span>会议控制</span>
+              <span className="desk-label">MEETING CONTROL</span>
+              <span className="desk-label">· ID {meeting?.id}</span>
+            </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <a className="rounded-lg border border-techBorder px-3 py-2 text-sm font-semibold text-techCyan hover:border-techCyan/50" href="/display" target="_blank" rel="noreferrer">
+                会议大屏 / Display
+              </a>
               <ActionButton
                 variant="danger"
                 size="sm"
-                icon={meetingActionBusy ? <Loader2 size={12} className="animate-spin" /> : <Square size={13} />}
+                icon={<Square size={13} />}
                 onClick={handleEndMeeting}
                 disabled={!canEndMeeting(meetingStatus, meetingActionBusy)}
                 loading={meetingActionBusy}
@@ -955,7 +1170,7 @@ export function AdminDashboard({
                 结束会议 / END MEETING
               </ActionButton>
             </div>
-          </SectionCard>
+          </div>
         )}
 
         {/* Workspace switcher — always visible */}
@@ -1022,112 +1237,7 @@ export function AdminDashboard({
           {/* Conference table — only in overview workspace for active meetings */}
           {!isEndedMeeting && workspace === "overview" && (
             <div className={hostTabletAccess ? "col-span-12" : "col-span-12 xl:col-span-8"}>
-              <div className="bg-techCard border border-techBorder rounded-lg shadow-card-glow p-6">
-                <h3 className="text-xs font-semibold uppercase tracking-widest text-techMuted mb-5">
-                  会议桌总览 / Conference Room — Seat Overview
-                </h3>
-                <ConferenceTable
-                  seats={seats}
-                  currentSpeaker={speakerSeatId}
-                  activeSeat={activeSeatId}
-                  onSeatClick={handleSeatClick}
-                />
-                {selectedSeat && (
-                  <div className="mt-5 rounded-lg border border-techBorder bg-techCardSoft p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-techText">
-                          座位 {selectedSeat.seatId} / Seat {selectedSeat.seatId}
-                        </p>
-                        <p className="truncate text-xs text-techMuted">
-                          {selectedSeat.attendeeName
-                            ? `${selectedSeat.attendeeName}${selectedSeat.attendeeTitle ? ` · ${selectedSeat.attendeeTitle}` : ""}`
-                            : "尚未签到 / No Attendee Checked In"}
-                        </p>
-                        <label className="mt-3 block text-xs text-techMuted">
-                          默认人员 / Assigned Attendee
-                          <select
-                            data-testid="seat-assignment-select"
-                            className="mt-1 block min-w-64 rounded-lg border border-techBorder bg-techCard px-3 py-2 text-sm text-techText disabled:opacity-50"
-                            value={selectedAssignedAttendee?.id ?? ""}
-                            onChange={(event) =>
-                              void handleSeatAssignment(
-                                selectedSeat.seatId,
-                                event.target.value
-                                  ? Number(event.target.value)
-                                  : null,
-                              )
-                            }
-                            disabled={selectedSeat.isCheckedIn || seatAccessBusy}
-                          >
-                            <option value="">未分配 / Unassigned</option>
-                            {attendees.map((attendee) => {
-                              const assignedElsewhere =
-                                attendee.assigned_seat_id != null &&
-                                attendee.assigned_seat_id !== selectedSeat.seatId;
-                              return (
-                                <option
-                                  key={attendee.id}
-                                  value={attendee.id}
-                                  disabled={assignedElsewhere || attendee.checked_in}
-                                >
-                                  {attendee.name} · {attendee.person_id ? "已绑定人脸" : "未绑定人脸"}
-                                  {assignedElsewhere
-                                    ? ` · 已分配席位 ${attendee.assigned_seat_id}`
-                                    : ""}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </label>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          data-testid="manual-admit-button"
-                          onClick={() => {
-                            if (selectedAssignedAttendee) {
-                              void handleManualAdmit(
-                                selectedSeat.seatId,
-                                selectedAssignedAttendee,
-                              );
-                            }
-                          }}
-                          disabled={
-                            seatAccessBusy ||
-                            selectedSeat.isCheckedIn ||
-                            selectedAssignedAttendee == null
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-techGreen/20 border border-techGreen/40 px-3 py-1.5 text-xs font-medium text-techGreen transition-colors hover:bg-techGreen/30 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {seatAccessBusy ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={13} />}
-                          人脸识别通过
-                        </button>
-                        <button
-                          onClick={() => handleSetSpeaker(selectedSeat.seatId)}
-                          disabled={
-                            !canControlSpeaker(meetingStatus) ||
-                            speakerBusy ||
-                            speakerSeatId === selectedSeat.seatId ||
-                            !selectedSeat.isCheckedIn
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-techCyan/20 border border-techCyan/40 px-3 py-1.5 text-xs font-medium text-techCyan transition-colors hover:bg-techCyan/30 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {speakerBusy ? <Loader2 size={12} className="animate-spin" /> : <Mic size={13} />}
-                          设为发言 / Set Speaker
-                        </button>
-                        <button
-                          onClick={handleClearSpeaker}
-                          disabled={!canControlSpeaker(meetingStatus) || speakerBusy || speakerSeatId == null}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-techBorder bg-techCard px-3 py-1.5 text-xs font-medium text-techMuted transition-colors hover:bg-techCardSoft disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {speakerBusy ? <Loader2 size={12} className="animate-spin" /> : <MicOff size={13} />}
-                          清除发言 / Clear
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {seatOverview}
             </div>
           )}
 
@@ -1145,77 +1255,7 @@ export function AdminDashboard({
 
             {/* Attendees — desktop overview management or ended-meeting read-only roster. */}
             {(isEndedMeeting || (workspace === "overview" && !hostTabletAccess)) && (
-              <SectionCard
-                title="参会人员"
-                titleEn="ATTENDEES"
-                headerRight={
-                  <span className="text-xs text-techMuted font-medium">
-                    {displayAttendees.length} 人 / PEOPLE
-                  </span>
-                }
-              >
-                <div className="space-y-3">
-                  {canManageAttendees(meetingStatus) && (
-                    <>
-                      <div className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${hostTabletAccess ? "" : "xl:grid-cols-1"}`}>
-                        <input
-                          type="text"
-                          value={attendeeName}
-                          onChange={(e) => setAttendeeName(e.target.value)}
-                          placeholder="参会人姓名 / Attendee name"
-                          className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
-                        />
-                        <input
-                          type="text"
-                          value={attendeeTitle}
-                          onChange={(e) => setAttendeeTitle(e.target.value)}
-                          placeholder="职务 / Title"
-                          className="w-full bg-techSurface border border-techBorder rounded-lg px-4 py-2.5 text-sm text-techText placeholder:text-techMuted/60 focus:outline-none focus:border-techCyan focus:ring-1 focus:ring-techCyan/30 transition-colors"
-                        />
-                      </div>
-                      <ActionButton
-                        variant="primary"
-                        size="md"
-                        icon={attendeeBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
-                        onClick={handleCreateAttendee}
-                        disabled={!canManageAttendees(meetingStatus) || attendeeBusy}
-                        loading={attendeeBusy}
-                        className="w-full"
-                      >
-                        添加参会人 / ADD ATTENDEE
-                      </ActionButton>
-                    </>
-                  )}
-                  <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
-                    {displayAttendees.map((attendee) => (
-                      <div
-                        key={attendee.id}
-                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-techCardSoft"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-techText">
-                            {attendee.name}
-                            {attendee.seat_id != null ? ` · 座位 ${attendee.seat_id} / Seat ${attendee.seat_id}` : ""}
-                          </p>
-                          <p className="truncate text-xs text-techMuted">
-                            {attendee.title || "未填写职务 / No Title"}
-                          </p>
-                        </div>
-                        {canManageAttendees(meetingStatus) && (
-                          <button
-                            onClick={() => handleDeleteAttendee(attendee.id)}
-                            disabled={attendeeBusy}
-                            className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-techMuted transition-colors hover:bg-techRose/20 hover:text-techRose disabled:opacity-50 min-h-[32px] min-w-[32px]"
-                            aria-label={`删除参会人 ${attendee.name} / Delete attendee ${attendee.name}`}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </SectionCard>
+              rosterPanel
             )}
 
             {/* Host Display Control — only in overview for active meetings */}
@@ -1353,28 +1393,7 @@ export function AdminDashboard({
         )}
       </main>
 
-      {/* Disconnected overlay — not shown for ended meetings (no WS needed) */}
-      {!isEndedMeeting && connection === "disconnected" && (
-        <div className="fixed inset-0 bg-techBg/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
-          <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mb-4">
-            <WifiOff className="text-techRose" size={24} />
-          </div>
-          <p className="text-sm font-semibold text-techText mb-1">
-            连接已断开 / Connection Lost
-          </p>
-          <p className="text-xs text-techMuted mb-4">
-            正在尝试重新连接… / Attempting to reconnect...
-          </p>
-          <ActionButton
-            variant="secondary"
-            size="sm"
-            icon={<RefreshCw size={12} />}
-            onClick={refresh}
-          >
-            立即重试 / Retry Now
-          </ActionButton>
-        </div>
-      )}
+
     </div>
   );
 }
@@ -1399,9 +1418,9 @@ function MetricCard({
   accent = "text-techCyan",
 }: MetricCardProps) {
   return (
-    <div className="min-w-0 bg-techCard border border-techBorder rounded-lg shadow-card-glow px-3 sm:px-4 py-3 text-center">
+    <div className="desk-panel min-w-0 rounded-xl border border-techBorder px-4 py-4 sm:px-5">
       <p className={`truncate text-xl sm:text-2xl font-bold leading-none ${accent}`}>{value}</p>
-      <p className="mt-1 inline-flex items-baseline justify-center gap-1.5 text-xs font-medium text-techMuted">
+      <p className="mt-2 flex flex-wrap items-baseline gap-1.5 text-xs font-medium text-techMuted">
         <span>{labelCn}</span>
         <span className="text-[0.6rem] font-mono uppercase tracking-wider text-techMuted/70">{labelEn}</span>
       </p>

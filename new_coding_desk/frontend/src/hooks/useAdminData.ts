@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   fetchActiveMeeting,
+  fetchPendingMeeting,
   fetchSeats,
   fetchSpeakerSeat,
   fetchActiveVote,
@@ -73,6 +74,7 @@ export interface AdminData {
   error: string | null;
   /** The active meeting, or null when none exists. */
   meeting: Meeting | null;
+  pendingMeeting: Meeting | null;
   /** Always 10 seat displays (vacant seats are included). */
   seats: SeatDisplay[];
   /** Seat ID of the current speaker, or null. */
@@ -128,6 +130,7 @@ export interface AdminData {
 
 interface DataState {
   meeting: Meeting | null;
+  pendingMeeting: Meeting | null;
   seats: SeatDisplay[];
   speakerSeatId: number | null;
   attendees: Attendee[];
@@ -140,6 +143,7 @@ interface DataState {
 
 const EMPTY_DATA: DataState = {
   meeting: null,
+  pendingMeeting: null,
   seats: buildSeatDisplays([], [], null),
   speakerSeatId: null,
   attendees: [],
@@ -170,6 +174,7 @@ export function useAdminData(): AdminData {
   // conditional rendering in the UI.
   const endedMeetingIdRef = useRef<number | null>(null);
   const endedMeetingTitleRef = useRef<string | null>(null);
+  const lastActiveMeetingRef = useRef<Meeting | null>(null);
   const [isEndedMeeting, setIsEndedMeeting] = useState<boolean>(() => {
     try {
       const saved = sessionStorage.getItem('endedMeetingId');
@@ -292,6 +297,7 @@ export function useAdminData(): AdminData {
       let isEnded = false;
 
       if (meeting) {
+        lastActiveMeetingRef.current = meeting;
         // Active meeting found — clear any lingering ended-meeting state
         if (endedMeetingIdRef.current != null) {
           endedMeetingIdRef.current = null;
@@ -318,6 +324,17 @@ export function useAdminData(): AdminData {
         } catch { /* sessionStorage may throw */ }
       }
 
+      if (!meeting && endedMeetingIdRef.current == null && lastActiveMeetingRef.current) {
+        const previous = lastActiveMeetingRef.current;
+        endedMeetingIdRef.current = previous.id;
+        endedMeetingTitleRef.current = previous.title;
+        setIsEndedMeeting(true);
+        try {
+          sessionStorage.setItem("endedMeetingId", String(previous.id));
+          sessionStorage.setItem("endedMeetingTitle", previous.title);
+        } catch { /* sessionStorage may be unavailable */ }
+      }
+
       isEnded = !meeting && endedMeetingIdRef.current != null;
       const effectiveMeeting: Meeting | null = meeting ?? (
         endedMeetingIdRef.current != null
@@ -334,6 +351,9 @@ export function useAdminData(): AdminData {
       );
       const effectiveMeetingId = effectiveMeeting?.id ?? null;
       effectiveMeetingIdRef.current = effectiveMeetingId;
+      const pendingMeeting = effectiveMeetingId == null
+        ? await fetchPendingMeeting()
+        : null;
 
       const voteExists = rawActiveVote != null && !isEnded;
       setHasActiveVote(voteExists);
@@ -351,13 +371,15 @@ export function useAdminData(): AdminData {
           fetchAgendas(effectiveMeetingId),
           fetchServiceCalls(effectiveMeetingId),
           fetchTranslations(effectiveMeetingId),
-          fetchVoteResultsForMeeting(effectiveMeetingId),
+          fetchVoteResultsForMeeting(effectiveMeetingId, rawActiveVote?.id),
         ]);
         attendees = a;
         agenda = ag;
         serviceCalls = sc;
         translations = tr.entries;
         voteResults = vr;
+      } else if (pendingMeeting) {
+        attendees = await fetchAttendees(pendingMeeting.id);
       }
 
       // Step 3: Vote statistics (if active vote)
@@ -379,6 +401,7 @@ export function useAdminData(): AdminData {
 
       setData({
         meeting: effectiveMeeting,
+        pendingMeeting,
         seats,
         speakerSeatId: speaker.seat_id,
         attendees,
@@ -429,6 +452,15 @@ export function useAdminData(): AdminData {
   useEffect(() => {
     doFetch(true);
   }, [doFetch]);
+
+  const activeMeeting = data.meeting?.status === "active";
+  useEffect(() => {
+    if (loading || (activeMeeting && !error)) return;
+    const timer = window.setInterval(() => void doFetch(false), 5000);
+    return () => window.clearInterval(timer);
+  }, [activeMeeting, doFetch, error, loading]);
+
+  const refresh = useCallback(() => doFetch(false), [doFetch]);
 
   // ── WebSocket event handler ────────────────────────────────────────────
 
@@ -790,6 +822,7 @@ export function useAdminData(): AdminData {
   // ── Clear ended meeting ──────────────────────────────────────────────
 
   const clearEndedMeeting = useCallback(() => {
+    lastActiveMeetingRef.current = null;
     endedMeetingIdRef.current = null;
     endedMeetingTitleRef.current = null;
     setIsEndedMeeting(false);
@@ -798,7 +831,8 @@ export function useAdminData(): AdminData {
       sessionStorage.removeItem('endedMeetingId');
       sessionStorage.removeItem('endedMeetingTitle');
       } catch { /* sessionStorage may throw */ }
-  }, []);
+    void doFetch(false);
+  }, [doFetch]);
 
   // ── Expose ─────────────────────────────────────────────────────────────
 
@@ -806,6 +840,7 @@ export function useAdminData(): AdminData {
     loading,
     error,
     meeting: data.meeting,
+    pendingMeeting: data.pendingMeeting,
     seats: data.seats,
     speakerSeatId: data.speakerSeatId,
     attendees: data.attendees,
@@ -823,7 +858,7 @@ export function useAdminData(): AdminData {
     connection,
     noMeeting: !loading && !data.meeting && !error && !isEndedMeeting,
     isEndedMeeting,
-    refresh: () => doFetch(false),
+    refresh,
     clearEndedMeeting,
     terminateUtterance,
   };

@@ -4,16 +4,9 @@ import type { ConnectionStatus } from "../types";
 
 // ── Environment Helpers ──────────────────────────────────────────────────────
 
-/** Returns true when VITE_ENABLE_DEMO_CONTROLS is set to "true". */
+/** Browser demo mode. The environment flag also supports the Windows launcher. */
 export function isDemoControlsEnabled(): boolean {
-  try {
-    return (
-      typeof import.meta !== "undefined" &&
-      import.meta.env?.VITE_ENABLE_DEMO_CONTROLS === "true"
-    );
-  } catch {
-    return false;
-  }
+  return import.meta.env.MODE === "demo" || import.meta.env.VITE_ENABLE_DEMO_CONTROLS === "true";
 }
 
 // ── Connection Badge ───────────────────────────────────────────────────────
@@ -264,26 +257,26 @@ export function SectionCard({
 }: SectionCardProps) {
   return (
     <div
-      className={`bg-techCard rounded-lg border border-techBorder shadow-card-glow overflow-hidden ${className}`}
+      className={`desk-panel overflow-hidden ${className}`}
     >
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-techBorder">
+      <div className="flex min-h-12 items-center justify-between gap-3 border-b border-techBorder px-4 py-3 sm:px-5">
         {titleEn ? (
-          <h3 className="inline-flex items-baseline gap-1.5 truncate">
-            <span className="text-sm font-semibold text-techText truncate">
+          <h3 className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-sm font-semibold text-techText">
               {title}
             </span>
-            <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted truncate">
+            <span className="desk-label">
               {titleEn}
             </span>
           </h3>
         ) : (
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-techMuted">
+          <h3 className="text-sm font-semibold text-techText">
             {title}
           </h3>
         )}
         {headerRight}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-4 sm:p-5">{children}</div>
     </div>
   );
 }
@@ -418,10 +411,10 @@ const actionButtonVariants: Record<string, string> = {
   secondary:
     "bg-techCard border border-techBorder text-techText hover:bg-techCardSoft",
   success:
-    "bg-techGreen text-white hover:brightness-110 active:brightness-90",
+    "bg-techGreen text-techBg hover:brightness-110 active:brightness-90",
   warning:
-    "bg-techAmber text-white hover:brightness-110 active:brightness-90",
-  danger: "bg-techRose text-white hover:brightness-110 active:brightness-90",
+    "bg-techAmber text-techBg hover:brightness-110 active:brightness-90",
+  danger: "bg-techRose text-techBg hover:brightness-110 active:brightness-90",
   ghost: "bg-transparent text-techText hover:bg-techCard",
 };
 
@@ -520,26 +513,26 @@ export function PanelCard({
   return (
     <div
       className={cx(
-        "bg-techCard border rounded-lg shadow-card-glow overflow-hidden",
+        "desk-panel overflow-hidden",
         borderClass,
         className,
       )}
     >
       {hasHeader && (
-        <div className="flex items-center justify-between px-4 py-3 border-b border-techBorder">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-techBorder px-4 py-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2">
             {icon && (
-              <span className="text-techMuted shrink-0">{icon}</span>
+              <span className="shrink-0 text-techCyan">{icon}</span>
             )}
             {(titleCn || titleEn) && (
-              <span className="inline-flex items-baseline gap-1.5 truncate">
+              <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 {titleCn && (
-                  <span className="text-sm font-semibold text-techText truncate">
+                  <span className="text-sm font-semibold text-techText">
                     {titleCn}
                   </span>
                 )}
                 {titleEn && (
-                  <span className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted truncate">
+                  <span className="desk-label">
                     {titleEn}
                   </span>
                 )}
@@ -547,7 +540,7 @@ export function PanelCard({
             )}
           </div>
           {headerRight && (
-            <div className="shrink-0 ml-2">{headerRight}</div>
+            <div className="shrink-0">{headerRight}</div>
           )}
         </div>
       )}

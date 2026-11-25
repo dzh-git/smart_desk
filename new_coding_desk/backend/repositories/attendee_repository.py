@@ -7,7 +7,11 @@ Per DATABASE_SCHEMA.md §5, §15:
 """
 from __future__ import annotations
 
+from sqlalchemy import exists, or_, select
+
 from backend.models.attendee import Attendee
+from backend.models.identity_checkin_event import IdentityCheckInEvent
+from backend.models.vote_record import VoteRecord
 from backend.repositories.base import BaseRepository
 
 
@@ -27,6 +31,12 @@ class AttendeeRepository(BaseRepository[Attendee]):
             .filter(Attendee.meeting_id == meeting_id)
             .all()
         )
+
+    def has_history(self, attendee_id: int) -> bool:
+        """Return whether stored identity evidence or ballots reference the attendee."""
+        identity_history = exists().where(IdentityCheckInEvent.attendee_id == attendee_id)
+        voting_history = exists().where(VoteRecord.attendee_id == attendee_id)
+        return bool(self.db.scalar(select(or_(identity_history, voting_history))))
 
     def get_by_person_and_meeting(
         self,

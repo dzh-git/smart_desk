@@ -30,13 +30,14 @@ import {
   Monitor,
 } from "lucide-react";
 import { useSeatData } from "../hooks/useSeatData";
-import { useClock, formatTime, formatDuration } from "./shared";
+import { useClock, formatTime, formatDuration, parseBackendDate } from "./shared";
 import { isDemoControlsEnabled } from "./shared";
 import { useSpeechStream } from "../hooks/useSpeechStream";
 import { isMicrophoneCaptureSupported } from "../audio/microphone";
 import { TranscriptPanel } from "./TranscriptPanel";
 import {
   identityCheckinSeat,
+  manualAdmitSeat,
   tabletVacateSeat,
   devVacateSeat,
   submitVote,
@@ -235,8 +236,12 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   // Derived state
   const mySeat = seats.find((s) => s.seatId === seatId) ?? null;
   const isCheckedIn = mySeat?.isCheckedIn ?? false;
-  const assignedAttendee =
-    attendees.find((attendee) => attendee.assigned_seat_id === seatId) ?? null;
+  const assignedAttendee = attendees.find((attendee) => attendee.assigned_seat_id === seatId)
+    ?? attendees.find((attendee) =>
+      attendee.assigned_seat_id == null && attendee.checked_in
+      && attendee.id === mySeat?.attendeeId && attendee.seat_id === seatId)
+    ?? null;
+  const demoBrowser = isDemoControlsEnabled() && !nativeBridge.isAvailable();
   const meetingAccessGranted =
     isCheckedIn &&
     assignedAttendee != null &&
@@ -343,7 +348,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   ]);
   const latestClosedVote =
     voteResults.find((vote) => vote.status === "closed") ?? null;
-  const displayVoteStats = voteStats ?? latestClosedVote;
+  const displayVoteStats = activeVote ? voteStats : latestClosedVote;
   const displayVote =
     activeVote ??
     (displayVoteStats
@@ -359,10 +364,8 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const agendaState = deriveAgendaState(agenda);
   // Elapsed time
   const now = useClock();
-  const elapsedMs =
-    meeting?.started_at != null
-      ? now.getTime() - new Date(meeting.started_at).getTime()
-      : 0;
+  const startedAt = parseBackendDate(meeting?.started_at);
+  const elapsedMs = startedAt ? now.getTime() - startedAt.getTime() : 0;
 
   // Current attendee name for this seat (memoized)
   const myAttendeeName = mySeat?.attendeeName ?? null;
@@ -376,21 +379,13 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     }
   }
 
-  // Get the current vote submission status for this seat's attendee.
-  // Uses seat-bound attendeeId (stable) instead of name lookup to avoid
-  // selecting the wrong attendee when two share the same name.
   const myAttendeeId = mySeat?.attendeeId ?? null;
-  const voteSubmission = useMemo(() => {
-    if (!displayVoteStats || !myAttendeeId) return null;
-
-    for (const result of displayVoteStats.results) {
-      if (result.attendee_ids?.includes(myAttendeeId)) {
-        return { option: result.option, attendeeId: myAttendeeId };
-      }
-    }
-    // If anonymous, we can't check, but let's still allow submission
-    return { option: null, attendeeId: myAttendeeId };
-  }, [displayVoteStats, myAttendeeId]);
+  const recordedVote = displayVoteStats?.results
+    .find((result) => myAttendeeId != null && result.attendee_ids?.includes(myAttendeeId))
+    ?.option ?? null;
+  const [voteReceipt, setVoteReceipt] = useState<{ voteId: number; attendeeId: number; option: string } | null>(null);
+  const currentVoteOption = voteReceipt?.voteId === displayVote?.id
+    && voteReceipt?.attendeeId === myAttendeeId ? voteReceipt?.option ?? null : recordedVote;
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
@@ -617,17 +612,18 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   async function handleVoteSubmit() {
     if (!activeVote || activeVote.status !== "open") return;
-    if (!selectedVoteOption || !voteSubmission?.attendeeId) return;
+    if (!writesAllowed || !selectedVoteOption || myAttendeeId == null) return;
     setSubmittingVote(true);
     setActionError(null);
     try {
       await submitVote(
         activeVote.id,
-        voteSubmission.attendeeId,
+        myAttendeeId,
         selectedVoteOption,
       );
+      setVoteReceipt({ voteId: activeVote.id, attendeeId: myAttendeeId, option: selectedVoteOption });
       setSelectedVoteOption(null);
-      refresh();
+      await refresh();
     } catch (err: unknown) {
       setActionError(
         err instanceof Error ? err.message : "Vote submission failed",
@@ -669,11 +665,37 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
     }
   }
 
+  const checkingInRef = useRef(false);
+  async function handleDemoCheckIn() {
+    if (!demoBrowser || !writesAllowed || !assignedAttendee || checkingInRef.current) return;
+    checkingInRef.current = true;
+    setIdentityCheckinSubmitting(true);
+    setActionError(null);
+    try {
+      await manualAdmitSeat(seatId);
+      await refresh();
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : "演示签到失败");
+    } finally {
+      checkingInRef.current = false;
+      setIdentityCheckinSubmitting(false);
+    }
+  }
+
   // ── Whether writes are allowed (Task 4) ─────────────────────────────────
 
   const meetingStatus = deriveSeatMeetingStatus(meeting);
   const writesAllowed =
     wsConnected && !error && !!meeting && meeting?.status === "active";
+  useEffect(() => {
+    setSelectedVoteOption(null);
+    setVoteReceipt(null);
+  }, [meeting?.id, myAttendeeId]);
+
+  useEffect(() => {
+    setSelectedVoteOption(null);
+  }, [activeVote?.id]);
+
   const tabletVacateAvailable =
     nativeBridge.isAvailable() &&
     nativeCredentialReady &&
@@ -966,14 +988,14 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
   if (!meetingAccessGranted) {
     const hasAssignment = assignedAttendee != null;
-    const canRecognize = assignedAttendee?.person_id != null;
+    const canRecognize = nativeBridge.isAvailable() && assignedAttendee?.person_id != null;
     const verificationActive = ACTIVE_IDENTITY_STATUSES.has(
       nativeIdentityStatus?.status ?? "",
     );
     return (
       <div
         data-testid="seat-page-scroll"
-        className="h-screen overflow-y-auto bg-techBg bg-tech-radial flex flex-col"
+        className="desk-page h-dvh overflow-y-auto flex flex-col"
       >
         <SeatHeader
           seatId={seatId}
@@ -990,24 +1012,40 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         />
         {error && (
           <div className="border-b border-techAmber/40 bg-techAmber/10 px-4 py-2 text-center text-xs font-semibold text-techAmber">
-            连接暂时中断，正在自动重连；当前页面已保留，操作暂不可用。
+            连接暂时中断，正在自动重连。{error && ` · ${error}`}
           </div>
         )}
         <main
           data-testid="face-access-gate"
           className="flex-1 flex items-center justify-center p-6"
         >
-          <div className="w-full max-w-xl rounded-2xl border border-techCyan/30 bg-techCard p-8 text-center shadow-cyan-glow">
+          <div className="desk-hero w-full max-w-xl rounded-3xl border border-techCyan/30 p-6 text-center shadow-card-glow sm:p-10">
             <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border-2 border-techCyan/40 bg-techCyan/10">
               <UserCheck size={36} className="text-techCyan" />
             </div>
-            <h1 className="text-xl font-bold text-techText">
-              人脸验证门禁 / Face Access
+            <h1 className="text-2xl font-semibold text-techText sm:text-3xl">
+              {demoBrowser ? "席位签到 / Seat Check-in" : "人脸验证门禁 / Face Access"}
             </h1>
             {!hasAssignment ? (
               <p className="mt-4 text-sm text-techAmber">
                 等待主持人分配席位人员 / Waiting for host seat assignment
               </p>
+            ) : demoBrowser ? (
+              <div className="mt-5 space-y-4">
+                <p className="text-xl font-semibold text-techText">{assignedAttendee.name}</p>
+                <p className="text-sm text-techMuted">演示模式，可直接签到。</p>
+                <ActionButton
+                  variant="primary"
+                  size="lg"
+                  touch
+                  icon={<UserCheck size={16} />}
+                  onClick={() => void handleDemoCheckIn()}
+                  disabled={!writesAllowed}
+                  loading={identityCheckinSubmitting}
+                >
+                  演示签到 / Demo Check-in
+                </ActionButton>
+              </div>
             ) : identityMode === "debug" ? (
               <div className="mt-5 space-y-2">
                 <Loader2 size={28} className="mx-auto animate-spin text-techAmber" />
@@ -1024,7 +1062,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
                   {assignedAttendee.name}
                 </p>
                 <p className="text-sm text-techAmber">
-                  默认人员尚未绑定人脸，只能由主持人人工放行。
+                  {nativeBridge.isAvailable()
+                    ? "默认人员尚未绑定人脸，请联系主持人放行。"
+                    : "当前浏览器无法使用平板人脸验证，请联系主持人放行。"}
                 </p>
               </div>
             ) : (
@@ -1044,7 +1084,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
                       variant="primary"
                       size="md"
                       icon={<RefreshCw size={14} />}
-                      onClick={() => void retryFaceVerification()}
+                      onClick={() => void retryFaceVerification().catch((reason: unknown) => {
+                        setActionError(reason instanceof Error ? reason.message : "重新识别失败");
+                      })}
                       disabled={identityCheckinSubmitting}
                     >
                       重新识别 / Retry Recognition
@@ -1079,7 +1121,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   return (
     <div
       data-testid="seat-page-scroll"
-      className="h-screen overflow-y-auto bg-techBg bg-tech-radial relative"
+      className="desk-page h-dvh overflow-y-auto relative"
     >
       <SeatHeader
         seatId={seatId}
@@ -1097,22 +1139,23 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
       {error && (
         <div className="border-b border-techAmber/40 bg-techAmber/10 px-4 py-2 text-center text-xs font-semibold text-techAmber">
-          连接暂时中断，正在自动重连；当前页面已保留，操作暂不可用。
+          连接暂时中断，正在自动重连。{error && ` · ${error}`}
         </div>
       )}
 
-      <main className="p-4 space-y-4 max-w-[900px] mx-auto w-full">
+      <main className="mx-auto grid w-full max-w-[1440px] items-start gap-4 p-4 sm:p-6 lg:grid-cols-2">
         {identityMode === "debug" && (
-          <div className="rounded-lg border border-techAmber/50 bg-techAmber/10 px-4 py-3 text-center text-sm font-bold text-techAmber">
+          <div className="rounded-lg border border-techAmber/50 bg-techAmber/10 px-4 py-3 text-center text-sm font-bold text-techAmber lg:col-span-2">
             DEBUG · 已跳过人脸验证
           </div>
         )}
         {/* Action error */}
         {actionError && (
-          <div className="bg-techRose/10 border border-techRose/30 rounded-lg px-4 py-3 flex items-center gap-2">
+          <div role="alert" className="flex items-center gap-2 rounded-xl border border-techRose/30 bg-techRose/10 px-4 py-3 lg:col-span-2">
             <AlertCircle size={14} className="text-techRose flex-shrink-0" />
             <p className="text-xs text-techRose flex-1">操作失败 / Operation Failed：{actionError}</p>
             <button
+              aria-label="关闭错误提示"
               onClick={() => setActionError(null)}
               className="text-techRose/60 hover:text-techRose transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
@@ -1121,22 +1164,19 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           </div>
         )}
 
-        {/* Shared screen entry — navigates to the read-only /screen viewer */}
-        <button
-          data-testid="seat-screen-entry"
-          onClick={() => navigate("/screen")}
-          className="w-full bg-techAccent/10 border border-techAccent/30 rounded-lg px-4 py-3 flex items-center justify-center gap-2 text-techAccent hover:bg-techAccent/20 transition-colors min-h-[44px]"
-        >
-          <Monitor size={16} />
-          <span className="text-sm font-medium">共享画面 / Screen Share</span>
-        </button>
-
+        {connection !== "connected" && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-techAmber/30 bg-techAmber/10 px-4 py-2 text-sm text-techAmber lg:col-span-2">
+            <span>实时连接恢复中 / Reconnecting</span>
+            <ActionButton variant="secondary" size="sm" onClick={refresh}>立即重试 / Retry Now</ActionButton>
+          </div>
+        )}
+        <div className="grid gap-4">
         {/* Seat Status Card */}
         <SeatStatusCard
           seatId={seatId}
           isSpeaker={isSpeaker}
           myAttendee={myAttendeeName ? { name: myAttendeeName, title: myAttendeeTitle } : null}
-          demoControlsEnabled={isDemoControlsEnabled()}
+          demoControlsEnabled={demoBrowser}
           onVacate={handleVacate}
           writesAllowed={writesAllowed}
           meetingStatus={meetingStatus}
@@ -1148,13 +1188,23 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
         {/* Current Topic Card (read-only) */}
         <CurrentTopicCard agendaState={agendaState} />
 
+        <button
+          data-testid="seat-screen-entry"
+          onClick={() => navigate("/screen", { state: { seatId } })}
+          className="desk-panel flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-techBorder px-4 py-3 text-techCyan transition-colors hover:border-techCyan/50"
+        >
+          <Monitor size={17} />
+          <span className="text-sm font-semibold">共享画面 / Screen Share</span>
+        </button>
+
         {/* Voting Section: open votes are writable; closed votes remain visible as final results. */}
-        {isCheckedIn && displayVote && displayVoteStats && (
+        {isCheckedIn && displayVote && (
           <SeatVoteSection
             vote={displayVote}
             voteStats={displayVoteStats}
             voteStatsError={voteStatsError}
-            currentVote={voteSubmission?.option ?? null}
+            currentVote={currentVoteOption}
+            onRetryStats={refresh}
             selectedOption={selectedVoteOption}
             onSelectOption={setSelectedVoteOption}
             onSubmit={handleVoteSubmit}
@@ -1177,7 +1227,8 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           />
         )}
 
-        {/* Speech Control */}
+        </div>
+        <div className="grid gap-4">
         <SpeechControl
           meetingId={meeting?.id ?? null}
           seatId={seatId}
@@ -1199,30 +1250,8 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
           liveEnabled={meetingStatus === "meeting_active"}
           liveReconnecting={connection !== "connected"}
         />
-      </main>
-
-      {/* Disconnected overlay */}
-      {connection === "disconnected" && (
-        <div className="fixed inset-0 bg-techBg/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
-          <div className="w-14 h-14 rounded-full bg-techRose/10 border-2 border-techRose/30 flex items-center justify-center mb-4">
-            <WifiOff className="text-techRose" size={24} />
-          </div>
-          <p className="text-sm font-semibold text-techText mb-1">
-            连接已断开 / Connection Lost
-          </p>
-          <p className="text-xs text-techMuted mb-4">
-            正在尝试重新连接… / Attempting to reconnect...
-          </p>
-          <ActionButton
-            variant="secondary"
-            size="sm"
-            icon={<RefreshCw size={12} />}
-            onClick={refresh}
-          >
-            立即重试 / Retry Now
-          </ActionButton>
         </div>
-      )}
+      </main>
     </div>
   );
 }
@@ -1251,7 +1280,7 @@ function SeatHeader({
   const now = useClock();
 
   return (
-    <header className="bg-techSurface border-b border-techBorder px-4 py-3 flex flex-wrap items-center justify-between gap-2 shadow-card-glow flex-shrink-0">
+    <header className="desk-hero flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-techBorder px-4 py-4 sm:px-7">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {onBack && (
           <>
@@ -1265,8 +1294,8 @@ function SeatHeader({
             <div className="w-px h-5 bg-techBorder shrink-0" />
           </>
         )}
-        <div className="w-8 h-8 rounded-lg bg-techCyan/20 border border-techCyan/30 flex shrink-0 items-center justify-center">
-          <Cpu size={14} className="text-techCyan" />
+        <div className="desk-brand-mark flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-techCyan/30 bg-techCyan/10">
+          <Cpu size={19} className="text-techCyan" />
         </div>
         <div className="min-w-0">
           <div className="flex items-baseline gap-1.5">
@@ -1278,7 +1307,7 @@ function SeatHeader({
             </span>
           </div>
           {meetingTitle && (
-            <p className="text-xs text-techMuted truncate max-w-[200px] sm:max-w-[300px] leading-tight">
+            <p className="break-words text-lg font-semibold leading-tight text-techText sm:text-2xl">
               {meetingTitle}
             </p>
           )}
@@ -1290,7 +1319,10 @@ function SeatHeader({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {isDemoControlsEnabled() && (
+          <StatusBadge status="warning" labelCn="演示模式" labelEn="Demo Mode" />
+        )}
         <ConnectionBadge status={connection} />
         <span className="text-xs font-mono text-techMuted">
           {formatTime(now)}
@@ -1595,7 +1627,7 @@ function SeatStatusCard({
   return (
     <div
       className={cx(
-        "bg-techCard border rounded-lg p-5 shadow-card-glow",
+        "desk-panel rounded-2xl border bg-techCard p-5",
         isSpeaker
           ? "border-techCyan shadow-cyan-glow"
           : "border-techBorder",
@@ -1686,7 +1718,8 @@ interface SeatVoteSectionProps {
     status: "open" | "closed";
     is_anonymous: boolean;
   };
-  voteStats: VoteStatistics;
+  voteStats: VoteStatistics | null;
+  onRetryStats: () => void;
   voteStatsError: string | null;
   currentVote: string | null;
   selectedOption: string | null;
@@ -1701,6 +1734,7 @@ function SeatVoteSection({
   vote,
   voteStats,
   voteStatsError,
+  onRetryStats,
   currentVote,
   selectedOption,
   onSelectOption,
@@ -1731,6 +1765,7 @@ function SeatVoteSection({
       </p>
 
       {/* Statistics bars (read-only) */}
+      {voteStats && (
       <div className="mb-4 space-y-2">
         {voteStats.results.map((opt) => {
           const pct =
@@ -1761,19 +1796,23 @@ function SeatVoteSection({
           );
         })}
       </div>
+      )}
 
       {voteStatsError && (
         <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-2 flex items-center gap-2">
           <AlertCircle size={12} className="text-techAmber flex-shrink-0" />
-          <p className="text-xs text-techAmber">{voteStatsError}</p>
+          <p role="alert" className="flex-1 text-xs text-techAmber">{voteStatsError}</p>
+          <ActionButton size="sm" variant="secondary" onClick={onRetryStats}>重试 / Retry</ActionButton>
         </div>
       )}
 
+      {voteStats && (
       <p className="mb-4 text-xs text-techMuted">
         共 {voteStats.total_votes} 票 / {voteStats.total_votes} vote{voteStats.total_votes !== 1 ? "s" : ""} cast
       </p>
+      )}
 
-      {/* Vote option selection */}
+      {!isClosed && (
       <div className="space-y-1.5 mb-3">
         {vote.options.map((option) => {
           const isSelected = selectedOption === option;
@@ -1824,6 +1863,7 @@ function SeatVoteSection({
           );
         })}
       </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         {!isClosed && (
@@ -2020,7 +2060,7 @@ export function SpeechControl({
   } = useSpeechStream(
     meetingId,
     seatId,
-    isSpeaker,
+    isSpeaker && isCheckedIn && writesAllowed && meetingStatus === "meeting_active",
     onLocalTerminalUtterance ? { onLocalTerminalUtterance } : undefined,
   );
 

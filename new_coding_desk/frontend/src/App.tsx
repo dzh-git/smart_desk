@@ -71,6 +71,7 @@ function SeatRoute() {
 
   return (
     <SeatTablet
+      key={parsed.seatId}
       seatId={parsed.seatId}
       onSwitchToAdmin={
         isDemoControlsEnabled()

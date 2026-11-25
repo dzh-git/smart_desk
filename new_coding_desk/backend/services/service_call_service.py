@@ -29,6 +29,7 @@ from backend.exceptions import NotFoundError, ConflictError, ValidationError
 from backend.models.service_call import ServiceCall
 from backend.repositories.service_call_repository import ServiceCallRepository
 from backend.services.base import BaseService
+from backend.services.meeting_service import MeetingService
 
 
 class ServiceCallService(BaseService):
@@ -41,6 +42,7 @@ class ServiceCallService(BaseService):
     def __init__(self, db: Session, event_bus: EventBus) -> None:
         super().__init__(db, event_bus)
         self.repo = ServiceCallRepository(db)
+        self.meeting_service = MeetingService(db, event_bus)
 
     # ── Service Call CRUD ────────────────────────────────────────────────────
 
@@ -52,6 +54,7 @@ class ServiceCallService(BaseService):
         Rule: same seat only 1 pending at a time.
         Publishes: service_call_created event.
         """
+        self.meeting_service.require_editable_meeting(meeting_id)
         existing = self.repo.get_pending_by_seat(meeting_id, seat_id)
         if existing is not None:
             raise ConflictError(
@@ -101,6 +104,7 @@ class ServiceCallService(BaseService):
 
     def _assert_pending(self, call: ServiceCall) -> None:
         """Raise ValidationError if call is not pending."""
+        self.meeting_service.require_editable_meeting(call.meeting_id)
         if call.status != "pending":
             raise ValidationError(
                 f"Service call {call.id} is already {call.status}",

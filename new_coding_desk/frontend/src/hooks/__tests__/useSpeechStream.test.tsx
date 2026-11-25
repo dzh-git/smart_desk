@@ -10,6 +10,7 @@ interface MockMicInstance {
 
 interface MockWsInstance {
   closed: boolean;
+  controlMessages: string[];
   resolveConnect: ((value: { utteranceId: string; sessionKey: string }) => void) | null;
   utteranceStarted: ((utteranceId: string) => void) | null;
   statusChanged: ((status: "disconnected" | "connecting" | "connected" | "started" | "error") => void) | null;
@@ -47,6 +48,7 @@ vi.mock("../../audio/microphone", () => ({
 vi.mock("../../audio/speechWsClient", () => ({
   SpeechWsClient: class {
     closed = false;
+    controlMessages: string[] = [];
     resolveConnect: MockWsInstance["resolveConnect"] = null;
     utteranceStarted: MockWsInstance["utteranceStarted"] = null;
     statusChanged: MockWsInstance["statusChanged"] = null;
@@ -72,8 +74,8 @@ vi.mock("../../audio/speechWsClient", () => ({
     }
 
     sendAudio(): void {}
-    sendEndHint(): void {}
-    sendCancel(): void {}
+    sendEndHint(): void { this.controlMessages.push("end_hint"); }
+    sendCancel(): void { this.controlMessages.push("cancel"); }
 
     close(): void {
       this.closed = true;
@@ -340,5 +342,56 @@ describe("useSpeechStream lifecycle", () => {
       (harness.microphones[0] as MockMicInstance).stopped,
     ).toBe(true);
     unmount();
+  });
+
+  it("releases the microphone immediately while Stop waits for server finalization", async () => {
+    const { result } = renderHook(() => useSpeechStream(41, 1, true));
+
+    let startPromise!: Promise<void>;
+    act(() => { startPromise = result.current.start(); });
+    await waitFor(() => expect(harness.sockets).toHaveLength(1));
+    const socket = harness.sockets[0] as MockWsInstance;
+    await act(async () => {
+      socket.resolveConnect?.({
+        utteranceId: "utt_41_1_000032",
+        sessionKey: "speech_41_1",
+      });
+      await startPromise;
+    });
+
+    act(() => result.current.stop());
+
+    expect((harness.microphones[0] as MockMicInstance).stopped).toBe(true);
+    expect(socket.controlMessages).toEqual(["end_hint"]);
+    expect(socket.closed).toBe(false);
+    expect(result.current.status).toBe("stopping");
+  });
+
+  it("ends the finalization window when the seat loses permission to capture", async () => {
+    const onTerminal = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ allowed }) => useSpeechStream(41, 1, allowed, { onLocalTerminalUtterance: onTerminal }),
+      { initialProps: { allowed: true } },
+    );
+
+    let startPromise!: Promise<void>;
+    act(() => { startPromise = result.current.start(); });
+    await waitFor(() => expect(harness.sockets).toHaveLength(1));
+    const socket = harness.sockets[0] as MockWsInstance;
+    await act(async () => {
+      socket.resolveConnect?.({
+        utteranceId: "utt_41_1_000033",
+        sessionKey: "speech_41_1",
+      });
+      await startPromise;
+    });
+
+    act(() => result.current.stop());
+    rerender({ allowed: false });
+
+    expect(socket.closed).toBe(true);
+    expect(result.current.status).toBe("idle");
+    expect(result.current.utteranceId).toBeNull();
+    expect(onTerminal).toHaveBeenCalledWith("utt_41_1_000033", "cancel");
   });
 });

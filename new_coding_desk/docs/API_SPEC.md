@@ -69,7 +69,7 @@ in `WEBSOCKET_PROTOCOL.md`.
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/api/meetings` | List meetings. |
+| `GET` | `/api/meetings` | List meetings. Optional `status=pending`, `active`, or `finished` filters results before returning up to 200 matches, newest first. |
 | `POST` | `/api/meetings` | Create a pending meeting. |
 | `GET` | `/api/meetings/active` | Return the current active meeting or `null`. |
 | `GET` | `/api/meetings/{meeting_id}` | Get one meeting. |
@@ -83,8 +83,10 @@ in `WEBSOCKET_PROTOCOL.md`.
 | `POST` | `/api/meetings/{meeting_id}/agendas/{agenda_id}/complete` | Complete the current active topic. |
 | `POST` | `/api/meetings/{meeting_id}/agendas/{agenda_id}/skip` | Skip the current active topic. |
 | `GET` | `/api/meetings/{meeting_id}/attendees` | List attendees. |
-| `POST` | `/api/meetings/{meeting_id}/attendees` | Add an attendee. |
-| `DELETE` | `/api/meetings/{meeting_id}/attendees/{attendee_id}` | Delete an attendee. |
+| `POST` | `/api/meetings/{meeting_id}/attendees` | Add an attendee to a pending or active meeting. |
+| `DELETE` | `/api/meetings/{meeting_id}/attendees/{attendee_id}` | Remove an unchecked attendee with no identity check-in or voting history. |
+| `PUT` | `/api/meetings/{meeting_id}/seat-assignments/{seat_id}` | Assign an attendee to a seat in a pending or active meeting. |
+| `DELETE` | `/api/meetings/{meeting_id}/seat-assignments/{seat_id}` | Clear the assignment for an unchecked seat in a pending or active meeting. |
 
 Create request bodies (JSON):
 
@@ -103,10 +105,15 @@ POST /api/meetings/{meeting_id}/attendees
 Meeting backend statuses are `pending`, `active`, and `finished`. The frontend
 maps a finished meeting being reviewed to local `meetingStatus=meeting_ended`.
 
-Ending a meeting resets seats to `vacant`, clears attendee seat bindings,
-sets attendees to `checked_in=false`, closes any open vote, preserves the
-speaker seat value, and keeps historical votes, service calls, and translation
-records.
+Ending a meeting resets seats to `vacant`, clears attendee seat bindings and
+the current speaker, sets attendees to `checked_in=false`, and closes the
+meeting's open vote. Historical attendees, votes, service calls, and
+translation records remain readable. Attendee and seat assignment changes
+return `400 MEETING_FINISHED` after the meeting ends.
+
+Attendee deletion returns `409 ATTENDEE_ALREADY_CHECKED_IN` for a checked-in
+attendee or `409 ATTENDEE_HAS_HISTORY` for an attendee with stored check-in
+evidence or votes.
 
 ## People APIs
 
@@ -475,7 +482,11 @@ Vote lifecycle uses the current minimal backend statuses:
 - `closed`: final result state; vote submission is rejected, statistics remain queryable.
 
 `draft` and `archived` are deferred. Only one `open` vote is supported. Repeated
-votes from the same attendee update the existing vote record.
+votes from the same attendee update the existing vote record. A finished
+meeting returns `400 MEETING_FINISHED` when a caller tries to create a vote
+or change a legacy open vote. Repeating a close on an already closed vote
+returns the existing record. Active-vote lookup excludes legacy open records
+from finished meetings.
 
 Create / submit request bodies (JSON):
 
@@ -522,6 +533,9 @@ GET /api/votes/{vote_id}/statistics:
 
 `POST /api/service-calls?meeting_id=N` — `meeting_id` is a required query
 parameter.
+
+Create, resolve, and cancel return `400 MEETING_FINISHED` for finished
+meetings. Service call history remains readable.
 
 Request body:
 
