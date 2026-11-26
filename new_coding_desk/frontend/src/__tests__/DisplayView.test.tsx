@@ -7,7 +7,7 @@
  *   - Tests mock the global fetch and WebSocket APIs.
  */
 
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { DisplayView } from "../components/DisplayView";
 
@@ -202,8 +202,10 @@ describe("DisplayView — Task 2 ended meeting", () => {
 
     // Should show no-votes state
     await waitFor(() => {
-      expect(screen.getByText("暂无投票")).toBeInTheDocument();
+      expect(screen.getByTestId("display-focus")).toHaveAttribute("data-focus", "waiting");
     });
+    expect(screen.queryByText("暂无投票")).not.toBeInTheDocument();
+    expect(screen.queryByText("二维界面")).not.toBeInTheDocument();
 
     // Should NOT show the ended-meeting banner.
     expect(screen.queryByText(/会议已结束/)).not.toBeInTheDocument();
@@ -355,7 +357,9 @@ describe("DisplayView — Task 2 ended meeting", () => {
       .mockResolvedValueOnce(okResponse(activeMeeting({ id: 1, title: "Board Meeting" }))) // 1
       .mockResolvedValueOnce(okResponse({ id: 11, meeting_id: 1, title: "Lunch Choice", options: ["Pizza", "Salad"], status: "open", is_anonymous: false })) // 2
       .mockResolvedValueOnce(okResponse([{ id: 11, meeting_id: 1, title: "Lunch Choice", options: ["Pizza", "Salad"], status: "open", is_anonymous: false }])) // 3: fetchVotesForMeeting
-      .mockResolvedValueOnce(okResponse([])) // 4: fetchAgendas(1)
+      .mockResolvedValueOnce(okResponse([
+        { id: 8, meeting_id: 1, title: "Schedule Review", sort_order: 1, status: "active", started_at: null, completed_at: null, skipped_at: null },
+      ])) // 4: fetchAgendas(1)
       .mockResolvedValueOnce(okResponse(openVoteStats())) // 5: fetchVoteStatistics(11) from fetchVoteResultsForMeeting
       .mockResolvedValueOnce(okResponse(openVoteStats())); // 6: fetchVoteStatistics(11) for activeVote
 
@@ -369,6 +373,10 @@ describe("DisplayView — Task 2 ended meeting", () => {
       expect(screen.getByText("Lunch Choice")).toBeInTheDocument();
       expect(screen.getByText("Vote In Progress")).toBeInTheDocument();
     });
+    const focus = screen.getByTestId("display-focus");
+    expect(focus).toHaveAttribute("data-focus", "vote");
+    expect(within(focus).getByRole("heading", { name: "Lunch Choice" })).toBeVisible();
+    expect(screen.getByText("Schedule Review")).not.toBeVisible();
 
     // Simulate meeting_ended WS event — backend closes the open vote
     // Triggering load() again:
@@ -720,20 +728,55 @@ describe("DisplayView — agenda progress (Phase 3)", () => {
     expect(screen.queryByText("Skip")).not.toBeInTheDocument();
   });
 
-  it("uses the full-screen agenda and vote columns", async () => {
+  it("features the current topic and discloses the remaining agenda on request", async () => {
     activeMeetingWithAgendas([
       { id: 1, meeting_id: 1, title: "Opening", sort_order: 1, status: "active", started_at: null, completed_at: null, skipped_at: null },
+      { id: 2, meeting_id: 1, title: "Next Topic", sort_order: 2, status: "pending", started_at: null, completed_at: null, skipped_at: null },
     ]);
 
     renderDisplay();
 
-    await waitFor(() => {
-      expect(screen.getByTestId("display-dashboard-grid")).toBeInTheDocument();
-    });
+    const opening = await screen.findByRole("heading", { name: "Opening" });
+    expect(opening).toBeVisible();
+    expect(screen.getByTestId("display-focus")).toContainElement(opening);
+    const upcoming = screen.getByText("Next Topic");
+    expect(upcoming).not.toBeVisible();
+    fireEvent.click(screen.getByText("完整议程 / Full Agenda"));
+    expect(upcoming).toBeVisible();
+  });
 
-    expect(screen.getByTestId("display-dashboard-grid")).toHaveClass("lg:grid-cols-12");
-    expect(screen.getByTestId("display-agenda-panel")).toHaveClass("lg:col-span-4");
-    expect(screen.getByTestId("display-vote-panel")).toHaveClass("lg:col-span-8");
+  it("keeps a just-closed vote in focus until the next agenda item", async () => {
+    let open = true;
+    let currentTopicId = 1;
+    mockFetch.mockImplementation((url: string) => {
+      const vote = {
+        id: 11, meeting_id: 1, title: "Lunch Choice", options: ["Pizza", "Salad"],
+        status: open ? "open" : "closed", is_anonymous: false,
+      };
+      if (url === "/api/meetings/active") return okResponse(activeMeeting());
+      if (url === "/api/votes/active") return okResponse(open ? vote : null);
+      if (url === "/api/votes?meeting_id=1") return okResponse([vote]);
+      if (url === "/api/votes/11/statistics") return okResponse({ ...openVoteStats(), status: vote.status });
+      if (url === "/api/meetings/1/agendas") {
+        return okResponse(["Opening", "Next Topic"].map((title, i) => ({
+          id: i + 1, meeting_id: 1, title, sort_order: i + 1,
+          status: i + 1 === currentTopicId ? "active" : i + 1 < currentTopicId ? "completed" : "pending",
+          started_at: null, completed_at: null, skipped_at: null,
+        })));
+      }
+      return okResponse(null);
+    });
+    renderDisplay();
+    expect(await screen.findByText("Vote In Progress")).toBeVisible();
+
+    open = false;
+    await act(async () => simulateWsEvent({ event: "vote_closed", meeting_id: 1 }));
+    expect(await screen.findByText("Vote Result")).toBeVisible();
+
+    currentTopicId = 2;
+    await act(async () => simulateWsEvent({ event: "agenda_updated", meeting_id: 1 }));
+    expect(await screen.findByRole("heading", { name: "Next Topic" })).toBeVisible();
+    expect(screen.getByText("Vote Result")).not.toBeVisible();
   });
 
   it("fetches ended meeting agendas when endedMeetingId is set", async () => {

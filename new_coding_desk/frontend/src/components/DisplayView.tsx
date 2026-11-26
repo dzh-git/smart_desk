@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle,
-  Clock,
-  List,
+  ChevronDown,
   Loader2,
   Monitor,
   RefreshCw,
-  Vote as VoteIcon,
 } from "lucide-react";
 import {
   fetchActiveMeeting,
@@ -25,11 +23,10 @@ import {
   ActionButton,
   DualLabel,
   StatusBadge,
-  useClock,
-  formatTime,
   isDemoControlsEnabled,
 } from "./shared";
 import { deriveAgendaState } from "../utils/agendaState";
+import "./spectator.css";
 
 const STORAGE_KEY = "smartdesk.display.endedMeetingId";
 
@@ -49,6 +46,7 @@ interface DisplayState {
   agendas: Agenda[];
   activeVote: VoteStatistics | null;
   voteResults: VoteStatistics[];
+  featuredVoteId: number | null;
   endedMeetingId: number | null;
 }
 
@@ -59,6 +57,7 @@ const EMPTY_STATE: DisplayState = {
   agendas: [],
   activeVote: null,
   voteResults: [],
+  featuredVoteId: null,
   endedMeetingId: null,
 };
 
@@ -108,14 +107,21 @@ export function DisplayView() {
       endedMeetingIdRef.current = endedMeetingId;
       if (endedMeetingId != null) persistEndedId(endedMeetingId);
       else clearStoredEndedId();
-      setState({
-        loading: false,
-        error: null,
-        meeting,
-        agendas: [...agendas],
-        activeVote,
-        voteResults: [...voteResults],
-        endedMeetingId,
+      const nextAgendas = [...agendas];
+      setState((previous) => {
+        const sameTopic = meeting?.id === previous.meeting?.id
+          && deriveAgendaState(nextAgendas).current?.id === deriveAgendaState(previous.agendas).current?.id;
+        return {
+          loading: false,
+          error: null,
+          meeting,
+          agendas: nextAgendas,
+          activeVote,
+          voteResults: [...voteResults],
+          // Keep a completed vote on the stage until the agenda advances.
+          featuredVoteId: activeVote?.vote_id ?? (sameTopic ? previous.featuredVoteId : null),
+          endedMeetingId,
+        };
       });
     } catch (err) {
       if (version !== requestVersion.current) return;
@@ -172,11 +178,21 @@ export function DisplayView() {
 
   const displayVote =
     state.activeVote ??
+    state.voteResults.find((vote) => vote.status === "closed" && vote.vote_id === state.featuredVoteId) ??
     state.voteResults.find((vote) => vote.status === "closed") ??
     null;
   const agendaState = useMemo(() => deriveAgendaState(state.agendas), [state.agendas]);
   const { current, progress } = agendaState;
-  const showPanels = !state.loading && (!state.error || state.meeting || isEndedMeeting);
+  const hasMeeting = state.meeting != null || isEndedMeeting;
+  const showVoteFirst = displayVote && (
+    displayVote.status === "open" || displayVote.vote_id === state.featuredVoteId || isEndedMeeting ||
+    (!current && (agendaState.isFlowDone || progress.total === 0))
+  );
+  const focus = state.loading ? "loading"
+    : state.error && !hasMeeting ? "error"
+    : showVoteFirst ? "vote"
+    : hasMeeting ? "agenda"
+    : "waiting";
   const scene: SpatialState = {
     mode: "display",
     phase: state.loading ? "busy"
@@ -196,79 +212,32 @@ export function DisplayView() {
     ].join(":"),
   };
 
-  // ── Live clock for header ────────────────────────────────────────────────
-  const now = useClock();
-
   return (
-    <div data-spatial-mode="display" data-spatial-phase={scene.phase} className="desk-page min-h-screen text-techText lg:flex lg:h-dvh lg:min-h-[44rem] lg:flex-col">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="desk-hero flex shrink-0 flex-wrap items-center justify-between gap-5 border-b border-techBorder px-5 py-6 lg:px-9 xl:px-12 xl:py-9">
-        <div className="flex min-w-0 items-center gap-4 sm:gap-6">
-          <div className="desk-brand-mark flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-techCyan/30 bg-techCyan/10 sm:h-16 sm:w-16">
-            <Monitor size={21} className="text-techCyan" />
-          </div>
+    <div data-spatial-mode="display" data-spatial-phase={scene.phase} className="spectator spectator-display">
+      <header className="spectator-header">
+        <div className="spectator-heading">
+          <Monitor size={20} aria-hidden="true" />
           <div className="min-w-0">
-            <DualLabel
-              cn="会议大屏"
-              en="Command Display"
-              className="mb-1"
-              cnClassName="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-techCyan"
-              enClassName="text-[0.65rem] opacity-70"
-            />
-            <h1 className="break-words text-3xl font-semibold leading-tight text-techText sm:text-4xl xl:text-6xl">
-              {isEndedMeeting ? (
-                <>
-                  会议已结束 <span className="ml-1 text-base font-mono tracking-wider text-techMuted xl:text-lg">
-                    / <span>Meeting Ended</span>
-                  </span>
-                </>
-              ) : state.meeting?.title ? (
-                state.meeting.title
-              ) : (
-                <>
-                  等待会议开始 <span className="ml-1 text-base font-mono tracking-wider text-techMuted xl:text-lg">
-                    / <span>Waiting for Meeting</span>
-                  </span>
-                </>
-              )}
-            </h1>
+            <DualLabel cn="会议大屏" en="Command Display" cnClassName="text-sm" />
+            {state.meeting?.title && <h1 className="spectator-meeting-title">{state.meeting.title}</h1>}
+            {isEndedMeeting && (
+              <h1 className="spectator-meeting-title">
+                会议已结束 <span className="spectator-secondary">/ <span>Meeting Ended</span></span>
+              </h1>
+            )}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 lg:gap-4">
+        <div className="spectator-actions">
           {isDemoControlsEnabled() && (
             <StatusBadge status="warning" labelCn="演示模式" labelEn="Demo Mode" />
           )}
           {activeMeetingId != null && connection !== "connected" && (
             <StatusBadge status="warning" labelCn="实时连接恢复中" labelEn="Syncing" />
           )}
-          {!state.loading && !state.error && (
-            <>
-              {state.meeting && (
-                <StatusBadge
-                  status="speaking"
-                  labelCn="进行中"
-                  labelEn="In Progress"
-                  pulse
-                />
-              )}
-              {isEndedMeeting && (
-                <StatusBadge
-                  status="warning"
-                  labelCn="已结束"
-                  labelEn="Ended"
-                />
-              )}
-            </>
-          )}
-          <div className="flex items-center gap-2 text-techMuted">
-            <Clock size={16} />
-            <span className="text-sm font-mono tabular-nums lg:text-base">
-              {formatTime(now)}
-            </span>
-          </div>
           <ActionButton
-            variant="secondary"
-            size="md"
+            className="spectator-control"
+            variant="ghost"
+            size="sm"
             icon={<RefreshCw size={15} />}
             loading={refreshing}
             onClick={() => void load()}
@@ -279,82 +248,64 @@ export function DisplayView() {
         </div>
       </header>
 
-      {/* ── Main content ──────────────────────────────────────── */}
-      <main className="flex flex-1 flex-col gap-3 px-4 py-4 lg:min-h-0 lg:px-9 lg:py-6 xl:px-12 xl:py-8">
-        {showPanels && state.error && (
-          <p role="alert" className="rounded-xl border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
-            更新失败 / Sync failed · {state.error}
-          </p>
-        )}
-        {showPanels && isEndedMeeting && (
-          <div className="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-techAmber/30 bg-techAmber/10 px-4 py-2.5 text-center shadow-card-glow">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-techAmber opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-techAmber" />
-            </span>
-            <p className="text-sm font-semibold text-techAmber">
-              会议已结束，结果保留 / Meeting Ended — Results Preserved
-            </p>
-          </div>
-        )}
+      <main
+        data-testid={focus === "loading" || focus === "error" ? undefined : "display-dashboard-grid"}
+        className="spectator-display__main"
+      >
+        <SpatialStage state={scene} className="spectator-stage spectator-display__stage" showTitle={false} />
 
-        <div
-          data-testid={showPanels ? "display-dashboard-grid" : undefined}
-          className={showPanels
-            ? "spatial-display-grid grid min-h-0 flex-1 gap-4 lg:grid-cols-12 lg:grid-rows-[minmax(13rem,0.9fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1.85fr)_minmax(0,1.18fr)] xl:grid-rows-1 xl:gap-5"
-            : "grid min-h-[50vh] flex-1"}
-        >
-          {showPanels && (
-            <div
-              data-testid="display-agenda-panel"
-              className="min-h-0 min-w-0 lg:col-span-4 lg:row-start-2 xl:col-span-1 xl:col-start-1 xl:row-start-1"
-            >
-              <DisplayAgendaProgress agendas={state.agendas} agendaState={agendaState} />
+        <div data-testid="display-focus" data-focus={focus} className="spectator-display__focus">
+          {isEndedMeeting && (
+            <p className="spectator-kicker text-techAmber">会议已结束，结果保留 / Meeting Ended — Results Preserved</p>
+          )}
+          {focus === "loading" && (
+            <div role="status" className="spectator-state">
+              <Loader2 size={26} className="animate-spin text-techCyan" aria-hidden="true" />
+              <h1 className="spectator-focus-title">正在加载大屏数据</h1>
+              <p className="spectator-secondary">Loading Display</p>
             </div>
           )}
-
-          <div className={showPanels
-            ? "desk-panel relative order-first min-h-[15rem] overflow-hidden lg:col-span-12 lg:row-start-1 lg:min-h-0 xl:col-span-1 xl:col-start-2"
-            : "desk-panel relative grid min-h-[20rem] place-items-center overflow-hidden p-4"}
-          >
-            <div className="absolute inset-0">
-              <SpatialStage state={scene} className="spatial-display-stage h-full w-full" />
+          {focus === "waiting" && (
+            <div className="spectator-state">
+              <h1 className="spectator-focus-title">等待会议开始</h1>
+              <p className="spectator-secondary">Waiting for Meeting</p>
             </div>
-            {state.loading && (
-              <div role="status" className="relative z-10 rounded-2xl border border-techBorder bg-techBg/90 px-8 py-6 text-center">
-                <Loader2 size={32} className="mx-auto animate-spin text-techCyan" />
-                <p className="mt-3 text-xl font-semibold text-techText">正在加载大屏数据</p>
-                <p className="mt-1 text-sm font-mono tracking-wider text-techMuted">Loading Display</p>
-              </div>
-            )}
-            {!state.loading && state.error && !showPanels && (
-              <div className="relative z-10 w-full max-w-md rounded-2xl border border-techRose/30 bg-techBg/95 p-6">
-                <div className="mb-4 flex items-center gap-4">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-techRose/20">
-                    <AlertTriangle size={25} className="text-techRose" />
-                  </div>
-                  <div>
-                    <p className="text-xl font-bold text-techRose">大屏数据加载失败</p>
-                    <p className="mt-0.5 text-sm font-mono tracking-wider text-techMuted">Display Load Failed</p>
-                  </div>
-                </div>
-                <p className="mb-5 break-words text-sm text-techMuted">
-                  操作失败 / Operation Failed: {state.error}
-                </p>
-                <ActionButton variant="danger" icon={<RefreshCw size={18} />} onClick={() => void load()}>
-                  <span>刷新重试</span>
-                  <span>Retry</span>
-                </ActionButton>
-              </div>
-            )}
-          </div>
-
-          {showPanels && (
-            <div
-              data-testid="display-vote-panel"
-              className="min-h-0 min-w-0 lg:col-span-8 lg:row-start-2 xl:col-span-1 xl:col-start-3 xl:row-start-1"
-            >
-              {displayVote ? <DisplayVoteResult vote={displayVote} /> : <DisplayEmptyVote />}
+          )}
+          {focus === "error" && (
+            <div role="alert" className="spectator-state">
+              <AlertTriangle size={26} className="text-techRose" aria-hidden="true" />
+              <h1 className="spectator-focus-title">大屏数据加载失败</h1>
+              <p className="spectator-secondary">Display Load Failed</p>
+              <ActionButton variant="secondary" icon={<RefreshCw size={16} />} onClick={() => void load()}>
+                刷新重试 / Retry
+              </ActionButton>
+            </div>
+          )}
+          {focus === "agenda" && (
+            <section data-testid="display-agenda-panel">
+              <DisplayAgendaFocus agendaState={agendaState} showProgress={state.agendas.length > 0} />
+              {state.agendas.length > 0 && <DisplayAgendaList agendas={state.agendas} />}
+            </section>
+          )}
+          {focus === "vote" && displayVote && (
+            <>
+              <DisplayVoteResult vote={displayVote} />
+              {state.agendas.length > 0 && <DisplayAgendaList agendas={state.agendas} secondary />}
+            </>
+          )}
+          {focus === "agenda" && displayVote && (
+            <details className="spectator-disclosure">
+              <summary>最近投票 / Last Vote <ChevronDown size={16} aria-hidden="true" /></summary>
+              <DisplayVoteResult vote={displayVote} />
+            </details>
+          )}
+          {state.error && (
+            <div className="mt-4">
+              {hasMeeting && <p role="alert" className="text-sm text-techAmber">更新失败 / Sync failed</p>}
+              <details className="spectator-disclosure">
+                <summary>同步详情 / Sync Details <ChevronDown size={16} aria-hidden="true" /></summary>
+                <p className="spectator-detail-text">{state.error}</p>
+              </details>
             </div>
           )}
         </div>
@@ -394,58 +345,21 @@ function clearStoredEndedId(): void {
 
 // ── Vote result display ──────────────────────────────────────────────────────
 
-function DisplayEmptyVote() {
-  return (
-    <section className="desk-panel flex min-h-52 flex-col items-center justify-center rounded-xl border border-techBorder bg-techCard p-6 text-center shadow-card-glow lg:h-full lg:min-h-0">
-      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-techBorder bg-techCardSoft text-techMuted">
-        <VoteIcon size={32} />
-      </div>
-      <DualLabel
-        cn="暂无投票"
-        en="NO VOTE"
-        className="justify-center"
-        cnClassName="text-2xl font-bold text-techText"
-        enClassName="text-sm"
-      />
-      <p className="mt-3 max-w-md text-sm text-techMuted">
-        投票开始后，实时统计结果将在此显示。 / Live results will appear here when a vote starts.
-      </p>
-    </section>
-  );
-}
-
 function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
   const maxCount = Math.max(...vote.results.map((item) => item.count), 1);
   const isOpen = vote.status === "open";
   const hasClearWinner = vote.results.filter((option) => option.count === maxCount).length === 1;
 
   return (
-    <section className="desk-panel flex min-h-52 flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 xl:p-6">
-      <div className="mb-5 flex shrink-0 flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="mb-2">
-            <StatusBadge
-              status={isOpen ? "speaking" : "success"}
-              labelCn={isOpen ? "投票进行中" : "投票结果"}
-              labelEn={isOpen ? "Vote In Progress" : "Vote Result"}
-              pulse={isOpen}
-            />
-          </div>
-          <h2 className="break-words text-2xl font-semibold leading-tight text-techText xl:text-3xl">
-            {vote.title}
-          </h2>
-        </div>
-        <div className="flex items-center gap-2 rounded-lg border border-techBorder bg-techCardSoft px-3 py-2 text-center">
-          <p className="text-2xl font-bold text-techCyan">
-            {vote.total_votes}
-          </p>
-          <p className="text-[0.65rem] font-mono tracking-wider text-techMuted">
-            总票数 / TOTAL VOTES
-          </p>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 lg:space-y-5">
+    <section data-testid="display-vote-panel" className="spectator-vote">
+      <p className="spectator-kicker">
+        {isOpen ? "投票进行中" : "投票结果"} <span>{isOpen ? "Vote In Progress" : "Vote Result"}</span>
+      </p>
+      <h2 className="spectator-focus-title">{vote.title}</h2>
+      <p className="spectator-secondary spectator-vote__total">
+        <strong className="text-techCyan">{vote.total_votes}</strong> 总票数 / Total Votes
+      </p>
+      <ul className="spectator-vote__results">
         {vote.results.map((option) => {
           const pct =
             vote.total_votes > 0
@@ -455,18 +369,16 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
             hasClearWinner && option.count === maxCount && !isOpen;
 
           return (
-            <div key={option.option}>
-              <div className="mb-2 flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+            <li key={option.option}>
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <span className="flex min-w-0 flex-wrap items-center gap-2">
                   {isWinner && (
                     <span className="mt-0.5 shrink-0 text-techCyan">
-                      <CheckCircle size={20} />
+                      <CheckCircle size={20} aria-hidden="true" />
                     </span>
                   )}
                   <span
-                    className={`min-w-0 break-words text-base font-semibold leading-snug 2xl:text-lg ${
-                      isWinner ? "text-techCyan" : "text-techText"
-                    }`}
+                    className={`spectator-vote__option ${isWinner ? "text-techCyan" : "text-techText"}`}
                   >
                     {option.option}
                   </span>
@@ -476,22 +388,17 @@ function DisplayVoteResult({ vote }: { vote: VoteStatistics }) {
                     </span>
                   )}
                 </span>
-                <span className="text-sm tabular-nums text-techMuted">
+                <span className="spectator-secondary tabular-nums">
                   {option.count} 票 / {option.count} votes · {pct}%
                 </span>
               </div>
-              <div className="h-3 overflow-hidden rounded-full border border-techBorder bg-techSurface xl:h-5">
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ${
-                    isWinner ? "bg-techCyan" : "bg-techBlue/60"
-                  }`}
-                  style={{ width: `${pct}%` }}
-                />
+              <div className="spectator-vote__track" aria-hidden="true">
+                <div className="spectator-vote__fill" style={{ width: `${pct}%` }} />
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </section>
   );
 }
@@ -511,108 +418,49 @@ function agendaStatusCopy(status: string | null | undefined) {
   }
 }
 
-function DisplayAgendaProgress({ agendas, agendaState }: {
-  agendas: Agenda[];
+function DisplayAgendaFocus({ agendaState, showProgress }: {
   agendaState: ReturnType<typeof deriveAgendaState>;
+  showProgress: boolean;
 }) {
   const { current, progress, isFlowDone } = agendaState;
-  const sortedAgendas = [...agendas].sort(
-    (a, b) => (a.sort_order ?? a.id) - (b.sort_order ?? b.id),
-  );
   const progressValue =
     progress.current_index ?? (isFlowDone ? progress.total : progress.completed + progress.skipped);
-
-  const currentCopy = current
-    ? { cn: "当前议题", en: "CURRENT TOPIC" }
-    : isFlowDone
-      ? { cn: "所有议题已处理", en: "ALL TOPICS PROCESSED" }
-      : { cn: "暂无当前议题", en: "NO ACTIVE TOPIC" };
+  const inactiveTitle = !showProgress ? "暂无议程" : isFlowDone ? "所有议题已处理" : "暂无当前议题";
+  const inactiveSubtitle = !showProgress ? "NO AGENDA" : isFlowDone ? "ALL TOPICS PROCESSED" : "NO ACTIVE TOPIC";
 
   return (
-    <section className="desk-panel flex min-h-52 flex-col rounded-xl border border-techBorder bg-techCard p-5 shadow-card-glow lg:h-full lg:min-h-0 xl:p-6">
-      <div className="mb-4 shrink-0">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-techCyan">
-            <List size={18} />
-            <DualLabel
-              cn="议程进度"
-              en="AGENDA PROGRESS"
-              cnClassName="text-xs font-semibold tracking-[0.16em]"
-              enClassName="text-[0.6rem]"
-            />
-          </div>
-          <span className="shrink-0 text-lg font-bold tabular-nums text-techText">
-            {progressValue} / {progress.total}
-          </span>
-        </div>
-        <div className="rounded-lg border border-techBorder bg-techCardSoft px-3 py-3">
-          <DualLabel
-            cn={currentCopy.cn}
-            en={currentCopy.en}
-            cnClassName={current ? "text-xs font-semibold text-techCyan" : "text-xs font-semibold text-techMuted"}
-            enClassName="text-[0.6rem]"
-          />
-          {current && (
-            <p className="mt-1 break-words text-lg font-bold leading-snug text-techText xl:text-xl">
-              {current.title}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {sortedAgendas.length > 0 ? (
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <ol className="relative ml-1 space-y-1">
-            {sortedAgendas.map((item) => {
-              const status = agendaStatusCopy(item.status);
-              const isActive = item.status === "active";
-              const isCompleted = item.status === "completed";
-              const isSkipped = item.status === "skipped";
-              const markerClass = isActive
-                ? "border-techCyan bg-techCyan shadow-cyan-glow"
-                : isCompleted
-                  ? "border-techGreen bg-techGreen"
-                  : isSkipped
-                    ? "border-techAmber bg-techAmber"
-                    : "border-techBorder bg-techCardSoft";
-
-              return (
-                <li key={item.id} className="relative flex flex-col gap-1 rounded-xl border border-transparent py-2 pl-11 pr-3 hover:border-techBorder">
-                  <span
-                    className={`absolute left-1 top-2 flex h-7 w-7 items-center justify-center rounded-full border text-[0.65rem] font-bold ${markerClass} ${
-                      isActive ? "animate-pulse" : ""
-                    }`}
-                  >
-                    <span className={isActive || isCompleted || isSkipped ? "text-techBg" : "text-techMuted"}>
-                      {item.sort_order ?? item.id}
-                    </span>
-                  </span>
-                  <p className="break-words text-sm font-semibold leading-snug text-techText">
-                    {item.title}
-                  </p>
-                  <p className={`mt-0.5 text-[0.6rem] font-mono tracking-wider ${status.color}`}>
-                    {status.cn} / {status.en}
-                  </p>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
-          <List size={28} className="mb-3 text-techMuted" />
-          <DualLabel
-            cn="暂无议程"
-            en="NO AGENDA"
-            className="justify-center"
-            cnClassName="text-base font-semibold text-techText"
-            enClassName="text-xs"
-          />
-          <p className="mt-2 text-xs text-techMuted">
-            议程发布后将在此显示。 / The agenda will appear here when published.
-          </p>
+    <div className="spectator-state">
+      {current && <p className="spectator-kicker"><span>当前议题</span> <span>CURRENT TOPIC</span></p>}
+      <h2 className="spectator-focus-title">{current?.title ?? inactiveTitle}</h2>
+      {!current && <p className="spectator-secondary">{inactiveSubtitle}</p>}
+      {showProgress && (
+        <div className="spectator-progress">
+          <span>议程进度 / Agenda Progress</span>
+          <strong className="tabular-nums text-techText">{progressValue} / {progress.total}</strong>
+          <progress aria-label="议程进度 / Agenda Progress" max={progress.total} value={progressValue} />
         </div>
       )}
-    </section>
+    </div>
+  );
+}
+
+function DisplayAgendaList({ agendas, secondary = false }: { agendas: Agenda[]; secondary?: boolean }) {
+  const ordered = [...agendas].sort((a, b) => (a.sort_order ?? a.id) - (b.sort_order ?? b.id));
+  return (
+    <details className="spectator-disclosure" data-testid={secondary ? "display-agenda-panel" : undefined}>
+      <summary>完整议程 / Full Agenda <ChevronDown size={16} aria-hidden="true" /></summary>
+      <ol className="spectator-agenda-list">
+        {ordered.map((item) => {
+          const status = agendaStatusCopy(item.status);
+          return (
+            <li key={item.id} aria-current={item.status === "active" ? "step" : undefined}>
+              <span className="spectator-secondary tabular-nums">{item.sort_order ?? item.id}</span>
+              <span className="break-words">{item.title}</span>
+              <span className={`text-xs ${status.color}`}>{status.cn} / {status.en}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </details>
   );
 }

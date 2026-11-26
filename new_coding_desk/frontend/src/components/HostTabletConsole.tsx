@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, LockKeyhole, Settings, ShieldCheck, UserCheck, X } from "lucide-react";
+import { Loader2, LockKeyhole, Mic, Settings, ShieldCheck, UserCheck, X } from "lucide-react";
 import { AdminDashboard } from "./AdminDashboard";
 import { SpeechControl } from "./SeatTablet";
 import { debugAdmitSeat, identityCheckinSeat } from "../api/resources";
@@ -15,6 +15,7 @@ import {
   type SmartDeskNativeEvent,
 } from "../native/nativeEvents";
 import { useSeatData } from "../hooks/useSeatData";
+import type { SpeechStatus } from "../audio/types";
 import { SpatialStage } from "../spatial/SpatialStage";
 import { isDemoControlsEnabled } from "./shared";
 
@@ -24,6 +25,12 @@ interface HostDeviceAccess {
 }
 
 const REQUIRED_FACE_MATCH_FRAMES = 4;
+const HOST_CAPTURE_LABELS: Partial<Record<SpeechStatus, string>> = {
+  requesting_microphone: "请求麦克风",
+  connecting_speech_ws: "连接中",
+  recording: "录音中",
+  stopping: "正在停止",
+};
 
 function formatFaceScore(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value)
@@ -386,45 +393,48 @@ function HostCheckInCard({
 
 
       {faceOpen && (
-        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/80 p-6 text-white backdrop-blur-sm">
+        <div className="fixed inset-0 z-[80] grid place-items-center overflow-auto bg-slate-950/80 p-6 text-white backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-cyan-500/40 bg-slate-900/90 p-8 text-center">
             <ShieldCheck className="mx-auto text-cyan-400" size={48} />
             <h2 className="mt-4 text-xl font-bold">主持人人脸验证</h2>
-            <p className="mt-3 text-sm text-slate-300">{nativeStatus?.message ?? "请保持正对摄像头并稍后"}</p>
-            <p className="mt-2 font-mono text-xs text-cyan-300">{nativeStatus?.status ?? "STARTING"}</p>
+            <p className="mt-3 text-sm text-slate-300" role="status">{nativeStatus?.message ?? "请保持正对摄像头并稍后"}</p>
             {actionError && <p className="mt-3 text-sm text-red-300">{actionError}</p>}
-            <div className="mt-5 grid grid-cols-2 gap-3 text-left">
-              <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
-                <p className="text-xs text-slate-400">{isFinalSimilarity ? "最终聚合相似度" : "实时相似度"}</p>
-                <p data-testid="face-live-similarity" className="mt-1 font-mono text-xl font-semibold text-cyan-300">
-                  {formatFaceScore(nativeStatus?.similarity)}
-                </p>
-              </div>
-              <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
-                <p className="text-xs text-slate-400">当前阈值</p>
-                <p data-testid="face-threshold" className="mt-1 font-mono text-xl font-semibold text-cyan-300">
-                  {formatFaceScore(nativeStatus?.threshold)}
-                </p>
-              </div>
-              <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
-                <p className="text-xs text-slate-400">采样进度</p>
-                <p data-testid="face-sample-progress" className="mt-1 font-mono text-lg text-slate-100">
-                  {stageSampleCount}/{stageRequiredSamples}
-                </p>
-              </div>
-              <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
-                <p className="text-xs text-slate-400">达标帧数</p>
-                <p data-testid="face-qualified-frames" className="mt-1 font-mono text-lg text-slate-100">
-                  {agreeingFrames}/{REQUIRED_FACE_MATCH_FRAMES}
-                </p>
-              </div>
-            </div>
-            <p className="mt-3 text-left text-xs leading-5 text-slate-400">
-              最终通过需聚合相似度达到阈值，且至少 4 帧单帧相似度达到阈值。
-            </p>
             <button onClick={() => void stopVerification()} className="mt-6 inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm">
               <X size={15} />取消验证
             </button>
+            <details className="mt-4 text-left">
+              <summary className="cursor-pointer text-sm text-slate-300">验证详情</summary>
+              <p className="mt-2 font-mono text-xs text-cyan-300">{nativeStatus?.status ?? "STARTING"}</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
+                  <p className="text-xs text-slate-400">{isFinalSimilarity ? "最终聚合相似度" : "实时相似度"}</p>
+                  <p data-testid="face-live-similarity" className="mt-1 font-mono text-xl font-semibold text-cyan-300">
+                    {formatFaceScore(nativeStatus?.similarity)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
+                  <p className="text-xs text-slate-400">当前阈值</p>
+                  <p data-testid="face-threshold" className="mt-1 font-mono text-xl font-semibold text-cyan-300">
+                    {formatFaceScore(nativeStatus?.threshold)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
+                  <p className="text-xs text-slate-400">采样进度</p>
+                  <p data-testid="face-sample-progress" className="mt-1 font-mono text-lg text-slate-100">
+                    {stageSampleCount}/{stageRequiredSamples}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-cyan-500/20 bg-slate-950/40 p-3">
+                  <p className="text-xs text-slate-400">达标帧数</p>
+                  <p data-testid="face-qualified-frames" className="mt-1 font-mono text-lg text-slate-100">
+                    {agreeingFrames}/{REQUIRED_FACE_MATCH_FRAMES}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-slate-400">
+                最终通过需聚合相似度达到阈值，且至少 4 帧单帧相似度达到阈值。
+              </p>
+            </details>
           </div>
         </div>
       )}
@@ -433,6 +443,7 @@ function HostCheckInCard({
 }
 
 function HostSpeechControl() {
+  const [captureStatus, setCaptureStatus] = useState<SpeechStatus>("idle");
   const {
     meeting,
     attendees,
@@ -450,15 +461,25 @@ function HostSpeechControl() {
     || Boolean(assigned?.checked_in && assigned.seat_id === 1);
 
   return (
-    <SpeechControl
-      meetingId={meeting?.id ?? null}
-      seatId={1}
-      isSpeaker={checkedIn && speakerSeatId === 1}
-      isCheckedIn={checkedIn}
-      writesAllowed={connection === "connected" && !error && meeting?.status === "active"}
-      meetingStatus={meeting?.status === "active" ? "meeting_active" : "no_meeting"}
-      onLocalTerminalUtterance={terminateUtterance}
-    />
+    <details className="host-disclosure">
+      <summary className="host-toolbar__link" aria-label="主持席麦克风 / Host Microphone">
+        <Mic size={16} aria-hidden="true" />
+        <span>发言</span>
+        <span className="host-mic-indicator" role="status">{HOST_CAPTURE_LABELS[captureStatus]}</span>
+      </summary>
+      <div className="host-disclosure__panel">
+        <SpeechControl
+          meetingId={meeting?.id ?? null}
+          seatId={1}
+          isSpeaker={checkedIn && speakerSeatId === 1}
+          isCheckedIn={checkedIn}
+          writesAllowed={connection === "connected" && !error && meeting?.status === "active"}
+          meetingStatus={meeting?.status === "active" ? "meeting_active" : "no_meeting"}
+          onLocalTerminalUtterance={terminateUtterance}
+          onSpeechStatusChange={setCaptureStatus}
+        />
+      </div>
+    </details>
   );
 }
 

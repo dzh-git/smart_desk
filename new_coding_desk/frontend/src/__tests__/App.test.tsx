@@ -149,12 +149,8 @@ describe("App - admin mode (default)", () => {
       expect(screen.getByText(/Conference Room.*Seat Overview/i)).toBeInTheDocument();
     });
 
-    // Should show meeting summary metrics (meeting time, attendees)
-    expect(screen.getByText("MEETING TIME")).toBeInTheDocument();
-    expect(screen.getAllByText("ATTENDEES").length).toBeGreaterThanOrEqual(1);
-
-    // Should show 2/9 checked in
-    expect(screen.getByText("2/9")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "人员 / People" })).toBeVisible();
+    expect(screen.getByText("2/9 已签到")).toBeVisible();
   });
 
   it("shows waiting state when no active meeting", async () => {

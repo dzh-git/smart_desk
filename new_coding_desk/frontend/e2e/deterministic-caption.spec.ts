@@ -231,7 +231,7 @@ test.describe("Deterministic two-line live caption", () => {
     // ── 3. Navigate admin page ───────────────────────────────────────────────
     await page.goto("/");
     await page.waitForSelector("text=Connected", { timeout: 15_000 });
-    await page.getByRole("button", { name: /SERVICE & RECORDS/i }).click();
+    await page.getByRole("button", { name: "记录 / Records" }).click();
     await page.waitForTimeout(1000);
     console.log("[DetCaption] Admin page loaded, WS mock active");
 

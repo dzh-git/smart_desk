@@ -25,9 +25,10 @@ interface SpatialStageProps {
   className?: string;
   children?: ReactNode;
   onSelectSeat?: (seatId: number) => void;
+  showTitle?: boolean;
 }
 
-export function SpatialStage({ state, className = "", children, onSelectSeat }: SpatialStageProps) {
+export function SpatialStage({ state, className = "", children, onSelectSeat, showTitle = true }: SpatialStageProps) {
   const spatial = useContext(SpatialContext);
   const viewport = useRef<HTMLDivElement>(null);
   const current = useRef<StageAnchor | null>(null);
@@ -124,12 +125,12 @@ export function SpatialStage({ state, className = "", children, onSelectSeat }: 
         }}
       />
       <div className="spatial-stage__top">
-        <div className="spatial-stage__label">
+        {showTitle && <div className="spatial-stage__label">
           <Aperture size={15} aria-hidden="true" />
           <span>{SUBJECTS[state.mode]}</span>
-        </div>
+        </div>}
         {spatial && status === "ready" && (
-          <details className="spatial-settings">
+          <details className={`spatial-settings ${showTitle ? "" : "ml-auto"}`}>
             <summary><SlidersHorizontal size={14} aria-hidden="true" />画质</summary>
             <div className="spatial-settings__menu">
               <label>
@@ -154,17 +155,6 @@ export function SpatialStage({ state, className = "", children, onSelectSeat }: 
         )}
       </div>
       {children && <div className="spatial-stage__content">{children}</div>}
-      <div className="spatial-stage__foot">
-        <span className="spatial-stage__engine">
-          {status === "ready" ? "WEBGL 2" : status === "fallback" ? "二维界面" : "渲染初始化"}
-          {motion && spatial?.metrics && spatial.metrics.fps > 0 && status === "ready" && (
-            <span className="spatial-stage__fps">{Math.round(spatial.metrics.fps)} FPS</span>
-          )}
-        </span>
-        {status === "ready" && <span className="spatial-stage__help">
-          {onSelectSeat ? "拖拽旋转 · 点选席位" : "拖拽或方向键旋转"}
-        </span>}
-      </div>
     </section>
   );
 }

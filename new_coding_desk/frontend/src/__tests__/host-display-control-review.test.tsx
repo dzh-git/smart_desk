@@ -109,7 +109,7 @@ beforeEach(() => {
 });
 
 // ── Admin active meeting mock factory ────────────────────────────────────────
-function mockAdminActiveMeeting() {
+function mockAdminActiveMeeting(agentOnline?: () => boolean) {
   mockFetch.mockImplementation((fetchUrl: string) => {
     if (fetchUrl === "/api/meetings/active") {
       return okResponse({
@@ -132,6 +132,9 @@ function mockAdminActiveMeeting() {
     if (fetchUrl === "/api/service-calls?meeting_id=1") return okResponse([]);
     if (fetchUrl === "/api/translations?meeting_id=1")
       return okResponse({ meeting_id: 1, entries: [] });
+    if (fetchUrl === "http://127.0.0.1:8766/status" && agentOnline) {
+      return rawOkResponse({ agent_state: agentOnline() ? "online" : "offline" });
+    }
     // NOT wrapped in {success, data} — backend returns Pydantic model directly.
     if (fetchUrl === "/api/host-display/status") {
       return rawOkResponse({
@@ -154,6 +157,26 @@ function mockAdminActiveMeeting() {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Phase 5 — host display control card in /admin", () => {
+  it("checks again for the Display Agent when the More menu is reopened", async () => {
+    let online = false;
+    mockAdminActiveMeeting(() => online);
+    render(<AdminDashboard />);
+
+    await screen.findByText("Board Meeting");
+    const more = screen.getByLabelText("更多会议操作 / More meeting actions");
+    fireEvent.click(more);
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("http://127.0.0.1:8766/status", expect.anything());
+    });
+    expect(screen.getByTestId("activate-powerpoint")).toBeDisabled();
+
+    fireEvent.click(more);
+    online = true;
+    fireEvent.click(more);
+
+    await waitFor(() => expect(screen.getByTestId("activate-powerpoint")).toBeEnabled());
+  });
+
   it("Admin dashboard shows a '中央大屏控制' / 'Host Display' card", async () => {
     // Target: AdminDashboard includes HostDisplayControl with
     // data-testid="host-display-control".
@@ -846,6 +869,7 @@ describe("Phase 5 — activation requests", () => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
     });
 
+    screen.getByLabelText("更多会议操作 / More meeting actions").click();
     // Trigger an error by clicking PPT
     const pptBtn = screen.getByTestId("activate-powerpoint");
     await act(async () => {
@@ -854,11 +878,9 @@ describe("Phase 5 — activation requests", () => {
     });
 
     // Existing admin modules must still be present
-    const controlElements = screen.getAllByText(/MEETING CONTROL/i);
-    expect(controlElements.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
-    expect(screen.getByText("AGENDA & VOTE")).toBeInTheDocument();
-    expect(screen.getByText("SERVICE & RECORDS")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "会场 / Overview" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "议程 / Agenda" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "服务 / Services" })).toBeVisible();
   });
 
   it("HTTP 200 with {ok:false, detail} displays error message", async () => {
@@ -960,13 +982,13 @@ describe("Phase 5 — activation requests", () => {
       });
 
       // Workspace tabs exist — same as before HostDisplayControl addition.
-      expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
-      expect(screen.getByText("AGENDA & VOTE")).toBeInTheDocument();
-      expect(screen.getByText("SERVICE & RECORDS")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "会场 / Overview" })).toBeVisible();
+      expect(screen.getByRole("button", { name: "议程 / Agenda" })).toBeVisible();
+      expect(screen.getByRole("button", { name: "服务 / Services" })).toBeVisible();
 
       // Switch to agenda_vote
       await act(async () => {
-        screen.getByText("AGENDA & VOTE").click();
+        screen.getByRole("button", { name: "议程 / Agenda" }).click();
         await new Promise((r) => setTimeout(r, 50));
       });
 
@@ -1007,9 +1029,9 @@ describe("Phase 5 — activation requests", () => {
       });
 
       // Meeting control sections exist.
-      const controlElements = screen.getAllByText(/MEETING CONTROL/i);
-      expect(controlElements.length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText(/END MEETING/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /End Meeting/i, hidden: true })).not.toBeVisible();
+      screen.getByLabelText("更多会议操作 / More meeting actions").click();
+      expect(screen.getByRole("button", { name: /End Meeting/i })).toBeVisible();
     });
   });
 });

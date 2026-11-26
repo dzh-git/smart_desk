@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { AlertCircle, ArrowLeft, Maximize, Monitor, MonitorOff, RefreshCw } from "lucide-react";
+import { ArrowLeft, ChevronDown, Maximize, RefreshCw } from "lucide-react";
 import { fetchHostDisplayStatus } from "../api/resources";
 import type { HostDisplayStatus } from "../api/types";
 import { SpatialStage } from "../spatial/SpatialStage";
 import { ActionButton, StatusBadge, isDemoControlsEnabled } from "./shared";
+import "./spectator.css";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -75,91 +76,84 @@ export function ScreenView() {
     || (status?.stream_state === "unknown" && tryPlayback);
   const phase = loading ? "busy" : error ? "fault" : showStream ? "live" : "idle";
   return (
-    <div data-testid="screen-view" data-spatial-mode="relay" data-spatial-phase={phase} className="desk-page flex min-h-dvh flex-col">
-      <header className="desk-hero flex flex-wrap items-center justify-between gap-4 border-b border-techBorder px-4 py-4 sm:px-8">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link to={returnTo} aria-label="返回 / Back" className="mr-2 grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-techBorder text-techMuted hover:text-techText">
-            <ArrowLeft size={18} />
+    <div data-testid="screen-view" data-spatial-mode="relay" data-spatial-phase={phase} className="spectator spectator-screen">
+      <header className="spectator-header">
+        <div className="spectator-heading">
+          <Link to={returnTo} aria-label="返回 / Back" className="spectator-control spectator-back">
+            <ArrowLeft size={18} aria-hidden="true" />
           </Link>
-          <div className="desk-brand-mark grid h-11 w-11 shrink-0 place-items-center rounded-xl text-techCyan">
-            <Monitor size={20} />
-          </div>
           <div className="min-w-0">
-            <p className="desk-label">SmartDesk · Screen Share</p>
-            <h1 className="text-lg font-semibold text-techText sm:text-2xl">中央主机画面</h1>
+            <h1 className="spectator-meeting-title">中央主机画面</h1>
+            <p className="spectator-secondary">Screen Share</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="spectator-actions">
           {isDemoControlsEnabled() && (
             <StatusBadge status="warning" labelCn="演示模式" labelEn="Demo Mode" />
           )}
-          {status?.agent_state === "offline" && (
-            <span data-testid="agent-offline" className="text-xs text-techMuted">Display Agent 离线</span>
-          )}
-          {status?.active_app && (
-            <span data-testid="current-app-name" className="text-sm text-techCyan">{status.active_app}</span>
-          )}
-          <ActionButton data-testid="screen-retry" variant="secondary" touch onClick={handleRetry} loading={loading} icon={<RefreshCw size={16} />}>
+          <ActionButton data-testid="screen-retry" className="spectator-control" variant="ghost" size="sm" touch onClick={handleRetry} loading={loading} icon={<RefreshCw size={16} />}>
             刷新 / Retry
           </ActionButton>
-          <ActionButton data-testid="screen-fullscreen" variant="secondary" touch onClick={handleFullscreen} icon={<Maximize size={16} />}>
+          <ActionButton data-testid="screen-fullscreen" className="spectator-control" variant="ghost" size="sm" touch onClick={handleFullscreen} icon={<Maximize size={16} />}>
             全屏 / Fullscreen
           </ActionButton>
+          {(status || error || fullscreenError) && (
+            <details data-testid="screen-details" className="spectator-screen__details">
+              <summary className="spectator-control">播放详情 / Playback Details <ChevronDown size={15} aria-hidden="true" /></summary>
+              <div className="spectator-screen__detail-popover">
+                {status?.agent_state === "offline" && <p data-testid="agent-offline">Display Agent 离线</p>}
+                {status?.active_app && (
+                  <p>共享来源 / Source <strong data-testid="current-app-name">{status.active_app}</strong></p>
+                )}
+                {status && <p>视频流 / Stream <strong>{status.stream_state}</strong></p>}
+                {error && <p>{error}</p>}
+                {fullscreenError && <p>{fullscreenError}</p>}
+              </div>
+            </details>
+          )}
         </div>
       </header>
 
-      {fullscreenError && <p role="alert" className="px-6 pt-3 text-sm text-techAmber">{fullscreenError}</p>}
+      {fullscreenError && <p role="alert" className="spectator-screen__notice">无法进入全屏 / Fullscreen Unavailable</p>}
       {error && showStream && (
-        <p role="alert" className="px-6 pt-3 text-sm text-techAmber">共享状态更新失败 · {error}</p>
+        <p role="alert" className="spectator-screen__notice">共享状态更新失败 / Playback Status Unavailable</p>
       )}
-      <main className="flex min-h-[18rem] flex-1 flex-col p-4 sm:p-6">
-        <div className="desk-panel relative flex min-h-[65vh] flex-1 flex-col overflow-hidden rounded-2xl border border-techBorder bg-techBg">
-          {showStream ? (
-            <iframe
-              key={iframeKey}
-              data-testid="stream-iframe"
-              src={buildStreamUrl()}
-              className="absolute inset-0 h-full w-full border-0 bg-black"
-              allow="autoplay; encrypted-media"
-              title="Screen Stream"
+      <main className="spectator-screen__main">
+        {showStream ? (
+          <iframe
+            key={iframeKey}
+            data-testid="stream-iframe"
+            src={buildStreamUrl()}
+            className="spectator-screen__video"
+            allow="autoplay; encrypted-media"
+            title="Screen Stream"
+          />
+        ) : (
+          <>
+            <SpatialStage
+              className="spectator-stage spectator-screen__stage"
+              state={{ mode: "relay", phase, signal: status?.stream_state }}
+              showTitle={false}
             />
-          ) : (
-            <>
-              <div className="absolute inset-0">
-                <SpatialStage
-                  className="spatial-relay-empty h-full w-full"
-                  state={{
-                    mode: "relay",
-                    phase,
-                    signal: status?.stream_state,
-                  }}
-                />
-              </div>
-              <div className="relative z-10 mx-auto mb-6 mt-auto w-fit max-w-[calc(100%-2rem)] space-y-3 rounded-2xl border border-techBorder bg-techBg/95 p-5 text-center shadow-card-glow sm:mb-10 sm:p-6" role="status">
-                {loading ? (
-                  <p data-testid="screen-loading" className="text-techCyan">正在连接共享画面…</p>
-                ) : error ? (
-                  <div data-testid="screen-error" className="space-y-2">
-                    <AlertCircle size={26} className="mx-auto text-techRose" />
-                    <p className="text-lg font-semibold">无法连接状态服务</p>
-                    <p className="max-w-md break-words text-sm text-techMuted">{error}</p>
-                  </div>
-                ) : (
-                  <>
-                    <MonitorOff size={26} className="mx-auto text-techCyan" />
-                    <p data-testid={status?.stream_state === "offline" ? "stream-offline" : undefined} className="text-xl font-semibold">
-                      等待中央主机共享
-                    </p>
-                    <p className="text-sm text-techMuted">中央主机开始共享后，画面会自动出现。</p>
-                    {status?.stream_state === "unknown" && (
-                      <ActionButton variant="secondary" touch onClick={() => setTryPlayback(true)}>尝试播放 / Try playback</ActionButton>
-                    )}
-                  </>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+            <div className="spectator-state spectator-screen__state" role="status">
+              {loading ? (
+                <h2 data-testid="screen-loading" className="spectator-focus-title">正在连接共享画面…</h2>
+              ) : error ? (
+                <h2 data-testid="screen-error" className="spectator-focus-title">无法连接共享画面</h2>
+              ) : (
+                <>
+                  <h2 data-testid={status?.stream_state === "offline" ? "stream-offline" : undefined} className="spectator-focus-title">
+                    等待中央主机共享
+                  </h2>
+                  <p className="spectator-secondary">中央主机开始共享后，画面会自动出现。</p>
+                  {status?.stream_state === "unknown" && (
+                    <ActionButton variant="secondary" touch onClick={() => setTryPlayback(true)}>尝试播放 / Try playback</ActionButton>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
       </main>
     </div>
   );

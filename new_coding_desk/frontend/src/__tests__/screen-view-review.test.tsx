@@ -17,7 +17,7 @@
  *   F. /seat/:seatId provides "共享画面" entry to /screen
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import App from "../App";
 
 // ── Mock isDemoControlsEnabled ───────────────────────────────────────────────
@@ -239,8 +239,7 @@ describe("Phase 4 — state and lifecycle", () => {
     expect(loadingEl).toBeInTheDocument();
   });
 
-  it("displays current app name from API", async () => {
-    // Target: ScreenView shows the active_app value from status.
+  it("discloses the source application while leaving playback visible", async () => {
     window.history.replaceState({}, "", "/screen");
 
     mockFetch.mockImplementation((url: string) => {
@@ -257,6 +256,10 @@ describe("Phase 4 — state and lifecycle", () => {
     render(<App />);
 
     const appName = await screen.findByTestId("current-app-name");
+    expect(await screen.findByTestId("stream-iframe")).toBeVisible();
+    expect(appName).not.toBeVisible();
+    fireEvent.click(screen.getByText("播放详情 / Playback Details"));
+    expect(appName).toBeVisible();
     expect(appName.textContent?.toLowerCase()).toContain("powerpoint");
   });
 
@@ -297,7 +300,7 @@ describe("Phase 4 — state and lifecycle", () => {
     render(<App />);
 
     const agentOfflineEl = await screen.findByTestId("agent-offline");
-    expect(agentOfflineEl).toBeInTheDocument();
+    expect(agentOfflineEl).not.toBeVisible();
   });
 
   it("returns to the waiting view when the relay reports offline after a manual attempt", async () => {
@@ -462,6 +465,10 @@ describe("Phase 4 — state and lifecycle", () => {
     // The page should show an error indicator, not crash entirely
     const errorEl = await screen.findByTestId("screen-error");
     expect(errorEl).toBeInTheDocument();
+    const reason = screen.getByText(/Network error: unable to reach the server/);
+    expect(reason).not.toBeVisible();
+    fireEvent.click(screen.getByText("播放详情 / Playback Details"));
+    expect(reason).toBeVisible();
   });
 });
 

@@ -9,6 +9,7 @@
 //   3. Attendee list is used for seat mapping and check-in attendee selection
 //
 // WebSocket event handling:
+//   agenda_updated                → refresh the agenda independently
 //   translation_interim           → update interimMap only, no HTTP refresh
 //   translation_final             → remove matching interim, full HTTP refresh
 //   translation_interim_cancelled → remove matching interim, no HTTP refresh
@@ -170,6 +171,7 @@ export function useSeatData(seatId: number): SeatData {
   const fetchingRef = useRef(false);
   // Track if a refresh was requested while one was already in flight
   const needsRefreshRef = useRef(false);
+  const agendaVersionRef = useRef(0);
 
   // ── Task 126: terminal utterance ID tracking ──────────────────────────
   // Prevents late translation_interim from re-creating live caption after
@@ -253,6 +255,7 @@ export function useSeatData(seatId: number): SeatData {
       return;
     }
     fetchingRef.current = true;
+    const agendaVersion = agendaVersionRef.current;
 
     if (isInitial) setLoading(true);
     setError(null);
@@ -313,18 +316,19 @@ export function useSeatData(seatId: number): SeatData {
       // Build seat displays
       const seats = buildSeatDisplays(seatStates, attendees, speaker);
 
-      setData({
+      setData((previous) => ({
         meeting,
         seats,
         speakerSeatId: speaker.seat_id,
         attendees,
-        agenda,
+        agenda: previous.meeting?.id === meetingId && agendaVersion !== agendaVersionRef.current
+          ? previous.agenda : agenda,
         activeVote,
         voteStats,
         voteResults,
         currentServiceCall,
         translations,
-      });
+      }));
       const finalizedIds = new Set(
         translations
           .map((entry) => entry.utterance_id)
@@ -383,6 +387,19 @@ export function useSeatData(seatId: number): SeatData {
       if (event === "reconnected") {
         resetInterimEpoch();
         doFetch(false);
+        return;
+      }
+
+      if (event === "agenda_updated") {
+        const meetingId = message.meeting_id;
+        if (!connectMeetingId || meetingId !== connectMeetingId) return;
+        const version = ++agendaVersionRef.current;
+        void fetchAgendas(meetingId).then((agenda) => {
+          if (version !== agendaVersionRef.current) return;
+          setData((previous) => previous.meeting?.id === meetingId ? { ...previous, agenda } : previous);
+        }).catch(() => {
+          if (version === agendaVersionRef.current) void doFetch(false);
+        });
         return;
       }
 
@@ -726,7 +743,7 @@ export function useSeatData(seatId: number): SeatData {
       // All other events: full HTTP refresh (existing behaviour)
       doFetch(false);
     },
-    [doFetch, recordTerminalId, resetInterimEpoch],
+    [connectMeetingId, doFetch, recordTerminalId, resetInterimEpoch],
   );
 
   const connection = useWebSocket(connectMeetingId, handleWSEvent, seatId);

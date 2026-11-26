@@ -20,7 +20,6 @@ function deriveSeatStatus(
 interface StatusVisual {
   container: string;
   text: string;
-  dot: string;
   icon: React.ReactNode;
   labelCn: string;
   labelEn: string;
@@ -30,7 +29,6 @@ const statusVisuals: Record<SeatStatus, StatusVisual> = {
   speaking: {
     container: "border-techCyan/60 bg-techCardSoft shadow-cyan-glow",
     text: "text-techCyan",
-    dot: "bg-techCyan",
     icon: <Mic size={12} className="text-techCyan" />,
     labelCn: "发言中",
     labelEn: "Speaking",
@@ -38,7 +36,6 @@ const statusVisuals: Record<SeatStatus, StatusVisual> = {
   checked_in: {
     container: "border-techGreen/30 bg-techCard",
     text: "text-techGreen",
-    dot: "bg-techGreen",
     icon: <UserCheck size={12} className="text-techGreen" />,
     labelCn: "已签到",
     labelEn: "Checked In",
@@ -46,7 +43,6 @@ const statusVisuals: Record<SeatStatus, StatusVisual> = {
   waiting: {
     container: "border-techAmber/35 bg-techCard",
     text: "text-techAmber",
-    dot: "bg-techAmber",
     icon: <Clock size={12} className="text-techAmber" />,
     labelCn: "待签到",
     labelEn: "Waiting",
@@ -54,7 +50,6 @@ const statusVisuals: Record<SeatStatus, StatusVisual> = {
   vacant: {
     container: "border-techBorder bg-techSurface",
     text: "text-techMuted",
-    dot: "bg-techMuted",
     icon: <User size={12} className="text-techMuted" />,
     labelCn: "空座",
     labelEn: "Vacant",
@@ -114,7 +109,7 @@ function SeatVisualNode({
       {isHostSeat && (
         <span className="flex flex-col items-center text-[11px] font-semibold text-techCyan">
           主持人席
-          <span className="font-mono text-[9px] uppercase tracking-wider text-techMuted">
+          <span className="sr-only">
             Host Seat
           </span>
         </span>
@@ -138,49 +133,11 @@ function SeatVisualNode({
         <span className="text-[10px] font-medium leading-none text-techMuted">
           {sv.labelCn}
         </span>
-        <span className="conference-table__seat-status-en font-mono text-[9px] uppercase leading-none text-techMuted">
+        <span className="sr-only">
           {sv.labelEn}
         </span>
       </div>
     </button>
-  );
-}
-
-// ── Table Legend ──────────────────────────────────────────────────────────────
-
-function TableLegend() {
-  const items: { status: SeatStatus }[] = [
-    { status: "speaking" },
-    { status: "checked_in" },
-    { status: "waiting" },
-    { status: "vacant" },
-  ];
-
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
-      {items.map(({ status }) => {
-        const sv = statusVisuals[status];
-        return (
-          <div key={status} className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${sv.dot}`} />
-            <span className="text-[11px] font-medium text-techMuted">
-              {sv.labelCn}
-            </span>
-            <span className="font-mono text-[9px] uppercase tracking-wider text-techMuted">
-              {sv.labelEn}
-            </span>
-          </div>
-        );
-      })}
-      {/* Selected indicator */}
-      <div className="flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-full border border-techCyan bg-transparent" />
-        <span className="text-[11px] font-medium text-techMuted">选中</span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-techMuted">
-          Selected
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -207,12 +164,9 @@ export function ConferenceTable({
     (seat) => seat.seatId >= 6 && seat.seatId <= 9,
   );
   const speakerSeat = preparing ? null : currentSpeaker;
-  const statusColor = preparing
-    ? "border-techAmber/30 text-techAmber"
-    : "border-techGreen/30 text-techGreen";
 
   return (
-    <div className="conference-table flex select-none flex-col gap-4">
+    <div className="conference-table select-none">
       <div className="conference-table__layout">
         <div
           data-testid="conference-host-edge"
@@ -246,19 +200,18 @@ export function ConferenceTable({
         <div className="conference-table__surface">
           <div className="relative min-w-0 px-2 py-4 text-center sm:px-4">
             <p className="text-[clamp(0.8125rem,4.25cqi,1.25rem)] font-semibold text-techText">
-              SmartDesk 会议桌
+              会议桌
             </p>
-            <p className="desk-label mt-1">Smart Conference Table</p>
             <div
-              className={`mt-2 inline-flex max-w-full flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-full border bg-techBg/70 px-2.5 py-1 ${statusColor}`}
+              className={preparing
+                ? `mt-2 inline-flex max-w-full items-center justify-center gap-1.5 rounded-full border bg-techBg/70 px-2.5 py-1 border-techAmber/30 text-techAmber`
+                : "sr-only"}
             >
               <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
               <span className="text-xs font-semibold">
                 {preparing ? "待开始" : "会议中"}
               </span>
-              <span className="text-[9px] font-mono uppercase tracking-wider">
-                {preparing ? "Pending" : "Active Meeting"}
-              </span>
+              <span className="sr-only">{preparing ? "Pending" : "Active Meeting"}</span>
             </div>
           </div>
         </div>
@@ -276,7 +229,6 @@ export function ConferenceTable({
           ))}
         </div>
       </div>
-      <TableLegend />
     </div>
   );
 }

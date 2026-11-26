@@ -220,6 +220,10 @@ beforeEach(() => {
   mockFetch.mockReset();
 });
 
+async function openSeatView(view: "captions" | "vote" | "service") {
+  fireEvent.click(await screen.findByTestId(`seat-tab-${view}`));
+}
+
 // ── Existing Tests ──────────────────────────────────────────────────────────
 
 describe("SeatTablet - loading state", () => {
@@ -417,7 +421,7 @@ describe("SeatTablet - Android identity check-in", () => {
     });
   }
 
-  it("places the maintenance hold control after status and time in the scrolling header", async () => {
+  it("keeps the maintenance hold control reachable in the gate header", async () => {
     const beginMaintenanceHold = vi.fn();
     const cancelMaintenanceHold = vi.fn();
     installNativeBridge({
@@ -432,7 +436,7 @@ describe("SeatTablet - Android identity check-in", () => {
     const scrollContainer = screen.getByTestId("seat-page-scroll");
     expect(scrollContainer).toContainElement(button);
     expect(scrollContainer).toHaveClass("overflow-y-auto");
-    expect(button.parentElement?.lastElementChild).toBe(button);
+    expect(button.closest("header")).toBeInTheDocument();
 
     fireEvent.pointerDown(button);
     await waitFor(() => expect(beginMaintenanceHold).toHaveBeenCalledTimes(1));
@@ -447,8 +451,7 @@ describe("SeatTablet - Android identity check-in", () => {
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
-    await screen.findByText("自动人脸入座");
-    expect(screen.getByText("AUTOMATIC FACE CHECK-IN")).toBeInTheDocument();
+    expect(await screen.findByTestId("native-identity-panel")).toBeVisible();
     await waitFor(() =>
       expect(startFaceVerification).toHaveBeenCalledTimes(1),
     );
@@ -480,7 +483,8 @@ describe("SeatTablet - Android identity check-in", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => expect(debugCalls).toHaveLength(1));
-    await screen.findByText("DEBUG · 已跳过人脸验证");
+    expect(await screen.findByText("Checked In")).toBeVisible();
+    expect(screen.queryByText(/DEBUG/)).not.toBeInTheDocument();
     expect(JSON.parse(debugCalls[0].body ?? "{}")).toEqual({
       deviceId: "tablet-seat-01",
       deviceSeatId: 1,
@@ -734,7 +738,8 @@ describe("SeatTablet - Android identity check-in", () => {
       );
     });
 
-    await screen.findByText(/已验证 \/ VERIFIED.*人员编号 person_001.*相似度 0\.820.*原型验证 \/ PROTOTYPE/);
+    expect(await screen.findByText("VERIFIED")).toBeVisible();
+    expect(screen.getByTestId("native-identity-panel")).not.toHaveTextContent(/person_001|0\.820|PROTOTYPE/);
     await waitFor(() => expect(identityCalls).toHaveLength(1));
     expect(screen.queryByText("提交测试签到")).not.toBeInTheDocument();
   });
@@ -819,8 +824,9 @@ describe("SeatTablet - Android identity check-in", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
+    fireEvent.click(await screen.findByTestId("seat-options"));
     fireEvent.click(
-      await screen.findByText(/确认离席.*Confirm Vacate/),
+      await screen.findByRole("button", { name: /确认离席.*Confirm Vacate/ }),
     );
 
     await waitFor(() => expect(vacateCalls).toHaveLength(1));
@@ -846,8 +852,9 @@ describe("SeatTablet - Android identity check-in", () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
+    fireEvent.click(await screen.findByTestId("seat-options"));
     fireEvent.click(
-      await screen.findByText(/确认离席.*Confirm Vacate/),
+      await screen.findByRole("button", { name: /确认离席.*Confirm Vacate/ }),
     );
 
     expect(vacateCalls).toHaveLength(0);
@@ -1007,6 +1014,7 @@ describe("SeatTablet - voting action", () => {
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("vote");
 
     await waitFor(() => {
       expect(screen.getByText("Active Vote")).toBeInTheDocument();
@@ -1120,6 +1128,7 @@ describe("SeatTablet - voting action", () => {
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("vote");
 
     // Wait for vote section
     await waitFor(() => {
@@ -1319,6 +1328,7 @@ describe("SeatTablet - same-name attendee voting (Task 6)", () => {
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("vote");
 
     await waitFor(() => {
       expect(screen.getByText("Active Vote")).toBeInTheDocument();
@@ -1411,6 +1421,7 @@ describe("SeatTablet - service call actions", () => {
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("service");
 
     await waitFor(() => {
       expect(screen.getByText("Service Request")).toBeInTheDocument();
@@ -1493,6 +1504,7 @@ describe("SeatTablet - service call actions", () => {
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("service");
 
     await waitFor(() => {
       expect(screen.getByText(/Pending/)).toBeInTheDocument();
@@ -1722,6 +1734,7 @@ describe("SeatTablet - speech control (non-speaker)", () => {
   it("shows read-only message when seat is not speaker", async () => {
     mockNonSpeaker();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => {
       expect(
@@ -1736,6 +1749,7 @@ describe("SeatTablet - speech control (non-speaker)", () => {
   it("does not show Start button for non-speaker seat", async () => {
     mockNonSpeaker();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => {
       expect(
@@ -1808,6 +1822,38 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     await waitFor(() => {
       expect(screen.getByText("Start")).toBeInTheDocument();
     });
+  });
+
+  it("keeps the microphone on the same stream when the speaker changes views", async () => {
+    mockSpeakerCheckedIn();
+    render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+
+    const room = await screen.findByRole("tab", { name: "会场 / Room" });
+    const captions = screen.getByRole("tab", { name: "字幕 / Captions" });
+    const vote = screen.getByRole("tab", { name: "投票 / Vote" });
+    expect(room).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+
+    room.focus();
+    fireEvent.keyDown(room, { key: "ArrowRight" });
+    expect(captions).toHaveFocus();
+    expect(captions).toHaveAttribute("aria-selected", "true");
+
+    const start = screen.getByRole("button", { name: /开始识别.*Start/i });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await waitFor(() => expect(findSpeechWs()).not.toBeNull());
+    const speechSocket = findSpeechWs();
+    await connectSpeechWs();
+    expect(await screen.findByRole("button", { name: /停止.*Stop/i })).toBeVisible();
+
+    fireEvent.click(vote);
+
+    expect(vote).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /停止.*Stop/i })).toBeVisible();
+    expect(findSpeechWs()).toBe(speechSocket);
+    expect(speechSocket?.readyState).toBe(1);
   });
 
   it("calls getUserMedia when Start is clicked", async () => {
@@ -1901,9 +1947,8 @@ describe("SeatTablet - speech control (speaker seat)", () => {
 
     // Should now show recording state
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
-    expect(screen.getByText("Recording")).toBeInTheDocument();
   });
 
   it("sends PCM16 binary frames to speech WS", async () => {
@@ -1923,7 +1968,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     await connectSpeechWs();
 
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
 
     // Verify the speech WS is open and ready for binary PCM16 frames
@@ -1952,7 +1997,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     await connectSpeechWs();
 
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
 
     // Save speech WS reference before Stop.
@@ -1997,7 +2042,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     await connectSpeechWs();
 
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
 
     // Save reference before clicking Cancel
@@ -2026,6 +2071,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
   it("updates on utterance_started from speech WS and shows new utterance interim", async () => {
     mockSpeakerCheckedIn();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => {
       expect(screen.getByText("Start")).toBeInTheDocument();
@@ -2059,7 +2105,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     }
 
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
 
     // Simulate "utterance_started" — backend auto-finalised old utterance,
@@ -2240,11 +2286,8 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     });
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Chinese punctuation model unavailable — basic fallback active"),
-      ).toBeInTheDocument();
-    });
+    fireEvent.click(await screen.findByLabelText("麦克风设置 / Microphone settings"));
+    expect(await screen.findByText(/Simplified Chinese punctuation/)).toBeVisible();
   });
 
   it("disables Start and shows loading when models are loading", async () => {
@@ -2266,9 +2309,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     });
     expect(screen.queryByText(/punctuation model unavailable/i)).not.toBeInTheDocument();
 
-    // Start should not be rendered during loading (not idle)
-    // The "Waiting for speech models..." text should appear instead
-    expect(screen.getByText("Waiting for speech models...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /开始识别.*Start/ })).toBeDisabled();
   });
 
   it("disables Start and shows speech loading message when models are in error state", async () => {
@@ -2284,7 +2325,7 @@ describe("SeatTablet - speech control (speaker seat)", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Speech models loading...")).toBeInTheDocument();
+      expect(screen.getByText("Loading models")).toBeInTheDocument();
     });
 
     // Start button IS rendered but DISABLED when models not ready
@@ -2360,6 +2401,7 @@ describe("SeatTablet - closed vote results", () => {
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("vote");
 
     await waitFor(() => {
       expect(screen.getByText("Final Result")).toBeInTheDocument();
@@ -2452,6 +2494,7 @@ describe("SeatTablet - live caption display", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send translation_interim with caption via meeting WS
     await act(async () => {
@@ -2499,6 +2542,7 @@ describe("SeatTablet - live caption display", () => {
     mockSpeakerWithCaption();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+    await openSeatView("captions");
 
     const ws = findMeetingWs();
     await act(async () => {
@@ -2567,6 +2611,7 @@ describe("SeatTablet - live caption display", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send translation_interim WITHOUT caption field
     await act(async () => {
@@ -2610,6 +2655,7 @@ describe("SeatTablet - live caption display", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send translation_interim WITH caption but both lines empty
     await act(async () => {
@@ -2703,6 +2749,7 @@ describe("SeatTablet - live caption display", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send translation_interim with caption
     await act(async () => {
@@ -2932,6 +2979,7 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => {
       expect(screen.getByText(/Seat 1/)).toBeInTheDocument();
@@ -3009,6 +3057,7 @@ describe("SeatTablet - meeting-wide translations (Task 7)", () => {
     });
 
     render(<SeatTablet seatId={2} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => {
       expect(screen.getByText(/Seat 2/)).toBeInTheDocument();
@@ -3087,6 +3136,7 @@ describe("SeatTablet - speech lifecycle audit (Task 125)", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send interim with caption
     await act(async () => {
@@ -3185,6 +3235,7 @@ describe("SeatTablet - speech lifecycle audit (Task 125)", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send interim with caption
     await act(async () => {
@@ -3256,6 +3307,7 @@ describe("SeatTablet - speech lifecycle audit (Task 125)", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send interim
     await act(async () => {
@@ -3409,7 +3461,7 @@ describe("SeatTablet - speech lifecycle audit (Task 125)", () => {
     await connectSpeechWs();
 
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
 
     // Save speech WS reference before Stop
@@ -3484,7 +3536,7 @@ describe("SeatTablet - speech lifecycle audit (Task 125)", () => {
     await connectSpeechWs();
 
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
 
     const speechWs = findSpeechWs();
@@ -3547,6 +3599,7 @@ describe("SeatTablet - speech lifecycle fixes (Task 126)", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send interim for utt_t126_final
     await act(async () => {
@@ -3646,6 +3699,7 @@ describe("SeatTablet - speech lifecycle fixes (Task 126)", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send interim
     await act(async () => {
@@ -3738,6 +3792,7 @@ describe("SeatTablet - speech lifecycle fixes (Task 126)", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send interim for new utterance
     await act(async () => {
@@ -3777,6 +3832,7 @@ describe("SeatTablet - speech lifecycle fixes (Task 126)", () => {
     mockSpeakerWithCaption();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+    await openSeatView("captions");
 
     const payload = {
       utterance_id: "utt_1_1_000001",
@@ -3822,6 +3878,7 @@ describe("SeatTablet - speech lifecycle fixes (Task 126)", () => {
     await waitFor(() => {
       expect(screen.getByText("Alice Wang")).toBeInTheDocument();
     });
+    await openSeatView("captions");
 
     // Send interim
     await act(async () => {
@@ -3963,7 +4020,7 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
 
     // Should now be recording
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
 
     // Click Stop
@@ -4007,7 +4064,7 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
     await connectSpeechWs();
 
     await waitFor(() => {
-      expect(screen.getByText("Streaming audio...")).toBeInTheDocument();
+      expect(screen.getByText("Recording")).toBeInTheDocument();
     });
 
     // Click Stop — checking behavior DURING the 2s stopping window
@@ -4038,6 +4095,7 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
   it("[Task129-3] new utterance interim still shows after Stop→idle cycle", async () => {
     mockSpeaker();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => {
       expect(screen.getByText("Start")).toBeInTheDocument();
@@ -4047,7 +4105,7 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
     const startBtn = screen.getByText("Start");
     await act(async () => { startBtn.click(); });
     await connectSpeechWs();
-    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Recording")).toBeInTheDocument());
 
     const stopBtn = screen.getByText("Stop");
     await act(async () => { stopBtn.click(); });
@@ -4096,6 +4154,7 @@ describe("SeatTablet - speech stability (Task 129-lite)", () => {
     mockSpeaker();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+    await openSeatView("captions");
     await waitFor(() => expect(findMeetingWs()?.onmessage).toBeTypeOf("function"));
 
     const send = (event: string, payload: Record<string, unknown>) => {
@@ -4265,43 +4324,25 @@ describe("SeatTablet - current topic display (Phase 3)", () => {
     expect(screen.getByText(/2 \/ 3/)).toBeInTheDocument();
   });
 
-  it("re-fetches agendas on agenda_updated WS event", async () => {
-    let fetchCount = 0;
-    mockFetch.mockImplementation((url: string) => {
-      fetchCount++;
-      if (url === "/api/meetings/active") {
-        return okResponse({ id: 1, title: "Board Meeting", status: "active", started_at: "2026-01-01T10:00:00Z" });
-      }
-      if (url === "/api/seats") {
-        return okResponse(Array.from({ length: 10 }, (_, i) => ({
-          seat_id: i + 1, status: "vacant" as const, attendee_id: null, updated_at: "2026-01-01T00:00:00Z",
-        })));
-      }
-      if (url === "/api/seats/speaker") return okResponse({ seat_id: null });
-      if (url === "/api/votes/active") return okResponse(null);
-      if (url === "/api/meetings/1/attendees") return okResponse([]);
-      if (url === "/api/meetings/1/agendas") return okResponse([]);
-      if (url.includes("/api/service-calls/current")) return okResponse(null);
-      if (url.includes("/api/translations")) return okResponse({ meeting_id: 1, entries: [] });
-      return okResponse(null);
-    });
-
+  it("updates the agenda when an unrelated vote snapshot is slow", async () => {
+    const agendas = [
+      { id: 1, meeting_id: 1, title: "Opening Remarks", sort_order: 1, status: "active" },
+    ];
+    mockActiveMeetingWithAgendas(agendas);
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await screen.findByRole("heading", { name: "Opening Remarks" });
+    await waitFor(() => expect(findMeetingWs()).not.toBeNull());
 
-    await waitFor(() => {
-      expect(screen.getByText(/Seat 1/)).toBeInTheDocument();
-    });
+    agendas.splice(0, 1, { id: 2, meeting_id: 1, title: "Financial Review", sort_order: 2, status: "active" });
+    const currentFetch = mockFetch.getMockImplementation()!;
+    mockFetch.mockImplementation((url: string) => url === "/api/votes/active"
+      ? new Promise(() => {})
+      : currentFetch(url));
+    mockFetch.mockClear();
+    await triggerWsEvent("agenda_updated", 1, {});
 
-    const initialFetches = fetchCount;
-
-    // Simulate agenda_updated event via meeting WS
-    await act(async () => {
-      await triggerWsEvent("agenda_updated", 1, {});
-      await new Promise((r) => setTimeout(r, 100));
-    });
-
-    // Should have triggered additional fetches
-    expect(fetchCount).toBeGreaterThan(initialFetches);
+    expect(await screen.findByRole("heading", { name: "Financial Review" })).toBeVisible();
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual(["/api/meetings/1/agendas"]);
   });
 
   it("hides the current topic while the seat is gated", async () => {
@@ -4379,12 +4420,13 @@ describe("SeatTablet - speech local cleanup (Task 127A)", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+    await openSeatView("captions");
 
     // Start speech
     const startBtn = screen.getByText("Start");
     await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
     await connectSpeechWs();
-    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Recording")).toBeInTheDocument());
 
     // Send interim with caption via meeting WS
     await act(async () => {
@@ -4440,12 +4482,13 @@ describe("SeatTablet - speech local cleanup (Task 127A)", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+    await openSeatView("captions");
 
     // Start speech
     const startBtn = screen.getByText("Start");
     await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
     await connectSpeechWs();
-    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Recording")).toBeInTheDocument());
 
     // Send interim
     await act(async () => {
@@ -4519,12 +4562,13 @@ describe("SeatTablet - speech local cleanup (Task 127A)", () => {
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByText("Alice Wang")).toBeInTheDocument());
+    await openSeatView("captions");
 
     // Start speech
     const startBtn = screen.getByText("Start");
     await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
     await connectSpeechWs();
-    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Recording")).toBeInTheDocument());
 
     // Send interim for first utterance
     await act(async () => {
@@ -4600,13 +4644,14 @@ describe("SeatTablet - speech local cleanup (Task 127A)", () => {
   it("[T127A-4] Stop timeout removes live caption after 2 seconds", async () => {
     mockSpeakerWithCaption();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => expect(screen.getByText("Start")).toBeInTheDocument());
 
     const startBtn = screen.getByText("Start");
     await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
     await connectSpeechWs();
-    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Recording")).toBeInTheDocument());
 
     // Send interim
     await act(async () => {
@@ -4664,13 +4709,14 @@ describe("SeatTablet - speech local cleanup (Task 127A)", () => {
   it("[T127A-5] late translation_interim after Stop timeout does not re-create live caption", async () => {
     mockSpeakerWithCaption();
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => expect(screen.getByText("Start")).toBeInTheDocument());
 
     const startBtn = screen.getByText("Start");
     await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
     await connectSpeechWs();
-    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Recording")).toBeInTheDocument());
 
     // Send interim
     await act(async () => {
@@ -4789,13 +4835,14 @@ describe("SeatTablet - speech local cleanup (Task 127A)", () => {
     });
 
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
 
     await waitFor(() => expect(screen.getByText("Start")).toBeInTheDocument());
 
     const startBtn = screen.getByText("Start");
     await act(async () => { startBtn.click(); await new Promise((r) => setTimeout(r, 50)); });
     await connectSpeechWs();
-    await waitFor(() => expect(screen.getByText("Streaming audio...")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Recording")).toBeInTheDocument());
 
     // Send interim
     await act(async () => {
@@ -4883,6 +4930,7 @@ describe("SeatTablet - sentence lyric events", () => {
   it("shows the sentence-bound translation received on the meeting socket", async () => {
     mockFetch.mockImplementation(createSeatMock("checked_in"));
     render(<SeatTablet seatId={1} onSwitchToAdmin={vi.fn()} />);
+    await openSeatView("captions");
     await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
 
     const base = {

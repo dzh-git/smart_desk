@@ -27,9 +27,9 @@ test.describe("SmartDesk spatial rendering", () => {
     })).toBe(true);
     await canvas.evaluate((element) => { element.dataset.spatialTestIdentity = "shared"; });
 
-    await page.getByRole("button", { name: /Agenda & Vote/i }).click();
+    await page.getByRole("button", { name: "议程 / Agenda" }).click();
     await expect(stage).toHaveAttribute("data-mode", "agenda");
-    await page.getByRole("button", { name: /Service & Records/i }).click();
+    await page.getByRole("button", { name: "服务 / Services" }).click();
     await expect(stage).toHaveAttribute("data-mode", "service");
     await page.getByRole("button", { name: /Overview/i }).click();
     await expect(stage).toHaveAttribute("data-mode", "room");
@@ -47,6 +47,7 @@ test.describe("SmartDesk spatial rendering", () => {
     const after = await canvas.screenshot({ scale: "css" });
     expect(before.equals(after)).toBe(false);
 
+    await page.getByLabel("更多会议操作 / More meeting actions").click();
     await page.getByRole("button", { name: /Open seat 2/i }).click();
     await expect(page).toHaveURL(/\/seat\/2$/);
     await expect(stage).toHaveAttribute("data-mode", "station");
@@ -80,6 +81,7 @@ test.describe("SmartDesk spatial rendering", () => {
     await expect(page.getByTestId("spatial-stage")).toHaveAttribute("data-renderer", "fallback");
     await page.getByTestId("conference-seat-2").click();
     await expect(page.getByTestId("seat-assignment-select")).toBeVisible();
+    await page.getByLabel("更多会议操作 / More meeting actions").click();
     await expect(page.getByRole("button", { name: /End Meeting/i })).toBeEnabled();
   });
 });

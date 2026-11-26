@@ -53,6 +53,7 @@ async function verifySpeech(
     const result = (name: string) => events.find((event) =>
       event.event === name && event.payload.utterance_id === utteranceId)?.payload;
     await expect.poll(() => result("translation_interim")?.source_lang, { timeout: 18_000 }).toBe(language);
+    await seat.getByTestId("seat-tab-captions").click();
     await expect(seat.locator(
       `[data-testid="live-caption"][data-seat-id="${seatId}"], [data-testid="live-lyrics"][data-seat-id="${seatId}"]`,
     ).first()).toBeVisible();
@@ -152,7 +153,7 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   await expect(secondSeat.getByText("Checked In", { exact: true })).toBeVisible();
   const meetingId: number = (await (await request.get("/api/meetings/active")).json()).data.id;
 
-  await admin.getByRole("button", { name: /Agenda & Vote/i }).click();
+  await admin.getByRole("button", { name: "议程 / Agenda" }).click();
   for (const topic of topics) {
     await admin.getByPlaceholder(/TOPIC TITLE/).fill(topic);
     await admin.getByRole("button", { name: "添加 / ADD", exact: true }).click();
@@ -162,7 +163,7 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
     await admin.getByRole("button", { name: new RegExp(topic) }).click();
     await admin.getByRole("button", { name: /SET CURRENT/ }).click();
     await expect(seat.getByText(topic, { exact: true })).toBeVisible();
-    await expect(display.getByTestId("display-agenda-panel").getByText(topic, { exact: true })).toHaveCount(2);
+    await expect(display.getByTestId("display-focus").getByRole("heading", { name: topic })).toBeVisible();
   }
   await admin.getByRole("button", { name: /SKIP$/ }).click();
   await expect(admin.getByRole("button", { name: new RegExp(`${topics[2]}.*Skipped`, "i") })).toBeVisible();
@@ -170,7 +171,7 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   await admin.getByRole("button", { name: /Overview/i }).click();
   await admin.getByTestId("conference-seat-2").click();
   await admin.getByRole("button", { name: /Set Speaker/ }).click();
-  await expect(seat.getByText("Speaking", { exact: true })).toBeVisible();
+  await expect(seat.getByRole("region", { name: "麦克风 / Microphone" })).toBeVisible();
   const finals: SpeechResult[] = [];
   if (englishPCM && baseURL) {
     await expect.poll(async () => {
@@ -181,14 +182,15 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   }
   await admin.getByTestId("conference-seat-3").click();
   await admin.getByRole("button", { name: /Set Speaker/ }).click();
-  await expect(secondSeat.getByText("Speaking", { exact: true })).toBeVisible();
-  await expect(seat.getByText("Speaking", { exact: true })).toHaveCount(0);
+  await expect(secondSeat.getByRole("region", { name: "麦克风 / Microphone" })).toBeVisible();
+  await expect(seat.getByRole("region", { name: "麦克风 / Microphone" })).toHaveCount(0);
   if (englishPCM && baseURL) {
     finals.push(await verifySpeech(secondSeat, request, baseURL, meetingId, 3, "en", englishPCM));
   }
 
-  await admin.getByRole("button", { name: /Agenda & Vote/i }).click();
+  await admin.getByRole("button", { name: "投票 / Voting" }).click();
   await admin.getByRole("button", { name: /Create Vote/i }).click();
+  await seat.getByTestId("seat-tab-vote").click();
   await seat.getByRole("button", { name: "同意 / Approve", exact: true }).click();
   await seat.getByRole("button", { name: /Submit Vote/ }).click();
   await expect(display.getByText(/1 票.*100%/)).toBeVisible();
@@ -203,11 +205,13 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   await expect(display.getByText("Vote Result", { exact: true })).toBeVisible();
   await expect(seat.getByRole("button", { name: /Submit Vote|Update Vote/ })).toHaveCount(0);
 
+  await seat.getByTestId("seat-tab-service").click();
   await seat.getByRole("button", { name: /Coffee/i }).click();
-  await admin.getByRole("button", { name: /Service & Records/i }).click();
+  await admin.getByRole("button", { name: "服务 / Services" }).click();
   await admin.getByRole("button", { name: "Resolve" }).click();
   await expect(admin.getByText("Resolved", { exact: true })).toBeVisible();
 
+  await admin.getByLabel("更多会议操作 / More meeting actions").click();
   await admin.getByRole("button", { name: /End Meeting/i }).click();
   await expect(display.getByText("Meeting Ended", { exact: true })).toBeVisible();
   await expect(seat.getByText(/Waiting for Meeting/)).toBeVisible();
@@ -219,6 +223,7 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   }
   await display.reload();
   await expect(display.getByText("Vote Result", { exact: true })).toBeVisible();
+  await admin.getByRole("button", { name: "记录 / Records" }).click();
   for (const final of finals) {
     await expect(admin.locator(`[data-testid="transcript-final"][data-utterance-id="${final.utterance_id}"]`))
       .toContainText(final.translated_text);

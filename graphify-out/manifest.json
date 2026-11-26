@@ -480,9 +480,9 @@
     "semantic_hash": "2682c143cf47d5014fd6aab7e0bb7d4b"
   },
   "new_coding_desk/frontend/e2e/deterministic-caption.spec.ts": {
-    "mtime": 1795532241.9517033,
-    "seen": 1795533883.018694,
-    "ast_hash": "dfdcf45a795e425cd4a3c9b16bdddce8",
+    "mtime": 1795715849.3352556,
+    "seen": 1795716394.1951675,
+    "ast_hash": "099b45a13ba98cdfbc9286e11d4d17ae",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/screen-stream-review.spec.ts": {
@@ -492,9 +492,9 @@
     "semantic_hash": "0fb97a64bd318f61905318c39606ad8e"
   },
   "new_coding_desk/frontend/e2e/speech-consistency.spec.ts": {
-    "mtime": 1795532241.9518695,
-    "seen": 1795533883.0187008,
-    "ast_hash": "1b265448c445c59e8ad318f2a05be1fc",
+    "mtime": 1795715849.3364348,
+    "seen": 1795716394.1952436,
+    "ast_hash": "19ab90bee18b481ced84fb7826d02c5b",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/task1-ended-meeting.spec.ts": {
@@ -588,27 +588,27 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/App.test.tsx": {
-    "mtime": 1795533341.6686234,
-    "seen": 1795533883.0187218,
-    "ast_hash": "8d52aa4f9ce80b857ffe63272033affe",
+    "mtime": 1795706841.2807012,
+    "seen": 1795716394.1957731,
+    "ast_hash": "ffb073569ca2486120ddcfaa7d87b4b4",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/DisplayView.test.tsx": {
-    "mtime": 1795532626.91681,
-    "seen": 1795533883.018723,
-    "ast_hash": "bfe5aa8fe93b404753767a8adf5b6f57",
+    "mtime": 1795706774.245586,
+    "seen": 1795716394.195775,
+    "ast_hash": "8c2e4387ec39221fb1fffeef68fa3cf6",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/admin.test.tsx": {
-    "mtime": 1795533984.3123636,
-    "seen": 1795611916.4063292,
-    "ast_hash": "536777a7432f4c9f11838e253bfce5a1",
+    "mtime": 1795716210.2130263,
+    "seen": 1795716394.1957765,
+    "ast_hash": "ac9f9e05d056d3fde706d2164fb37634",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/host-display-control-review.test.tsx": {
-    "mtime": 1795532241.9539242,
-    "seen": 1795533883.0187285,
-    "ast_hash": "75f499f263dfa73a2b668d53a858970b",
+    "mtime": 1795716114.6205068,
+    "seen": 1795716394.195849,
+    "ast_hash": "e839241efa4001d39ac4bb9935f0fd12",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/resources-control.test.ts": {
@@ -618,15 +618,15 @@
     "semantic_hash": "b6f34932a3a385dbe3fc18c3727aeeef"
   },
   "new_coding_desk/frontend/src/__tests__/screen-view-review.test.tsx": {
-    "mtime": 1795533985.560374,
-    "seen": 1795611916.4065206,
-    "ast_hash": "8058108ceee34cb12b167065f545f3b5",
+    "mtime": 1795706487.7517612,
+    "seen": 1795716394.1958878,
+    "ast_hash": "315b7baf179092db2bf5866af4fb7a42",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/seat.test.tsx": {
-    "mtime": 1795533692.3778923,
-    "seen": 1795533883.0187335,
-    "ast_hash": "6f6f714cd6907c122525876563086921",
+    "mtime": 1795707149.9490645,
+    "seen": 1795716394.1958897,
+    "ast_hash": "deb1b9a95856807ebe95dd48b7178f47",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/speechTrace.test.ts": {
@@ -708,15 +708,15 @@
     "semantic_hash": "ed481375583d9fc714522d23688e19a6"
   },
   "new_coding_desk/frontend/src/components/AdminDashboard.tsx": {
-    "mtime": 1795619469.344565,
-    "seen": 1795619854.7926052,
-    "ast_hash": "a5b62b29a28fc1b86978da582f418e85",
+    "mtime": 1795716172.8408232,
+    "seen": 1795716394.1964412,
+    "ast_hash": "150b3d92943e2ecf31ad46aee7d74e68",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AdminHeader.tsx": {
-    "mtime": 1795532964.875705,
-    "seen": 1795533883.0187953,
-    "ast_hash": "7ad9e7025ae3bb86ab45cd5e23ecdfe6",
+    "mtime": 1795706535.2110643,
+    "seen": 1795716394.1964428,
+    "ast_hash": "7f1523bcc5375ec3f3352d126fe4460c",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AgendaPanel.tsx": {
@@ -726,15 +726,15 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ConferenceTable.tsx": {
-    "mtime": 1795533310.9386587,
-    "seen": 1795533883.0187976,
-    "ast_hash": "83d16caccfa7867dc05b52327302d661",
+    "mtime": 1795707036.2927952,
+    "seen": 1795716394.19648,
+    "ast_hash": "994f011cf865a690177470005b4dbc76",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/DisplayView.tsx": {
-    "mtime": 1795619265.7054722,
-    "seen": 1795619854.7927082,
-    "ast_hash": "da74bf783b7b92376cca091627dbf43b",
+    "mtime": 1795706904.6303227,
+    "seen": 1795716394.1964817,
+    "ast_hash": "9c24ec74077cad26f2da675968cc45a8",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HardwareStatus.tsx": {
@@ -744,9 +744,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HostDisplayControl.tsx": {
-    "mtime": 1795532241.956043,
-    "seen": 1795533883.0188031,
-    "ast_hash": "59d5b9e170a220e3dfe3b6c8e5999073",
+    "mtime": 1795716174.9928348,
+    "seen": 1795716394.196582,
+    "ast_hash": "ec34eac0b836efbc793419a9cb3938e3",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/MeetingResultPanel.tsx": {
@@ -756,15 +756,15 @@
     "semantic_hash": "5bd5b9ba073ee92cb3e5346163895c5c"
   },
   "new_coding_desk/frontend/src/components/ScreenView.tsx": {
-    "mtime": 1795619267.1294665,
-    "seen": 1795619854.792887,
-    "ast_hash": "4ff019497e9e9d6469acab640cdd6713",
+    "mtime": 1795706621.0212727,
+    "seen": 1795716394.1966207,
+    "ast_hash": "4013d792b7fc992f710cf041e9be8e34",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/SeatTablet.tsx": {
-    "mtime": 1795619366.7730415,
-    "seen": 1795619854.7928889,
-    "ast_hash": "538d87d244f47f5a202125cc06c3574e",
+    "mtime": 1795706842.101972,
+    "seen": 1795716394.1966226,
+    "ast_hash": "7def504f53fd98ea5fa49300f9480350",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ServicePanel.tsx": {
@@ -810,9 +810,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/hooks/useSeatData.ts": {
-    "mtime": 1795533221.485392,
-    "seen": 1795533883.0188236,
-    "ast_hash": "6c611ecafab7baadb5c93b10a2805487",
+    "mtime": 1795707182.2918785,
+    "seen": 1795716394.1970117,
+    "ast_hash": "d3858b0912509eaae3e2560f19155f08",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/hooks/useSpeechStream.ts": {
@@ -1404,9 +1404,9 @@
     "semantic_hash": "7a380495b6b2862564d3e278b1478f24"
   },
   "new_coding_desk/docs/DEMO_RUNBOOK.md": {
-    "mtime": 1795652963.0422313,
-    "seen": 1795652980.5203078,
-    "ast_hash": "1956c9e0e8eadd00b7b4db79084a69eb",
+    "mtime": 1795715933.3481212,
+    "seen": 1795716394.2587905,
+    "ast_hash": "4a18d45dde637cc07b5bc557c213b891",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/EVENT_BUS_SPEC.md": {
@@ -1428,9 +1428,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/docs/FRONTEND_VISUAL_SPEC.md": {
-    "mtime": 1795619585.0600212,
-    "seen": 1795619854.7999609,
-    "ast_hash": "dd24dd6883efd6675993ae0ed0d95e87",
+    "mtime": 1795715933.347836,
+    "seen": 1795716394.258989,
+    "ast_hash": "0db873b8da5bfbfb6d60c4e1c54e060d",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/HOST_DISPLAY_CONTRACT.md": {
@@ -3048,15 +3048,15 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/host-tablet-console.test.tsx": {
-    "mtime": 1795532241.9539242,
-    "seen": 1795533883.01873,
-    "ast_hash": "987e8508a19068770a928fdca2b87229",
+    "mtime": 1795716407.1100996,
+    "seen": 1795716451.3249116,
+    "ast_hash": "0b0350dd7ef3c5d61ea66666b6f4236e",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HostTabletConsole.tsx": {
-    "mtime": 1795619268.65346,
-    "seen": 1795619854.7928112,
-    "ast_hash": "8a1d9c4f9eecc1850077dc21ed0a0fea",
+    "mtime": 1795716414.356812,
+    "seen": 1795716451.325871,
+    "ast_hash": "7c4447f86c68361ec9226630b74438f6",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_host_display_activation.py": {
@@ -3222,9 +3222,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/presentation-flow.spec.ts": {
-    "mtime": 1795653185.0837662,
-    "seen": 1795653194.7884874,
-    "ast_hash": "fb8820940088011bda2da25bada26c98",
+    "mtime": 1795715849.333915,
+    "seen": 1795716394.1951704,
+    "ast_hash": "8c694fafc5f4fd8ed15a31ad82986047",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_meetings_router.py": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/spatial-rendering.spec.ts": {
-    "mtime": 1795619886.4946287,
-    "seen": 1795619964.0823257,
-    "ast_hash": "f6216a5657c9695648b8163a8302a492",
+    "mtime": 1795706841.2814388,
+    "seen": 1795716394.1952417,
+    "ast_hash": "c3e3868b8e76fd91b02e6ed4ecc07bd3",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/SpatialProvider.tsx": {
@@ -3318,9 +3318,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/SpatialStage.tsx": {
-    "mtime": 1795619471.264553,
-    "seen": 1795619854.794454,
-    "ast_hash": "8fcf4e781167a73cd5541cd5bdf2f679",
+    "mtime": 1795706589.0644412,
+    "seen": 1795716394.197353,
+    "ast_hash": "16450ade6d23b0dedda65857a94967d1",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/__tests__/director.test.ts": {
@@ -3414,9 +3414,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/docs/SPATIAL_UI.md": {
-    "mtime": 1795652961.4022202,
-    "seen": 1795652980.5204782,
-    "ast_hash": "5077070a6d09ae5a4a99d340add287ae",
+    "mtime": 1795715933.3486478,
+    "seen": 1795716394.2590263,
+    "ast_hash": "21f40d43d1001e73b65d7796f82c4eee",
     "semantic_hash": ""
   },
   "docs/integration/spatial-presentation/admin.webp": {
@@ -3465,6 +3465,72 @@
     "mtime": 1795619931.3104231,
     "seen": 1795619964.0934155,
     "ast_hash": "ab5fd543097c75c1dbce1a3471708f00",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/README.md": {
+    "mtime": 1795715933.3549988,
+    "seen": 1795716394.2583337,
+    "ast_hash": "074b26c4373d09f6fc5f6bd81a00522e",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/admin-agenda.webp": {
+    "mtime": 1795716315.0255973,
+    "seen": 1795716394.2597053,
+    "ast_hash": "bd73ac9e246868ba617a45adc4a2d613",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/admin-people.webp": {
+    "mtime": 1795716315.321599,
+    "seen": 1795716394.2597075,
+    "ast_hash": "3cf10664fa9854752955aeab6b014f6c",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/admin-vote.webp": {
+    "mtime": 1795716315.1895983,
+    "seen": 1795716394.2597094,
+    "ast_hash": "1f93dcc56697dc3c26a1f425a97ea8c9",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/admin.webp": {
+    "mtime": 1795716314.8895967,
+    "seen": 1795716394.2597115,
+    "ast_hash": "dea88316cf57c72181c4e24aa4649ebd",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/display.webp": {
+    "mtime": 1795716316.0256028,
+    "seen": 1795716394.259713,
+    "ast_hash": "f82cf56d731acb37af6d1c533022de3e",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/host.webp": {
+    "mtime": 1795716315.4655998,
+    "seen": 1795716394.2597144,
+    "ast_hash": "8da23ddd9277698ceb67ca8f387c8688",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/screen.webp": {
+    "mtime": 1795716316.1776037,
+    "seen": 1795716394.2597153,
+    "ast_hash": "de152eab5ae21cce3a34c2a7d8bc12c1",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/seat-mobile.webp": {
+    "mtime": 1795716315.8136017,
+    "seen": 1795716394.2597167,
+    "ast_hash": "e70e25ac4568b45901708eb27b2b88d0",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/seat-vote.webp": {
+    "mtime": 1795716315.7696013,
+    "seen": 1795716394.2597182,
+    "ast_hash": "e600cf663e69b0c7b69bd40ef81fa13f",
+    "semantic_hash": ""
+  },
+  "docs/integration/focused-presentation/seat.webp": {
+    "mtime": 1795716315.6176007,
+    "seen": 1795716394.2597194,
+    "ast_hash": "8dc10ea60a11ae53ecefc760c991c99c",
     "semantic_hash": ""
   },
   "android_tablet/diagnostic-web/package-lock.json": {

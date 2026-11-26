@@ -195,14 +195,4 @@
     }
   }
 
-  @container (max-width: 24rem) {
-    .conference-table__seat-status-en {
-      display: none;
-    }
-
-    .conference-table__surface .desk-label {
-      font-size: 0.625rem;
-      letter-spacing: 0.08em;
-    }
-  }
 }

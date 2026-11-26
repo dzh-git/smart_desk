@@ -1,5 +1,5 @@
 /**
- * Phase 5 — Host Display Control card for /admin Overview workspace.
+ * Host Display Control for the host toolbar.
  *
  * Self-contained component that:
  *  - Reads display status via fetchHostDisplayStatus() (raw JSON, no envelope).
@@ -91,8 +91,10 @@ export interface HostTabletDisplayAccess {
 
 export function HostDisplayControl({
   tabletAccess,
+  statusRefresh = 0,
 }: {
   tabletAccess?: HostTabletDisplayAccess;
+  statusRefresh?: number;
 }) {
   const [status, setStatus] = useState<HostDisplayStatus | null>(null);
   const [agentReachable, setAgentReachable] = useState(false);
@@ -100,15 +102,14 @@ export function HostDisplayControl({
   const [activateError, setActivateError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
-  // ── Fetch status and probe loopback agent on mount ──────────────────────
-
   useEffect(() => {
+    let probing = true;
     mountedRef.current = true;
 
     // Read-only status from the SmartDesk backend (raw JSON, no envelope).
     fetchHostDisplayStatus()
       .then((data) => {
-        if (mountedRef.current) setStatus(data);
+        if (probing) setStatus(data);
       })
       .catch(() => {
         /* Backend may be offline — component shows fallback values */
@@ -116,6 +117,7 @@ export function HostDisplayControl({
 
     if (tabletAccess) {
       return () => {
+        probing = false;
         mountedRef.current = false;
       };
     }
@@ -130,27 +132,30 @@ export function HostDisplayControl({
         const res = await fetch("http://127.0.0.1:8766/status", {
           signal: controller.signal,
         });
-        if (!mountedRef.current) return;
+        if (!probing) return;
         if (!res.ok) {
           setAgentReachable(false);
           return;
         }
         const body: unknown = await res.json();
-        if (mountedRef.current) {
+        if (probing) {
           const agentBody = body as AgentStatusBody;
           setAgentReachable(agentBody.agent_state === "online");
         }
       } catch {
-        if (mountedRef.current) setAgentReachable(false);
+        if (probing) setAgentReachable(false);
+      } finally {
+        clearTimeout(timeoutId);
       }
     })();
 
     return () => {
+      probing = false;
       mountedRef.current = false;
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [tabletAccess]);
+  }, [statusRefresh, tabletAccess]);
 
   useEffect(() => {
     if (tabletAccess) {

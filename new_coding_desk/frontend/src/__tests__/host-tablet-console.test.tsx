@@ -21,7 +21,7 @@ vi.mock("../components/AdminDashboard", () => ({
     <div data-testid="admin-dashboard">
       HOST ADMIN
       <section data-testid="mock-overview">{hostSeatCheckIn}</section>
-      <section data-testid="mock-service-records">{hostSpeechControl}</section>
+      <section data-testid="mock-toolbar">{hostSpeechControl}</section>
     </div>
   ),
 }));
@@ -221,22 +221,25 @@ describe("HostTabletConsole", () => {
     mocks.useSeatData.mockReturnValue(checkedInSeatData(1));
     render(<HostTabletConsole />);
 
+    fireEvent.click(await screen.findByLabelText("主持席麦克风 / Host Microphone"));
     expect(await screen.findByRole("button", { name: /开始识别/ })).toBeEnabled();
   });
 
-  it("moves enabled host speech recognition out of overview into service records", async () => {
+  it("keeps host speech recognition in the toolbar across workspaces", async () => {
     installNative();
     mocks.useSeatData.mockReturnValue(checkedInSeatData(1));
     render(<HostTabletConsole />);
 
     const overview = await screen.findByTestId("mock-overview");
-    const serviceRecords = screen.getByTestId("mock-service-records");
+    const toolbar = screen.getByTestId("mock-toolbar");
+    expect(within(toolbar).getByRole("button", { name: /开始识别/, hidden: true })).not.toBeVisible();
+    fireEvent.click(within(toolbar).getByLabelText("主持席麦克风 / Host Microphone"));
     expect(
       within(overview).queryByRole("button", { name: /开始识别/ }),
     ).not.toBeInTheDocument();
     expect(
-      within(serviceRecords).getByRole("button", { name: /开始识别/ }),
-    ).toBeEnabled();
+      within(toolbar).getByRole("button", { name: /开始识别/ }),
+    ).toBeVisible();
   });
 
   it("keeps speech read-only until speaker Seat 1 has checked in", async () => {
@@ -247,7 +250,7 @@ describe("HostTabletConsole", () => {
     expect(await screen.findByText(/仅当前发言席可识别/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /开始识别/ })).not.toBeInTheDocument();
   });
-  it("shows live similarity, threshold, sample progress, and qualifying frames", async () => {
+  it("keeps face diagnostics hidden until verification details are opened", async () => {
     installNative();
     render(<HostTabletConsole />);
 
@@ -272,7 +275,11 @@ describe("HostTabletConsole", () => {
     }));
     });
 
-    expect(await screen.findByTestId("face-live-similarity")).toHaveTextContent("0.647");
+    expect(await screen.findByTestId("face-live-similarity")).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "取消验证" })).toBeVisible();
+    fireEvent.click(screen.getByText("验证详情"));
+    expect(screen.getByTestId("face-live-similarity")).toBeVisible();
+    expect(screen.getByTestId("face-live-similarity")).toHaveTextContent("0.647");
     expect(screen.getByTestId("face-threshold")).toHaveTextContent("0.550");
     expect(screen.getByTestId("face-sample-progress")).toHaveTextContent("3/5");
     expect(screen.getByTestId("face-qualified-frames")).toHaveTextContent("2/4");

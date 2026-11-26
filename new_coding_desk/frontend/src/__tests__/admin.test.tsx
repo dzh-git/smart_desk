@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
+import { within, render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { AdminDashboard } from "../components/AdminDashboard";
 import { parseBackendDate, formatTranscriptTime, formatDuration } from "../components/shared";
 
@@ -183,18 +183,20 @@ describe("AdminDashboard - data loading", () => {
 
     // Switch to agenda_vote workspace to check agenda and vote panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.getByText("Financial Review")).toBeInTheDocument();
-    expect(screen.getByText("暂无投票", { exact: true })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "投票 / Voting" }));
+    expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toBeVisible();
 
     // Switch to service_records workspace to check service and transcript panels
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "服务 / Services" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.getByText(/Coffee.*Seat 2/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "记录 / Records" }));
     expect(screen.getByText("Good morning everyone")).toBeInTheDocument();
   });
 
@@ -307,7 +309,7 @@ describe("AdminDashboard - no mock behaviors", () => {
 
     // Switch to agenda_vote workspace to access vote panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "投票 / Voting" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -347,7 +349,7 @@ describe("AdminDashboard - no mock behaviors", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "投票 / Voting" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -393,7 +395,7 @@ describe("AdminDashboard - no mock behaviors", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "投票 / Voting" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -444,7 +446,7 @@ describe("AdminDashboard - create vote", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "投票 / Voting" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -497,7 +499,7 @@ describe("AdminDashboard - create vote", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "投票 / Voting" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -577,7 +579,7 @@ describe("AdminDashboard - create vote", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "投票 / Voting" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -650,7 +652,7 @@ describe("AdminDashboard - close vote", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "投票 / Voting" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -699,7 +701,7 @@ describe("AdminDashboard - resolve service call", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "服务 / Services" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -751,7 +753,7 @@ describe("AdminDashboard - WebSocket refresh after admin actions", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "投票 / Voting" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -798,7 +800,7 @@ describe("AdminDashboard - WebSocket refresh after admin actions", () => {
       expect(screen.getByText("Test")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "服务 / Services" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1165,11 +1167,12 @@ describe("AdminDashboard - bilingual titles", () => {
     });
 
     // Chinese primary section titles
-    expect(screen.getByText("会议控制")).toBeInTheDocument();
+    expect(screen.getByLabelText("更多会议操作 / More meeting actions")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "人员 / People" }));
     expect(screen.getByText("参会人员")).toBeInTheDocument();
 
     // English secondary text exists
-    expect(screen.getByText("MEETING CONTROL")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "会议大屏" })).toBeVisible();
     expect(screen.getByText("ATTENDEES")).toBeInTheDocument();
   });
 });
@@ -1212,7 +1215,7 @@ describe("Transcript - translation_interim event", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1247,7 +1250,7 @@ describe("Transcript - translation_interim event", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1302,7 +1305,7 @@ describe("Transcript - translation_interim event", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1374,7 +1377,7 @@ describe("Transcript - translation_interim event", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1439,7 +1442,7 @@ describe("Transcript - translation_final event", () => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1514,7 +1517,7 @@ describe("Transcript - translation_interim_cancelled event", () => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1596,7 +1599,7 @@ describe("Transcript - deduplication", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1683,7 +1686,7 @@ describe("Transcript - deduplication", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1837,7 +1840,7 @@ describe("Transcript - live caption display", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1886,7 +1889,7 @@ describe("Transcript - live caption display", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1951,7 +1954,7 @@ describe("Transcript - live caption display", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -1993,7 +1996,7 @@ describe("Transcript - live caption display", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -2042,7 +2045,7 @@ describe("Transcript - live caption display", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -2113,7 +2116,7 @@ describe("Transcript - live caption display", () => {
       expect(screen.getByText("Board Meeting")).toBeInTheDocument();
     });
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -2277,7 +2280,7 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
 
     // Switch to service_records workspace
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -2335,7 +2338,7 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     });
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -2386,7 +2389,7 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
@@ -2436,7 +2439,7 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     });
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -2463,7 +2466,7 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -2493,7 +2496,7 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
     });
 
     act(() => wsSend(0, "translation_interim", 1, {
@@ -2539,7 +2542,7 @@ describe("AdminDashboard - speech lifecycle fixes (Task 126)", () => {
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Board Meeting")).toBeInTheDocument());
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
     });
 
     act(() => wsSend(0, "translation_sentence", 1, {
@@ -2653,7 +2656,7 @@ describe("AdminDashboard - sentence lyric events", () => {
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Lyric Meeting")).toBeInTheDocument());
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
 
@@ -2735,11 +2738,11 @@ describe("AdminDashboard - ended meeting view", () => {
 
     expect(screen.getAllByText("Past Board Review").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Past Vote").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("5 votes cast").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/5 votes cast/).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Meeting ended")).not.toBeInTheDocument();
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.getByText("Meeting ended")).toBeInTheDocument();
@@ -2821,12 +2824,14 @@ describe("AdminDashboard - ended meeting view", () => {
 
     expect(screen.getAllByText("Past Vote").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Meeting Results")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "人员 / People" }));
     expect(screen.getByText("参会人员")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "服务 / Services" }));
     expect(screen.getAllByText(/Coffee.*Seat 2/).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Meeting ended")).not.toBeInTheDocument();
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.getByText("Meeting ended")).toBeInTheDocument();
@@ -2860,7 +2865,7 @@ describe("AdminDashboard - ended meeting view", () => {
       expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
     });
 
-    const newMeetingBtn = screen.getByText("新会议 / NEW MEETING");
+    const newMeetingBtn = screen.getByRole("button", { name: "新会议 / New Meeting" });
     await act(async () => {
       newMeetingBtn.click();
     });
@@ -3028,24 +3033,22 @@ describe("AdminDashboard - AdminWorkspace", () => {
     expect(screen.queryByRole("button", { name: "Agenda Discussion" })).not.toBeInTheDocument();
   });
 
-  it("shows three workspace switcher buttons when meeting is active", async () => {
+  it("keeps agenda and voting in separate workspaces", async () => {
     mockActiveMeetingScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
+    await screen.findByText("Test Meeting");
 
-    await waitFor(() => {
-      expect(screen.getByText("Test Meeting")).toBeInTheDocument();
-    });
+    const nav = screen.getByRole("navigation", { name: "主持人工作区" });
+    fireEvent.click(within(nav).getByRole("button", { name: "议程 / Agenda" }));
+    expect(screen.getByPlaceholderText("输入议题标题 / TOPIC TITLE")).toBeVisible();
+    expect(screen.queryByPlaceholderText("投票标题 / Vote title...")).not.toBeInTheDocument();
 
-    // Three workspace buttons should be visible
-    expect(screen.getByText("会议总览")).toBeInTheDocument();
-    expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
-    expect(screen.getByText("议程与投票")).toBeInTheDocument();
-    expect(screen.getByText("AGENDA & VOTE")).toBeInTheDocument();
-    expect(screen.getByText("服务与记录")).toBeInTheDocument();
-    expect(screen.getByText("SERVICE & RECORDS")).toBeInTheDocument();
+    fireEvent.click(within(nav).getByRole("button", { name: "投票 / Voting" }));
+    expect(screen.getByPlaceholderText("投票标题 / Vote title...")).toBeVisible();
+    expect(screen.queryByPlaceholderText("输入议题标题 / TOPIC TITLE")).not.toBeInTheDocument();
   });
 
-  it("default workspace is overview showing conference table and attendees", async () => {
+  it("starts in the room and opens the roster on demand", async () => {
     mockActiveMeetingScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
@@ -3055,8 +3058,9 @@ describe("AdminDashboard - AdminWorkspace", () => {
 
     // Default workspace should show conference table (overview content)
     expect(screen.getByText(/Conference Room.*Seat Overview/i)).toBeInTheDocument();
-    expect(screen.getByText("参会人员")).toBeInTheDocument();
-    expect(screen.getByText("ATTENDEES")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "人员 / People" }));
+    expect(screen.getByText("参会人员")).toBeVisible();
+    expect(screen.getByText("ATTENDEES")).toBeVisible();
   });
   it("prefills the agenda draft, submits edited text, and restores the template", async () => {
     mockActiveMeetingScenario();
@@ -3067,7 +3071,7 @@ describe("AdminDashboard - AdminWorkspace", () => {
     });
 
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
@@ -3117,22 +3121,24 @@ describe("AdminDashboard - AdminWorkspace", () => {
       expect(screen.getByText("Test Meeting")).toBeInTheDocument();
     });
 
-    const tableHeading = screen.getByText(/Conference Room.*Seat Overview/i);
-    expect(tableHeading.parentElement?.parentElement).toHaveClass("col-span-12");
-    expect(tableHeading.parentElement?.parentElement).not.toHaveClass("xl:col-span-8");
+    expect(screen.getByTestId("conference-seat-1")).toBeVisible();
     expect(screen.getByTestId("inline-host-checkin")).toBeInTheDocument();
     expect(screen.queryByText("参会人员")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("参会人姓名 / Attendee name")).not.toBeInTheDocument();
-    expect(screen.getByTestId("host-checkin-layout-slot").parentElement).toHaveClass("flex", "flex-col");
-    expect(screen.getByTestId("host-checkin-layout-slot").parentElement).not.toHaveClass("xl:grid-cols-2");
+    expect(screen.getByTestId("host-checkin-layout-slot")).toBeVisible();
   });
-  it("places host speech controls only in the service_records workspace", async () => {
+  it("keeps host speech controls mounted across workspaces", async () => {
     mockActiveMeetingScenario();
     render(
       <AdminDashboard
         hostTabletAccess={{ deviceId: "host-tablet-01", token: "device-token" }}
         hostSeatCheckIn={<div data-testid="inline-host-checkin">HOST CHECK-IN</div>}
-        hostSpeechControl={<div data-testid="host-speech-control">HOST SPEECH</div>}
+        hostSpeechControl={
+          <details>
+            <summary aria-label="主持席麦克风 / Host Microphone">发言</summary>
+            <div data-testid="host-speech-control">HOST SPEECH</div>
+          </details>
+        }
       />,
     );
 
@@ -3141,20 +3147,24 @@ describe("AdminDashboard - AdminWorkspace", () => {
     });
 
     expect(screen.getByTestId("inline-host-checkin")).toBeInTheDocument();
-    expect(screen.queryByTestId("host-speech-control")).not.toBeInTheDocument();
+    const speech = screen.getByTestId("host-speech-control");
+    expect(speech).not.toBeVisible();
+    fireEvent.click(screen.getByLabelText("主持席麦克风 / Host Microphone"));
+    expect(speech).toBeVisible();
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
     expect(screen.queryByTestId("inline-host-checkin")).not.toBeInTheDocument();
-    expect(screen.getByTestId("host-speech-control")).toBeInTheDocument();
+    expect(screen.getByTestId("host-speech-control")).toBe(speech);
+    expect(speech).toBeVisible();
     expect(screen.getByText("会议记录", { exact: true })).toBeInTheDocument();
   });
 
 
-  it("shows meeting records only in the service_records workspace", async () => {
+  it("shows meeting records only in the records workspace", async () => {
     mockActiveMeetingScenario();
     render(<AdminDashboard onSwitchToSeat={vi.fn()} />);
 
@@ -3165,19 +3175,19 @@ describe("AdminDashboard - AdminWorkspace", () => {
     expect(screen.queryByText("会议记录", { exact: true })).not.toBeInTheDocument();
 
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.queryByText("会议记录", { exact: true })).not.toBeInTheDocument();
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.getByText("会议记录", { exact: true })).toBeInTheDocument();
 
     await act(async () => {
-      screen.getByText("会议总览").click();
+      screen.getByRole("button", { name: "会场 / Overview" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(screen.queryByText("会议记录", { exact: true })).not.toBeInTheDocument();
@@ -3198,9 +3208,7 @@ describe("AdminDashboard - AdminWorkspace", () => {
       expect(screen.getByText("No Active Meeting")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText("OVERVIEW")).not.toBeInTheDocument();
-    expect(screen.queryByText("AGENDA & VOTE")).not.toBeInTheDocument();
-    expect(screen.queryByText("SERVICE & RECORDS")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "主持人工作区" })).not.toBeInTheDocument();
   });
 
   it("switching workspace does not trigger any API call", async () => {
@@ -3229,7 +3237,7 @@ describe("AdminDashboard - AdminWorkspace", () => {
     const initialCalls = callCount;
 
     // Switch to agenda_vote workspace
-    const agendaVoteBtn = screen.getByText("议程与投票");
+    const agendaVoteBtn = screen.getByRole("button", { name: "议程 / Agenda" });
     await act(async () => {
       agendaVoteBtn.click();
       await new Promise((r) => setTimeout(r, 50));
@@ -3239,7 +3247,7 @@ describe("AdminDashboard - AdminWorkspace", () => {
     expect(callCount).toBe(initialCalls);
 
     // Switch to service_records workspace
-    const serviceRecordsBtn = screen.getByText("服务与记录");
+    const serviceRecordsBtn = screen.getByRole("button", { name: "服务 / Services" });
     await act(async () => {
       serviceRecordsBtn.click();
       await new Promise((r) => setTimeout(r, 50));
@@ -3277,7 +3285,7 @@ describe("AdminDashboard - AdminWorkspace", () => {
     });
 
     // Switch to agenda_vote workspace first
-    const agendaVoteBtn = screen.getByText("议程与投票");
+    const agendaVoteBtn = screen.getByRole("button", { name: "投票 / Voting" });
     await act(async () => {
       agendaVoteBtn.click();
       await new Promise((r) => setTimeout(r, 50));
@@ -3474,7 +3482,8 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
 
     // Click End Meeting
     await act(async () => {
-      screen.getByText("结束会议 / END MEETING").click();
+      screen.getByLabelText("更多会议操作 / More meeting actions").click();
+      screen.getByRole("button", { name: "结束会议 / End Meeting" }).click();
       await new Promise((r) => setTimeout(r, 200));
     });
 
@@ -3517,7 +3526,8 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
       expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(screen.getByText("张伟 · 座位 1 / Seat 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "人员 / People" }));
+    expect(screen.getByText("张伟 · 座位 1 / Seat 1")).toBeVisible();
     expect(screen.getByText("李娜 · 座位 2 / Seat 2")).toBeInTheDocument();
   });
 
@@ -3544,7 +3554,7 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
     });
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3577,7 +3587,7 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
     });
 
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3623,7 +3633,7 @@ describe("AdminDashboard - ended meeting snapshot & speaker display", () => {
 
     // Switch to service_records workspace to access transcript
     await act(async () => {
-      screen.getByText("服务与记录").click();
+      screen.getByRole("button", { name: "记录 / Records" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3664,7 +3674,7 @@ describe("AgendaCommandCenter - layout", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3707,7 +3717,7 @@ describe("AgendaCommandCenter - timeline statuses", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3755,7 +3765,7 @@ describe("AgendaCommandCenter - preview behavior", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3803,7 +3813,7 @@ describe("AgendaCommandCenter - set current actions", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3856,7 +3866,7 @@ describe("AgendaCommandCenter - set current actions", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3900,7 +3910,7 @@ describe("AgendaCommandCenter - set current actions", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -3946,7 +3956,7 @@ describe("AgendaCommandCenter - set current actions", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4003,7 +4013,7 @@ describe("AgendaCommandCenter - set current actions", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4053,7 +4063,7 @@ describe("AgendaCommandCenter - advance, complete, skip", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4094,7 +4104,7 @@ describe("AgendaCommandCenter - advance, complete, skip", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4141,7 +4151,7 @@ describe("AgendaCommandCenter - advance, complete, skip", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4189,7 +4199,7 @@ describe("AgendaCommandCenter - advance, complete, skip", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4239,7 +4249,7 @@ describe("AgendaCommandCenter - advance, complete, skip", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4283,7 +4293,7 @@ describe("AgendaCommandCenter - flow done state", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4325,6 +4335,7 @@ describe("AgendaCommandCenter - meeting ended", () => {
       expect(screen.getAllByText("Meeting Ended").length).toBeGreaterThanOrEqual(1);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "议程 / Agenda" }));
     // The agenda panel should be visible but with read-only message
     expect(screen.getByText("会议已结束，议程只读")).toBeInTheDocument();
     expect(screen.getByText("READ-ONLY")).toBeInTheDocument();
@@ -4363,7 +4374,7 @@ describe("AgendaCommandCenter - delete active agenda disabled", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4405,7 +4416,7 @@ describe("AgendaCommandCenter - WebSocket agenda_updated", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4447,7 +4458,7 @@ describe("AgendaCommandCenter - WebSocket agenda_updated", () => {
 
     // Switch to agenda_vote workspace to access agenda panels
     await act(async () => {
-      screen.getByText("议程与投票").click();
+      screen.getByRole("button", { name: "议程 / Agenda" }).click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -4552,7 +4563,7 @@ describe("AdminDashboard - elapsed time display (Task 130)", () => {
     } catch { /* sessionStorage may throw */ }
   });
 
-  it("shows Meeting time MetricCard with formatted elapsed for active meeting", async () => {
+  it("puts the formatted meeting time inside More", async () => {
     // started_at is 5 minutes in the past (naive UTC — no "Z")
     const fiveMinAgo = new Date();
     fiveMinAgo.setMinutes(fiveMinAgo.getMinutes() - 5);
@@ -4581,16 +4592,11 @@ describe("AdminDashboard - elapsed time display (Task 130)", () => {
       expect(screen.getByText("Time Test")).toBeInTheDocument();
     });
 
-    // The bilingual MetricCard should show elapsed (with non-zero value from 5 min ago)
-    const meetingTime = screen.getByText("会议时长");
-    expect(screen.getByText("MEETING TIME")).toBeInTheDocument();
-
-    // The MetricCard value (previous sibling inside the same container) should be a
-    // formatted duration, not "--"
-    const elapsedValue = meetingTime.parentElement?.previousElementSibling;
-    expect(elapsedValue).toBeTruthy();
-    expect(elapsedValue!.textContent).not.toBe("—");
-    expect(elapsedValue!.textContent).toMatch(/^\d/); // starts with a digit
+    const meetingTime = screen.getByText(/会议时长 \/ Meeting Time/);
+    expect(meetingTime).not.toBeVisible();
+    fireEvent.click(screen.getByLabelText("更多会议操作 / More meeting actions"));
+    expect(meetingTime).toBeVisible();
+    expect(meetingTime).toHaveTextContent(/Meeting Time · \d/);
   });
 
   it("shows Duration in ended meeting banner with static elapsed", async () => {
@@ -4628,9 +4634,7 @@ describe("AdminDashboard - elapsed time display (Task 130)", () => {
 
     // Duration should show "1:30:00" (1h30m = 5400000 ms in HH:mm:ss format)
     await waitFor(() => {
-      const durationElem = screen.getByText((content) => content.includes('Duration:'));
-      expect(durationElem).toBeInTheDocument();
-      expect(durationElem.textContent).toContain('1:30:00');
+      expect(screen.getByText(/1:30:00/)).toBeVisible();
     });
 
     // Cleanup sessionStorage

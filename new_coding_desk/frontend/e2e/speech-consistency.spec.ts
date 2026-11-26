@@ -477,7 +477,7 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     }));
     await page.goto("/");
     await page.waitForSelector("text=Connected", { timeout: 15_000 });
-    await page.getByRole("button", { name: /SERVICE & RECORDS/i }).click();
+    await page.getByRole("button", { name: "记录 / Records" }).click();
     // Give the browser WebSocket one short turn to finish joining the backend room
     await page.waitForTimeout(1000);
     console.log("[E2E] Admin page loaded, WS connected");
@@ -1177,7 +1177,7 @@ test.describe("Speech streaming frontend-backend consistency + caption", () => {
     }));
     await page.goto("/");
     await page.waitForSelector("text=Connected", { timeout: 15_000 });
-    await page.getByRole("button", { name: /SERVICE & RECORDS/i }).click();
+    await page.getByRole("button", { name: "记录 / Records" }).click();
     await page.waitForTimeout(1000);
     console.log("[E2E-AF] Admin page loaded, WS connected");
 

@@ -4,13 +4,16 @@ import {
   useMemo,
   useEffect,
   useRef,
+  type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Cpu,
   ArrowLeft,
-  Wifi,
-  WifiOff,
+  Captions,
+  ChevronDown,
+  Presentation,
   Loader2,
   AlertCircle,
   RefreshCw,
@@ -30,7 +33,6 @@ import {
   Monitor,
 } from "lucide-react";
 import { useSeatData } from "../hooks/useSeatData";
-import { useClock, formatTime, formatDuration, parseBackendDate } from "./shared";
 import { isDemoControlsEnabled } from "./shared";
 import { useSpeechStream } from "../hooks/useSpeechStream";
 import { isMicrophoneCaptureSupported } from "../audio/microphone";
@@ -80,6 +82,7 @@ import {
   DualLabel,
   SectionHeader,
 } from "./shared";
+import "./seat-focus.css";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -93,6 +96,14 @@ const ACTIVE_IDENTITY_STATUSES = new Set([
   "WAITING_FOR_FACE",
   "MULTIPLE_FACES",
 ]);
+const SEAT_VIEWS = [
+  { id: "room", cn: "会场", en: "Room", icon: Presentation },
+  { id: "captions", cn: "字幕", en: "Captions", icon: Captions },
+  { id: "vote", cn: "投票", en: "Vote", icon: Vote },
+  { id: "service", cn: "服务", en: "Service", icon: Coffee },
+] as const;
+type SeatView = typeof SEAT_VIEWS[number]["id"];
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -141,6 +152,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const [cancellingService, setCancellingService] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [localSpeechStatus, setLocalSpeechStatus] = useState<SpeechStatus>("idle");
+  const [activeView, setActiveView] = useState<SeatView>("room");
+  const tabButtons = useRef<Partial<Record<SeatView, HTMLButtonElement | null>>>({});
+  const viewScroll = useRef<HTMLElement>(null);
   const nativeBridge = useMemo(() => getNativeBridge(), []);
   const [nativeDeviceInfo, setNativeDeviceInfo] = useState<DeviceInfo | null>(
     null,
@@ -366,10 +380,6 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       : null);
 
   const agendaState = deriveAgendaState(agenda);
-  // Elapsed time
-  const now = useClock();
-  const startedAt = parseBackendDate(meeting?.started_at);
-  const elapsedMs = startedAt ? now.getTime() - startedAt.getTime() : 0;
 
   // Current attendee name for this seat (memoized)
   const myAttendeeName = mySeat?.attendeeName ?? null;
@@ -390,6 +400,29 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const [voteReceipt, setVoteReceipt] = useState<{ voteId: number; attendeeId: number; option: string } | null>(null);
   const currentVoteOption = voteReceipt?.voteId === displayVote?.id
     && voteReceipt?.attendeeId === myAttendeeId ? voteReceipt?.option ?? null : recordedVote;
+
+  useEffect(() => {
+    setActiveView("room");
+  }, [meeting?.id, meetingAccessGranted]);
+
+  function selectView(view: SeatView, focusTab = false) {
+    setActiveView(view);
+    if (viewScroll.current) viewScroll.current.scrollTop = 0;
+    if (focusTab) tabButtons.current[view]?.focus();
+  }
+
+  function navigateTabs(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let next: number;
+    switch (event.key) {
+      case "ArrowLeft": next = (index + SEAT_VIEWS.length - 1) % SEAT_VIEWS.length; break;
+      case "ArrowRight": next = (index + 1) % SEAT_VIEWS.length; break;
+      case "Home": next = 0; break;
+      case "End": next = SEAT_VIEWS.length - 1; break;
+      default: return;
+    }
+    event.preventDefault();
+    selectView(SEAT_VIEWS[next].id, true);
+  }
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
@@ -882,10 +915,19 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const header = (
     <SeatHeader
       seatId={seatId}
-      connection={connection}
       onBack={onSwitchToAdmin}
       meetingTitle={waitingForMeeting ? undefined : meeting?.title}
-      elapsedMs={waitingForMeeting ? undefined : elapsedMs}
+      actions={!waitingForMeeting && meetingAccessGranted && (
+        <SeatOptions
+          demoControlsEnabled={demoBrowser}
+          onVacate={handleVacate}
+          writesAllowed={writesAllowed}
+          meetingStatus={meetingStatus}
+          tabletVacateAvailable={tabletVacateAvailable}
+          onTabletVacate={handleTabletVacate}
+          tabletVacateSubmitting={tabletVacateSubmitting}
+        />
+      )}
       onMaintenanceHoldStart={maintenanceAccessAvailable ? beginMaintenanceHold : undefined}
       onMaintenanceHoldEnd={maintenanceAccessAvailable ? cancelMaintenanceHold : undefined}
     />
@@ -1020,7 +1062,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
                     {assignedAttendee.name}
                   </p>
                   <p className="text-sm text-techAmber">
-                    Debug 模式正在自动完成签到，无需进行人脸验证。
+                    正在确认席位 / Confirming your seat
                   </p>
                 </div>
               ) : !canRecognize ? (
@@ -1039,12 +1081,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
                   <p className="text-center text-sm text-techMuted">
                     默认人员：{assignedAttendee.name}
                   </p>
-                  <NativeIdentityPanel
-                    automatic
-                    status={nativeIdentityStatus}
-                    onFaceVerification={handleFaceVerification}
-                    onStopFaceVerification={handleStopFaceVerification}
-                  />
+                  <NativeIdentityPanel status={nativeIdentityStatus} />
                   {!verificationActive && (
                     <div className="flex justify-center">
                       <ActionButton
@@ -1063,19 +1100,14 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
                 </div>
               )}
               {actionError && (
-                <p className="mt-5 rounded-lg border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
-                  {identityMode === "debug" ? "自动放行失败" : "验证失败"}：{actionError}
+                <p role="alert" className="mt-5 rounded-lg border border-techRose/30 bg-techRose/10 px-4 py-3 text-sm text-techRose">
+                  签到失败 / Check-in failed · {actionError}
                 </p>
               )}
               {!wsConnected && (
                 <p className="mt-4 text-xs text-techAmber">
                   后端连接已断开，恢复连接前不会解锁会议页面。
                 </p>
-              )}
-              {identityMode === "debug" && (
-                <div className="mt-5 rounded-lg border border-techAmber/50 bg-techAmber/10 px-4 py-3 text-sm font-semibold text-techAmber">
-                  DEBUG · 正在跳过人脸验证并自动签到
-                </div>
               )}
             </div>
           </div>
@@ -1113,83 +1145,152 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       currentVoteOption != null, isSpeaker ? localSpeechStatus : null].join(":"),
   };
 
+  const voteOpen = displayVote?.status === "open";
+  const servicePending = currentServiceCall?.status === "pending";
+  const viewId = (view: SeatView) => `seat-${seatId}-view-${view}`;
+  const tabId = (view: SeatView) => `seat-${seatId}-tab-${view}`;
+
   return (
     <div
       data-testid="seat-page-scroll"
       data-spatial-mode="station"
       data-spatial-phase={phase}
-      className="desk-page relative h-dvh overflow-y-auto"
+      className="desk-page seat-focus-shell"
     >
       {header}
 
-      {error && (
-        <div className="border-b border-techAmber/40 bg-techAmber/10 px-4 py-2 text-center text-xs font-semibold text-techAmber">
-          连接暂时中断，正在自动重连。{error && ` · ${error}`}
-        </div>
-      )}
+      <div className="seat-focus-tabs" role="tablist" aria-label="席位视图 / Seat views">
+        {SEAT_VIEWS.map(({ id, cn, en, icon: Icon }, index) => (
+          <button
+            key={id}
+            id={tabId(id)}
+            data-testid={`seat-tab-${id}`}
+            ref={(button) => { tabButtons.current[id] = button; }}
+            type="button"
+            role="tab"
+            aria-label={`${cn} / ${en}`}
+            aria-selected={activeView === id}
+            aria-controls={viewId(id)}
+            aria-describedby={(id === "vote" && voteOpen) || (id === "service" && servicePending) ? `${tabId(id)}-status` : undefined}
+            tabIndex={activeView === id ? 0 : -1}
+            onClick={() => selectView(id)}
+            onKeyDown={(event) => navigateTabs(event, index)}
+          >
+            <Icon size={17} aria-hidden="true" />
+            <span>{cn} <small>{en}</small></span>
+            {((id === "vote" && voteOpen) || (id === "service" && servicePending)) && (
+              <>
+                <span className="seat-focus-tab-dot" aria-hidden="true" />
+                <span id={`${tabId(id)}-status`} className="sr-only">
+                  {id === "vote" ? "投票进行中 / Vote open" : "服务待响应 / Service pending"}
+                </span>
+              </>
+            )}
+          </button>
+        ))}
+      </div>
 
-      <main className="mx-auto grid w-full max-w-[1440px] items-start gap-4 p-4 sm:p-6 lg:grid-cols-2">
-        {identityMode === "debug" && (
-          <div className="rounded-lg border border-techAmber/50 bg-techAmber/10 px-4 py-3 text-center text-sm font-bold text-techAmber lg:col-span-2">
-            DEBUG · 已跳过人脸验证
-          </div>
-        )}
-        {/* Action error */}
+      <div className="seat-focus-notices">
         {actionError && (
-          <div role="alert" className="flex items-center gap-2 rounded-xl border border-techRose/30 bg-techRose/10 px-4 py-3 lg:col-span-2">
-            <AlertCircle size={14} className="text-techRose flex-shrink-0" />
-            <p className="text-xs text-techRose flex-1">操作失败 / Operation Failed：{actionError}</p>
-            <button
-              aria-label="关闭错误提示"
-              onClick={() => setActionError(null)}
-              className="text-techRose/60 hover:text-techRose transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            >
-              <XCircle size={14} />
+          <div role="alert" className="seat-focus-notice text-techRose">
+            <AlertCircle size={16} aria-hidden="true" />
+            <p>操作失败 / Operation failed · {actionError}</p>
+            <button type="button" aria-label="关闭错误提示" onClick={() => setActionError(null)}>
+              <XCircle size={18} aria-hidden="true" />
             </button>
           </div>
         )}
-
-        {connection !== "connected" && (
-          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-techAmber/30 bg-techAmber/10 px-4 py-2 text-sm text-techAmber lg:col-span-2">
-            <span>实时连接恢复中 / Reconnecting</span>
-            <ActionButton variant="secondary" size="sm" onClick={refresh}>立即重试 / Retry Now</ActionButton>
+        {(!wsConnected || error) && (
+          <div role="status" className="seat-focus-notice text-techAmber">
+            <p>实时连接恢复中 / Reconnecting</p>
+            <ActionButton variant="secondary" size="sm" touch onClick={refresh}>
+              立即重试 / Retry now
+            </ActionButton>
           </div>
         )}
-        <section className="desk-panel grid items-stretch overflow-hidden sm:grid-cols-[minmax(0,0.84fr)_minmax(0,1.16fr)] lg:col-span-2">
-          <SeatStatusCard
-            seatId={seatId}
-            isSpeaker={isSpeaker}
-            myAttendee={myAttendeeName ? { name: myAttendeeName, title: myAttendeeTitle } : null}
-            demoControlsEnabled={demoBrowser}
-            onVacate={handleVacate}
-            writesAllowed={writesAllowed}
-            meetingStatus={meetingStatus}
-            tabletVacateAvailable={tabletVacateAvailable}
-            onTabletVacate={handleTabletVacate}
-            tabletVacateSubmitting={tabletVacateSubmitting}
-          />
-          <div className="relative min-h-48 border-t border-techBorder sm:border-l sm:border-t-0">
-            <div className="absolute inset-0">
-              <SpatialStage state={scene} className="spatial-seat-stage h-full w-full" />
+      </div>
+
+      <main className="seat-focus-content" ref={viewScroll}>
+        <section className="seat-focus-view" role="tabpanel" id={viewId("room")} aria-labelledby={tabId("room")} hidden={activeView !== "room"} tabIndex={0}>
+          {activeView === "room" && (
+            <div className="seat-focus-room">
+              <div className="seat-focus-brief">
+                <CurrentTopicCard agendaState={agendaState} />
+                <div className="seat-focus-room-actions">
+                  {voteOpen && (
+                    <ActionButton
+                      data-testid="seat-open-vote"
+                      variant="primary"
+                      size="md"
+                      touch
+                      icon={<Vote size={17} />}
+                      onClick={() => selectView("vote", true)}
+                    >
+                      {currentVoteOption ? "查看投票 / View vote" : "投票进行中 / Vote open"}
+                    </ActionButton>
+                  )}
+                  <ActionButton
+                    data-testid="seat-screen-entry"
+                    variant="secondary"
+                    size="md"
+                    touch
+                    icon={<Monitor size={17} />}
+                    onClick={() => navigate("/screen", { state: { seatId } })}
+                  >
+                    共享画面 / Screen Share
+                  </ActionButton>
+                  {servicePending && (
+                    <ActionButton
+                      variant="secondary"
+                      size="md"
+                      touch
+                      icon={<Coffee size={17} />}
+                      onClick={() => selectView("service", true)}
+                    >
+                      服务待响应 / Service pending
+                    </ActionButton>
+                  )}
+                </div>
+                <div className="seat-focus-attendee">
+                  {myAttendeeName && <span>{myAttendeeName}</span>}
+                  {myAttendeeTitle && <span>{myAttendeeTitle}</span>}
+                  <span className="seat-focus-confirmed">
+                    <UserCheck size={15} aria-hidden="true" />
+                    已签到 <span>Checked In</span>
+                  </span>
+                </div>
+              </div>
+              <div className="seat-focus-scene">
+                <SpatialStage state={scene} showTitle={false} className="spatial-seat-stage h-full w-full" />
+              </div>
             </div>
-          </div>
+          )}
         </section>
 
-        <div className="grid min-w-0 gap-4">
-          {/* Current Topic Card (read-only) */}
-          <CurrentTopicCard agendaState={agendaState} />
+        <section className="seat-focus-view seat-focus-caption" role="tabpanel" id={viewId("captions")} aria-labelledby={tabId("captions")} hidden={activeView !== "captions"} tabIndex={0}>
+          {activeView === "captions" && (
+            <>
+              <TranscriptPanel
+                entries={translations}
+                liveFinal={liveFinal}
+                interims={Object.values(interimMap)}
+                lyrics={Object.values(lyricMap).flat()}
+                pendingFinals={Object.values(pendingFinalMap)}
+                seatNameMap={seatNameMap}
+                liveEnabled={meetingStatus === "meeting_active"}
+                liveReconnecting={connection !== "connected"}
+              />
+              {!isSpeaker && (
+                <p className="seat-focus-speaker-hint">
+                  仅当前发言席可识别。 / Only the current speaker seat can use speech recognition.
+                </p>
+              )}
+            </>
+          )}
+        </section>
 
-          <button
-            data-testid="seat-screen-entry"
-            onClick={() => navigate("/screen", { state: { seatId } })}
-            className="desk-panel flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-techBorder px-4 py-3 text-techCyan transition-colors hover:border-techCyan/50"
-          >
-            <Monitor size={17} />
-            <span className="text-sm font-semibold">共享画面 / Screen Share</span>
-          </button>
-
-          {/* Voting Section: open votes are writable; closed votes remain visible as final results. */}
-          {isCheckedIn && displayVote && (
+        <section className="seat-focus-view seat-focus-form" role="tabpanel" id={viewId("vote")} aria-labelledby={tabId("vote")} hidden={activeView !== "vote"} tabIndex={0}>
+          {activeView === "vote" && (displayVote ? (
             <SeatVoteSection
               vote={displayVote}
               voteStats={displayVoteStats}
@@ -1203,10 +1304,16 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
               writesAllowed={writesAllowed}
               meetingStatus={meetingStatus}
             />
-          )}
+          ) : (
+            <div className="seat-focus-empty">
+              <Vote size={26} aria-hidden="true" />
+              <h2>暂无投票 <span>No vote yet</span></h2>
+            </div>
+          ))}
+        </section>
 
-          {/* Service Calls Section — only for checked-in seats */}
-          {isCheckedIn && (
+        <section className="seat-focus-view seat-focus-form" role="tabpanel" id={viewId("service")} aria-labelledby={tabId("service")} hidden={activeView !== "service"} tabIndex={0}>
+          {activeView === "service" && (
             <SeatServiceSection
               currentCall={currentServiceCall}
               onRequest={handleServiceCall}
@@ -1217,33 +1324,20 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
               meetingStatus={meetingStatus}
             />
           )}
-
-        </div>
-        <div className="grid min-w-0 gap-4">
-          <SpeechControl
-            meetingId={meeting?.id ?? null}
-            seatId={seatId}
-            isSpeaker={isSpeaker}
-            isCheckedIn={isCheckedIn}
-            writesAllowed={writesAllowed}
-            meetingStatus={meetingStatus}
-            onLocalTerminalUtterance={terminateUtterance}
-            onSpeechStatusChange={setLocalSpeechStatus}
-          />
-
-          {/* Bilingual Transcript */}
-          <TranscriptPanel
-            entries={translations}
-            liveFinal={liveFinal}
-            interims={Object.values(interimMap)}
-            lyrics={Object.values(lyricMap).flat()}
-            pendingFinals={Object.values(pendingFinalMap)}
-            seatNameMap={seatNameMap}
-            liveEnabled={meetingStatus === "meeting_active"}
-            liveReconnecting={connection !== "connected"}
-          />
-        </div>
+        </section>
       </main>
+
+      <SpeechControl
+        compact
+        meetingId={meeting?.id ?? null}
+        seatId={seatId}
+        isSpeaker={isSpeaker}
+        isCheckedIn={isCheckedIn}
+        writesAllowed={writesAllowed}
+        meetingStatus={meetingStatus}
+        onLocalTerminalUtterance={terminateUtterance}
+        onSpeechStatusChange={setLocalSpeechStatus}
+      />
     </div>
   );
 }
@@ -1252,73 +1346,34 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
 
 interface SeatHeaderProps {
   seatId: number;
-  connection: "connecting" | "connected" | "disconnected";
   onBack?: () => void;
   meetingTitle?: string;
-  elapsedMs?: number;
+  actions?: ReactNode;
   onMaintenanceHoldStart?: () => void;
   onMaintenanceHoldEnd?: () => void;
 }
 
 function SeatHeader({
   seatId,
-  connection,
   onBack,
   meetingTitle,
-  elapsedMs,
+  actions,
   onMaintenanceHoldStart,
   onMaintenanceHoldEnd,
 }: SeatHeaderProps) {
-  const now = useClock();
-
   return (
-    <header className="desk-hero flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-techBorder px-4 py-4 sm:px-7">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        {onBack && (
-          <>
-            <button
-              onClick={onBack}
-              className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-techMuted hover:text-techText transition-colors min-h-[44px]"
-            >
-              <ArrowLeft size={14} />
-              返回 / Back
-            </button>
-            <div className="w-px h-5 bg-techBorder shrink-0" />
-          </>
-        )}
-        <div className="desk-brand-mark flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-techCyan/30 bg-techCyan/10">
-          <Cpu size={19} className="text-techCyan" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-sm font-bold text-techText">
-              座位 {seatId}
-            </span>
-            <span className="text-[0.6rem] font-mono uppercase tracking-wider text-techMuted">
-              / Seat {seatId}
-            </span>
-          </div>
-          {meetingTitle && (
-            <p className="break-words text-lg font-semibold leading-tight text-techText sm:text-2xl">
-              {meetingTitle}
-            </p>
-          )}
-          {elapsedMs != null && elapsedMs > 0 && (
-            <p className="text-[0.6rem] text-techMuted/70 mt-0.5">
-              {formatDuration(elapsedMs)} 已进行 / Elapsed
-            </p>
-          )}
-        </div>
+    <header className="seat-focus-header">
+      {onBack && (
+        <button type="button" className="seat-focus-icon" aria-label="返回 / Back" onClick={onBack}>
+          <ArrowLeft size={19} aria-hidden="true" />
+        </button>
+      )}
+      <div className="seat-focus-context">
+        <p>座位 {seatId} <span>/ Seat {seatId}</span></p>
+        {meetingTitle && <h1>{meetingTitle}</h1>}
       </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {isDemoControlsEnabled() && (
-          <StatusBadge status="warning" labelCn="演示模式" labelEn="Demo Mode" />
-        )}
-        <ConnectionBadge status={connection} />
-        <span className="text-xs font-mono text-techMuted">
-          {formatTime(now)}
-        </span>
+      <div className="seat-focus-header-actions">
+        {actions}
         {onMaintenanceHoldStart && onMaintenanceHoldEnd && (
           <button
             type="button"
@@ -1330,9 +1385,9 @@ function SeatHeader({
             onPointerCancel={onMaintenanceHoldEnd}
             onPointerLeave={onMaintenanceHoldEnd}
             onContextMenu={(event) => event.preventDefault()}
-            className="flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-lg border border-techCyan/30 bg-techCyan/10 text-techCyan transition-colors hover:bg-techCyan/20"
+            className="seat-focus-icon touch-none select-none"
           >
-            <Cpu size={13} />
+            <Cpu size={16} aria-hidden="true" />
           </button>
         )}
       </div>
@@ -1340,112 +1395,31 @@ function SeatHeader({
   );
 }
 
-// ── Connection Badge ─────────────────────────────────────────────────────────
-
-function ConnectionBadge({
-  status,
-}: {
-  status: "connecting" | "connected" | "disconnected";
-}) {
-  if (status === "connected") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-techGreen bg-techGreen/10 border border-techGreen/30 rounded-full px-2.5 py-1">
-        <Wifi size={10} />
-        在线 / Online
-      </span>
-    );
-  }
-  if (status === "connecting") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-techAmber bg-techAmber/10 border border-techAmber/30 rounded-full px-2.5 py-1">
-        <Loader2 size={10} className="animate-spin" />
-        连接中 / Connecting
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-techRose bg-techRose/10 border border-techRose/30 rounded-full px-2.5 py-1">
-      <WifiOff size={10} />
-      离线 / Offline
-    </span>
-  );
-}
-
-// ── Current Topic Card (read-only) ─────────────────────────────────────────────
-
-function CurrentTopicCard({
-  agendaState,
-}: {
-  agendaState: ReturnType<typeof deriveAgendaState>;
-}) {
+function CurrentTopicCard({ agendaState }: { agendaState: ReturnType<typeof deriveAgendaState> }) {
   const { current, progress, isFlowDone } = agendaState;
-
-  let statusLabelCn: string;
-  let statusLabelEn: string;
-
-  if (current) {
-    statusLabelCn = "进行中";
-    statusLabelEn = "ACTIVE";
-  } else if (isFlowDone) {
-    statusLabelCn = "所有议题已处理";
-    statusLabelEn = "ALL TOPICS PROCESSED";
-  } else {
-    statusLabelCn = "暂无当前议题";
-    statusLabelEn = "NO ACTIVE TOPIC";
-  }
-
-  const progressText = progress.total > 0
-    ? `${progress.current_index ?? progress.completed + progress.skipped} / ${progress.total}`
-    : null;
+  const progressIndex = progress.current_index ?? progress.completed + progress.skipped;
 
   return (
-    <PanelCard
-      titleCn="当前议题"
-      titleEn="CURRENT TOPIC"
-      icon={<List size={16} />}
-      variant={current ? "active" : "default"}
-      headerRight={
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-techMuted">
-          <span
-            className={cx(
-              "w-1.5 h-1.5 rounded-full",
-              current ? "bg-techCyan animate-pulse" : "bg-techMuted",
-            )}
-          />
-          <span className="font-semibold text-techText">{statusLabelCn}</span>
-          <span className="text-[0.65rem] font-mono uppercase tracking-wider opacity-60">
-            {statusLabelEn}
-          </span>
-        </span>
-      }
-    >
+    <div className="seat-focus-topic">
+      <div className="seat-focus-topic-label">
+        <List size={17} aria-hidden="true" />
+        <DualLabel cn="当前议题" en="CURRENT TOPIC" />
+      </div>
       {current ? (
-        <div>
-          <p className="text-base font-bold text-techText mb-1">
-            {current.title}
-          </p>
-          {progressText && (
-            <p className="text-xs text-techMuted">
-              议程进度 / Progress: {progressText}
-            </p>
-          )}
-        </div>
+        <h2>{current.title}</h2>
       ) : (
-        <div>
-          <p className="text-sm text-techMuted">
-            {statusLabelCn}
-          </p>
-          <p className="text-[0.65rem] font-mono uppercase tracking-wider text-techMuted/60 mt-0.5">
-            {statusLabelEn}
-          </p>
-          {progressText && (
-            <p className="text-xs text-techMuted mt-2">
-              议程进度 / Progress: {progressText}
-            </p>
-          )}
-        </div>
+        <h2>
+          <span>{isFlowDone ? "所有议题已处理" : "暂无当前议题"}</span>
+          <small>{isFlowDone ? "ALL TOPICS PROCESSED" : "NO ACTIVE TOPIC"}</small>
+        </h2>
       )}
-    </PanelCard>
+      <div className="seat-focus-topic-status">
+        {current && <DualLabel cn="进行中" en="ACTIVE" />}
+        {progress.total > 0 && (
+          <p>议程进度 / Progress: {progressIndex} / {progress.total}</p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1475,35 +1449,29 @@ function identityStatusCopy(status: string | undefined): BilingualCopy {
     case "RETRY_REQUIRED":
       return { cn: "请重新识别", en: "RETRY REQUIRED" };
     case "CALIBRATION_PENDING":
-      return { cn: "等待标定", en: "CALIBRATION PENDING" };
     case "NOT_ENROLLED":
-      return { cn: "未注册人脸", en: "NOT ENROLLED" };
     case "ERROR":
-      return { cn: "配置错误", en: "ERROR" };
     case "UNAVAILABLE":
-      return { cn: "不可用", en: "UNAVAILABLE" };
+      return { cn: "验证暂不可用，请联系主持人", en: "Verification unavailable. Contact the host." };
     default:
       return { cn: "状态未知", en: "UNKNOWN" };
   }
 }
 
-function verificationLevelCopy(level: string | undefined): BilingualCopy | null {
-  switch (level) {
-    case "VALIDATED":
-      return { cn: "已验证", en: "VALIDATED" };
-    case "PROTOTYPE":
-      return { cn: "原型验证", en: "PROTOTYPE" };
-    case "NONE":
-      return { cn: "未验证", en: "NONE" };
-    default:
-      return null;
-  }
+function NativeIdentityPanel({ status }: { status: NativeIdentityStatus | null }) {
+  const copy = status ? identityStatusCopy(status.status) : { cn: "等待人脸", en: "Waiting for face" };
+
+  return (
+    <div data-testid="native-identity-panel" className="seat-focus-identity-state" role="status">
+      <DualLabel cn={copy.cn} en={copy.en} />
+      {status?.status === "VERIFIED" && (
+        <p className="mt-2 text-xs text-techMuted">正在确认席位 / Confirming your seat</p>
+      )}
+    </div>
+  );
 }
 
-interface SeatStatusCardProps {
-  seatId: number;
-  isSpeaker: boolean;
-  myAttendee: { name: string | null; title: string | null } | null;
+interface SeatOptionsProps {
   demoControlsEnabled: boolean;
   onVacate: () => void;
   writesAllowed: boolean;
@@ -1513,101 +1481,7 @@ interface SeatStatusCardProps {
   tabletVacateSubmitting: boolean;
 }
 
-interface NativeIdentityPanelProps {
-  automatic: boolean;
-  status: NativeIdentityStatus | null;
-  onFaceVerification: () => void;
-  onStopFaceVerification: () => void;
-}
-
-function NativeIdentityPanel({
-  automatic,
-  status,
-  onFaceVerification,
-  onStopFaceVerification,
-}: NativeIdentityPanelProps) {
-  const verificationActive = ACTIVE_IDENTITY_STATUSES.has(
-    status?.status ?? "",
-  );
-  const similarity =
-    status?.similarity == null
-      ? null
-      : Number(status.similarity).toFixed(3);
-  const verificationLevel = verificationLevelCopy(
-    status?.verificationLevel,
-  );
-
-  return (
-    <div
-      data-testid="native-identity-panel"
-      className="rounded-lg border border-techCyan/30 bg-techCyan/5 p-3 text-left"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <DualLabel
-            cn={automatic ? "自动人脸入座" : "Android 本地身份验证"}
-            en={automatic ? "AUTOMATIC FACE CHECK-IN" : "ANDROID IDENTITY VERIFICATION"}
-            cnClassName="text-xs"
-            enClassName="text-[0.6rem]"
-          />
-          <p className="mt-1 text-xs text-techMuted">
-            {status?.message
-              ? `设备提示 / Device message: ${status.message}`
-              : automatic
-                ? "正在自动等待已登记的参会人。 / Waiting for a registered attendee."
-                : "请启动本地身份验证。 / Start local identity verification."}
-          </p>
-          {status && (
-            <p className="mt-2 text-xs font-mono text-techCyan">
-              {identityStatusCopy(status.status).cn} / {identityStatusCopy(status.status).en}
-              {status.personId
-                ? ` · 人员编号 ${status.personId} / Person ID ${status.personId}`
-                : ""}
-              {similarity ? ` · 相似度 ${similarity} / Similarity ${similarity}` : ""}
-              {verificationLevel
-                ? ` · ${verificationLevel.cn} / ${verificationLevel.en}`
-                : ""}
-            </p>
-          )}
-        </div>
-        {!automatic && (
-          <div className="flex flex-wrap gap-2">
-            <ActionButton
-              variant="primary"
-              size="sm"
-              touch
-              icon={<UserCheck size={14} />}
-              onClick={onFaceVerification}
-              disabled={verificationActive}
-            >
-              身份验证 / Verify Identity
-            </ActionButton>
-            {verificationActive && (
-              <ActionButton
-                variant="secondary"
-                size="sm"
-                touch
-                onClick={onStopFaceVerification}
-              >
-                停止 / Stop
-              </ActionButton>
-            )}
-          </div>
-        )}
-      </div>
-      {status?.status === "VERIFIED" && (
-        <p className="mt-2 text-[0.65rem] text-techMuted">
-          后端正在校验席位分配并完成入座和签到。 / The server is validating the seat assignment and check-in.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function SeatStatusCard({
-  seatId,
-  isSpeaker,
-  myAttendee,
+function SeatOptions({
   demoControlsEnabled,
   onVacate,
   writesAllowed,
@@ -1615,81 +1489,40 @@ function SeatStatusCard({
   tabletVacateAvailable,
   onTabletVacate,
   tabletVacateSubmitting,
-}: SeatStatusCardProps) {
+}: SeatOptionsProps) {
+  if (!tabletVacateAvailable && !demoControlsEnabled) return null;
   return (
-    <div className="flex min-w-0 flex-col justify-center p-5 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <div
-          className={cx(
-            "w-14 h-14 rounded-full flex items-center justify-center text-techBg text-sm font-bold",
-            isSpeaker
-              ? "bg-techCyan ring-2 ring-techCyan/50 shadow-cyan-glow"
-              : "bg-techGreen",
-          )}
-        >
-          {myAttendee?.name
-            ? myAttendee.name
-                .split(" ")
-                .slice(0, 2)
-                .map((n) => n[0])
-                .join("")
-            : seatId}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-techText">
-            {myAttendee?.name ?? `座位 ${seatId} / Seat ${seatId}`}
-          </p>
-          <p className="text-sm text-techMuted">
-            {myAttendee?.title ?? "参会人 / Attendee"}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {isSpeaker && (
-            <StatusBadge
-              status="speaking"
-              labelCn="发言中"
-              labelEn="Speaking"
-              icon={<Mic size={12} />}
-              pulse
-            />
-          )}
-          <StatusBadge
-            status="success"
-            labelCn="已签到"
-            labelEn="Checked In"
-            icon={<UserCheck size={12} />}
-          />
-        </div>
+    <details className="seat-focus-disclosure">
+      <summary data-testid="seat-options" aria-label="席位选项 / Seat options">
+        <MoreHorizontal size={18} aria-hidden="true" />
+        <span>席位 <small>Seat</small></span>
+      </summary>
+      <div className="seat-focus-disclosure-panel">
+        {tabletVacateAvailable && (
+          <ActionButton
+            variant="secondary"
+            size="sm"
+            touch
+            onClick={onTabletVacate}
+            loading={tabletVacateSubmitting}
+            disabled={tabletVacateSubmitting || !writesAllowed}
+          >
+            确认离席 / Confirm Vacate
+          </ActionButton>
+        )}
+        {demoControlsEnabled && (
+          <ActionButton
+            variant="secondary"
+            size="sm"
+            touch
+            onClick={onVacate}
+            disabled={!canVacateSeat(meetingStatus, true, writesAllowed)}
+          >
+            模拟离座 / Vacate Seat (Demo)
+          </ActionButton>
+        )}
       </div>
-
-      {(tabletVacateAvailable || demoControlsEnabled) && (
-        <div className="mt-4 pt-4 border-t border-techBorder">
-          <div className="flex flex-wrap gap-2">
-            {tabletVacateAvailable && (
-              <ActionButton
-                variant="secondary"
-                size="sm"
-                onClick={onTabletVacate}
-                loading={tabletVacateSubmitting}
-                disabled={tabletVacateSubmitting || !writesAllowed}
-              >
-                确认离席 / Confirm Vacate
-              </ActionButton>
-            )}
-            {demoControlsEnabled && (
-              <ActionButton
-                variant="secondary"
-                size="sm"
-                onClick={onVacate}
-                disabled={!canVacateSeat(meetingStatus, true, writesAllowed)}
-              >
-                模拟离座 / Vacate Seat (Demo)
-              </ActionButton>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    </details>
   );
 }
 
@@ -2015,6 +1848,7 @@ function SeatServiceSection({
 // ── Speech Control ────────────────────────────────────────────────────────────
 
 interface SpeechControlProps {
+  compact?: boolean;
   meetingId: number | null;
   seatId: number;
   isSpeaker: boolean;
@@ -2027,6 +1861,7 @@ interface SpeechControlProps {
 }
 
 export function SpeechControl({
+  compact = false,
   meetingId,
   seatId,
   isSpeaker,
@@ -2105,54 +1940,8 @@ export function SpeechControl({
     status === "requesting_microphone" ||
     status === "connecting_speech_ws";
 
-  // ── Non-speaker seat: read-only hint ────────────────────────────────────
-  if (!isSpeaker) {
-    return (
-      <PanelCard
-        icon={<MicOff size={16} />}
-        className="border-dashed"
-      >
-        <SectionHeader
-          titleCn="语音识别"
-          titleEn="Speech Recognition"
-          icon={<Mic size={14} />}
-        />
-        <p className="text-xs text-techMuted mt-2">
-          仅当前发言席可识别。 / Only the current speaker seat can use speech recognition.
-        </p>
-      </PanelCard>
-    );
-  }
-
-  // ── Speaker seat: controls ─────────────────────────────────────────────
-  return (
-    <PanelCard
-      titleCn="语音识别"
-      titleEn="Speech Recognition"
-      icon={<Mic size={16} />}
-      variant={status === "recording" ? "active" : "default"}
-      headerRight={
-        <div className="flex flex-wrap justify-end gap-1">
-          {status === "recording" && (
-            <StatusBadge
-              status="danger"
-              labelCn="正在识别"
-              labelEn="Recording"
-              icon={<Mic size={10} />}
-              pulse
-            />
-          )}
-          {modelsPreloading && (
-            <StatusBadge
-              status="waiting"
-              labelCn="模型加载中"
-              labelEn="Loading models"
-              icon={<Loader2 size={10} />}
-            />
-          )}
-        </div>
-      }
-    >
+  const diagnostics = (
+    <>
       {/* Speech status error (API fetch failure) */}
       {speechStatusError && (
         <div className="mb-3 bg-techAmber/10 border border-techAmber/30 rounded-lg px-3 py-2 flex items-start gap-2">
@@ -2202,36 +1991,212 @@ export function SpeechControl({
           </p>
         </div>
       )}
+    </>
+  );
 
-      <fieldset className="mb-3" disabled={status !== "idle"}>
-        <legend className="mb-1.5 text-[11px] text-techMuted">
-          识别语言 / Recognition language
-        </legend>
-        <div
-          className="grid grid-cols-3 gap-1 rounded-lg border border-techCyan/20 bg-techCardSoft p-1"
-          data-testid="speech-language-selector"
+  const languageSelector = (
+    <fieldset className="mb-3" disabled={status !== "idle"}>
+      <legend className="mb-1.5 text-[11px] text-techMuted">
+        识别语言 / Recognition language
+      </legend>
+      <div
+        className="grid grid-cols-3 gap-1 rounded-lg border border-techCyan/20 bg-techCardSoft p-1"
+        data-testid="speech-language-selector"
+      >
+        {([
+          ["auto", "自动 / Auto"],
+          ["zh", "中文 / Chinese"],
+          ["en", "英文 / English"],
+        ] as const).map(([mode, label]) => (
+          <button
+            type="button"
+            key={mode}
+            aria-pressed={languageMode === mode}
+            onClick={() => setLanguageMode(mode)}
+            className={`rounded px-2 py-1.5 text-xs transition-colors ${
+              languageMode === mode
+                ? "bg-techCyan/20 text-techCyan"
+                : "text-techMuted hover:text-techText"
+            } disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+
+  const micActions = (
+    <div className={compact ? "seat-focus-mic-actions" : "flex flex-wrap items-center gap-2"}>
+      {status === "idle" && (
+        <ActionButton
+          variant="primary"
+          size="lg"
+          touch
+          icon={<Mic size={16} />}
+          onClick={start}
+          disabled={startDisabled}
         >
-          {([
-            ["auto", "自动 / Auto"],
-            ["zh", "中文 / Chinese"],
-            ["en", "英文 / English"],
-          ] as const).map(([mode, label]) => (
-            <button
-              type="button"
-              key={mode}
-              aria-pressed={languageMode === mode}
-              onClick={() => setLanguageMode(mode)}
-              className={`rounded px-2 py-1.5 text-xs transition-colors ${
-                languageMode === mode
-                  ? "bg-techCyan/20 text-techCyan"
-                  : "text-techMuted hover:text-techText"
-              } disabled:cursor-not-allowed disabled:opacity-50`}
-            >
-              {label}
-            </button>
-          ))}
+          <span className="flex items-baseline gap-1.5">
+            <span>开始识别</span>
+            <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Start</span>
+          </span>
+        </ActionButton>
+      )}
+      {status === "recording" && (
+        <>
+          <ActionButton
+            variant={compact ? "primary" : "secondary"}
+            size="lg"
+            touch
+            icon={<Square size={16} />}
+            onClick={stop}
+          >
+            <span className="flex items-baseline gap-1.5">
+              <span>停止</span>
+              <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Stop</span>
+            </span>
+          </ActionButton>
+          <ActionButton
+            variant="danger"
+            size="lg"
+            touch
+            icon={<XCircle size={16} />}
+            onClick={cancel}
+          >
+            <span className="flex items-baseline gap-1.5">
+              <span>取消</span>
+              <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Cancel</span>
+            </span>
+          </ActionButton>
+        </>
+      )}
+      {status === "error" && (
+        <ActionButton
+          variant="primary"
+          size="lg"
+          touch
+          icon={<RefreshCw size={16} />}
+          onClick={cancel}
+        >
+          <span className="flex items-baseline gap-1.5">
+            <span>重试</span>
+            <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Retry</span>
+          </span>
+        </ActionButton>
+      )}
+    </div>
+  );
+
+  if (compact) {
+    if (!isSpeaker) return null;
+
+    let voiceStatus: ReactNode;
+    switch (status) {
+      case "requesting_microphone":
+        voiceStatus = <>正在请求麦克风权限 / Waiting for microphone access</>;
+        break;
+      case "connecting_speech_ws":
+        voiceStatus = <>正在连接语音服务 / Connecting voice service</>;
+        break;
+      case "recording":
+        voiceStatus = <>正在识别 / <span>Recording</span></>;
+        break;
+      case "stopping":
+        voiceStatus = <>正在停止 / <span>Stopping...</span></>;
+        break;
+      case "error":
+        voiceStatus = error ?? "语音识别失败 / Speech recognition failed";
+        break;
+      default:
+        voiceStatus = !browserSupportsMic ? "麦克风不可用 / Microphone unavailable"
+          : !writesAllowed ? "正在恢复连接 / Reconnecting"
+          : speechStatusError ? "语音服务不可用 / Voice service unavailable"
+          : !modelsReady ? <>正在准备语音服务 / <span>Loading models</span></>
+          : "麦克风就绪 / Microphone ready";
+    }
+
+    return (
+      <section className="seat-focus-mic" aria-label="麦克风 / Microphone" data-status={status}>
+        <div className="seat-focus-mic-status" role={status === "error" ? "alert" : "status"}>
+          <Mic size={19} aria-hidden="true" />
+          <p>{voiceStatus}</p>
         </div>
-      </fieldset>
+        <div className="seat-focus-mic-controls">
+          {micActions}
+          <details className="seat-focus-disclosure seat-focus-mic-settings">
+            <summary aria-label="麦克风设置 / Microphone settings">
+              <span>语言 <small>Language</small></span>
+              <ChevronDown size={14} aria-hidden="true" />
+            </summary>
+            <div className="seat-focus-disclosure-panel">
+              {languageSelector}
+              {chinesePunctuationUnavailable && (
+                <p className="text-xs text-techMuted">中文标点使用基础模式 / Simplified Chinese punctuation</p>
+              )}
+              {englishPunctuationUnavailable && (
+                <p className="text-xs text-techMuted">英文字幕暂时没有自动标点 / English captions have no automatic punctuation</p>
+              )}
+              {!translationReady && !modelsPreloading && (
+                <p className="text-xs text-techMuted">翻译暂不可用 / Translation temporarily unavailable</p>
+              )}
+            </div>
+          </details>
+        </div>
+      </section>
+    );
+  }
+
+  // ── Non-speaker seat: read-only hint ────────────────────────────────────
+  if (!isSpeaker) {
+    return (
+      <PanelCard
+        icon={<MicOff size={16} />}
+        className="border-dashed"
+      >
+        <SectionHeader
+          titleCn="语音识别"
+          titleEn="Speech Recognition"
+          icon={<Mic size={14} />}
+        />
+        <p className="text-xs text-techMuted mt-2">
+          仅当前发言席可识别。 / Only the current speaker seat can use speech recognition.
+        </p>
+      </PanelCard>
+    );
+  }
+
+  // ── Speaker seat: controls ─────────────────────────────────────────────
+  return (
+    <PanelCard
+      titleCn="语音识别"
+      titleEn="Speech Recognition"
+      icon={<Mic size={16} />}
+      variant={status === "recording" ? "active" : "default"}
+      headerRight={
+        <div className="flex flex-wrap justify-end gap-1">
+          {status === "recording" && (
+            <StatusBadge
+              status="danger"
+              labelCn="正在识别"
+              labelEn="Recording"
+              icon={<Mic size={10} />}
+              pulse
+            />
+          )}
+          {modelsPreloading && (
+            <StatusBadge
+              status="waiting"
+              labelCn="模型加载中"
+              labelEn="Loading models"
+              icon={<Loader2 size={10} />}
+            />
+          )}
+        </div>
+      }
+    >
+      {diagnostics}
+      {languageSelector}
 
       {/* Error */}
       {status === "error" && error && (
@@ -2289,66 +2254,7 @@ export function SpeechControl({
         )}
       </div>
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap items-center gap-2">
-        {status === "idle" && (
-          <ActionButton
-            variant="primary"
-            size="lg"
-            touch
-            icon={<Mic size={16} />}
-            onClick={start}
-            disabled={startDisabled}
-          >
-            <span className="flex items-baseline gap-1.5">
-              <span>开始识别</span>
-              <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Start</span>
-            </span>
-          </ActionButton>
-        )}
-        {status === "recording" && (
-          <>
-            <ActionButton
-              variant="secondary"
-              size="lg"
-              touch
-              icon={<Square size={16} />}
-              onClick={stop}
-            >
-              <span className="flex items-baseline gap-1.5">
-                <span>停止</span>
-                <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Stop</span>
-              </span>
-            </ActionButton>
-            <ActionButton
-              variant="danger"
-              size="lg"
-              touch
-              icon={<XCircle size={16} />}
-              onClick={cancel}
-            >
-              <span className="flex items-baseline gap-1.5">
-                <span>取消</span>
-                <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Cancel</span>
-              </span>
-            </ActionButton>
-          </>
-        )}
-        {status === "error" && (
-          <ActionButton
-            variant="primary"
-            size="lg"
-            touch
-            icon={<RefreshCw size={16} />}
-            onClick={cancel}
-          >
-            <span className="flex items-baseline gap-1.5">
-              <span>重试</span>
-              <span className="text-[0.6rem] font-mono uppercase tracking-wider opacity-60">Retry</span>
-            </span>
-          </ActionButton>
-        )}
-      </div>
+      {micActions}
 
       {/* Model not ready tooltip */}
       {status === "idle" && !modelsReady && !modelsPreloading && (
