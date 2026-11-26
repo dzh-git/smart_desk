@@ -80,12 +80,30 @@ test.skip(
   "Requires the demo frontend and a dedicated FastAPI database without an active meeting.",
 );
 
+async function expectSpatialReady(page: Page) {
+  const stage = page.getByTestId("spatial-stage");
+  await expect(stage).toHaveAttribute("data-renderer", "webgl2", { timeout: 20_000 });
+  await expect(stage.locator("canvas")).toBeVisible();
+}
+
 test("prepare, operate, and review a nine-seat meeting across devices", async ({ browser, baseURL, request }) => {
   const englishPCM = process.env.SMARTDESK_PRESENTATION_ENGLISH_PCM;
-  test.setTimeout(englishPCM ? 240_000 : 120_000);
-  const controller = await browser.newContext({ baseURL, viewport: { width: 1600, height: 1000 } });
+  const checkSpatial = process.env.SMARTDESK_PLAYWRIGHT_WEBGL === "software";
+  test.setTimeout(checkSpatial || englishPCM ? 240_000 : 120_000);
+  const softwareViewport = { width: 1280, height: 850 };
+  const controller = await browser.newContext({
+    baseURL, viewport: checkSpatial ? softwareViewport : { width: 1600, height: 1000 },
+  });
   const guest = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 } });
-  const displayDevice = await browser.newContext({ baseURL, viewport: { width: 1920, height: 1080 } });
+  const displayDevice = await browser.newContext({
+    baseURL, viewport: checkSpatial ? softwareViewport : { width: 1920, height: 1080 },
+  });
+  if (checkSpatial) {
+    // Multiple SwiftShader views share the test host with the speech models.
+    await Promise.all([controller, guest, displayDevice].map((context) => context.addInitScript(() => {
+      localStorage.setItem("smartdesk.spatial.preferences.v1", JSON.stringify({ quality: "low", reducedMotion: true }));
+    })));
+  }
   const admin = await controller.newPage();
   const host = await controller.newPage();
   const seat = await guest.newPage();
@@ -124,8 +142,12 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
 
   await host.goto("/host");
   await expect(host.getByText("演示模式 / Demo Mode", { exact: true })).toBeVisible();
+  if (checkSpatial) {
+    await Promise.all([admin, host, seat, display].map(expectSpatialReady));
+  }
   const secondSeat = await guest.newPage();
   await secondSeat.goto("/seat/3");
+  if (checkSpatial) await expectSpatialReady(secondSeat);
   await secondSeat.getByRole("button", { name: /Demo Check-in/ }).click();
   await expect(secondSeat.getByText("Checked In", { exact: true })).toBeVisible();
   const meetingId: number = (await (await request.get("/api/meetings/active")).json()).data.id;
@@ -170,6 +192,10 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   await seat.getByRole("button", { name: "同意 / Approve", exact: true }).click();
   await seat.getByRole("button", { name: /Submit Vote/ }).click();
   await expect(display.getByText(/1 票.*100%/)).toBeVisible();
+  if (checkSpatial) {
+    await expect(admin.getByTestId("spatial-stage")).toHaveAttribute("data-phase", "vote");
+    await expect(display.getByTestId("spatial-stage")).toHaveAttribute("data-phase", "vote");
+  }
   await seat.getByRole("button", { name: "反对 / Reject", exact: true }).click();
   await seat.getByRole("button", { name: /Update Vote/ }).click();
   await expect(seat.getByText("Your choice:", { exact: true })).toBeVisible();
@@ -188,6 +214,9 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   await expect(admin.getByText("Meeting Ended", { exact: true }).first()).toBeVisible();
   await expect(host.getByText("Meeting Ended", { exact: true }).first()).toBeVisible();
   await expect(admin.getByRole("button", { name: /End Meeting/i })).toHaveCount(0);
+  if (checkSpatial) {
+    await expect(display.getByTestId("spatial-stage")).toHaveAttribute("data-phase", "complete");
+  }
   await display.reload();
   await expect(display.getByText("Vote Result", { exact: true })).toBeVisible();
   for (const final of finals) {

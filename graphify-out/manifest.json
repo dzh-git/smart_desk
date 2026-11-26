@@ -1404,9 +1404,9 @@
     "semantic_hash": "7a380495b6b2862564d3e278b1478f24"
   },
   "new_coding_desk/docs/DEMO_RUNBOOK.md": {
-    "mtime": 1795619739.3712943,
-    "seen": 1795619854.799872,
-    "ast_hash": "4ff63b71f830d07219196531b82a945c",
+    "mtime": 1795652963.0422313,
+    "seen": 1795652980.5203078,
+    "ast_hash": "1956c9e0e8eadd00b7b4db79084a69eb",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/EVENT_BUS_SPEC.md": {
@@ -3222,9 +3222,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/presentation-flow.spec.ts": {
-    "mtime": 1795619806.055,
-    "seen": 1795619854.7889988,
-    "ast_hash": "5b8f184dee51ae05dc711b37fb23b598",
+    "mtime": 1795653185.0837662,
+    "seen": 1795653194.7884874,
+    "ast_hash": "fb8820940088011bda2da25bada26c98",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_meetings_router.py": {
@@ -3324,9 +3324,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/__tests__/director.test.ts": {
-    "mtime": 1795619477.3485217,
-    "seen": 1795619854.7944555,
-    "ast_hash": "b913255615794d2be706aef4336f7fa0",
+    "mtime": 1795652870.6096103,
+    "seen": 1795652980.5150673,
+    "ast_hash": "7d4b7c2167717063a226a31344384a80",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/__tests__/particles.test.ts": {
@@ -3348,15 +3348,15 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/director.ts": {
-    "mtime": 1795619425.5927749,
-    "seen": 1795619854.794461,
-    "ast_hash": "c8df5db2e95d6c50e23d29a27bc6ad07",
+    "mtime": 1795652922.345957,
+    "seen": 1795652980.5151756,
+    "ast_hash": "d05197880b576a6d711333cc7beb22e9",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/engine.ts": {
-    "mtime": 1795619930.4104273,
-    "seen": 1795619964.0860012,
-    "ast_hash": "0372d40d500d0231ee98f774376d81aa",
+    "mtime": 1795652923.4979646,
+    "seen": 1795652980.5151772,
+    "ast_hash": "8042ae07fc2f0a00ba76018c836ba14f",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/lens.ts": {
@@ -3414,9 +3414,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/docs/SPATIAL_UI.md": {
-    "mtime": 1795619884.8706362,
-    "seen": 1795619964.0921185,
-    "ast_hash": "fe2fec4ac226fc0d78ead7e34bd19324",
+    "mtime": 1795652961.4022202,
+    "seen": 1795652980.5204782,
+    "ast_hash": "5077070a6d09ae5a4a99d340add287ae",
     "semantic_hash": ""
   },
   "docs/integration/spatial-presentation/admin.webp": {

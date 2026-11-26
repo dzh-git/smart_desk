@@ -163,6 +163,44 @@ SMARTDESK_PRESENTATION_E2E=true npx playwright test e2e/presentation-flow.spec.t
 测试会通过语音 WebSocket 验证两种语言的实时字幕、译文与结束后的文字记录。
 若使用其他前端地址，通过 `SMARTDESK_PRESENTATION_BASE_URL` 指定。
 
+同一轮验证主持端、主持平板、参会席和大屏的 WebGL 2 场景时，加入
+`SMARTDESK_PLAYWRIGHT_WEBGL=software`。测试会采用低画质和减少动效，给同机运行的语音模型留出资源，
+并检查发起投票和会议结束后场景状态是否同步。运镜和上下文恢复由
+[`spatial-rendering.spec.ts`](../frontend/e2e/spatial-rendering.spec.ts) 独立验证。
+
+### 无实物麦克风时检查网页录音
+
+在 Linux 的仓库根目录将中文夹具转换为 Chromium 虚拟麦克风输入，再用独立浏览器实例打开参会页。
+
+```bash
+ffmpeg -f s16le -ar 16000 -ac 1 -i new_coding_desk/tests/fixtures/speech_sample.pcm \
+  -af volume=2 /tmp/smartdesk-test-mic.wav
+chromium --user-data-dir="$(mktemp -d)" --use-fake-device-for-media-stream \
+  --use-fake-ui-for-media-stream --use-file-for-fake-audio-capture=/tmp/smartdesk-test-mic.wav \
+  http://127.0.0.1:5173/seat/2
+```
+
+在独立演示会议中分配并签到 2、3 号席，指定 2 号为发言席。开始识别后等到实时字幕出现，再点击停止，
+确认会话历史出现最终译文。重新开始后点击取消，确认本次语音未写入会话历史。再次开始，保持 2 号席页面
+可见后从主持端切换到 3 号席，确认旧席停止上传，新席能开始录音。此流程验证网页采集和真实模型，
+Android WebView 的原生权限和实体麦克风按 [现场清单](../../docs/integration/HUMAN_VALIDATION_REQUIRED.md) 验收。
+
+### 无 Windows 采集源时检查共享播放
+
+在本机启动 MediaMTX 1.19.0。沿用 [共享配置模板](../host_services/screen_stream/mediamtx.template.yml)
+的 `screen` 路径与端口，将 HTTP 和 ICE 监听绑定到 `127.0.0.1`，在本机配置中加入
+`webrtcLocalTCPAddress: 127.0.0.1:8189`，并将 `webrtcAdditionalHosts` 设为 `["127.0.0.1"]`。
+用独立 Chromium 实例添加 `--allow-loopback-in-peer-connection`，打开 `/screen`。用 FFmpeg 发布测试图：
+
+```bash
+ffmpeg -re -f lavfi -i testsrc2=size=640x360:rate=15 -an -c:v libx264 \
+  -preset ultrafast -tune zerolatency -profile:v baseline -g 15 -pix_fmt yuv420p \
+  -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/screen
+```
+
+确认正在播放的画面替换三维等待视窗。停止并重新启动 FFmpeg，页面应先恢复等待，再自动播放。
+这个本机测试覆盖 RTSP、MediaMTX、WebRTC 和页面切换。Windows 桌面采集与局域网终端仍按本节上方的共享配置验证。
+
 ## 3. 路由
 
 | 路由 | 用途 |

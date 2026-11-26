@@ -82,6 +82,7 @@ export function createDirector(initialState: SpatialState) {
   return {
     setState(next: SpatialState) {
       const change = getSceneChange(state, next);
+      if (change === "none" && (state.level ?? 0) === (next.level ?? 0)) return false;
       if (motion && change === "warp") {
         if (morph >= 0.5) previousMode = state.mode;
         route = {
@@ -97,6 +98,7 @@ export function createDirector(initialState: SpatialState) {
       if (motion && change === "dissolve") dissolveAge = 0;
       state = next;
       if (!motion) settle();
+      return true;
     },
     setMotion(next: boolean) {
       motion = next;

@@ -66,4 +66,14 @@ describe("spatial director", () => {
     expect(settled.pulse).toBe(0);
     expect(settled.state.level).toBe(0.2);
   });
+
+  it("only schedules a new frame for a visual change in reduced motion", () => {
+    const initial: SpatialState = { ...room, seats: [{ id: 2, status: "ready" }] };
+    const director = createDirector(initial);
+    director.setMotion(false);
+
+    expect(director.setState({ ...initial, seats: [{ id: 2, status: "ready" }] })).toBe(false);
+    expect(director.setState({ ...initial, level: 0.5 })).toBe(true);
+    expect(director.setState({ ...initial, level: 0.5, selectedSeat: 2 })).toBe(true);
+  });
 });

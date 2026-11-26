@@ -219,8 +219,9 @@ export function createSpatialEngine(canvas: HTMLCanvasElement, onFrame?: (metric
       else schedule();
     },
     setState(state) {
-      if (director) director.setState(state);
-      else {
+      if (director) {
+        if (!director.setState(state)) return;
+      } else {
         director = createDirector(state);
         director.setMotion(motion);
       }
