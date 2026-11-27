@@ -3,7 +3,7 @@ import type { SceneMode } from "./sceneState";
 
 const TAU = Math.PI * 2;
 const modes = Object.keys(MODE_THEME) as SceneMode[];
-const faceYaw = 0.48;
+const faceYaw = 0.25;
 const faceCos = Math.cos(faceYaw);
 const faceSin = Math.sin(faceYaw);
 
@@ -64,33 +64,26 @@ function placeTarget(
   let z: number;
   switch (mode) {
     case "room": {
-      // A faceted shell threaded by a few narrow lower orbits.
-      if (lane < 3) {
-        const radius = 1.66 + lane * 0.12 + grit * 0.12;
-        x = Math.cos(angle) * radius;
-        y = -0.48 + Math.sin(angle * 2 + lane) * (0.09 + lane * 0.05) + (v - 0.5) * 0.12;
-        z = Math.sin(angle) * radius;
-      } else {
-        y = (u - 0.5) * 1.96;
-        const radius = Math.sqrt(Math.max(0, 1 - y * y));
-        const edgeAngle = angle + Math.sin(angle * 6) * 0.075;
-        x = Math.cos(edgeAngle) * radius;
-        z = Math.sin(edgeAngle) * radius;
-        const faceRadius = 1.71 / Math.pow(Math.abs(x) ** 1.45 + Math.abs(y) ** 1.45 + Math.abs(z) ** 1.45, 1 / 1.45);
-        const scale = faceRadius + grit * 0.15;
-        x *= scale;
-        y *= scale;
-        z *= scale;
-      }
+      const spoke = seatAngle(lane % 9 + 1);
+      const route = spoke + (v - 0.5) * 0.19;
+      const radius = lane < 9 ? 1.08 + u * 1.16 : 2 + grit * 0.23;
+      const bearing = lane < 9 ? route : angle;
+      x = Math.cos(bearing) * radius;
+      y = -0.58 + Math.sin(u * Math.PI) * 0.15 + grit * 0.15;
+      z = Math.sin(bearing) * radius;
       break;
     }
-    case "agenda": {
-      const ring = lane % 4;
-      const radius = 1.24 + ring * 0.26 + grit * 0.13;
-      const arc = (lane / 12) * TAU + angle * (0.63 + ring * 0.08);
-      x = Math.cos(arc) * radius;
-      y = (ring - 1.5) * 0.30 + Math.sin(arc + ring * 0.8) * (0.34 + 0.07 * ring) + (u - 0.5) * 0.11;
-      z = Math.sin(arc) * radius;
+    case "agenda":
+    case "vote":
+    case "captions": {
+      const caption = mode === "captions";
+      const width = mode === "vote" ? 1.67 : 1.52;
+      const height = caption ? 0.32 : 0.91;
+      const [horizontal, vertical] = outline(lane, u, width, height, grit);
+      const depth = 0.14 + (v - 0.5) * 0.24;
+      x = horizontal * faceCos + depth * faceSin;
+      y = vertical + (caption ? (lane < 6 ? 0.41 : -0.37) : 0.11);
+      z = depth * faceCos - horizontal * faceSin;
       break;
     }
     case "service": {
@@ -102,48 +95,27 @@ function placeTarget(
       z = Math.sin(route) * radius;
       break;
     }
-    case "station": {
-      const edge = lane % 6;
-      const edgeAngle = edge * TAU / 6;
-      const nextAngle = edgeAngle + TAU / 6;
-      y = (u - 0.5) * 3.17;
-      const radius = 1.62 * (1 - Math.abs(y) / 1.86) + grit * 0.11;
-      x = (Math.cos(edgeAngle) * (1 - v) + Math.cos(nextAngle) * v) * radius;
-      z = (Math.sin(edgeAngle) * (1 - v) + Math.sin(nextAngle) * v) * radius;
-      break;
-    }
+    case "station":
     case "display": {
-      const ring = lane % 3;
-      const radius = 1.44 + ring * 0.18 + grit * 0.10;
-      const horizontal = Math.cos(angle) * radius;
-      const depth = (ring - 1) * 0.21 + (v - 0.5) * 0.13;
+      const isScreen = mode === "display";
+      const [horizontal, vertical] = outline(lane, u, isScreen ? 1.94 : 1.30, isScreen ? 1.02 : 0.73, grit);
+      const depth = (v - 0.5) * 0.26;
       x = horizontal * faceCos + depth * faceSin;
-      y = Math.sin(angle) * radius * (0.92 + ring * 0.03) + (ring - 1) * 0.09;
+      y = vertical + 0.17;
       z = depth * faceCos - horizontal * faceSin;
       break;
     }
     case "relay": {
-      const ring = lane % 4;
-      const radius = 1.30 + ring * 0.19 + grit * 0.08;
-      const arc = lane * TAU / 12 + angle * (0.60 + 0.05 * ring);
-      const horizontal = Math.cos(arc) * radius;
-      const depth = (ring - 1.5) * 0.34 + Math.sin(arc) * 0.52 + grit * 0.16;
-      x = horizontal * faceCos + depth * faceSin;
-      y = Math.sin(arc) * radius * 0.72 + (ring - 1.5) * 0.15;
-      z = depth * faceCos - horizontal * faceSin;
+      x = -1.20 + u * 2.43;
+      y = 0.41 + Math.sin(u * Math.PI) * 0.68 + grit * 0.17;
+      z = 0.43 - u * 0.54 + (v - 0.5) * 0.26;
       break;
     }
     case "identity": {
-      const side = lane < 6 ? -1 : 1;
-      const edgeAngle = (lane % 3) * TAU / 3 + side * 0.4;
-      const nextAngle = edgeAngle + TAU / 3;
-      const radius = 0.62 + grit * 0.18;
-      y = (u - 0.5) * 2.83 + side * 0.17;
-      const horizontal = side * 0.69 + y * side * 0.21
-        + (Math.cos(edgeAngle) * (1 - v) + Math.cos(nextAngle) * v) * radius;
-      const depth = side * 0.28
-        + (Math.sin(edgeAngle) * (1 - v) + Math.sin(nextAngle) * v) * radius;
+      const [horizontal, vertical] = outline(lane, u, 0.63, 0.69, grit);
+      const depth = 0.16 + (v - 0.5) * 0.20;
       x = horizontal * faceCos + depth * faceSin;
+      y = vertical + 0.13;
       z = depth * faceCos - horizontal * faceSin;
       break;
     }
@@ -151,4 +123,12 @@ function placeTarget(
   positions[offset] = x;
   positions[offset + 1] = y;
   positions[offset + 2] = z;
+}
+
+function outline(lane: number, offset: number, halfWidth: number, halfHeight: number, grit: number) {
+  const side = lane % 4;
+  const sign = side < 2 ? 1 : -1;
+  const distance = offset * 2 - 1;
+  if (side % 2 === 0) return [distance * halfWidth, sign * (halfHeight + grit * 0.16)] as const;
+  return [sign * (halfWidth + grit * 0.16), distance * halfHeight] as const;
 }

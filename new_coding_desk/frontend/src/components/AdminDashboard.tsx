@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { useAdminData } from "../hooks/useAdminData";
 import { SpatialStage } from "../spatial/SpatialStage";
-import type { SpatialState } from "../spatial/sceneState";
+import { getVoteShares, type SpatialState } from "../spatial/sceneState";
 import "./admin-focus.css";
 
 import { AdminHeader } from "./AdminHeader";
@@ -675,17 +675,19 @@ export function AdminDashboard({
   });
   const currentAgenda = agenda.find((topic) => topic.status === "active");
   const workspaceTitle = WORKSPACES.find(([key]) => key === workspace)?.[1];
+  const sceneVote = workspace === "vote" ? (activeVote ?? voteResults[0]) : null;
   const scene: SpatialState = {
-    mode: workspace === "agenda" || workspace === "vote" ? "agenda"
-      : workspace === "service" || workspace === "records" ? "service" : "room",
+    mode: workspace === "records" ? "captions" : workspace === "overview" || workspace === "people" ? "room" : workspace,
     phase: error || adminActionError ? "fault" : isEndedMeeting ? "complete"
       : loading || pendingMeeting ? "busy" : !meeting ? "idle"
       : workspace === "vote" && hasActiveVote ? "vote"
-        : workspace === "overview" && Object.keys(interimMap).length ? "speech" : "live",
+        : (workspace === "overview" || workspace === "records") && Object.keys(interimMap).length ? "speech" : "live",
     level: workspace === "service" ? Math.min(1, pendingRequests / 4)
       : workspace === "vote" && hasActiveVote ? Math.min(1, (activeVote?.total_votes ?? 0) / 9)
+      : workspace === "agenda" ? agenda.filter(({ status }) => status === "completed" || status === "skipped").length / Math.max(agenda.length, 1)
       : checkedIn / Math.max(seats.length, 1),
-    selectedSeat: activeSeatId,
+    selectedSeat: activeSeatId ?? (hostSpeechControl ? 1 : undefined),
+    voteShares: sceneVote ? getVoteShares(sceneVote) : undefined,
     signal: [
       meeting?.id ?? pendingMeeting?.id, speakerSeatId,
       currentAgenda?.id,

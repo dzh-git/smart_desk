@@ -18,7 +18,7 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import type { WSMessage } from "../hooks/useWebSocket";
 import type { Meeting, Agenda, VoteStatistics } from "../api/types";
 import { SpatialStage } from "../spatial/SpatialStage";
-import type { SpatialState } from "../spatial/sceneState";
+import { getVoteShares, type SpatialState } from "../spatial/sceneState";
 import {
   ActionButton,
   DualLabel,
@@ -194,7 +194,7 @@ export function DisplayView() {
     : hasMeeting ? "agenda"
     : "waiting";
   const scene: SpatialState = {
-    mode: "display",
+    mode: focus === "vote" ? "vote" : "display",
     phase: state.loading ? "busy"
       : state.error ? "fault"
       : isEndedMeeting ? "complete"
@@ -203,6 +203,7 @@ export function DisplayView() {
       : state.meeting ? "live"
       : "idle",
     level: progress.total ? (progress.completed + progress.skipped) / progress.total : 0,
+    voteShares: focus === "vote" && displayVote ? getVoteShares(displayVote) : undefined,
     signal: activeMeetingId == null && !isEndedMeeting ? null : [
       activeMeetingId ?? state.endedMeetingId,
       current?.id,
@@ -213,7 +214,7 @@ export function DisplayView() {
   };
 
   return (
-    <div data-spatial-mode="display" data-spatial-phase={scene.phase} className="spectator spectator-display">
+    <div data-spatial-mode={scene.mode} data-spatial-phase={scene.phase} className="spectator spectator-display">
       <header className="spectator-header">
         <div className="spectator-heading">
           <Monitor size={20} aria-hidden="true" />

@@ -24,6 +24,7 @@ export interface SpatialEngine {
   setOptions(options: EngineOptions): void;
   setVisible(visible: boolean): void;
   movePointer(x: number, y: number): void;
+  impulse(x?: number, y?: number): void;
   orbit(dx: number, dy: number): void;
   pickSeat(x: number, y: number): number | null;
   dispose(): void;
@@ -71,6 +72,8 @@ export function createSpatialEngine(canvas: HTMLCanvasElement, onFrame?: (metric
   const scene = new Scene();
   const camera = new PerspectiveCamera(35, 1, 0.08, 64);
   const position = new Vector3();
+  const seatAim = new Vector3();
+  const seatAimTarget = new Vector3();
   const cleanups = [() => renderer.dispose()];
   function release() {
     while (cleanups.length > 0) cleanups.pop()?.();
@@ -105,7 +108,7 @@ export function createSpatialEngine(canvas: HTMLCanvasElement, onFrame?: (metric
   let height = 0;
   let deviceRatio = 1;
   let sizeDirty = true;
-  let baseFov = camera.fov;
+  let baseTangent = Math.tan(MathUtils.degToRad(camera.fov * 0.5));
   let request: number | null = null;
   let previousTime: number | null = null;
   let qualityMode: SceneQuality = "auto";
@@ -128,8 +131,7 @@ export function createSpatialEngine(canvas: HTMLCanvasElement, onFrame?: (metric
     renderer.setDrawingBufferSize(width, height, dpr);
     lens.setSize(Math.max(1, canvas.width), Math.max(1, canvas.height), quality);
     camera.aspect = width / height;
-    const tangent = Math.max(Math.tan(MathUtils.degToRad(17.5)), 0.365 / camera.aspect);
-    baseFov = MathUtils.radToDeg(2 * Math.atan(tangent));
+    baseTangent = Math.max(Math.tan(MathUtils.degToRad(17.5)), 0.365 / camera.aspect);
     camera.updateProjectionMatrix();
   }
 
@@ -183,21 +185,37 @@ export function createSpatialEngine(canvas: HTMLCanvasElement, onFrame?: (metric
     previousTime = motion ? timestamp : null;
 
     const { pose, frame } = director.advance(elapsed === null ? 1 / 60 : elapsed / 1000, quality);
-    const fov = baseFov + frame.warp * 14;
+    world.update(frame);
+    const selected = frame.state.mode === "room" && frame.state.selectedSeat != null
+      ? world.seatAnchors.get(frame.state.selectedSeat) : null;
+    if (selected) {
+      selected.getWorldPosition(seatAimTarget);
+      seatAimTarget.y -= pose.targetY;
+      seatAimTarget.multiplyScalar(0.19);
+    } else {
+      seatAimTarget.set(0, 0, 0);
+    }
+    seatAim.lerp(seatAimTarget, frame.motion ? 1 - Math.exp(-8 * frame.dt) : 1);
+
+    const aimMargin = Math.abs(pose.pan) * 0.55 + seatAim.length() * 0.55;
+    const safeTangent = (pose.frameWidth + aimMargin) / (pose.distance * camera.aspect);
+    const tangent = Math.max(baseTangent / pose.focal, safeTangent);
+    const fov = MathUtils.radToDeg(2 * Math.atan(tangent));
     if (camera.fov !== fov) {
       camera.fov = fov;
       camera.updateProjectionMatrix();
     }
     const horizontal = pose.distance * Math.cos(pose.elevation);
+    const sinYaw = Math.sin(pose.yaw);
+    const cosYaw = Math.cos(pose.yaw);
     camera.position.set(
-      horizontal * Math.sin(pose.yaw),
-      pose.targetY + pose.distance * Math.sin(pose.elevation),
-      horizontal * Math.cos(pose.yaw),
+      horizontal * sinYaw + pose.truck * cosYaw + seatAim.x * 0.4,
+      pose.targetY + pose.distance * Math.sin(pose.elevation) + seatAim.y * 0.4,
+      horizontal * cosYaw - pose.truck * sinYaw + seatAim.z * 0.4,
     );
-    camera.lookAt(0, pose.targetY, 0);
+    camera.lookAt(pose.pan * cosYaw + seatAim.x, pose.targetY + seatAim.y, -pose.pan * sinYaw + seatAim.z);
     camera.rotateZ(pose.roll);
 
-    world.update(frame);
     particles.update(frame);
     lens.render(scene, camera, frame);
 
@@ -248,6 +266,9 @@ export function createSpatialEngine(canvas: HTMLCanvasElement, onFrame?: (metric
     },
     movePointer(x, y) {
       if (motion) director?.movePointer(x, y);
+    },
+    impulse(x, y) {
+      if (director?.impulse(x, y)) schedule();
     },
     orbit(dx, dy) {
       director?.orbit(dx, dy);

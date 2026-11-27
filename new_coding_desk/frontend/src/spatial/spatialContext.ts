@@ -19,6 +19,7 @@ interface SpatialControls {
   setScene(anchor: StageAnchor): void;
   pointer(x: number, y: number): void;
   orbit(dx: number, dy: number): void;
+  impulse(x?: number, y?: number): void;
   pickSeat(x: number, y: number): number | null;
   status: GraphicsStatus;
   metrics: SpatialMetrics | null;

@@ -708,9 +708,9 @@
     "semantic_hash": "ed481375583d9fc714522d23688e19a6"
   },
   "new_coding_desk/frontend/src/components/AdminDashboard.tsx": {
-    "mtime": 1795716172.8408232,
-    "seen": 1795716394.1964412,
-    "ast_hash": "150b3d92943e2ecf31ad46aee7d74e68",
+    "mtime": 1795781135.9176216,
+    "seen": 1795781424.627487,
+    "ast_hash": "74b6dcc6a56c76c1921e4cc5602a9bd7",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/AdminHeader.tsx": {
@@ -732,9 +732,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/DisplayView.tsx": {
-    "mtime": 1795706904.6303227,
-    "seen": 1795716394.1964817,
-    "ast_hash": "9c24ec74077cad26f2da675968cc45a8",
+    "mtime": 1795781137.5016136,
+    "seen": 1795781424.6276066,
+    "ast_hash": "3c4e3c435aa00923357ca916e56246b3",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HardwareStatus.tsx": {
@@ -762,9 +762,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/SeatTablet.tsx": {
-    "mtime": 1795706842.101972,
-    "seen": 1795716394.1966226,
-    "ast_hash": "7def504f53fd98ea5fa49300f9480350",
+    "mtime": 1795781347.7765431,
+    "seen": 1795781424.6278217,
+    "ast_hash": "bb44ff69e092877d9048fdfc5269124e",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/ServicePanel.tsx": {
@@ -3306,27 +3306,27 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/spatial-rendering.spec.ts": {
-    "mtime": 1795706841.2814388,
-    "seen": 1795716394.1952417,
-    "ast_hash": "c3e3868b8e76fd91b02e6ed4ecc07bd3",
+    "mtime": 1795781294.6288145,
+    "seen": 1795781424.6253467,
+    "ast_hash": "30e4fe3312c8f981cc5eaa92ed950a6b",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/SpatialProvider.tsx": {
-    "mtime": 1795618994.6567266,
-    "seen": 1795619854.7944517,
-    "ast_hash": "5dc6fb72a76c90a825cd06992eb01e25",
+    "mtime": 1795781172.4174364,
+    "seen": 1795781424.6286342,
+    "ast_hash": "3842ff520ae4440bb8becac8f3d946be",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/SpatialStage.tsx": {
-    "mtime": 1795706589.0644412,
-    "seen": 1795716394.197353,
-    "ast_hash": "16450ade6d23b0dedda65857a94967d1",
+    "mtime": 1795781297.8007982,
+    "seen": 1795781424.628636,
+    "ast_hash": "f1a439021492651f473872f04d16c329",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/__tests__/director.test.ts": {
-    "mtime": 1795652870.6096103,
-    "seen": 1795652980.5150673,
-    "ast_hash": "7d4b7c2167717063a226a31344384a80",
+    "mtime": 1795780976.3544369,
+    "seen": 1795781424.6286378,
+    "ast_hash": "669d26ab55685bb25a588b8b88de75cb",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/__tests__/particles.test.ts": {
@@ -3342,21 +3342,21 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/__tests__/world.test.ts": {
-    "mtime": 1795619374.6930084,
-    "seen": 1795619854.7944593,
-    "ast_hash": "ee8e683b837a838d9e7091d424a8800e",
+    "mtime": 1795780853.5550468,
+    "seen": 1795781424.628718,
+    "ast_hash": "d5bf906e2b069bd7dfa7967d80745331",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/director.ts": {
-    "mtime": 1795652922.345957,
-    "seen": 1795652980.5151756,
-    "ast_hash": "d05197880b576a6d711333cc7beb22e9",
+    "mtime": 1795781147.1935642,
+    "seen": 1795781424.628723,
+    "ast_hash": "9be82c57317b887273475d1d5d93db33",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/engine.ts": {
-    "mtime": 1795652923.4979646,
-    "seen": 1795652980.5151772,
-    "ast_hash": "8042ae07fc2f0a00ba76018c836ba14f",
+    "mtime": 1795781081.6018984,
+    "seen": 1795781424.6287248,
+    "ast_hash": "6d9c4123ef79d7aa75c8b40e5b45e85e",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/lens.ts": {
@@ -3372,27 +3372,27 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/particleTargets.ts": {
-    "mtime": 1795619263.6814806,
-    "seen": 1795619854.794467,
-    "ast_hash": "23025862279d2407b75802192c550468",
+    "mtime": 1795781090.310223,
+    "seen": 1795781424.6289968,
+    "ast_hash": "262eb1539e1cac7e670645403752bd7c",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/particles.ts": {
-    "mtime": 1795619262.5814862,
-    "seen": 1795619854.7944689,
-    "ast_hash": "9220072fb5f75519ced252b179b1ce8a",
+    "mtime": 1795781248.4810493,
+    "seen": 1795781424.6289992,
+    "ast_hash": "288da836127beb84e1ab22f0d22444f4",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/sceneState.ts": {
-    "mtime": 1795618797.6115003,
-    "seen": 1795619854.79447,
-    "ast_hash": "4e98ac9949d07dcac0e3a69ef5fcf9c2",
+    "mtime": 1795780879.962908,
+    "seen": 1795781424.6290007,
+    "ast_hash": "c1b5f01e72ebbae289c17d164dcd2895",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/spatialContext.ts": {
-    "mtime": 1795618994.6587381,
-    "seen": 1795619854.7944715,
-    "ast_hash": "6a395832a7ae7faaa145f11e6b228c02",
+    "mtime": 1795781170.9494438,
+    "seen": 1795781424.6290026,
+    "ast_hash": "db1b5bd709e50296ff5bf019645b156b",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/spatialPreferences.ts": {
@@ -3402,9 +3402,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/world.ts": {
-    "mtime": 1795619424.9967773,
-    "seen": 1795619854.7944741,
-    "ast_hash": "1fd89d865a4a55ca2e0ab1b216dd6e1a",
+    "mtime": 1795781349.3245354,
+    "seen": 1795781424.6290457,
+    "ast_hash": "110ae87420d59eb0acd2f977a5c8b5a7",
     "semantic_hash": ""
   },
   "docs/integration/spatial-presentation/README.md": {
@@ -3414,9 +3414,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/docs/SPATIAL_UI.md": {
-    "mtime": 1795715933.3486478,
-    "seen": 1795716394.2590263,
-    "ast_hash": "21f40d43d1001e73b65d7796f82c4eee",
+    "mtime": 1795781389.8763375,
+    "seen": 1795781424.6369092,
+    "ast_hash": "8f5f8f7b328689a893ea3915adcc3a71",
     "semantic_hash": ""
   },
   "docs/integration/spatial-presentation/admin.webp": {
@@ -3531,6 +3531,12 @@
     "mtime": 1795716315.6176007,
     "seen": 1795716394.2597194,
     "ast_hash": "8dc10ea60a11ae53ecefc760c991c99c",
+    "semantic_hash": ""
+  },
+  "new_coding_desk/frontend/src/spatial/conferenceModels.ts": {
+    "mtime": 1795781352.36052,
+    "seen": 1795781424.6287205,
+    "ast_hash": "ac40494d069cbe4fb7cbbb0e6490a46e",
     "semantic_hash": ""
   },
   "android_tablet/diagnostic-web/package-lock.json": {

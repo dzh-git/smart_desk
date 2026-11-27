@@ -100,7 +100,7 @@
 }
 
 .spectator-display__stage {
-  inset: 0 0 0 46%;
+  inset: 0 0 0 51%;
 }
 
 .spectator-stage .spatial-canvas {
@@ -108,7 +108,7 @@
 }
 
 .spectator-display__stage .spatial-viewport {
-  inset: 12% 7% 9%;
+  inset: 12% 4% 9%;
   width: auto;
   height: auto;
 }
@@ -137,7 +137,7 @@
 .spectator-display__focus {
   position: relative;
   z-index: 2;
-  width: min(67%, 75rem);
+  width: min(56%, 70rem);
   min-width: 0;
   padding-block: clamp(2rem, 6vh, 5rem);
 }

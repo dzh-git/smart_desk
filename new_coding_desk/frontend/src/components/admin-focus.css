@@ -227,7 +227,7 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(115px, .36fr);
-  min-height: 108px;
+  min-height: clamp(108px, 14vh, 144px);
   overflow: hidden;
   border-bottom: 1px solid rgb(222 199 251 / .16);
   isolation: isolate;

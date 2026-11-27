@@ -1,20 +1,14 @@
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { createConferenceModels } from "./conferenceModels";
 import {
   getTheme, MODE_THEME, SEAT_HEIGHT, SEAT_RADIUS, seatAngle,
   type SceneMode, type SceneSeat, type SpatialFrame,
 } from "./sceneState";
 
 const TAU = Math.PI * 2;
-const UP = new THREE.Vector3(0, 1, 0);
 const MODES = Object.keys(MODE_THEME) as SceneMode[];
 
 type Segment = [start: number, sweep: number];
-
-interface StageModel {
-  root: THREE.Group;
-  animate(frame: SpatialFrame, level: number): void;
-}
 
 interface ModelPose {
   size: number;
@@ -95,46 +89,6 @@ function arcGeometry(
 function radialSegments(count: number, portion: number, offset = 0): Segment[] {
   const step = TAU / count;
   return Array.from({ length: count }, (_, index) => [offset + index * step, step * portion]);
-}
-
-function jewelGeometry() {
-  const points = [new THREE.Vector3(-0.17, -0.97, 0.12)];
-  for (let row = 0; row < 2; row++) {
-    for (let i = 0; i < 5; i++) {
-      const angle = i / 5 * TAU + row * 0.42;
-      const radius = (row ? 0.71 : 0.54) * (i % 2 === 0 ? 1 : 0.91);
-      points.push(new THREE.Vector3(
-        Math.cos(angle) * radius,
-        (row ? 0.32 : -0.39) + Math.sin(i * 2.4) * 0.09,
-        Math.sin(angle) * radius,
-      ));
-    }
-  }
-  points.push(new THREE.Vector3(0.16, 1, -0.09));
-
-  const vertices: number[] = [];
-  const colors: number[] = [];
-  const shade = [0.5, 0.81, 1, 0.61, 0.94, 0.73, 0.87];
-  const face = (a: number, b: number, c: number) => {
-    const luminance = shade[(a * 7 + b * 3 + c) % shade.length];
-    const color = [luminance, luminance * 0.95, Math.min(1, luminance * 1.11)];
-    for (const index of [a, b, c]) {
-      points[index].toArray(vertices, vertices.length);
-      colors.push(...color);
-    }
-  };
-  for (let i = 0; i < 5; i++) {
-    const next = (i + 1) % 5;
-    face(0, i + 1, next + 1);
-    face(i + 1, i + 6, next + 6);
-    face(i + 1, next + 6, next + 1);
-    face(11, next + 6, i + 6);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
-  return geometry;
 }
 
 function makeAtmosphere(type: "ground" | "backdrop") {
@@ -238,22 +192,16 @@ export function createWorld(scene: THREE.Scene): {
   const darker = keepMaterial(new THREE.MeshStandardMaterial({
     color: "#24223b", metalness: 0.7, roughness: 0.38, envMapIntensity: 0.58,
   }));
-  const jewel = keepMaterial(new THREE.MeshPhysicalMaterial({
-    color: "#e1b4b8", vertexColors: true, metalness: 0.58, roughness: 0.22,
-    clearcoat: 0.9, clearcoatRoughness: 0.11,
-    emissive: "#ffae83", emissiveIntensity: 0.39, envMapIntensity: 1.34,
+  const screenSurface = keepMaterial(new THREE.MeshPhysicalMaterial({
+    color: "#201c35", metalness: 0.12, roughness: 0.59,
+    clearcoat: 0.28, clearcoatRoughness: 0.44, envMapIntensity: 0.16,
+    emissive: "#29234a", emissiveIntensity: 0.2,
   }));
   const accentLight = keepMaterial(new THREE.MeshBasicMaterial({ color: "#bda2f9" }));
   const warmLight = keepMaterial(new THREE.MeshBasicMaterial({ color: "#f8b78a" }));
   const orbitLines = keepMaterial(new THREE.LineBasicMaterial({
     color: "#7663a8", transparent: true, opacity: 0.51,
   }));
-  const facetLines = keepMaterial(new THREE.LineBasicMaterial({
-    color: "#efc9da", transparent: true, opacity: 0.28,
-  }));
-
-  const jewelShape = jewelGeometry();
-  const tinyJewelShape = new THREE.OctahedronGeometry(1, 0);
   const arc = (
     parent: THREE.Object3D,
     material: THREE.Material,
@@ -332,10 +280,6 @@ export function createWorld(scene: THREE.Scene): {
   const detailLines = lineSegments(stage, stageDetails);
 
   const stator = group(world);
-  const pedestal = arc(stator, steel, 0.89, 0.039, 0.047, radialSegments(3, 0.67, 0.22));
-  pedestal.position.y = -0.76;
-  const underglow = arc(stator, warmLight, 0.78, 0.012, 0.012, radialSegments(3, 0.28, 0.31), 0);
-  underglow.position.y = -0.725;
   const levelTrack = arc(stator, edges, 1.28, 0.016, 0.008, radialSegments(14, 0.37), 0.003);
   levelTrack.position.y = -0.82;
   const levelSegments = radialSegments(14, 0.36).map(segment => {
@@ -347,207 +291,10 @@ export function createWorld(scene: THREE.Scene): {
   const art = group(world);
   art.position.y = 0.11;
 
-  // Curved ribs, raised chamfers and inset traces share a rotating axis.
-  const makeRib = (parent: THREE.Object3D, radius: number, width: number, segments: Segment[]) => {
-    const rib = group(parent);
-    arc(rib, steel, radius, width, 0.087, segments, 0.019);
-    const rimSegments: Segment[] = segments.map(([start, sweep]) => [start + 0.018, sweep - 0.036]);
-    const chamfer = arc(rib, edges, radius + width * 0.27, 0.019, 0.01, rimSegments, 0.004);
-    chamfer.position.y = 0.048;
-    const insets: Segment[] = segments.map(([start, sweep]) => [start + sweep * 0.23, sweep * 0.51]);
-    const traces = arc(rib, accentLight, radius - width * 0.24, 0.014, 0.01, insets, 0.002);
-    traces.position.y = 0.05;
-    return rib;
-  };
-
-  const room = group(art);
-  const roomCrystal = mesh(room, jewelShape, jewel);
-  roomCrystal.scale.set(0.94, 1.03, 0.94);
-  const facets = new THREE.EdgesGeometry(jewelShape, 27).scale(1.003, 1.003, 1.003);
-  geometries.add(facets);
-  roomCrystal.add(new THREE.LineSegments(facets, facetLines));
-  const roomOrbits = [
-    makeRib(room, 1.19, 0.186, [[-0.73, 1.51], [1.24, 1.36], [3.07, 1.65], [5.00, 0.31]]),
-    makeRib(room, 1.35, 0.1, [[0.08, 1.12], [1.58, 0.6], [3.10, 1.48], [5.02, 0.7]]),
-    makeRib(room, 0.96, 0.078, [[0.27, 0.68], [2.23, 1.47], [4.47, 0.74]]),
-  ];
-  const wings = group(room);
-  for (const [index, angle] of [0.1, 1.8, 3.22, 4.75].entries()) {
-    const blade = mesh(wings, jewelShape, index % 2 ? edges : steel);
-    blade.position.set(Math.cos(angle) * 0.76, index % 2 ? -0.23 : 0.23, Math.sin(angle) * 0.76);
-    blade.scale.set(0.23, 0.54, 0.27);
-    blade.rotation.set(Math.sin(angle) * 0.77, angle, Math.cos(angle) * 0.71);
-  }
-
-  const agenda = group(art);
-  const agendaSpindle = mesh(agenda, jewelShape, jewel);
-  agendaSpindle.scale.set(0.48, 0.98, 0.48);
-  const agendaDiscs = [0.53, 0.8, 1.11, 1.27].map((radius, index) => {
-    const disc = makeRib(agenda, radius, 0.16 - index * 0.014, radialSegments(3, 0.76, 0.32));
-    disc.position.y = 0.7 - index * 0.43;
-    return disc;
-  });
-
-  const service = group(art);
-  const serviceCore = mesh(service, jewelShape, jewel);
-  serviceCore.scale.setScalar(0.76);
-  const network = group(service);
-  const constellation = [
-    new THREE.Vector3(-0.88, 0.45, 0.04), new THREE.Vector3(-0.6, -0.49, 0.74),
-    new THREE.Vector3(0.22, 0.83, -0.57), new THREE.Vector3(0.81, 0.36, 0.39),
-    new THREE.Vector3(0.73, -0.4, -0.59), new THREE.Vector3(0.11, -0.86, 0.13),
-  ];
-  const struts: THREE.BufferGeometry[] = [];
-  const wire: number[] = [];
-  const addStrut = (start: THREE.Vector3, end: THREE.Vector3, radius: number) => {
-    const direction = end.clone().sub(start);
-    const rotation = new THREE.Quaternion().setFromUnitVectors(UP, direction.clone().normalize());
-    const at = start.clone().lerp(end, 0.5);
-    struts.push(new THREE.CylinderGeometry(radius, radius * 0.74, direction.length(), 5)
-      .applyQuaternion(rotation).translate(at.x, at.y, at.z));
-  };
-  constellation.forEach((point, index) => {
-    const node = mesh(network, jewelShape, index % 2 ? jewel : edges);
-    node.position.copy(point);
-    node.scale.set(0.25, 0.26, 0.25);
-    node.rotation.set(0.63, index * 1.7, index * 0.46);
-    addStrut(new THREE.Vector3(), point, 0.024);
-    const next = constellation[(index + 2) % constellation.length];
-    if (index === 4 || index === 5) return;
-    wire.push(point.x, point.y, point.z, next.x, next.y, next.z);
-  });
-  const mergedStruts = mergeGeometries(struts);
-  struts.forEach(geometry => geometry.dispose());
-  mesh(network, mergedStruts, steel);
-  lineSegments(network, wire);
-
-  const station = group(art);
-  const stationGem = mesh(station, jewelShape, jewel);
-  stationGem.scale.set(0.81, 1.14, 0.81);
-  const stationHalo = makeRib(station, 1.12, 0.144, radialSegments(3, 0.74, 0.4));
-  const stationArms = group(station);
-  for (let i = 0; i < 3; i++) {
-    const pivot = group(stationArms);
-    pivot.rotation.y = i / 3 * TAU + 0.3;
-    const prong = mesh(pivot, jewelShape, steel);
-    prong.scale.set(0.27, 0.76, 0.25);
-    prong.position.set(0.80, -0.09, 0);
-    prong.rotation.z = -0.44;
-  }
-
-  const display = group(art);
-  const eclipse = group(display);
-  mesh(eclipse, new THREE.SphereGeometry(0.83, 32, 16), darker).scale.z = 0.71;
-  const corona = arc(eclipse, edges, 0.876, 0.03, 0.022, radialSegments(3, 0.97), 0.008);
-  corona.rotation.x = Math.PI / 2;
-  const luminousCorona = arc(eclipse, warmLight, 0.894, 0.021, 0.01, [[-0.72, 1.35], [1.1, 0.29]], 0.004);
-  luminousCorona.rotation.x = Math.PI / 2;
-  const displayOrbital = makeRib(display, 1.22, 0.2, [[-0.7, 1.87], [2.18, 1.58], [4.18, 0.82]]);
-  const displaySignal = mesh(eclipse, tinyJewelShape, jewel);
-  displaySignal.scale.setScalar(0.143);
-  displaySignal.position.set(0.91, 0.26, 0.12);
-
-  const relay = group(art);
-  const relayCore = mesh(relay, jewelShape, jewel);
-  relayCore.scale.set(0.35, 0.84, 0.35);
-  const apertures = [0.67, 0.95, 1.26].map((radius, index) => {
-    const ap = makeRib(relay, radius, 0.22 - index * 0.025, radialSegments(4, 0.42, index * 0.29));
-    ap.position.z = (index - 1) * -0.28;
-    return ap;
-  });
-
-  const identity = group(art);
-  const prisms = [
-    mesh(identity, jewelShape, jewel),
-    mesh(identity, jewelShape, steel),
-  ];
-  const innerPrisms = [
-    mesh(identity, jewelShape, edges),
-    mesh(identity, jewelShape, warmLight),
-  ];
-  const signature = makeRib(identity, 1.1, 0.09, [[-0.48, 1.36], [2.52, 1.92]]);
-  const identityCenter = mesh(identity, tinyJewelShape, accentLight);
-  identityCenter.scale.set(0.09, 0.14, 0.09);
-
-  const models: Record<SceneMode, StageModel> = {
-    room: {
-      root: room,
-      animate: ({ time, pulse, warp }, level) => {
-        roomCrystal.rotation.set(0.24 + Math.sin(time * 0.38) * 0.13, time * 0.27 + 0.2, -0.2);
-        roomOrbits[0].rotation.set(0.33, time * 0.19, 0.76 + level * 0.12);
-        roomOrbits[1].rotation.set(1.16 + Math.sin(time * 0.44) * 0.15, -time * 0.16, -0.66);
-        roomOrbits[2].rotation.set(1.22, time * 0.30, 0.29);
-        roomOrbits[1].scale.setScalar(1 + pulse * 0.045 + warp * 0.07);
-        wings.rotation.y = -time * 0.26;
-        wings.scale.setScalar(1 + level * 0.09 + pulse * 0.1);
-      },
-    },
-    agenda: {
-      root: agenda,
-      animate: ({ time, pulse }, level) => {
-        agendaSpindle.rotation.set(-0.11, time * 0.34, 0.16);
-        agendaDiscs.forEach((disc, index) => {
-          disc.rotation.set(index * 0.18, time * (index % 2 ? -0.43 : 0.28) + index, -0.38 + index * 0.10);
-          disc.position.y = (0.7 - index * 0.43) * (0.85 + level * 0.31 + pulse * 0.14);
-        });
-      },
-    },
-    service: {
-      root: service,
-      animate: ({ time, pulse }, level) => {
-        serviceCore.rotation.set(0.12, -time * 0.32, 0.21);
-        network.rotation.set(Math.sin(time * 0.29) * 0.22, time * 0.30 + 0.18, -0.18);
-        network.scale.setScalar(0.93 + level * 0.13 + pulse * 0.11);
-      },
-    },
-    station: {
-      root: station,
-      animate: ({ time, pulse }, level) => {
-        stationGem.rotation.set(-0.21, time * 0.31, -0.13);
-        stationHalo.rotation.set(0.22, -time * 0.27, 0.19);
-        stationHalo.position.y = -0.19 + level * 0.2;
-        stationArms.rotation.y = time * 0.31;
-        stationArms.scale.setScalar(1 + pulse * 0.12);
-      },
-    },
-    display: {
-      root: display,
-      animate: ({ time, pulse }, level) => {
-        eclipse.rotation.set(-0.15, -0.13 + Math.sin(time * 0.32) * 0.26, 0.19);
-        displayOrbital.rotation.set(1.01 + 0.21 * level, time * 0.37, -0.45);
-        displayOrbital.scale.setScalar(1 + pulse * 0.07);
-        displaySignal.position.set(Math.cos(time * 0.46 + 0.29), Math.sin(time * 0.46 + 0.29), 0.08);
-      },
-    },
-    relay: {
-      root: relay,
-      animate: ({ time, pulse }, level) => {
-        relayCore.rotation.set(0.17, time * 0.51, -0.23);
-        apertures.forEach((ap, index) => {
-          ap.rotation.set(Math.PI / 2 - 0.19 * index, 0.23 - index * 0.12, time * 0.36 * (index % 2 ? -1 : 1));
-          ap.position.z = (index - 1) * (-0.27 - level * 0.18);
-          ap.scale.setScalar(1 + pulse * (0.06 + index * 0.02));
-        });
-      },
-    },
-    identity: {
-      root: identity,
-      animate: ({ time, pulse }, level) => {
-        signature.rotation.set(0.29, time * -0.38, -0.43);
-        identityCenter.rotation.y = time * 0.48;
-        prisms.forEach((prism, index) => {
-          const direction = index ? 1 : -1;
-          const offset = (0.39 + level * 0.12 + pulse * 0.10) * direction;
-          prism.scale.set(0.46, 1.02, 0.62);
-          prism.position.set(offset, direction * 0.17, direction * 0.11);
-          prism.rotation.set(direction * 0.26, time * 0.23 + direction * 0.35, direction * -0.44);
-          innerPrisms[index].scale.set(0.18, 0.53, 0.29);
-          innerPrisms[index].position.set(offset * 1.66, direction * 0.24, direction * 0.20);
-          innerPrisms[index].rotation.copy(prism.rotation);
-        });
-      },
-    },
-  };
+  const models = createConferenceModels(art, {
+    shell: steel, bezel: darker, screen: screenSurface,
+    trim: edges, accent: accentLight, warm: warmLight,
+  }, mesh);
 
   for (const mode of MODES) {
     models[mode].root.name = `SmartDesk ${mode} form`;
@@ -568,7 +315,7 @@ export function createWorld(scene: THREE.Scene): {
   const instrument = group(world);
   const socket = new THREE.CylinderGeometry(0.113, 0.153, 0.064, 6);
   const socketRing = arcGeometry(0.164, 0.013, 0.006, radialSegments(3, 0.71), 0.003);
-  const signalShape = new THREE.OctahedronGeometry(0.093, 0);
+  const signalShape = new THREE.BoxGeometry(0.14, 0.072, 0.129);
   for (const geometry of [socket, socketRing, signalShape]) geometries.add(geometry);
   const connection = [
     0, -0.08, -0.19, 0, -0.14, -0.43,
@@ -632,7 +379,7 @@ export function createWorld(scene: THREE.Scene): {
 
   function updateSeat(seat: SceneSeat, frame: SpatialFrame, damping: number) {
     const model = seatModels.get(seat.id) ?? addSeat(seat.id);
-    const { state, time, pulse } = frame;
+    const { state, pulse } = frame;
     const selected = seat.id === state.selectedSeat;
     const speaking = seat.status === "speaking";
     const color = model.color.copy(seatPalette[seat.status]);
@@ -643,7 +390,6 @@ export function createWorld(scene: THREE.Scene): {
     material.color.copy(color);
     material.emissive.copy(color);
     material.emissiveIntensity = energy;
-    model.indicator.rotation.y = frame.motion ? time * 0.42 + seat.id : seat.id;
     model.indicator.position.y = -0.01 + model.focus * 0.065;
     model.indicator.scale.set(0.78 + model.focus * 0.4, 1.12 + model.focus * 0.56, 0.78 + model.focus * 0.4);
     model.ring.scale.setScalar(1 + model.focus * 0.18);
@@ -687,14 +433,13 @@ export function createWorld(scene: THREE.Scene): {
     edges.color.copy(accent).lerp(themeSurface, 0.46);
     edges.emissive.copy(accent);
     edges.emissiveIntensity = 0.105 + activeEnergy * 0.4 + pulse * 0.13;
-    jewel.color.copy(secondary).lerp(accent, 0.28).multiplyScalar(0.64);
-    jewel.emissive.copy(secondary).lerp(accent, 0.38);
-    jewel.emissiveIntensity = (0.135 + activeEnergy + level * 0.12 + pulse * 0.30) * (1 - dissolve * 0.45);
+    screenSurface.color.copy(shadow).lerp(accent, 0.06);
+    screenSurface.emissive.copy(shadow).lerp(accent, 0.09);
+    screenSurface.emissiveIntensity = 0.2 + activeEnergy + pulse * 0.12;
     accentLight.color.copy(accent).multiplyScalar(0.82 + level * 0.26 + pulse * 0.76);
     warmLight.color.copy(secondary).multiplyScalar(0.74 + activeEnergy * 0.75 + pulse * 0.62);
     orbitLines.color.copy(accent);
     orbitLines.opacity = 0.25 + level * 0.16;
-    facetLines.color.copy(secondary).lerp(accent, 0.2);
     side.color.copy(accent);
     rim.color.copy(secondary);
     bounce.color.copy(accent);
@@ -711,11 +456,11 @@ export function createWorld(scene: THREE.Scene): {
     levelSegments.forEach((segment, index) => { segment.visible = (index + 0.5) / levelSegments.length <= level; });
 
     const artTime = motion ? time : 0;
-    art.position.y = 0.11 + Math.sin(artTime * 0.65) * 0.09 + pulse * 0.07;
+    art.position.y = 0.11 + Math.sin(artTime * 0.55) * 0.032 + pulse * 0.036;
     art.rotation.set(
-      motion ? frame.pointerY * 0.12 - Math.sin(artTime * 0.27) * 0.06 : 0,
-      motion ? frame.pointerX * 0.13 : 0,
-      Math.sin(artTime * 0.37) * 0.043,
+      motion ? frame.pointerY * 0.052 : 0,
+      motion ? frame.pointerX * 0.061 : 0,
+      Math.sin(artTime * 0.37) * 0.018,
     );
     art.scale.setScalar(1 + pulse * 0.04 - dissolve * 0.14);
     const artFrame = motion ? frame : { ...frame, time: 0 };

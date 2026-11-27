@@ -183,8 +183,13 @@
   outline-offset: 2px;
 }
 
-.seat-focus-room {
+.seat-focus-layout {
   display: grid;
+  align-items: start;
+  gap: clamp(1rem, 2.6vw, 2.25rem);
+}
+
+.seat-focus-layout[data-view="room"] {
   align-items: center;
   gap: clamp(1rem, 4vw, 3rem);
   padding: clamp(1.1rem, 4vw, 3.25rem);
@@ -267,12 +272,6 @@
   min-height: 0;
   border-color: var(--seat-line);
   box-shadow: none;
-}
-
-.seat-focus-form,
-.seat-focus-caption {
-  max-width: 54rem;
-  margin-inline: auto;
 }
 
 .seat-focus-empty {
@@ -394,7 +393,11 @@
 }
 
 @media (min-width: 47rem) {
-  .seat-focus-room {
+  .seat-focus-layout {
+    grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  }
+
+  .seat-focus-layout[data-view="room"] {
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   }
 

@@ -7,13 +7,15 @@ import { getTheme, type SceneQuality, type SceneMode, type SpatialState } from "
 import { SpatialContext, type StageAnchor } from "./spatialContext";
 
 const SUBJECTS: Record<SceneMode, string> = {
-  room: "席位轨道",
-  agenda: "议程光环",
-  service: "服务网络",
-  station: "席位空间",
-  display: "会议空间",
-  relay: "共享信号",
-  identity: "身份感应",
+  room: "九席智能会议桌",
+  agenda: "会议议程",
+  vote: "投票分布",
+  captions: "双语字幕",
+  service: "茶水服务",
+  station: "参会席终端",
+  display: "会议演示屏",
+  relay: "主机到大屏",
+  identity: "席位身份验证",
 };
 
 const QUALITY_LABELS: Record<SceneQuality, string> = {
@@ -85,9 +87,11 @@ export function SpatialStage({ state, className = "", children, onSelectSeat, sh
 
   function pointerUp(event: PointerEvent<HTMLDivElement>) {
     if (!spatial || drag.current?.id !== event.pointerId) return;
-    if (drag.current.travelled <= 4 && onSelectSeat) {
-      const seat = spatial.pickSeat(...pointerPosition(event));
-      if (seat != null) onSelectSeat(seat);
+    if (drag.current.travelled <= 4) {
+      const point = pointerPosition(event);
+      const seat = onSelectSeat ? spatial.pickSeat(...point) : null;
+      if (seat != null) onSelectSeat?.(seat);
+      else spatial.impulse(...point);
     }
     drag.current = null;
   }
@@ -106,7 +110,7 @@ export function SpatialStage({ state, className = "", children, onSelectSeat, sh
         ref={viewport}
         className="spatial-viewport"
         tabIndex={status === "ready" ? 0 : undefined}
-        aria-label={status === "ready" ? "三维视角，拖动或使用方向键旋转" : undefined}
+        aria-label={status === "ready" ? "三维视角，拖动或使用方向键旋转，按回车聚焦" : undefined}
         onPointerDown={pointerDown}
         onPointerMove={pointerMove}
         onPointerUp={pointerUp}
@@ -114,6 +118,11 @@ export function SpatialStage({ state, className = "", children, onSelectSeat, sh
         onPointerLeave={() => spatial?.pointer(0, 0)}
         onKeyDown={(event) => {
           if (!spatial) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            spatial.impulse();
+            return;
+          }
           const directions: Record<string, [number, number]> = {
             ArrowLeft: [-28, 0], ArrowRight: [28, 0], ArrowUp: [0, -22], ArrowDown: [0, 22],
           };

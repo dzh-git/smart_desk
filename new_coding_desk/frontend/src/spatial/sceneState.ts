@@ -1,4 +1,6 @@
-export type SceneMode = "room" | "agenda" | "service" | "station" | "display" | "relay" | "identity";
+import type { VoteStatistics } from "../api/types";
+
+export type SceneMode = "room" | "agenda" | "vote" | "captions" | "service" | "station" | "display" | "relay" | "identity";
 export type ScenePhase = "idle" | "busy" | "live" | "vote" | "speech" | "complete" | "fault";
 export type SceneQuality = "auto" | "high" | "medium" | "low";
 export type RenderQuality = Exclude<SceneQuality, "auto">;
@@ -16,6 +18,7 @@ export interface SpatialState {
   level?: number;
   seats?: readonly SceneSeat[];
   selectedSeat?: number | null;
+  voteShares?: readonly number[];
   /** A stable server-derived value. When it changes the scene acknowledges it once. */
   signal?: string | number | null;
 }
@@ -45,6 +48,8 @@ export interface SpatialFrame {
 export const MODE_THEME: Record<SceneMode, SceneTheme> = {
   room: { accent: "#bba4ff", secondary: "#ffaf78", shadow: "#18112d" },
   agenda: { accent: "#ffcb82", secondary: "#ff7cab", shadow: "#251425" },
+  vote: { accent: "#ffce8a", secondary: "#ea96ee", shadow: "#2b1b23" },
+  captions: { accent: "#c4b0ff", secondary: "#79e2ec", shadow: "#1c1c38" },
   service: { accent: "#8ce9bb", secondary: "#7d9fff", shadow: "#0e201d" },
   station: { accent: "#a8bcff", secondary: "#ea8ceb", shadow: "#121a37" },
   display: { accent: "#c0caff", secondary: "#d3a2ff", shadow: "#171630" },
@@ -63,12 +68,23 @@ export function getTheme({ mode, phase }: SpatialState): SceneTheme {
 
 export type SceneChange = "none" | "warp" | "burst" | "dissolve";
 
+export function getVoteShares(stats: VoteStatistics | null | undefined, optionCount = 0) {
+  return stats
+    ? stats.results.map(({ count }) => stats.total_votes ? count / stats.total_votes : 0)
+    : Array.from({ length: optionCount }, () => 0);
+}
+
 export function getSceneChange(previous: SpatialState, next: SpatialState): SceneChange {
   if (previous.mode !== next.mode) return "warp";
   if (previous.phase !== next.phase && ["idle", "complete", "fault"].includes(next.phase)) {
     return "dissolve";
   }
   if (previous.phase !== next.phase || previous.selectedSeat !== next.selectedSeat || previous.signal !== next.signal) {
+    return "burst";
+  }
+  const oldShares = previous.voteShares ?? [];
+  const newShares = next.voteShares ?? [];
+  if (oldShares.length !== newShares.length || newShares.some((value, index) => value !== oldShares[index])) {
     return "burst";
   }
   const oldSeats = previous.seats ?? [];

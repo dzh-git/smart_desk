@@ -12,6 +12,38 @@ function frame(state: SpatialState): SpatialFrame {
 }
 
 describe("SmartDesk spatial world", () => {
+  it("renders a nine-seat meeting table, a presentation screen and a device-to-screen relay", () => {
+    const scene = new Scene();
+    const world = createWorld(scene);
+    world.update(frame({ mode: "room", phase: "live" }));
+    const table = scene.getObjectByName("Conference table");
+    expect(table).toBeDefined();
+    expect(table?.children.filter((child) => child.name.startsWith("Conference chair "))).toHaveLength(9);
+
+    world.update(frame({ mode: "display", phase: "live" }));
+    expect(scene.getObjectByName("Meeting presentation screen")).toBeDefined();
+    expect(scene.getObjectByName("SmartDesk room form")?.visible).toBe(false);
+
+    world.update(frame({ mode: "relay", phase: "idle" }));
+    expect(scene.getObjectByName("Share source")).toBeDefined();
+    expect(scene.getObjectByName("Share destination")).toBeDefined();
+    world.dispose();
+  });
+
+  it("sizes the visible voting columns from the supplied ballot distribution", () => {
+    const scene = new Scene();
+    const world = createWorld(scene);
+    world.update(frame({ mode: "vote", phase: "vote", voteShares: [0.75, 0.25, 0] }));
+
+    const first = scene.getObjectByName("Vote option 1");
+    const second = scene.getObjectByName("Vote option 2");
+    const third = scene.getObjectByName("Vote option 3");
+    expect(first?.scale.y).toBeGreaterThan(second?.scale.y ?? Infinity);
+    expect(second?.scale.y).toBeGreaterThan(third?.scale.y ?? Infinity);
+    expect(scene.getObjectByName("Vote option 4")?.visible).toBe(false);
+    world.dispose();
+  });
+
   it("keeps projected seats aligned with the supplied meeting seats", () => {
     const world = createWorld(new Scene());
 

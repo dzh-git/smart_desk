@@ -27,6 +27,55 @@ describe("spatial director", () => {
     expect(arrival.frame.warp).toBe(0);
   });
 
+  it("trucks and pans horizontally while the lens opens on a route push-in", () => {
+    const director = createDirector(room);
+    const start = director.advance(0, "high").pose;
+    director.setState(agenda);
+    const travel = director.advance(0.36, "high").pose;
+    expect(Math.abs(travel.truck - start.truck)).toBeGreaterThan(0.9);
+    expect(Math.abs(travel.pan - start.pan)).toBeGreaterThan(0.32);
+    expect(travel.distance).toBeLessThan(start.distance - 1);
+    expect(travel.focal).toBeLessThan(start.focal);
+
+    const settled = director.advance(0.8, "high");
+    expect(Math.abs(settled.pose.truck)).toBeLessThan(0.2);
+    expect(Math.abs(settled.pose.pan)).toBeLessThan(0.2);
+    expect(settled.frame.warp).toBe(0);
+  });
+
+  it("acknowledges a tap with a bounded dolly and aimed pan without starting a route warp", () => {
+    const director = createDirector(room);
+    const resting = createDirector(room);
+    expect(director.impulse(1, 0)).toBe(true);
+    const active = director.advance(0.15, "high");
+    const idle = resting.advance(0.15, "high");
+    expect(active.pose.distance).toBeLessThan(idle.pose.distance - 0.3);
+    expect(active.pose.distance).toBeGreaterThan(idle.pose.distance - 0.7);
+    expect(active.pose.pan).toBeGreaterThan(idle.pose.pan + 0.08);
+    expect(active.frame.pulse).toBeGreaterThan(0.5);
+    expect(active.frame.warp).toBe(0);
+
+    director.impulse(-1, 0);
+    expect(director.advance(0, "high").pose).toEqual(active.pose);
+    expect(director.advance(0.9, "high").pose).toEqual(resting.advance(0.9, "high").pose);
+  });
+
+  it("pushes toward a selected seat and respects reduced motion for taps and selection", () => {
+    const state: SpatialState = { ...room, seats: [{ id: 2, status: "ready" }] };
+    const director = createDirector(state);
+    const initial = director.advance(0, "low");
+    director.setState({ ...state, selectedSeat: 2 });
+    expect(director.advance(0.15, "low").pose.distance).toBeLessThan(initial.pose.distance - 0.3);
+
+    director.setMotion(false);
+    const resting = director.advance(0, "low");
+    expect(director.impulse(1, 1)).toBe(false);
+    director.setState({ ...state, selectedSeat: null, signal: 2 });
+    const later = director.advance(0.15, "low");
+    expect(later.pose).toEqual(resting.pose);
+    expect(later.frame.pulse).toBe(0);
+  });
+
   it("settles state changes immediately and freezes simulation time in reduced motion", () => {
     const director = createDirector(room);
     director.advance(0.2, "high");

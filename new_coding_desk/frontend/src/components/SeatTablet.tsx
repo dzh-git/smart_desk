@@ -39,7 +39,7 @@ import { isMicrophoneCaptureSupported } from "../audio/microphone";
 import type { SpeechStatus } from "../audio/types";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { SpatialStage } from "../spatial/SpatialStage";
-import type { SceneSeat, SpatialState } from "../spatial/sceneState";
+import { getVoteShares, type SceneSeat, type SpatialState } from "../spatial/sceneState";
 import {
   identityCheckinSeat,
   manualAdmitSeat,
@@ -1131,18 +1131,21 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   const phase = error || actionError || speechFailed || connection === "disconnected" ? "fault"
     : !wsConnected || speechStarting ? "busy"
     : speechActive ? "speech"
-    : activeVote?.status === "open" ? "vote"
+    : activeView === "vote" && activeVote?.status === "open" ? "vote"
+    : activeView === "vote" && displayVote?.status === "closed" ? "complete"
     : isSpeaker ? "speech" : "live";
   const scene: SpatialState = {
-    mode: "station",
+    mode: activeView === "room" ? "station" : activeView,
     phase,
     selectedSeat: seatId,
-    seats: sceneSeats,
-    level: phase === "vote" ? Number(currentVoteOption != null)
+    seats: activeView === "room" ? sceneSeats.filter((seat) => seat.id === seatId || seat.status === "speaking") : undefined,
+    voteShares: activeView === "vote" ? getVoteShares(displayVoteStats, displayVote?.options.length) : undefined,
+    level: activeView === "service" ? Number(currentServiceCall?.status === "pending")
+      : phase === "vote" ? Number(currentVoteOption != null)
       : phase === "speech" ? Number(speechActive)
       : seats.filter((seat) => seat.isCheckedIn).length / Math.max(1, seats.length),
     signal: [meeting?.id, agendaState.current?.id, speakerSeatId, displayVote?.id, displayVote?.status,
-      currentVoteOption != null, isSpeaker ? localSpeechStatus : null].join(":"),
+      currentVoteOption, currentServiceCall?.id, currentServiceCall?.status, isSpeaker ? localSpeechStatus : null].join(":"),
   };
 
   const voteOpen = displayVote?.status === "open";
@@ -1153,7 +1156,7 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
   return (
     <div
       data-testid="seat-page-scroll"
-      data-spatial-mode="station"
+      data-spatial-mode={scene.mode}
       data-spatial-phase={phase}
       className="desk-page seat-focus-shell"
     >
@@ -1211,9 +1214,9 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
       </div>
 
       <main className="seat-focus-content" ref={viewScroll}>
-        <section className="seat-focus-view" role="tabpanel" id={viewId("room")} aria-labelledby={tabId("room")} hidden={activeView !== "room"} tabIndex={0}>
-          {activeView === "room" && (
-            <div className="seat-focus-room">
+        <div className="seat-focus-layout" data-view={activeView}>
+          <section className="seat-focus-view" role="tabpanel" id={viewId("room")} aria-labelledby={tabId("room")} hidden={activeView !== "room"} tabIndex={0}>
+            {activeView === "room" && (
               <div className="seat-focus-brief">
                 <CurrentTopicCard agendaState={agendaState} />
                 <div className="seat-focus-room-actions">
@@ -1260,71 +1263,71 @@ export function SeatTablet({ seatId, onSwitchToAdmin }: SeatTabletProps) {
                   </span>
                 </div>
               </div>
-              <div className="seat-focus-scene">
-                <SpatialStage state={scene} showTitle={false} className="spatial-seat-stage h-full w-full" />
-              </div>
-            </div>
-          )}
-        </section>
+            )}
+          </section>
 
-        <section className="seat-focus-view seat-focus-caption" role="tabpanel" id={viewId("captions")} aria-labelledby={tabId("captions")} hidden={activeView !== "captions"} tabIndex={0}>
-          {activeView === "captions" && (
-            <>
-              <TranscriptPanel
-                entries={translations}
-                liveFinal={liveFinal}
-                interims={Object.values(interimMap)}
-                lyrics={Object.values(lyricMap).flat()}
-                pendingFinals={Object.values(pendingFinalMap)}
-                seatNameMap={seatNameMap}
-                liveEnabled={meetingStatus === "meeting_active"}
-                liveReconnecting={connection !== "connected"}
+          <section className="seat-focus-view" role="tabpanel" id={viewId("captions")} aria-labelledby={tabId("captions")} hidden={activeView !== "captions"} tabIndex={0}>
+            {activeView === "captions" && (
+              <>
+                <TranscriptPanel
+                  entries={translations}
+                  liveFinal={liveFinal}
+                  interims={Object.values(interimMap)}
+                  lyrics={Object.values(lyricMap).flat()}
+                  pendingFinals={Object.values(pendingFinalMap)}
+                  seatNameMap={seatNameMap}
+                  liveEnabled={meetingStatus === "meeting_active"}
+                  liveReconnecting={connection !== "connected"}
+                />
+                {!isSpeaker && (
+                  <p className="seat-focus-speaker-hint">
+                    仅当前发言席可识别。 / Only the current speaker seat can use speech recognition.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="seat-focus-view" role="tabpanel" id={viewId("vote")} aria-labelledby={tabId("vote")} hidden={activeView !== "vote"} tabIndex={0}>
+            {activeView === "vote" && (displayVote ? (
+              <SeatVoteSection
+                vote={displayVote}
+                voteStats={displayVoteStats}
+                voteStatsError={voteStatsError}
+                currentVote={currentVoteOption}
+                onRetryStats={refresh}
+                selectedOption={selectedVoteOption}
+                onSelectOption={setSelectedVoteOption}
+                onSubmit={handleVoteSubmit}
+                submitting={submittingVote}
+                writesAllowed={writesAllowed}
+                meetingStatus={meetingStatus}
               />
-              {!isSpeaker && (
-                <p className="seat-focus-speaker-hint">
-                  仅当前发言席可识别。 / Only the current speaker seat can use speech recognition.
-                </p>
-              )}
-            </>
-          )}
-        </section>
+            ) : (
+              <div className="seat-focus-empty">
+                <Vote size={26} aria-hidden="true" />
+                <h2>暂无投票 <span>No vote yet</span></h2>
+              </div>
+            ))}
+          </section>
 
-        <section className="seat-focus-view seat-focus-form" role="tabpanel" id={viewId("vote")} aria-labelledby={tabId("vote")} hidden={activeView !== "vote"} tabIndex={0}>
-          {activeView === "vote" && (displayVote ? (
-            <SeatVoteSection
-              vote={displayVote}
-              voteStats={displayVoteStats}
-              voteStatsError={voteStatsError}
-              currentVote={currentVoteOption}
-              onRetryStats={refresh}
-              selectedOption={selectedVoteOption}
-              onSelectOption={setSelectedVoteOption}
-              onSubmit={handleVoteSubmit}
-              submitting={submittingVote}
-              writesAllowed={writesAllowed}
-              meetingStatus={meetingStatus}
-            />
-          ) : (
-            <div className="seat-focus-empty">
-              <Vote size={26} aria-hidden="true" />
-              <h2>暂无投票 <span>No vote yet</span></h2>
-            </div>
-          ))}
-        </section>
-
-        <section className="seat-focus-view seat-focus-form" role="tabpanel" id={viewId("service")} aria-labelledby={tabId("service")} hidden={activeView !== "service"} tabIndex={0}>
-          {activeView === "service" && (
-            <SeatServiceSection
-              currentCall={currentServiceCall}
-              onRequest={handleServiceCall}
-              onCancel={handleCancelService}
-              creating={creatingService}
-              cancelling={cancellingService}
-              writesAllowed={writesAllowed}
-              meetingStatus={meetingStatus}
-            />
-          )}
-        </section>
+          <section className="seat-focus-view" role="tabpanel" id={viewId("service")} aria-labelledby={tabId("service")} hidden={activeView !== "service"} tabIndex={0}>
+            {activeView === "service" && (
+              <SeatServiceSection
+                currentCall={currentServiceCall}
+                onRequest={handleServiceCall}
+                onCancel={handleCancelService}
+                creating={creatingService}
+                cancelling={cancellingService}
+                writesAllowed={writesAllowed}
+                meetingStatus={meetingStatus}
+              />
+            )}
+          </section>
+          <div className="seat-focus-scene">
+            <SpatialStage state={scene} showTitle={false} className="spatial-seat-stage h-full w-full" />
+          </div>
+        </div>
       </main>
 
       <SpeechControl

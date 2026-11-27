@@ -3,6 +3,8 @@
 }
 
 [data-spatial-mode="agenda"] { --desk-accent: 255 203 130; }
+[data-spatial-mode="vote"] { --desk-accent: 255 206 138; }
+[data-spatial-mode="captions"] { --desk-accent: 196 176 255; }
 [data-spatial-mode="service"] { --desk-accent: 140 233 187; }
 [data-spatial-mode="station"] { --desk-accent: 168 188 255; }
 [data-spatial-mode="display"] { --desk-accent: 192 202 255; }

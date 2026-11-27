@@ -152,6 +152,7 @@ export function SpatialProvider({ children }: { children: ReactNode }) {
     setScene,
     pointer: (x: number, y: number) => engine.current?.movePointer(x, y),
     orbit: (dx: number, dy: number) => engine.current?.orbit(dx, dy),
+    impulse: (x?: number, y?: number) => engine.current?.impulse(x, y),
     pickSeat: (x: number, y: number) => engine.current?.pickSeat(x, y) ?? null,
   }), [register, setScene]);
 

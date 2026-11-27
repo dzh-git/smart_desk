@@ -7,10 +7,6 @@ import type { RenderQuality, SceneMode, ScenePhase, SpatialFrame } from "./scene
 
 const POINT_COUNTS: Record<RenderQuality, number> = { high: 1728, medium: 768, low: 288 };
 const TRAIL_COUNTS: Record<RenderQuality, number> = { high: 276, medium: 112, low: 0 };
-const ORBIT_SPEED: Record<SceneMode, number> = {
-  room: 0.043, agenda: 0.065, service: 0, station: 0.068, display: 0, relay: 0, identity: 0,
-};
-
 export function createParticles(scene: Scene): { update(frame: SpatialFrame): void; dispose(): void } {
   const { high: capacity } = POINT_COUNTS;
   const { targets, seeds, drift, ages, lifetimes } = createParticleTargets(capacity);
@@ -77,6 +73,7 @@ export function createParticles(scene: Scene): { update(frame: SpatialFrame): vo
   let lastMotion = true;
   let lastMode: SceneMode | undefined;
   let lastPhase: ScenePhase | undefined;
+  let lastPulse = 0;
 
   function update(frame: SpatialFrame) {
     const { state, motion, quality } = frame;
@@ -108,16 +105,12 @@ export function createParticles(scene: Scene): { update(frame: SpatialFrame): vo
     const time = motion ? frame.time : 0;
     const warp = motion ? frame.warp : 0;
     const pulse = motion ? frame.pulse : 0;
+    const kick = Math.max(0, pulse - lastPulse) * 2.9;
     const dissolve = motion ? frame.dissolve : 0;
     const wobble = Math.sin(time * 0.43) * 0.065 + warp * 0.82;
-    const fromAngle = time * ORBIT_SPEED[frame.previousMode] + wobble;
-    const toAngle = time * ORBIT_SPEED[state.mode] + wobble;
     const driftAngle = -time * 0.075 + warp * 1.4;
-    const departure = 1 - morph;
-    const fromCos = Math.cos(fromAngle) * departure;
-    const fromSin = Math.sin(fromAngle) * departure;
-    const toCos = Math.cos(toAngle) * morph;
-    const toSin = Math.sin(toAngle) * morph;
+    const cos = Math.cos(wobble);
+    const sin = Math.sin(wobble);
     const driftCos = Math.cos(driftAngle);
     const driftSin = Math.sin(driftAngle);
     const stiffness = 17 + warp * 32;
@@ -140,13 +133,15 @@ export function createParticles(scene: Scene): { update(frame: SpatialFrame): vo
       const offset = i * 3;
       const seed = seeds[i];
       const airborne = drift[i] === 1;
+      const baseX = from[offset] + (to[offset] - from[offset]) * morph;
       const baseY = from[offset + 1] + (to[offset + 1] - from[offset + 1]) * morph;
+      const baseZ = from[offset + 2] + (to[offset + 2] - from[offset + 2]) * morph;
       const orbitX = airborne
         ? to[offset] * driftCos - to[offset + 2] * driftSin
-        : from[offset] * fromCos - from[offset + 2] * fromSin + to[offset] * toCos - to[offset + 2] * toSin;
+        : baseX * cos - baseZ * sin;
       const orbitZ = airborne
         ? to[offset] * driftSin + to[offset + 2] * driftCos
-        : from[offset] * fromSin + from[offset + 2] * fromCos + to[offset] * toSin + to[offset + 2] * toCos;
+        : baseX * sin + baseZ * cos;
       const pulseSpread = pulse * (0.13 + 0.12 * seed);
       const scatter = dissolve * (1 - warp) * (0.38 + seed * 0.4);
       const warpContraction = warp * (airborne ? 0.47 : 0.75);
@@ -182,9 +177,10 @@ export function createParticles(scene: Scene): { update(frame: SpatialFrame): vo
         const curlY = Math.sin(z * 1.91 + flowPhase) - Math.cos(x * 1.64 - flowPhase);
         const curlZ = Math.sin(x * 1.64 + flowPhase) - Math.cos(y * 1.73 - flowPhase);
         const force = flowAmplitude * (0.65 + seed * 0.65);
-        const vx = (velocities[offset] + ((goalX - x) * stiffness + curlX * force + dx * cursor) * dt) * damping;
-        const vy = (velocities[offset + 1] + ((goalY - y) * stiffness + curlY * force + dy * cursor) * dt) * damping;
-        const vz = (velocities[offset + 2] + ((goalZ - z) * stiffness + curlZ * force + dz * cursor) * dt) * damping;
+        const surge = kick * (0.35 + seed * 0.65) / (0.65 + Math.sqrt(distance2));
+        const vx = (velocities[offset] + ((goalX - x) * stiffness + curlX * force + dx * cursor) * dt - dx * surge) * damping;
+        const vy = (velocities[offset + 1] + ((goalY - y) * stiffness + curlY * force + dy * cursor) * dt - dy * surge) * damping;
+        const vz = (velocities[offset + 2] + ((goalZ - z) * stiffness + curlZ * force + dz * cursor) * dt - dz * surge) * damping;
         velocities[offset] = vx;
         velocities[offset + 1] = vy;
         velocities[offset + 2] = vz;
@@ -228,6 +224,7 @@ export function createParticles(scene: Scene): { update(frame: SpatialFrame): vo
     lastMotion = motion;
     lastMode = state.mode;
     lastPhase = state.phase;
+    lastPulse = pulse;
   }
 
   return {

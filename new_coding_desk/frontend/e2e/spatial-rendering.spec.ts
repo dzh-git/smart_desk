@@ -29,6 +29,10 @@ test.describe("SmartDesk spatial rendering", () => {
 
     await page.getByRole("button", { name: "议程 / Agenda" }).click();
     await expect(stage).toHaveAttribute("data-mode", "agenda");
+    await page.getByRole("button", { name: "投票 / Voting" }).click();
+    await expect(stage).toHaveAttribute("aria-label", "投票分布");
+    await page.getByRole("button", { name: "记录 / Records" }).click();
+    await expect(stage).toHaveAttribute("aria-label", "双语字幕");
     await page.getByRole("button", { name: "服务 / Services" }).click();
     await expect(stage).toHaveAttribute("data-mode", "service");
     await page.getByRole("button", { name: /Overview/i }).click();
@@ -53,6 +57,14 @@ test.describe("SmartDesk spatial rendering", () => {
     await expect(stage).toHaveAttribute("data-mode", "station");
     await expect(stage.locator("canvas")).toHaveAttribute("data-spatial-test-identity", "shared");
     await expect(page.locator("canvas")).toHaveCount(1);
+
+    for (const mode of ["captions", "vote", "service"]) {
+      await page.getByTestId(`seat-tab-${mode}`).click();
+      await expect(stage).toHaveAttribute("data-mode", mode);
+      await expect(canvas).toHaveAttribute("data-spatial-test-identity", "shared");
+    }
+    await page.getByTestId("seat-tab-room").click();
+    await expect(stage).toHaveAttribute("data-mode", "station");
 
     const lost = await canvas.evaluate((element: HTMLCanvasElement) => {
       const context = element.getContext("webgl2")?.getExtension("WEBGL_lose_context");
