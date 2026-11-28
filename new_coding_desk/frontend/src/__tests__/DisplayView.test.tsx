@@ -212,30 +212,20 @@ describe("DisplayView — Task 2 ended meeting", () => {
   });
 
   it("3. meeting_ended WS event → saves endedMeetingId, shows Meeting Ended with vote results", async () => {
-    // First render: active meeting exists
-    mockFetch
-      .mockResolvedValueOnce(okResponse(activeMeeting({ id: 1, title: "Board Meeting" }))) // fetchActiveMeeting
-      .mockResolvedValueOnce(okResponse(null)) // fetchActiveVote → null
-      .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor Color", options: ["Blue", "Red"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting
-      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(1)
-      .mockResolvedValueOnce(okResponse(closedVoteStats())); // fetchVoteStatistics
-
-    renderDisplay();
-
-    // Wait for initial render
-    await waitFor(() => {
-      expect(screen.getByText("Board Meeting")).toBeInTheDocument();
+    let meetingEnded = false;
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/meetings/active") return okResponse(meetingEnded ? null : activeMeeting());
+      if (url === "/api/votes?meeting_id=1") return okResponse([
+        { id: 10, meeting_id: 1, title: "Floor Color", options: ["Blue", "Red"], status: "closed", is_anonymous: false },
+      ]);
+      if (url === "/api/votes/10/statistics") return okResponse(closedVoteStats());
+      if (url === "/api/meetings/1/agendas") return okResponse([]);
+      return okResponse(null);
     });
 
-    // Simulate meeting_ended WS event
-    // After meeting_ended, the load function will be called again
-    // The second load call should see no active meeting
-    mockFetch
-      .mockReset()
-      .mockResolvedValueOnce(okResponse(null)) // fetchActiveMeeting → null (meeting ended)
-      .mockResolvedValueOnce(okResponse([{ id: 10, meeting_id: 1, title: "Floor Color", options: ["Blue", "Red"], status: "closed", is_anonymous: false }])) // fetchVotesForMeeting(1)
-      .mockResolvedValueOnce(okResponse([])) // fetchAgendas(endedMeetingId)
-      .mockResolvedValueOnce(okResponse(closedVoteStats())); // fetchVoteStatistics(10)
+    renderDisplay();
+    expect(await screen.findByText("实时同步")).toBeVisible();
+    meetingEnded = true;
 
     // Trigger meeting_ended event
     await act(async () => {
@@ -599,7 +589,43 @@ describe("DisplayView — Task 6 polling for active meeting", () => {
 // ── Task 4 Button Rules ───────────────────────────────────────────────────
 
 describe("DisplayView — Task 4 button rules", () => {
-  it("only shows Refresh button, no write operation buttons", async () => {
+  it("enters and exits fullscreen and responds to a browser exit", async () => {
+    mockFetch.mockResolvedValue(okResponse(null));
+    let fullscreenElement: HTMLElement | null = null;
+    const fullscreen = Object.getOwnPropertyDescriptor(document, "fullscreenElement");
+    const enter = vi.fn(async () => {
+      fullscreenElement = document.documentElement;
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    const exit = vi.fn(async () => {
+      fullscreenElement = null;
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => fullscreenElement });
+    Object.defineProperty(document.documentElement, "requestFullscreen", { configurable: true, value: enter });
+    Object.defineProperty(document, "exitFullscreen", { configurable: true, value: exit });
+
+    try {
+      renderDisplay();
+      fireEvent.click(screen.getByRole("button", { name: "全屏 / Fullscreen" }));
+      expect(enter).toHaveBeenCalledOnce();
+      fireEvent.click(await screen.findByRole("button", { name: "退出全屏 / Exit fullscreen" }));
+      expect(exit).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole("button", { name: "全屏 / Fullscreen" }));
+      act(() => {
+        fullscreenElement = null;
+        document.dispatchEvent(new Event("fullscreenchange"));
+      });
+      expect(screen.getByRole("button", { name: "全屏 / Fullscreen" })).toBeVisible();
+    } finally {
+      if (fullscreen) Object.defineProperty(document, "fullscreenElement", fullscreen);
+      else Reflect.deleteProperty(document, "fullscreenElement");
+      Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+      Reflect.deleteProperty(document, "exitFullscreen");
+    }
+  });
+
+  it("provides refresh without meeting write operations", async () => {
     mockFetch
       .mockResolvedValueOnce(okResponse(activeMeeting()))
       .mockResolvedValueOnce(okResponse(null))
@@ -612,7 +638,6 @@ describe("DisplayView — Task 4 button rules", () => {
       expect(screen.getByText("Refresh")).toBeInTheDocument();
     });
 
-    // Only Refresh button should exist
     const refreshBtn = screen.getByText("Refresh");
     expect(refreshBtn).toBeInTheDocument();
     expect(refreshBtn).not.toBeDisabled();
@@ -739,8 +764,9 @@ describe("DisplayView — agenda progress (Phase 3)", () => {
     const opening = await screen.findByRole("heading", { name: "Opening" });
     expect(opening).toBeVisible();
     expect(screen.getByTestId("display-focus")).toContainElement(opening);
-    const upcoming = screen.getByText("Next Topic");
+    const upcoming = within(screen.getByTestId("display-agenda-details")).getByText("Next Topic");
     expect(upcoming).not.toBeVisible();
+    expect(within(screen.getByRole("complementary", { name: "会议信息 / Meeting context" })).getByText("Next Topic")).toBeVisible();
     fireEvent.click(screen.getByText("完整议程 / Full Agenda"));
     expect(upcoming).toBeVisible();
   });
@@ -803,7 +829,7 @@ describe("DisplayView — agenda progress (Phase 3)", () => {
     sessionStorage.removeItem("smartdesk.display.endedMeetingId");
   });
 
-  it("only shows Refresh button, no agenda control buttons", async () => {
+  it("offers refresh without agenda write controls", async () => {
     activeMeetingWithAgendas([
       { id: 1, meeting_id: 1, title: "Opening", sort_order: 1, status: "active", started_at: null, completed_at: null, skipped_at: null },
     ]);

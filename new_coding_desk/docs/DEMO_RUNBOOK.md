@@ -5,19 +5,18 @@ Task 级计划已移除，本文只保留当前项目可执行的事实。
 
 ## 1. 环境要求
 
-- Windows 10/11。
+- Windows 10/11 用于现场集成。无设备浏览器演示也支持 Linux 和 macOS。
 - Python 3.11（唯一受支持版本）。
-- Node.js 20+。
+- Node.js 22。
 - Chrome 或 Edge。
 - 语音演示需要浏览器麦克风权限。
 - 语音/翻译模型缓存位于 `models/` 和 `.hf_cache/`，不纳入 git。
 
-安装依赖：
+现场 Windows 环境从仓库根目录安装依赖。
 
 ```powershell
-Set-Location ..
 .\SETUP_PYTHON.bat
-npm install --prefix new_coding_desk/frontend
+npm.cmd ci --prefix new_coding_desk/frontend
 ```
 
 所有后端、测试和辅助服务统一使用仓库根目录
@@ -28,6 +27,7 @@ npm install --prefix new_coding_desk/frontend
 启动：
 
 ```powershell
+Set-Location new_coding_desk
 .\start.bat
 ```
 
@@ -86,9 +86,8 @@ start.bat
 Supervisor 仅在 `ENABLE_SCREEN_STREAM=true` 时管理 FFmpeg + MediaMTX，WebRTC 播放地址为
 `http://<中央主机IP>:8889/screen`。
 
-局域网访问：前端绑定 `0.0.0.0:5173`，同一 LAN 的终端可通过
-`http://<中央主机IP>:5173/screen` 查看共享画面。后端仍仅监听
-`127.0.0.1:8000`，通过 Vite 代理访问。
+前端绑定 `0.0.0.0:5173`，同一局域网的终端可通过
+`http://<中央主机IP>:5173/screen` 查看共享画面，并通过 Vite 代理访问 8000 端口的后端。
 
 停止 Screen Stream（随 kill.bat 自动停止）：
 
@@ -115,8 +114,34 @@ $env:ENABLE_TRANSLATION_MODEL = "true"
 
 ### 无设备浏览器演示
 
-Windows 可以继续使用 `new_coding_desk\start.bat`。以下命令也可在 Linux 或 macOS
-使用同一份项目代码启动。先在仓库根目录建立 Python 3.11 的 `.venv` 并安装轻量依赖。
+解压源码 ZIP 后，进入包含 `new_coding_desk/` 的仓库根目录。准备 Python 3.11、
+Node.js 22 和 Chrome 或 Edge。首次安装依赖需要访问 Python 和 npm 软件包仓库。
+
+**Windows PowerShell**
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r new_coding_desk/requirements-ci.txt
+npm.cmd ci --prefix new_coding_desk/frontend
+```
+
+在第一个终端启动后端。
+
+```powershell
+Set-Location new_coding_desk
+$env:SMARTDESK_DATA_DIR = Join-Path (Get-Location).Path '.smartdesk-runtime\demo-data'
+$env:ENABLE_DEMO_SEED = 'true'
+$env:ENABLE_DEMO_SEAT_API = 'true'
+..\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+在仓库根目录另开一个终端启动前端。
+
+```powershell
+npm.cmd run demo --prefix new_coding_desk/frontend -- --port 5173 --strictPort
+```
+
+**macOS 或 Linux**
 
 ```bash
 python3.11 -m venv .venv
@@ -124,30 +149,40 @@ python3.11 -m venv .venv
 npm ci --prefix new_coding_desk/frontend
 ```
 
-在仓库根目录分别打开两个终端。
+在第一个终端启动后端。
 
 ```bash
 cd new_coding_desk
-SMARTDESK_DATA_DIR="$PWD/.smartdesk-runtime/demo-data" ENABLE_DEMO_SEAT_API=true \
-  ENABLE_TRANSLATION_MODEL=true ../.venv/bin/python -m uvicorn backend.main:app --port 8000
+SMARTDESK_DATA_DIR="$PWD/.smartdesk-runtime/demo-data" \
+  ENABLE_DEMO_SEED=true ENABLE_DEMO_SEAT_API=true \
+  ../.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
+
+在仓库根目录另开一个终端启动前端。
 
 ```bash
-npm run demo --prefix new_coding_desk/frontend
+npm run demo --prefix new_coding_desk/frontend -- --port 5173 --strictPort
 ```
 
-从 `http://127.0.0.1:5173/admin` 创建会议，在待启动页加入参会者并逐席分配，再开始会议。
-浏览器里打开 `/seat/2` 到 `/seat/9`，领取本席分配人员的演示签到。打开 `/host` 预览
-Seat 1 控制台，打开 `/display` 观看议程和投票同步。需要一场已布置的样例会议时，在使用空白
-演示数据库启动后端前增加 `ENABLE_DEMO_SEED=true`。样例包含预置名单、字幕和票数，
-新签到、投票更新和服务请求仍走真实接口。
+浏览器访问 `http://127.0.0.1:5173/admin` 查看样例会议，`/host` 查看主持席，
+`/seat/2` 到 `/seat/9` 查看参会席，`/display` 查看中央大屏，`/screen` 查看投屏状态。
+`http://127.0.0.1:5173/api/health` 可同时检查前端代理和后端。两个终端分别按
+`Ctrl+C` 停止服务。
+
+如果 8000 已占用，给后端选择其他 `--port`，在启动前端的终端设定
+`SMARTDESK_DEV_BACKEND_URL` 为对应地址，例如 `http://127.0.0.1:8211`。
+如果 5173 已占用，给前端换一个 `--port`，并使用该端口访问页面。
+
+样例数据在演示数据库首次启动时写入。样例包含预置名单、字幕和票数，新签到、投票
+更新和服务请求仍走真实接口。需要从空白状态练习创建会议时，换用新的 `SMARTDESK_DATA_DIR`
+并设定 `ENABLE_DEMO_SEED=false`，即可从 `/admin` 创建会议、添加参会人、分配座位并开始。
 
 三维视窗右上角可选画质和减少动效。浏览器 WebGL 2 不可用时，页面继续显示可操作的二维界面。
 场景交互、浏览器检查和截图见 [空间界面](SPATIAL_UI.md)。
 
-真实中英文语音与双向翻译需要安装 `new_coding_desk/requirements.txt`，并按本项目
-[语音模型说明](../README.md#current-speech-contract) 准备权重。模型暂缺时，发言席界面
-显示模型状态，其余业务可继续演示。屏幕共享和外部软件切换仍使用本节上方的 Windows 配置。
+真实中英文语音与双向翻译需要安装 `new_coding_desk/requirements.txt`，并按
+[语音模型说明](../README.md#current-speech-contract) 准备权重。轻量依赖启动时会提示语音
+模型或依赖缺失，会议功能仍可演示。真实屏幕共享和外部软件切换需要本节上方的 Windows 配置。
 
 重复执行浏览器演示回归时使用独立数据库，关闭种子选项。后端与 demo 前端就绪后，在
 `new_coding_desk/frontend` 中执行以下命令。也可用 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` 指定本机浏览器。

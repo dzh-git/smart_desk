@@ -79,17 +79,6 @@
   min-width: 2.75rem;
 }
 
-.spectator-display__main {
-  position: relative;
-  display: grid;
-  min-height: min(38rem, 80dvh);
-  flex: 1;
-  isolation: isolate;
-  align-items: center;
-  padding-inline: var(--spectator-pad);
-  background: radial-gradient(ellipse at 84% 53%, rgb(var(--desk-accent) / .105), transparent 63%);
-}
-
 .spatial-stage.spectator-stage {
   position: absolute;
   min-height: 0;
@@ -99,18 +88,8 @@
   box-shadow: none;
 }
 
-.spectator-display__stage {
-  inset: 0 0 0 51%;
-}
-
 .spectator-stage .spatial-canvas {
   opacity: .78;
-}
-
-.spectator-display__stage .spatial-viewport {
-  inset: 12% 4% 9%;
-  width: auto;
-  height: auto;
 }
 
 .spatial-stage.spectator-stage::before {
@@ -134,32 +113,10 @@
   mask-image: none;
 }
 
-.spectator-display__focus {
-  position: relative;
-  z-index: 2;
-  width: min(56%, 70rem);
-  min-width: 0;
-  padding-block: clamp(2rem, 6vh, 5rem);
-}
-
-.spectator-state,
-.spectator-vote {
+.spectator-state {
   display: grid;
   justify-items: start;
   gap: clamp(.6rem, 1.4vh, 1.2rem);
-}
-
-.spectator-kicker {
-  margin-block-end: .45rem;
-  color: rgb(var(--desk-accent));
-  font-size: clamp(.75rem, 1.25vw, 1.05rem);
-  font-weight: 660;
-  letter-spacing: .095em;
-}
-
-.spectator-kicker > span + span,
-.spectator-vote > .spectator-kicker span {
-  margin-inline-start: .45em;
 }
 
 .spectator-focus-title {
@@ -171,122 +128,9 @@
   text-wrap: balance;
 }
 
-.spectator-progress {
-  display: grid;
-  width: min(27rem, 100%);
-  margin-block: .65rem .3rem;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: .5rem;
-  color: var(--spectator-muted);
-  font-size: clamp(.825rem, 1.15vw, 1rem);
-}
-
-.spectator-progress progress {
-  width: 100%;
-  height: .35rem;
-  grid-column: 1 / -1;
-  overflow: hidden;
-  appearance: none;
-  border: 0;
-  border-radius: 999px;
-  background: rgb(var(--desk-accent) / .14);
-}
-
-.spectator-progress progress::-webkit-progress-bar { background: transparent; }
-.spectator-progress progress::-webkit-progress-value { background: rgb(var(--desk-accent) / .8); }
-.spectator-progress progress::-moz-progress-bar { background: rgb(var(--desk-accent) / .8); }
-
-.spectator-disclosure {
-  width: min(100%, 45rem);
-  margin-block-start: .75rem;
-  border-top: 1px solid var(--spectator-divider);
-}
-
-.spectator-disclosure > summary,
-.spectator-screen__details > summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-.spectator-disclosure > summary {
-  display: flex;
-  min-height: 2.75rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: .6rem;
-  color: var(--spectator-muted);
-  font-size: clamp(.8rem, 1.15vw, 1.025rem);
-  font-weight: 550;
-}
-
-.spectator-disclosure > summary::-webkit-details-marker,
+.spectator-screen__details > summary { list-style: none; cursor: pointer; }
 .spectator-screen__details > summary::-webkit-details-marker { display: none; }
-
-.spectator-disclosure[open] > summary > svg,
 .spectator-screen__details[open] > summary > svg { transform: rotate(180deg); }
-
-.spectator-disclosure[open] > summary,
-.spectator-disclosure > summary:hover { color: #fff; }
-
-.spectator-agenda-list {
-  max-height: 14rem;
-  overflow-y: auto;
-}
-
-.spectator-agenda-list > li {
-  display: grid;
-  min-height: 2.65rem;
-  grid-template-columns: 2.15rem minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: .55rem;
-  padding: .5rem 0;
-  border-bottom: 1px solid var(--spectator-divider);
-}
-
-.spectator-agenda-list > li[aria-current="step"] { color: rgb(var(--desk-accent)); }
-
-.spectator-detail-text {
-  overflow-wrap: anywhere;
-  padding-block-end: .65rem;
-  color: var(--spectator-muted);
-  font-size: .85rem;
-}
-
-.spectator-vote__total > strong { font-size: 1.2em; }
-
-.spectator-vote__results {
-  display: grid;
-  width: min(100%, 55rem);
-  max-height: clamp(15rem, 40vh, 27rem);
-  gap: clamp(.75rem, 1.8vh, 1.4rem);
-  overflow-y: auto;
-  padding-inline-end: .35rem;
-}
-
-.spectator-vote__option {
-  overflow-wrap: anywhere;
-  font-size: clamp(1.05rem, 1.9vw, 1.75rem);
-  font-weight: 620;
-}
-
-.spectator-vote__track {
-  height: clamp(.35rem, .75vw, .7rem);
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgb(var(--desk-accent) / .15);
-}
-
-.spectator-vote__fill {
-  height: 100%;
-  border-radius: inherit;
-  background: rgb(var(--desk-accent) / .87);
-  transition: width .35s ease;
-}
-
-.spectator-disclosure > .spectator-vote { padding-block: .5rem 1rem; }
-.spectator-disclosure .spectator-focus-title { font-size: clamp(1.15rem, 2.25vw, 2.25rem); }
-.spectator-disclosure .spectator-vote__option { font-size: clamp(1rem, 1.35vw, 1.3rem); }
 
 .spectator-screen__main {
   position: relative;
@@ -361,28 +205,5 @@
 }
 
 @media (max-width: 48rem) {
-  .spectator-display__main {
-    align-items: start;
-    background-position: center -5rem;
-  }
-
-  .spectator-display__stage {
-    inset: 0 0 auto;
-    height: clamp(8.75rem, 24vh, 13rem);
-  }
-
-  .spectator-display__stage .spatial-viewport { inset: 0 10%; }
-
-  .spatial-stage.spectator-display__stage::before { background: none; }
-
-  .spectator-display__focus {
-    width: 100%;
-    padding-block: clamp(8.5rem, 21vh, 12rem) 2rem;
-  }
-
   .spectator-screen__main { min-height: 21rem; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .spectator-vote__fill { transition: none; }
 }

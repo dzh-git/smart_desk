@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import WebSocket from "ws";
@@ -87,6 +87,19 @@ async function expectSpatialReady(page: Page) {
   await expect(stage.locator("canvas")).toBeVisible();
 }
 
+async function verifyFullscreen(page: Page, button: Locator, unavailable: Locator) {
+  await page.bringToFront();
+  await button.click();
+  await expect.poll(async () =>
+    await page.evaluate(() => document.fullscreenElement === document.documentElement)
+    || await unavailable.isVisible(),
+  ).toBe(true);
+  if (!(await unavailable.isVisible())) {
+    await button.click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  }
+}
+
 test("prepare, operate, and review a nine-seat meeting across devices", async ({ browser, baseURL, request }) => {
   const englishPCM = process.env.SMARTDESK_PRESENTATION_ENGLISH_PCM;
   const checkSpatial = process.env.SMARTDESK_PLAYWRIGHT_WEBGL === "software";
@@ -115,10 +128,23 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
 
   await Promise.all([admin.goto("/admin"), seat.goto("/seat/2"), display.goto("/display")]);
   await expect(seat.getByText(/Waiting for Meeting/)).toBeVisible();
-  await expect(display.getByText("Waiting for Meeting")).toBeVisible();
+  await expect(display.getByTestId("display-focus")).toHaveAttribute("data-focus", "waiting");
   await admin.getByPlaceholder(/Meeting title/).fill(title);
   await admin.getByRole("button", { name: /Create Pending Meeting/ }).click();
   await expect(admin.getByRole("heading", { name: title })).toBeVisible();
+
+  await admin.getByPlaceholder(/Attendee name/).fill("临时参会人");
+  await admin.getByPlaceholder(/Title/).fill("测试职务");
+  await admin.getByRole("button", { name: /Add attendee/i }).click();
+  await expect(admin.getByText("测试职务", { exact: true })).toBeVisible();
+  await admin.getByTestId("conference-seat-4").click();
+  const assignment = admin.getByTestId("seat-assignment-select");
+  await assignment.selectOption({ label: "临时参会人 · 未绑定人脸" });
+  await expect(admin.getByText(/临时参会人 · 座位 4/)).toBeVisible();
+  await assignment.selectOption("");
+  await expect(admin.getByText(/临时参会人 · 座位 4/)).toHaveCount(0);
+  await admin.getByRole("button", { name: /Delete attendee 临时参会人/ }).click();
+  await expect(admin.getByText("临时参会人", { exact: true })).toHaveCount(0);
 
   for (const [seatId, name] of [[2, "林安"], [3, "陈晨"]] as const) {
     await admin.getByPlaceholder(/Attendee name/).fill(name);
@@ -140,6 +166,11 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   await expect(seat.getByText("Checked In", { exact: true })).toBeVisible();
   await seat.reload();
   await expect(seat.getByText("Checked In", { exact: true })).toBeVisible();
+  await seat.getByTestId("seat-options").click();
+  await seat.getByRole("button", { name: /Vacate Seat \(Demo\)/ }).click();
+  await expect(seat.getByTestId("face-access-gate")).toBeVisible();
+  await seat.getByRole("button", { name: /Demo Check-in/ }).click();
+  await expect(seat.getByText("Checked In", { exact: true })).toBeVisible();
 
   await host.goto("/host");
   await expect(host.getByText("演示模式 / Demo Mode", { exact: true })).toBeVisible();
@@ -149,9 +180,55 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   const secondSeat = await guest.newPage();
   await secondSeat.goto("/seat/3");
   if (checkSpatial) await expectSpatialReady(secondSeat);
-  await secondSeat.getByRole("button", { name: /Demo Check-in/ }).click();
+  await expect(secondSeat.getByRole("button", { name: /Demo Check-in/ })).toBeVisible();
+  await admin.getByTestId("conference-seat-3").click();
+  await admin.getByTestId("manual-admit-button").click();
   await expect(secondSeat.getByText("Checked In", { exact: true })).toBeVisible();
   const meetingId: number = (await (await request.get("/api/meetings/active")).json()).data.id;
+
+  const popup = admin.waitForEvent("popup");
+  await admin.getByRole("link", { name: "会议大屏" }).click();
+  const linkedDisplay = await popup;
+  await expect(linkedDisplay).toHaveURL(/\/display$/);
+  await expect(linkedDisplay.getByRole("heading", { name: title })).toBeVisible();
+  await linkedDisplay.close();
+  const displayRefresh = display.waitForResponse((response) => new URL(response.url()).pathname === "/api/meetings/active");
+  await display.getByRole("button", { name: /Refresh/ }).click();
+  expect((await displayRefresh).ok()).toBe(true);
+  await verifyFullscreen(display, display.getByRole("button", { name: /Fullscreen/i }), display.getByText(/无法切换全屏/));
+
+  await admin.getByLabel("更多会议操作 / More meeting actions").click();
+  await expect(admin.getByTestId("host-display-control")).toBeVisible();
+  if (process.env.SMARTDESK_PRESENTATION_EXPECT_HARDWARE_OFFLINE === "true") {
+    await expect(admin.getByTestId("display-agent-state")).toContainText("CONTROL SERVICE OFFLINE");
+    for (const app of ["powerpoint", "solidworks", "smartdesk"]) {
+      await expect(admin.getByTestId(`activate-${app}`)).toBeDisabled();
+    }
+  }
+  await admin.getByLabel("更多会议操作 / More meeting actions").click();
+
+  await seat.getByTestId("seat-screen-entry").click();
+  await expect(seat).toHaveURL(/\/screen$/);
+  await expect(seat.getByTestId("screen-view")).toBeVisible();
+  await expect(seat.getByTestId("screen-retry")).toBeEnabled();
+  const screenStatus = seat.waitForResponse((response) => new URL(response.url()).pathname === "/api/host-display/status");
+  await seat.getByTestId("screen-retry").click();
+  expect((await screenStatus).ok()).toBe(true);
+  await seat.getByText(/Playback Details/).click();
+  if (process.env.SMARTDESK_PRESENTATION_EXPECT_HARDWARE_OFFLINE === "true") {
+    await expect(seat.getByTestId("agent-offline")).toBeVisible();
+    await expect(seat.getByTestId("stream-iframe")).toHaveCount(0);
+  }
+  await seat.getByText(/Playback Details/).click();
+  await verifyFullscreen(seat, seat.getByTestId("screen-fullscreen"), seat.getByText(/Fullscreen Unavailable/));
+  const tryPlayback = seat.getByRole("button", { name: /Try playback/ });
+  if (await tryPlayback.isVisible()) {
+    await tryPlayback.click();
+    await expect(seat.getByTestId("stream-iframe")).toHaveAttribute("src", /:8889\/screen\?/);
+  }
+  await seat.getByRole("link", { name: /Back/ }).click();
+  await expect(seat).toHaveURL(/\/seat\/2$/);
+  await expect(seat.getByText("Checked In", { exact: true })).toBeVisible();
 
   await admin.getByRole("button", { name: "议程 / Agenda" }).click();
   for (const topic of topics) {
@@ -159,12 +236,25 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
     await admin.getByRole("button", { name: "添加 / ADD", exact: true }).click();
     await expect(admin.getByRole("button", { name: new RegExp(topic) })).toBeVisible();
   }
-  for (const topic of topics) {
-    await admin.getByRole("button", { name: new RegExp(topic) }).click();
-    await admin.getByRole("button", { name: /SET CURRENT/ }).click();
+  const expectCurrentTopic = async (topic: string) => {
     await expect(seat.getByText(topic, { exact: true })).toBeVisible();
     await expect(display.getByTestId("display-focus").getByRole("heading", { name: topic })).toBeVisible();
-  }
+  };
+  await admin.getByRole("button", { name: new RegExp(topics[0]) }).click();
+  await admin.getByRole("button", { name: /SET CURRENT/ }).click();
+  await expectCurrentTopic(topics[0]);
+  await admin.getByRole("button", { name: /ADVANCE$/ }).click();
+  await expectCurrentTopic(topics[1]);
+  await admin.getByRole("button", { name: new RegExp(`${topics[1]}.*Active`, "i") }).click();
+  await admin.getByRole("button", { name: new RegExp(`${topics[0]}.*Done`, "i") }).click();
+  await expect(admin.getByText("已完成议题 / COMPLETED", { exact: true }).last()).toBeVisible();
+  await expect(admin.getByRole("button", { name: /SET CURRENT/ })).toHaveCount(0);
+  await admin.getByRole("button", { name: /COMPLETE$/ }).click();
+  await expect(admin.getByRole("button", { name: new RegExp(`${topics[1]}.*Done`, "i") })).toBeVisible();
+  await expect(seat.getByRole("heading", { name: /No Active Topic/i })).toBeVisible();
+  await admin.getByRole("button", { name: new RegExp(topics[2]) }).click();
+  await admin.getByRole("button", { name: /SET CURRENT/ }).click();
+  await expectCurrentTopic(topics[2]);
   await admin.getByRole("button", { name: /SKIP$/ }).click();
   await expect(admin.getByRole("button", { name: new RegExp(`${topics[2]}.*Skipped`, "i") })).toBeVisible();
 
@@ -187,13 +277,18 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   if (englishPCM && baseURL) {
     finals.push(await verifySpeech(secondSeat, request, baseURL, meetingId, 3, "en", englishPCM));
   }
+  await admin.getByRole("button", { name: "清除发言 / Clear" }).click();
+  await expect(secondSeat.getByRole("region", { name: "麦克风 / Microphone" })).toHaveCount(0);
 
   await admin.getByRole("button", { name: "投票 / Voting" }).click();
   await admin.getByRole("button", { name: /Create Vote/i }).click();
   await seat.getByTestId("seat-tab-vote").click();
   await seat.getByRole("button", { name: "同意 / Approve", exact: true }).click();
   await seat.getByRole("button", { name: /Submit Vote/ }).click();
-  await expect(display.getByText(/1 票.*100%/)).toBeVisible();
+  const displayVote = display.getByTestId("display-vote-panel");
+  const approve = displayVote.getByRole("listitem").filter({ hasText: "同意 / Approve" });
+  await expect(approve).toContainText("1 票");
+  await expect(approve).toContainText("100%");
   if (checkSpatial) {
     await expect(admin.getByTestId("spatial-stage")).toHaveAttribute("data-phase", "vote");
     await expect(display.getByTestId("spatial-stage")).toHaveAttribute("data-phase", "vote");
@@ -201,6 +296,9 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   await seat.getByRole("button", { name: "反对 / Reject", exact: true }).click();
   await seat.getByRole("button", { name: /Update Vote/ }).click();
   await expect(seat.getByText("Your choice:", { exact: true })).toBeVisible();
+  const reject = displayVote.getByRole("listitem").filter({ hasText: "反对 / Reject" });
+  await expect(reject).toContainText("1 票");
+  await expect(reject).toContainText("100%");
   await admin.getByRole("button", { name: "Close Vote" }).click();
   await expect(display.getByText("Vote Result", { exact: true })).toBeVisible();
   await expect(seat.getByRole("button", { name: /Submit Vote|Update Vote/ })).toHaveCount(0);
@@ -208,8 +306,14 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
   await seat.getByTestId("seat-tab-service").click();
   await seat.getByRole("button", { name: /Coffee/i }).click();
   await admin.getByRole("button", { name: "服务 / Services" }).click();
+  await expect(admin.getByRole("button", { name: "Resolve" })).toBeVisible();
+  await seat.getByRole("button", { name: /取消 \/ Cancel/ }).click();
+  await expect(admin.getByText("Cancelled", { exact: true })).toBeVisible();
+  await expect(admin.getByRole("button", { name: "Resolve" })).toHaveCount(0);
+  await seat.getByRole("button", { name: /Water/i }).click();
   await admin.getByRole("button", { name: "Resolve" }).click();
   await expect(admin.getByText("Resolved", { exact: true })).toBeVisible();
+  await expect(seat.getByRole("button", { name: /Water/i })).toBeEnabled();
 
   await admin.getByLabel("更多会议操作 / More meeting actions").click();
   await admin.getByRole("button", { name: /End Meeting/i }).click();
@@ -228,6 +332,19 @@ test("prepare, operate, and review a nine-seat meeting across devices", async ({
     await expect(admin.locator(`[data-testid="transcript-final"][data-utterance-id="${final.utterance_id}"]`))
       .toContainText(final.translated_text);
   }
+
+  await admin.getByRole("button", { name: /New Meeting/ }).click();
+  await expect(admin.getByPlaceholder(/Meeting title/)).toBeVisible();
+  const nextTitle = "SmartDesk 后续会议";
+  await admin.getByPlaceholder(/Meeting title/).fill(nextTitle);
+  await admin.getByRole("button", { name: /Create Pending Meeting/ }).click();
+  await expect(admin.getByRole("heading", { name: nextTitle })).toBeVisible();
+  await admin.getByRole("button", { name: /Start Meeting/ }).click();
+  await expect(display.getByRole("heading", { name: nextTitle })).toBeVisible({ timeout: 15_000 });
+  await expect(seat.getByText(/Waiting for host seat assignment/)).toBeVisible({ timeout: 15_000 });
+  await admin.getByLabel("更多会议操作 / More meeting actions").click();
+  await admin.getByRole("button", { name: /End Meeting/i }).click();
+  await expect(admin.getByText("Meeting Ended", { exact: true }).first()).toBeVisible();
 
   await controller.close();
   await guest.close();

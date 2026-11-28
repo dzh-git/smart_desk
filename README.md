@@ -6,6 +6,10 @@ SmartDesk 以中央 Windows 主机作为会议业务唯一权威源，以 9 台 
 发布状态，真机、实物、现场网络、人脸标定及模型商业许可证见
 [人工验收清单](docs/integration/HUMAN_VALIDATION_REQUIRED.md)。
 
+下载源码 ZIP 或克隆仓库后，可以在 Windows、macOS 或 Linux 上运行
+[无设备浏览器演示](new_coding_desk/docs/DEMO_RUNBOOK.md#无设备浏览器演示)。
+安装 Python 3.11 和 Node.js 22 后即可按步骤查看样例会议。
+
 ## 架构与边界
 
 ```text

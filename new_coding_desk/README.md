@@ -9,21 +9,15 @@ FastAPI 后端、React/Vite 前端、SQLite 持久化、WebSocket 实时同步�
 
 ## Quick Start
 
-安装后端依赖：
+下载或克隆源码后，按[无设备浏览器演示](docs/DEMO_RUNBOOK.md#无设备浏览器演示)
+在 Windows、macOS 或 Linux 上启动样例会议。现场 Windows 开发环境从仓库根目录安装完整依赖。
 
 ```powershell
-pip install -r requirements.txt
+.\SETUP_PYTHON.bat
+npm.cmd ci --prefix new_coding_desk/frontend
 ```
 
-安装前端依赖：
-
-```powershell
-cd frontend
-npm install
-cd ..
-```
-
-推荐双击以下文件启动会议控制窗口（不会显示终端窗口）：
+安装完成后，在 `new_coding_desk` 中双击以下文件启动会议控制窗口（不会显示终端窗口）。
 
 ```text
 SmartDeskControl.vbs
@@ -92,6 +86,7 @@ Windows 主机上实测。未验证项见 `docs/DEFERRED_ISSUES.md`。
 | Route | Purpose |
 |---|---|
 | `/admin` | 主持人控制台。 |
+| `/host` | 1 号席位主持端。 |
 | `/seat/:seatId` | 1 到 9 号座位端（seat 1 为主持人位）。 |
 | `/display` | 中央大屏。 |
 | `/screen` | 局域网终端使用的只读中央主机共享画面。 |

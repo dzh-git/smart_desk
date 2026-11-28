@@ -588,15 +588,15 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/App.test.tsx": {
-    "mtime": 1795706841.2807012,
-    "seen": 1795716394.1957731,
-    "ast_hash": "ffb073569ca2486120ddcfaa7d87b4b4",
+    "mtime": 1795869130.1585238,
+    "seen": 1795869158.4864497,
+    "ast_hash": "0eb737591bcdc5b558d2d04d2e1ce07d",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/DisplayView.test.tsx": {
-    "mtime": 1795706774.245586,
-    "seen": 1795716394.195775,
-    "ast_hash": "8c2e4387ec39221fb1fffeef68fa3cf6",
+    "mtime": 1795790067.5288227,
+    "seen": 1795869158.4864516,
+    "ast_hash": "797ae1cbc551bbf8452bad75bb45bbce",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/__tests__/admin.test.tsx": {
@@ -732,9 +732,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/DisplayView.tsx": {
-    "mtime": 1795781137.5016136,
-    "seen": 1795781424.6276066,
-    "ast_hash": "3c4e3c435aa00923357ca916e56246b3",
+    "mtime": 1795790229.9931257,
+    "seen": 1795869158.4875598,
+    "ast_hash": "aee3bb6a1fb5d38210d64cb824fc2a34",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/components/HardwareStatus.tsx": {
@@ -894,9 +894,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/vite.config.ts": {
-    "mtime": 1795532241.9589727,
-    "seen": 1795533883.0188477,
-    "ast_hash": "99ed74b816aa5ee6270cd300810a7d1b",
+    "mtime": 1795789867.1830554,
+    "seen": 1795869158.48956,
+    "ast_hash": "1520071879f95f5be4716c49c29ac971",
     "semantic_hash": ""
   },
   "new_coding_desk/host_services/display_agent/agent.py": {
@@ -1350,9 +1350,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1795532241.8516538,
-    "seen": 1795533883.0190175,
-    "ast_hash": "e77d42f9ca93038f6649fb38f02f8fb2",
+    "mtime": 1795789868.3550498,
+    "seen": 1795869158.494619,
+    "ast_hash": "1f185bd1612eaadf3c0f9c43f955e1d4",
     "semantic_hash": ""
   },
   "arduino_nano_controller/protocol.md": {
@@ -1380,9 +1380,9 @@
     "semantic_hash": "dcd829a94300a82a873fc266ba20a80b"
   },
   "new_coding_desk/README.md": {
-    "mtime": 1795532241.940567,
-    "seen": 1795533883.0190601,
-    "ast_hash": "216b701ef1fc572224ab74a8be1a7525",
+    "mtime": 1795789869.5230443,
+    "seen": 1795869158.4956682,
+    "ast_hash": "1ba2e29ea8083d6f71b5088d7374e438",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/API_SPEC.md": {
@@ -1404,9 +1404,9 @@
     "semantic_hash": "7a380495b6b2862564d3e278b1478f24"
   },
   "new_coding_desk/docs/DEMO_RUNBOOK.md": {
-    "mtime": 1795715933.3481212,
-    "seen": 1795716394.2587905,
-    "ast_hash": "4a18d45dde637cc07b5bc557c213b891",
+    "mtime": 1795789909.6228392,
+    "seen": 1795869158.4957566,
+    "ast_hash": "ae25a95ea6caf6387f375fddbed7752c",
     "semantic_hash": ""
   },
   "new_coding_desk/docs/EVENT_BUS_SPEC.md": {
@@ -3222,9 +3222,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/presentation-flow.spec.ts": {
-    "mtime": 1795715849.333915,
-    "seen": 1795716394.1951704,
-    "ast_hash": "8c694fafc5f4fd8ed15a31ad82986047",
+    "mtime": 1795790264.6409633,
+    "seen": 1795869158.485831,
+    "ast_hash": "9c6fdea549d79e2f9fc2bf2f51294d17",
     "semantic_hash": ""
   },
   "new_coding_desk/tests/test_meetings_router.py": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/e2e/spatial-rendering.spec.ts": {
-    "mtime": 1795781294.6288145,
-    "seen": 1795781424.6253467,
-    "ast_hash": "30e4fe3312c8f981cc5eaa92ed950a6b",
+    "mtime": 1795790112.0258048,
+    "seen": 1795869158.4858978,
+    "ast_hash": "0738ee3d9e0322d0ee55cb5b246a3171",
     "semantic_hash": ""
   },
   "new_coding_desk/frontend/src/spatial/SpatialProvider.tsx": {
@@ -3414,9 +3414,9 @@
     "semantic_hash": ""
   },
   "new_coding_desk/docs/SPATIAL_UI.md": {
-    "mtime": 1795781389.8763375,
-    "seen": 1795781424.6369092,
-    "ast_hash": "8f5f8f7b328689a893ea3915adcc3a71",
+    "mtime": 1795869131.9945197,
+    "seen": 1795869158.4960155,
+    "ast_hash": "f70462eaef217dc0344688124c30ddf0",
     "semantic_hash": ""
   },
   "docs/integration/spatial-presentation/admin.webp": {

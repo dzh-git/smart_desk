@@ -1,5 +1,5 @@
 /// <reference types="vitest" />
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import App from "../App";
 
 // ── Mock isDemoControlsEnabled ───────────────────────────────────────────────
@@ -300,7 +300,10 @@ describe("App - display vote results", () => {
     });
 
     expect(screen.getByText("Approve Roadmap")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText(/2 votes · 67%/)).toBeInTheDocument();
+    const context = screen.getByRole("complementary", { name: "会议信息 / Meeting context" });
+    expect(within(context).getByText("03")).toBeVisible();
+    const approve = within(screen.getByTestId("display-vote-panel")).getByText("Approve").closest("li")!;
+    expect(within(approve).getByText("67%")).toBeVisible();
+    expect(within(approve).getByText("2 票 / 2 votes")).toBeVisible();
   });
 });

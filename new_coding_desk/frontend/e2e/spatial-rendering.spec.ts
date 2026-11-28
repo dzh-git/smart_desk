@@ -96,4 +96,36 @@ test.describe("SmartDesk spatial rendering", () => {
     await page.getByLabel("更多会议操作 / More meeting actions").click();
     await expect(page.getByRole("button", { name: /End Meeting/i })).toBeEnabled();
   });
+
+  test("the display separates the vote from the scene and keeps its controls reachable", async ({ page }) => {
+    await page.goto("/display");
+    const focus = page.getByTestId("display-focus");
+    const context = page.getByRole("complementary", { name: "会议信息 / Meeting context" });
+    await expect(focus.getByTestId("display-vote-panel")).toBeVisible();
+    await expect(context.getByTestId("spatial-stage")).toHaveAttribute("data-renderer", "webgl2");
+    const voteBounds = await focus.boundingBox();
+    const visualBounds = await context.boundingBox();
+    expect(voteBounds).not.toBeNull();
+    expect(visualBounds).not.toBeNull();
+    expect(visualBounds!.x).toBeGreaterThanOrEqual(voteBounds!.x + voteBounds!.width - 1);
+
+    const agenda = page.getByText("完整议程 / Full Agenda", { exact: true });
+    const details = page.getByTestId("display-agenda-panel");
+    await agenda.click();
+    await expect(details.getByRole("list")).toBeVisible();
+    await agenda.click();
+    await expect(details.getByRole("list", { includeHidden: true })).toBeHidden();
+
+    const refreshed = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/meetings/active" && response.ok(),
+    );
+    await page.getByRole("button", { name: /Refresh/i }).click();
+    await refreshed;
+    await expect(focus.getByTestId("display-vote-panel")).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+    await expect(page.getByRole("button", { name: "全屏 / Fullscreen" })).toBeVisible();
+    await expect(agenda).toBeVisible();
+  });
 });
